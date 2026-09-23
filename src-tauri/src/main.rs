@@ -9,10 +9,9 @@ use std::{
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
-    Manager, PhysicalPosition,
+    Manager, PhysicalPosition, PhysicalSize,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
-use tauri_plugin_window_state::{StateFlags, WindowExt as WindowStateExt};
 
 #[derive(Serialize)]
 struct RuntimeInfo {
@@ -368,6 +367,8 @@ struct StoredWindowState {
     y: i32,
     width: u32,
     height: u32,
+    #[serde(default)]
+    maximized: bool,
 }
 
 fn window_state_path<R: tauri::Runtime, M: Manager<R>>(app: &M) -> Result<PathBuf, String> {
@@ -399,6 +400,7 @@ fn save_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result<()
         y: position.y,
         width: size.width,
         height: size.height,
+        maximized: window.is_maximized().unwrap_or(false),
     };
 
     let parent = path
@@ -412,18 +414,18 @@ fn save_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result<()
     .map_err(|error| error.to_string())
 }
 
-fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result<bool, String> {
+fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result<(), String> {
     let Ok(encoded_state) = fs::read(path) else {
-        return Ok(false);
+        return Ok(());
     };
     let Ok(state) = serde_json::from_slice::<StoredWindowState>(&encoded_state) else {
-        return Ok(false);
+        return Ok(());
     };
     let monitors = window
         .available_monitors()
         .map_err(|error| error.to_string())?;
     if monitors.is_empty() {
-        return Ok(false);
+        return Ok(());
     }
 
     let monitor = state
@@ -448,8 +450,12 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
 
     let monitor_position = monitor.position();
     let monitor_size = monitor.size();
-    let width = state.width.min(monitor_size.width).max(1024);
-    let height = state.height.min(monitor_size.height).max(680);
+    let width = state
+        .width
+        .clamp(1024.min(monitor_size.width), monitor_size.width);
+    let height = state
+        .height
+        .clamp(680.min(monitor_size.height), monitor_size.height);
     let max_x = monitor_position
         .x
         .saturating_add(monitor_size.width as i32)
@@ -468,9 +474,15 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
         .clamp(monitor_position.y, max_y.max(monitor_position.y));
 
     window
+        .set_size(PhysicalSize::new(width, height))
+        .map_err(|error| error.to_string())?;
+    window
         .set_position(PhysicalPosition::new(x, y))
         .map_err(|error| error.to_string())?;
-    Ok(true)
+    if state.maximized {
+        window.maximize().map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 fn refresh_tray_toggle_label(
@@ -893,16 +905,15 @@ fn list_windows_recycle_bin(_offset: usize) -> Result<LoadedRecycleBin, String> 
 
 #[cfg(target_os = "windows")]
 fn restore_windows_recycle_bin_item(id: &str) -> Result<(), String> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows::core::{IUnknown, Interface, PCWSTR};
+    use windows::core::{w, Interface, PCSTR};
     use windows::Win32::System::Com::{
-        CoCreateInstance, CoInitializeEx, CoUninitialize, IBindCtx, CLSCTX_INPROC_SERVER,
-        COINIT_APARTMENTTHREADED,
+        CoInitializeEx, CoUninitialize, IBindCtx, COINIT_APARTMENTTHREADED,
     };
     use windows::Win32::UI::Shell::{
-        IFileOperation, IFileOperationProgressSink, IShellItem, IShellItem2,
-        SHCreateItemFromParsingName, FOF_NO_UI,
+        BHID_EnumItems, BHID_SFUIObject, IContextMenu, IEnumShellItems, IShellItem, IShellItem2,
+        SHCreateItemFromParsingName, CMF_NORMAL, CMINVOKECOMMANDINFO, SIGDN_DESKTOPABSOLUTEPARSING,
     };
+    use windows::Win32::UI::WindowsAndMessaging::{CreatePopupMenu, DestroyMenu};
 
     const RECYCLE_BIN_PARSING_PREFIX: &str = "::{645ff040-5081-101b-9f08-00aa002f954e}";
     if id.len() > 32_768
@@ -928,10 +939,35 @@ fn restore_windows_recycle_bin_item(id: &str) -> Result<(), String> {
     }
     let _apartment = ComApartment;
 
-    let id_wide: Vec<u16> = id.encode_utf16().chain(Some(0)).collect();
-    let source: IShellItem =
-        unsafe { SHCreateItemFromParsingName(PCWSTR(id_wide.as_ptr()), None::<&IBindCtx>) }
-            .map_err(|error| format!("The Recycle Bin item is no longer available: {error}"))?;
+    let recycle_bin: IShellItem =
+        unsafe { SHCreateItemFromParsingName(w!("shell:RecycleBinFolder"), None::<&IBindCtx>) }
+            .map_err(|error| format!("Could not open the Windows Recycle Bin: {error}"))?;
+    let enumeration: IEnumShellItems = unsafe {
+        recycle_bin.BindToHandler::<_, IEnumShellItems>(None::<&IBindCtx>, &BHID_EnumItems)
+    }
+    .map_err(|error| format!("Could not enumerate Windows Recycle Bin items: {error}"))?;
+    let mut source: Option<IShellItem> = None;
+    loop {
+        let mut fetched = 0_u32;
+        let mut next_item: [Option<IShellItem>; 1] = [None];
+        unsafe { enumeration.Next(&mut next_item, Some(&mut fetched)) }
+            .map_err(|error| format!("Could not read Recycle Bin entries: {error}"))?;
+        if fetched == 0 {
+            break;
+        }
+        let candidate = next_item[0]
+            .take()
+            .ok_or_else(|| "Windows returned an empty Recycle Bin entry.".to_string())?;
+        let candidate_id = unsafe { candidate.GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING) }
+            .map_err(|error| format!("Could not identify a Recycle Bin item: {error}"))?;
+        let candidate_id = unsafe { take_shell_string(candidate_id) }?;
+        if candidate_id.eq_ignore_ascii_case(id) {
+            source = Some(candidate);
+            break;
+        }
+    }
+    let source =
+        source.ok_or_else(|| "The Recycle Bin item is no longer available.".to_string())?;
     let source_metadata: IShellItem2 = source
         .cast()
         .map_err(|error| format!("Could not inspect the Recycle Bin item: {error}"))?;
@@ -948,50 +984,36 @@ fn restore_windows_recycle_bin_item(id: &str) -> Result<(), String> {
     if destination.exists() {
         return Err("The original location already contains an item with that name.".to_string());
     }
-    let parent = destination
-        .parent()
-        .filter(|path| path.is_dir())
-        .ok_or_else(|| "The original folder is no longer available.".to_string())?;
-    let name = destination
-        .file_name()
-        .ok_or_else(|| "The original file name is unavailable.".to_string())?;
-    let parent_wide: Vec<u16> = parent.as_os_str().encode_wide().chain(Some(0)).collect();
-    let name_wide: Vec<u16> = name.encode_wide().chain(Some(0)).collect();
-    let destination_folder: IShellItem =
-        unsafe { SHCreateItemFromParsingName(PCWSTR(parent_wide.as_ptr()), None::<&IBindCtx>) }
-            .map_err(|error| format!("Could not open the original folder: {error}"))?;
-    let operation: IFileOperation = unsafe {
-        CoCreateInstance(
-            &CLSID_FILE_OPERATION,
-            None::<&IUnknown>,
-            CLSCTX_INPROC_SERVER,
-        )
+    if !destination.parent().is_some_and(|path| path.is_dir()) {
+        return Err("The original folder is no longer available.".to_string());
     }
-    .map_err(|error| format!("Could not start Windows restore operation: {error}"))?;
-
-    unsafe {
-        operation
-            .SetOperationFlags(FOF_NO_UI)
-            .map_err(|error| format!("Could not configure item restoration: {error}"))?;
-        operation
-            .MoveItem(
-                &source,
-                &destination_folder,
-                PCWSTR(name_wide.as_ptr()),
-                None::<&IFileOperationProgressSink>,
-            )
-            .map_err(|error| format!("Could not queue item restoration: {error}"))?;
-        operation
-            .PerformOperations()
-            .map_err(|error| format!("Windows could not restore the selected item: {error}"))?;
-        if operation
-            .GetAnyOperationsAborted()
-            .map_err(|error| format!("Could not verify the restore operation: {error}"))?
-            .as_bool()
-        {
-            return Err("Windows aborted the item restoration.".to_string());
+    let context_menu: IContextMenu =
+        unsafe { source.BindToHandler::<_, IContextMenu>(None::<&IBindCtx>, &BHID_SFUIObject) }
+            .map_err(|error| {
+                format!("Could not access the Recycle Bin restore command: {error}")
+            })?;
+    let menu = unsafe { CreatePopupMenu() }
+        .map_err(|error| format!("Could not prepare the Windows restore command: {error}"))?;
+    let invoke_result = unsafe {
+        let query_result = context_menu.QueryContextMenu(menu, 0, 1, 0x7fff, CMF_NORMAL);
+        if query_result.is_err() {
+            Err(format!(
+                "Could not load the Windows restore command: {query_result}"
+            ))
+        } else {
+            let mut command = CMINVOKECOMMANDINFO::default();
+            command.cbSize = std::mem::size_of::<CMINVOKECOMMANDINFO>() as u32;
+            command.lpVerb = PCSTR(b"undelete\0".as_ptr());
+            command.nShow = 1;
+            context_menu
+                .InvokeCommand(&command)
+                .map_err(|error| format!("Windows could not restore the item: {error}"))
         }
+    };
+    unsafe {
+        let _ = DestroyMenu(menu);
     }
+    invoke_result?;
     if !destination.exists() {
         return Err("Windows reported success, but the item was not restored.".to_string());
     }
@@ -1005,53 +1027,25 @@ fn restore_windows_recycle_bin_item(_id: &str) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 fn query_windows_recycle_bin() -> Result<RecycleBinStatus, String> {
-    use windows_sys::Win32::{
-        Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives},
-        System::WindowsProgramming::{DRIVE_FIXED, DRIVE_REMOVABLE},
-        UI::Shell::{SHQueryRecycleBinW, SHQUERYRBINFO},
+    use windows_sys::Win32::UI::Shell::{SHQueryRecycleBinW, SHQUERYRBINFO};
+
+    let mut info = SHQUERYRBINFO {
+        cbSize: std::mem::size_of::<SHQUERYRBINFO>() as u32,
+        ..Default::default()
     };
-
-    let drive_mask = unsafe { GetLogicalDrives() };
-    if drive_mask == 0 {
-        return Err("Windows did not report any logical drives.".to_string());
+    let result = unsafe { SHQueryRecycleBinW(std::ptr::null(), &mut info) };
+    if result < 0 {
+        return Err(format!(
+            "Windows could not query Recycle Bin status (HRESULT 0x{:08X}).",
+            result as u32
+        ));
     }
 
-    let mut status = RecycleBinStatus::default();
-    let mut queried_drives = 0_u32;
-    let mut had_query_errors = false;
-
-    for index in 0..26 {
-        if drive_mask & (1 << index) == 0 {
-            continue;
-        }
-        let root = format!("{}:\\", (b'A' + index as u8) as char);
-        let root_wide: Vec<u16> = root.encode_utf16().chain(Some(0)).collect();
-        let drive_type = unsafe { GetDriveTypeW(root_wide.as_ptr()) };
-        if drive_type != DRIVE_FIXED && drive_type != DRIVE_REMOVABLE {
-            continue;
-        }
-
-        let mut info = SHQUERYRBINFO {
-            cbSize: std::mem::size_of::<SHQUERYRBINFO>() as u32,
-            ..Default::default()
-        };
-        let result = unsafe { SHQueryRecycleBinW(root_wide.as_ptr(), &mut info) };
-        if result < 0 {
-            had_query_errors = true;
-            continue;
-        }
-
-        queried_drives += 1;
-        status.item_count = status
-            .item_count
-            .saturating_add(info.i64NumItems.max(0) as u64);
-        status.total_bytes = status
-            .total_bytes
-            .saturating_add(info.i64Size.max(0) as u64);
-    }
-
-    status.available = queried_drives > 0 && !had_query_errors;
-    Ok(status)
+    Ok(RecycleBinStatus {
+        available: true,
+        item_count: info.i64NumItems.max(0) as u64,
+        total_bytes: info.i64Size.max(0) as u64,
+    })
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -1231,25 +1225,232 @@ fn recycle_path(_path: &str) -> Result<(), String> {
     Err("The Windows Recycle Bin is available only in the Windows desktop app.".to_string())
 }
 
-#[tauri::command]
-async fn move_to_recycle_bin(paths: Vec<String>) -> Result<RecycleBinDeleteResult, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let mut result = RecycleBinDeleteResult::default();
-        let mut seen = std::collections::HashSet::new();
-        for path in paths {
-            let key = path.replace('/', "\\").to_lowercase();
-            if !seen.insert(key) {
+#[cfg(target_os = "windows")]
+fn recycle_paths(paths: Vec<String>) -> RecycleBinDeleteResult {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::{IUnknown, PCWSTR};
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoUninitialize, IBindCtx, CLSCTX_INPROC_SERVER,
+        COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::{
+        IFileOperation, IFileOperationProgressSink, IShellItem, SHCreateItemFromParsingName,
+        FOFX_RECYCLEONDELETE, FOF_NO_UI,
+    };
+
+    if paths.len() == 1 {
+        let path = &paths[0];
+        return match recycle_path(path) {
+            Ok(()) => RecycleBinDeleteResult {
+                recycled_paths: vec![path.clone()],
+                failures: Vec::new(),
+            },
+            Err(error) => RecycleBinDeleteResult {
+                recycled_paths: Vec::new(),
+                failures: vec![RecycleBinFailure {
+                    path: path.clone(),
+                    error,
+                }],
+            },
+        };
+    }
+
+    let mut result = RecycleBinDeleteResult::default();
+    let mut seen = std::collections::HashSet::new();
+    let mut candidates = Vec::new();
+    for path in paths {
+        if !seen.insert(path.replace('/', "\\").to_lowercase()) {
+            continue;
+        }
+        let source = Path::new(&path);
+        let prepared = (|| -> Result<(PathBuf, String), String> {
+            validate_recycle_source(source)?;
+            let metadata = fs::symlink_metadata(source).map_err(|error| error.to_string())?;
+            if metadata.file_type().is_symlink() {
+                return Err(
+                    "Symbolic links are not supported for Recycle Bin operations.".to_string(),
+                );
+            }
+            let resolved = source.canonicalize().map_err(|error| error.to_string())?;
+            validate_recycle_source(&resolved)?;
+            let shell_path = display_path(&resolved);
+            let path_bytes = shell_path.as_bytes();
+            if path_bytes.len() < 3 || path_bytes[1] != b':' || path_bytes[2] != b'\\' {
+                return Err(
+                    "Only local drive-letter paths can be safely sent to the Recycle Bin."
+                        .to_string(),
+                );
+            }
+            let root = format!("{}:\\", path_bytes[0] as char);
+            let root_wide: Vec<u16> = root.encode_utf16().chain(Some(0)).collect();
+            let drive_type = unsafe {
+                windows_sys::Win32::Storage::FileSystem::GetDriveTypeW(root_wide.as_ptr())
+            };
+            if drive_type != windows_sys::Win32::System::WindowsProgramming::DRIVE_FIXED
+                && drive_type != windows_sys::Win32::System::WindowsProgramming::DRIVE_REMOVABLE
+            {
+                return Err(
+                    "This drive type cannot be safely sent to the Windows Recycle Bin.".to_string(),
+                );
+            }
+            Ok((resolved, shell_path))
+        })();
+        match prepared {
+            Ok((resolved, shell_path)) => candidates.push((path, resolved, shell_path)),
+            Err(error) => result.failures.push(RecycleBinFailure { path, error }),
+        }
+    }
+    if candidates.is_empty() {
+        return result;
+    }
+
+    let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    if initialized.is_err() {
+        let error = format!(
+            "Could not initialize the Windows Shell apartment (HRESULT 0x{:08X}).",
+            initialized.0 as u32
+        );
+        result.failures.extend(
+            candidates
+                .into_iter()
+                .map(|(path, _, _)| RecycleBinFailure {
+                    path,
+                    error: error.clone(),
+                }),
+        );
+        return result;
+    }
+    struct ComApartment;
+    impl Drop for ComApartment {
+        fn drop(&mut self) {
+            unsafe { CoUninitialize() };
+        }
+    }
+    let _apartment = ComApartment;
+
+    let operation: IFileOperation = match unsafe {
+        CoCreateInstance(
+            &CLSID_FILE_OPERATION,
+            None::<&IUnknown>,
+            CLSCTX_INPROC_SERVER,
+        )
+    } {
+        Ok(operation) => operation,
+        Err(error) => {
+            let message = format!("Could not start the Windows file operation: {error}");
+            result.failures.extend(
+                candidates
+                    .into_iter()
+                    .map(|(path, _, _)| RecycleBinFailure {
+                        path,
+                        error: message.clone(),
+                    }),
+            );
+            return result;
+        }
+    };
+    if let Err(error) = unsafe { operation.SetOperationFlags(FOF_NO_UI | FOFX_RECYCLEONDELETE) } {
+        let message = format!("Could not configure Recycle Bin deletion: {error}");
+        result.failures.extend(
+            candidates
+                .into_iter()
+                .map(|(path, _, _)| RecycleBinFailure {
+                    path,
+                    error: message.clone(),
+                }),
+        );
+        return result;
+    }
+
+    let mut queued = Vec::new();
+    for (path, resolved, shell_path) in candidates {
+        let wide_path: Vec<u16> = std::ffi::OsStr::new(&shell_path)
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+        let shell_item: IShellItem = match unsafe {
+            SHCreateItemFromParsingName(PCWSTR(wide_path.as_ptr()), None::<&IBindCtx>)
+        } {
+            Ok(item) => item,
+            Err(error) => {
+                result.failures.push(RecycleBinFailure {
+                    path,
+                    error: format!("Could not open the selected Shell item: {error}"),
+                });
                 continue;
             }
-            match recycle_path(&path) {
-                Ok(()) => result.recycled_paths.push(path),
-                Err(error) => result.failures.push(RecycleBinFailure { path, error }),
-            }
+        };
+        match unsafe { operation.DeleteItem(&shell_item, None::<&IFileOperationProgressSink>) } {
+            Ok(()) => queued.push((path, resolved)),
+            Err(error) => result.failures.push(RecycleBinFailure {
+                path,
+                error: format!("Could not queue Recycle Bin deletion: {error}"),
+            }),
         }
-        Ok(result)
-    })
-    .await
-    .map_err(|error| format!("Recycle Bin worker failed: {error}"))?
+    }
+    if queued.is_empty() {
+        return result;
+    }
+
+    let operation_error = unsafe { operation.PerformOperations() }
+        .err()
+        .map(|error| format!("Windows could not move the item to the Recycle Bin: {error}"));
+    let aborted = match unsafe { operation.GetAnyOperationsAborted() } {
+        Ok(value) => value.as_bool(),
+        Err(error) => {
+            let message = format!("Could not verify the Recycle Bin operation: {error}");
+            for (path, resolved) in queued {
+                if resolved.exists() {
+                    result.failures.push(RecycleBinFailure {
+                        path,
+                        error: message.clone(),
+                    });
+                } else {
+                    result.recycled_paths.push(path);
+                }
+            }
+            return result;
+        }
+    };
+    for (path, resolved) in queued {
+        if !resolved.exists() {
+            result.recycled_paths.push(path);
+        } else {
+            let error = operation_error.clone().unwrap_or_else(|| {
+                if aborted {
+                    "Windows aborted the Recycle Bin operation.".to_string()
+                } else {
+                    "Windows reported success but the selected item still exists.".to_string()
+                }
+            });
+            result.failures.push(RecycleBinFailure { path, error });
+        }
+    }
+    result
+}
+
+#[cfg(not(target_os = "windows"))]
+fn recycle_paths(paths: Vec<String>) -> RecycleBinDeleteResult {
+    RecycleBinDeleteResult {
+        recycled_paths: Vec::new(),
+        failures: paths
+            .into_iter()
+            .map(|path| RecycleBinFailure {
+                path,
+                error: "The Windows Recycle Bin is available only in the Windows desktop app."
+                    .to_string(),
+            })
+            .collect(),
+    }
+}
+
+#[tauri::command]
+async fn move_to_recycle_bin(paths: Vec<String>) -> Result<RecycleBinDeleteResult, String> {
+    Ok(
+        tauri::async_runtime::spawn_blocking(move || recycle_paths(paths))
+            .await
+            .map_err(|error| format!("Recycle Bin worker failed: {error}"))?,
+    )
 }
 
 #[cfg(target_os = "windows")]
@@ -1457,11 +1658,6 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(
-            tauri_plugin_window_state::Builder::default()
-                .skip_initial_state("main")
-                .build(),
-        )
-        .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
@@ -1567,17 +1763,7 @@ fn main() {
                 .set_theme(Some(tauri::Theme::Dark))
                 .map_err(|error| error.to_string())?;
             let state_path = window_state_path(app)?;
-            let has_monitor_state = restore_window_state(&main_window, &state_path)?;
-            let restore_flags = StateFlags::SIZE
-                | StateFlags::MAXIMIZED
-                | if has_monitor_state {
-                    StateFlags::empty()
-                } else {
-                    StateFlags::POSITION
-                };
-            main_window
-                .restore_state(restore_flags)
-                .map_err(|error| error.to_string())?;
+            restore_window_state(&main_window, &state_path)?;
             let window_for_close = main_window.clone();
             let app_for_window_events = app.handle().clone();
             let toggle_for_window_events = toggle.clone();

@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Default development capability set for CyberFiles.",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default", "window-state:default"]
+  "permissions": ["core:default", "dialog:default"]
 }

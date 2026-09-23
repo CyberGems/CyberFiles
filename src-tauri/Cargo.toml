@@ -16,6 +16,5 @@ image = { version = "0.25.10", default-features = false, features = ["bmp", "gif
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
-tauri-plugin-window-state = "2"
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem", "Win32_System_WindowsProgramming", "Win32_UI_Shell"] }
 windows = { version = "0.61", features = ["Win32_System_Com", "Win32_System_SystemServices", "Win32_UI_Shell", "Win32_UI_Shell_PropertiesSystem", "Win32_UI_WindowsAndMessaging"] }

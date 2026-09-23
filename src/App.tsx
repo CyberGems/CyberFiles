@@ -828,7 +828,7 @@ export default function App() {
   }, [previewItem?.id, previewItem?.handle, previewItem?.type, previewItem?.isFolder, previewItem?.contentPreview]);
 
   // Navigation handlers
-  const handleNavigate = useCallback(async (newPath: string, targetPane: 'left' | 'right' = activePane, forceRefresh = false, openInNewTab = false) => {
+  const handleNavigate = useCallback(async (newPath: string, targetPane: 'left' | 'right' = activePane, forceRefresh = false, openInNewTab = false, historyIndexOverride?: number) => {
     const targetPath = newPath === SYSTEM_HOME_PATH || newPath === RECYCLE_BIN_PATH ? newPath : normalizeWindowsPath(newPath);
     const pathKey = getPathKey(targetPath);
     if (nativeOpeningWorkspace.current) return;
@@ -885,17 +885,19 @@ export default function App() {
       }
     } else {
       updatePaneTab(targetPane, tab => {
-        if (getPathKey(tab.currentPath) === pathKey) {
+        if (getPathKey(tab.currentPath) === pathKey && historyIndexOverride === undefined) {
           return forceRefresh ? tab : { ...tab, selectedIds: [], focusedId: null };
         }
-        const newHistory = [...tab.history.slice(0, tab.historyIndex + 1), targetPath].slice(-MAX_TAB_HISTORY_ENTRIES);
+        const newHistory = historyIndexOverride === undefined
+          ? [...tab.history.slice(0, tab.historyIndex + 1), targetPath].slice(-MAX_TAB_HISTORY_ENTRIES)
+          : tab.history;
         const rememberedStyle = folderStyleLocked ? getTabFolderStyle(tab) : DEFAULT_FOLDER_STYLE;
         return {
           ...tab,
           currentPath: targetPath,
           title: folderName,
           history: newHistory,
-          historyIndex: newHistory.length - 1,
+          historyIndex: historyIndexOverride ?? newHistory.length - 1,
           ...styleForPath(targetPath, rememberedStyle),
           folderStyle: rememberedStyle,
           filterQuery: '',
@@ -1112,58 +1114,22 @@ export default function App() {
   }, [completeOnboarding, openWorkspaceRoot, refreshSystemHome, t.sidebar.thisPc]);
 
   const handleNavigateBack = useCallback((targetPane: 'left' | 'right' = activePane) => {
-    updatePaneTab(targetPane, tab => {
-      if (tab.historyIndex > 0) {
-        const nextIdx = tab.historyIndex - 1;
-        const prevPath = tab.history[nextIdx];
-        const folderName = prevPath === SYSTEM_HOME_PATH
-          ? t.sidebar.thisPc
-          : prevPath === RECYCLE_BIN_PATH
-            ? t.sidebar.recycleBinTitle
-            : prevPath.split(/\\|\//).filter(Boolean).pop() || prevPath;
-        const rememberedStyle = folderStyleLocked ? getTabFolderStyle(tab) : DEFAULT_FOLDER_STYLE;
-        return {
-          ...tab,
-          currentPath: prevPath,
-          title: folderName,
-          historyIndex: nextIdx,
-          ...styleForPath(prevPath, rememberedStyle),
-          folderStyle: rememberedStyle,
-          filterQuery: '',
-          selectedIds: [],
-          focusedId: null,
-        };
-      }
-      return tab;
-    });
-  }, [activePane, updatePaneTab, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked]);
+    const tabs = targetPane === 'left' ? leftTabs : rightTabs;
+    const activeIndex = targetPane === 'left' ? activeLeftTabIndex : activeRightTabIndex;
+    const tab = tabs[activeIndex];
+    if (!tab || tab.historyIndex <= 0) return;
+    const nextIndex = tab.historyIndex - 1;
+    void handleNavigate(tab.history[nextIndex], targetPane, true, false, nextIndex);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, leftTabs, rightTabs, handleNavigate]);
 
   const handleNavigateForward = useCallback((targetPane: 'left' | 'right' = activePane) => {
-    updatePaneTab(targetPane, tab => {
-      if (tab.historyIndex < tab.history.length - 1) {
-        const nextIdx = tab.historyIndex + 1;
-        const nextPath = tab.history[nextIdx];
-        const folderName = nextPath === SYSTEM_HOME_PATH
-          ? t.sidebar.thisPc
-          : nextPath === RECYCLE_BIN_PATH
-            ? t.sidebar.recycleBinTitle
-            : nextPath.split(/\\|\//).filter(Boolean).pop() || nextPath;
-        const rememberedStyle = folderStyleLocked ? getTabFolderStyle(tab) : DEFAULT_FOLDER_STYLE;
-        return {
-          ...tab,
-          currentPath: nextPath,
-          title: folderName,
-          historyIndex: nextIdx,
-          ...styleForPath(nextPath, rememberedStyle),
-          folderStyle: rememberedStyle,
-          filterQuery: '',
-          selectedIds: [],
-          focusedId: null,
-        };
-      }
-      return tab;
-    });
-  }, [activePane, updatePaneTab, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked]);
+    const tabs = targetPane === 'left' ? leftTabs : rightTabs;
+    const activeIndex = targetPane === 'left' ? activeLeftTabIndex : activeRightTabIndex;
+    const tab = tabs[activeIndex];
+    if (!tab || tab.historyIndex >= tab.history.length - 1) return;
+    const nextIndex = tab.historyIndex + 1;
+    void handleNavigate(tab.history[nextIndex], targetPane, true, false, nextIndex);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, leftTabs, rightTabs, handleNavigate]);
 
   const handleNavigateUp = useCallback((targetPane: 'left' | 'right' = activePane) => {
     const activeTabObj = targetPane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
@@ -1688,12 +1654,14 @@ export default function App() {
     setIsRecycleBinBusy(true);
     try {
       await emptyNativeRecycleBin();
-      await Promise.all([refreshRecycleBinStatus(), refreshRecycleBinContents()]);
       setIsEmptyRecycleBinConfirmOpen(false);
       showToast(t.core.recycleBinEmptied);
+      void refreshRecycleBinStatus();
+      void refreshRecycleBinContents();
     } catch {
-      await Promise.all([refreshRecycleBinStatus(), refreshRecycleBinContents()]);
       showToast(t.core.recycleBinEmptyFailed);
+      void refreshRecycleBinStatus();
+      void refreshRecycleBinContents();
     } finally {
       setIsRecycleBinBusy(false);
     }
@@ -1717,6 +1685,9 @@ export default function App() {
       const restoredFrontendIds = new Set(items
         .filter(item => item.recycleBinId && restoredIds.has(item.recycleBinId))
         .map(item => item.id));
+      const restoredOriginalFolderKeys = new Set(items
+        .filter(item => item.recycleBinId && restoredIds.has(item.recycleBinId) && item.originalPath)
+        .map(item => getPathKey(getParentPath(item.originalPath!))));
       if (restoredFrontendIds.size > 0) {
         const clearRestoredSelections = (tabs: TabState[]) => tabs.map(tab => ({
           ...tab,
@@ -1727,7 +1698,18 @@ export default function App() {
         setRightTabs(clearRestoredSelections);
       }
 
-      await Promise.all([refreshRecycleBinStatus(), refreshRecycleBinContents()]);
+      const visiblePanes: Array<'left' | 'right'> = layout === 'single' ? [activePane] : ['left', 'right'];
+      for (const pane of visiblePanes) {
+        const tabs = pane === 'left' ? leftTabs : rightTabs;
+        const activeIndex = pane === 'left' ? activeLeftTabIndex : activeRightTabIndex;
+        const tab = tabs[activeIndex];
+        if (tab && restoredOriginalFolderKeys.has(getPathKey(tab.currentPath))) {
+          void handleNavigate(tab.currentPath, pane, true);
+        }
+      }
+
+      void refreshRecycleBinStatus();
+      void refreshRecycleBinContents();
       const failedCount = result.failures.length + unavailableCount;
       if (result.restoredIds.length === 0) {
         showToast(t.core.recycleBinRestoreFailed);
@@ -1739,12 +1721,13 @@ export default function App() {
         showToast(t.core.recycleBinRestored.replace('{count}', String(result.restoredIds.length)));
       }
     } catch {
-      await Promise.all([refreshRecycleBinStatus(), refreshRecycleBinContents()]);
+      void refreshRecycleBinStatus();
+      void refreshRecycleBinContents();
       showToast(t.core.recycleBinRestoreFailed);
     } finally {
       recycleBinRestoreInFlight.current = false;
     }
-  }, [refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.recycleBinRestoreFailed, t.core.recycleBinRestorePartial, t.core.recycleBinRestored]);
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, handleNavigate, layout, leftTabs, refreshRecycleBinContents, refreshRecycleBinStatus, rightTabs, showToast, t.core.recycleBinRestoreFailed, t.core.recycleBinRestorePartial, t.core.recycleBinRestored]);
 
   const handleOpenRecycleBin = useCallback(async () => {
     await handleNavigate(RECYCLE_BIN_PATH, activePane);
