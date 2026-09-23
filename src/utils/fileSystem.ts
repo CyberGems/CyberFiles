@@ -77,8 +77,7 @@ export function getUniqueName(desiredName: string, existingNames: Iterable<strin
   const normalizedNames = new Set(Array.from(existingNames, name => name.toLowerCase()));
   if (!normalizedNames.has(desiredName.toLowerCase())) return desiredName;
 
-  const extension = getFileExtension(desiredName);
-  const suffix = extension ? `.${extension}` : '';
+  const suffix = getFileNameSuffix(desiredName);
   const baseName = suffix ? desiredName.slice(0, -suffix.length) : desiredName;
   let index = 1;
   let candidate = `${baseName} (${index})${suffix}`;
@@ -98,10 +97,41 @@ export function formatFileSize(bytes: number): string {
   return `${val} ${sizes[i]}`;
 }
 
+function getFileNameSuffix(filename: string): string {
+  const dotIndex = filename.lastIndexOf('.');
+  return dotIndex > 0 && dotIndex < filename.length - 1 ? filename.slice(dotIndex) : '';
+}
+
+const KNOWN_FILE_EXTENSIONS = new Set([
+  'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico',
+  'rs', 'ts', 'tsx', 'js', 'jsx', 'json', 'toml', 'html', 'css', 'py', 'cpp', 'c', 'h', 'cs', 'sql', 'yaml', 'yml',
+  'txt', 'md', 'log', 'ini', 'cfg',
+  'mp3', 'wav', 'flac', 'ogg', 'aac', 'mp4', 'mkv', 'mov', 'avi', 'webm',
+  'zip', 'rar', '7z', 'tar', 'gz', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+  'exe', 'msi', 'bat', 'cmd', 'ps1', 'bin', 'dat', 'iso', 'sys', 'dll',
+]);
+
+function isValidIsoDateSegment(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth[month - 1];
+}
+
 export function getFileExtension(filename: string): string {
   const parts = filename.split('.');
   if (parts.length > 1 && parts[0] !== '') {
-    return parts.pop()?.toLowerCase() || '';
+    const finalPart = parts[parts.length - 1].toLowerCase();
+    if (isValidIsoDateSegment(finalPart)) {
+      const precedingPart = parts[parts.length - 2].toLowerCase();
+      return KNOWN_FILE_EXTENSIONS.has(precedingPart) ? precedingPart : '';
+    }
+    return finalPart;
   }
   return '';
 }
@@ -246,7 +276,7 @@ export function sortFiles(items: FileItem[], field: SortField, order: SortOrder)
 
 export function applyBatchRenamePreview(items: FileItem[], rule: BatchRenameRule): { original: string; renamed: string; id: string }[] {
   return items.map((item, index) => {
-    const ext = item.isFolder ? '' : (item.extension ? `.${item.extension}` : '');
+    const ext = item.isFolder ? '' : getFileNameSuffix(item.name);
     const baseName = item.isFolder ? item.name : (ext ? item.name.slice(0, -ext.length) : item.name);
     let newBaseName = baseName;
     let newExt = ext;

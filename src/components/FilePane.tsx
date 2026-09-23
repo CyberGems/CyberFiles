@@ -494,9 +494,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const usedPercent = hasCapacity && drive
       ? Math.min(100, Math.round((drive.usedBytes / drive.totalBytes) * 100))
       : 0;
+    const tooltipLabel = drive ? (
+      <span className="flex max-w-[20rem] flex-col gap-0.5">
+        <span className="font-semibold">{item.name}</span>
+        <span className="font-mono text-cyan-200">{item.path}</span>
+        <span>{hasCapacity
+          ? t.pane.availableOf
+            .replace('{free}', formatFileSize(Math.max(0, drive.totalBytes - drive.usedBytes)))
+            .replace('{total}', formatFileSize(drive.totalBytes))
+          : t.pane.capacityUnavailable}</span>
+      </span>
+    ) : item.path;
 
     return (
-      <Tooltip label={item.path} placement="top">
+      <Tooltip label={tooltipLabel} placement="top">
       <button
         key={item.id}
         type="button"
@@ -850,7 +861,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 >
                   <div
                     onClick={event => event.stopPropagation()}
-                    onDoubleClick={event => event.stopPropagation()}
+                    onDoubleClick={event => {
+                      event.stopPropagation();
+                      onBackgroundDoubleClick(event, paneId);
+                    }}
                     className="min-w-0 cursor-default truncate font-mono text-[10px] uppercase text-neutral-400"
                   >
                     {item.isFolder ? '' : (item.extension || '')}

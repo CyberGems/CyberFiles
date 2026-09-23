@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { FileItem } from '../types';
 import {
+  applyBatchRenamePreview,
   getChildItems,
+  getFileExtension,
   getParentPath,
   getRootItems,
   getUniqueName,
@@ -43,6 +45,23 @@ test('recognizes common localized media folders for their thumbnail view default
   assert.equal(isMediaPreviewPath('D:\\Media\\Música'), true);
   assert.equal(isMediaPreviewPath('D:\\Media\\Videos'), true);
   assert.equal(isMediaPreviewPath('D:\\Media\\Projects'), false);
+});
+
+test('does not mistake a date suffix for a file extension', () => {
+  assert.equal(getFileExtension('app.log.2026-09-07'), 'log');
+  assert.equal(getFileExtension('backup.2026-09-07'), '');
+  assert.equal(getFileExtension('backup.2026-13-40'), '2026-13-40');
+  assert.equal(getFileExtension('report.final.pdf'), 'pdf');
+  assert.equal(getUniqueName('app.log.2026-09-07', ['app.log.2026-09-07']), 'app.log (1).2026-09-07');
+
+  const datedLog = { ...item('dated-log', 'C:\\Files\\app.log.2026-09-07'), extension: 'log' };
+  const renameRule = {
+    mode: 'prefix_suffix' as const,
+    findText: '', replaceText: '', useRegex: false, prefix: 'archive-', suffix: '',
+    startNumber: 1, numberStep: 1, paddingDigits: 1,
+    caseType: 'lowercase' as const, applyToExtension: false,
+  };
+  assert.equal(applyBatchRenamePreview([datedLog], renameRule)[0].renamed, 'archive-app.log.2026-09-07');
 });
 
 test('keeps only selected tree roots and preserves direct children', () => {

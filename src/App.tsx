@@ -1267,13 +1267,18 @@ export default function App() {
           }
         });
       } else {
-        newSelection = ids;
+        const clickedId = ids[0];
+        if (clickedId && tab.selectedIds.includes(clickedId)) {
+          newSelection = tab.selectedIds.length === 1 ? [] : [clickedId];
+        } else {
+          newSelection = ids;
+        }
       }
 
       return {
         ...tab,
         selectedIds: newSelection,
-        focusedId: ids[0] || null,
+        focusedId: ids[0] && newSelection.includes(ids[0]) ? ids[0] : newSelection[0] || null,
       };
     });
   };
