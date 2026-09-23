@@ -273,8 +273,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const previousPathRef = useRef(tab.currentPath);
   const viewportRef = useRef<HTMLDivElement>(null);
   const marqueeDragRef = useRef<MarqueeDrag | null>(null);
+  const marqueePreviewIdsRef = useRef<string[] | null>(null);
   const suppressViewportClickRef = useRef(false);
   const [marqueeBounds, setMarqueeBounds] = useState<MarqueeBounds | null>(null);
+  const [marqueePreviewIds, setMarqueePreviewIds] = useState<string[] | null>(null);
 
   useEffect(() => {
     setPathInput(tab.currentPath);
@@ -512,7 +514,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const selectedIds = drag.additive
       ? [...new Set([...drag.initialIds, ...matchingIds])]
       : matchingIds;
-    onSelectItems(selectedIds, false, false, true);
+    marqueePreviewIdsRef.current = selectedIds;
+    setMarqueePreviewIds(selectedIds);
   };
 
   const handleMarqueePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
@@ -528,6 +531,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
       initialIds: tab.selectedIds,
       hasMoved: false,
     };
+    marqueePreviewIdsRef.current = null;
+    setMarqueePreviewIds(null);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -547,20 +552,26 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const drag = marqueeDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     marqueeDragRef.current = null;
-    if (drag.hasMoved) suppressViewportClickRef.current = true;
+    if (drag.hasMoved) {
+      suppressViewportClickRef.current = true;
+      onSelectItems(marqueePreviewIdsRef.current ?? (drag.additive ? drag.initialIds : []), false, false, true);
+    }
+    marqueePreviewIdsRef.current = null;
+    setMarqueePreviewIds(null);
     setMarqueeBounds(null);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   };
 
-  const selectedFiles = files.filter(f => tab.selectedIds.includes(f.id));
+  const visibleSelectedIds = marqueePreviewIds ?? tab.selectedIds;
+  const selectedFiles = files.filter(f => visibleSelectedIds.includes(f.id));
   const selectedBytes = selectedFiles.reduce((acc, f) => acc + f.size, 0);
 
   const folderBytes = files.filter(file => !file.isFolder).reduce((acc, file) => acc + file.size, 0);
 
   const renderSystemHomeCard = (item: FileItem, index: number, category: 'folder' | 'drive' | 'network') => {
-    const selected = tab.selectedIds.includes(item.id);
+    const selected = visibleSelectedIds.includes(item.id);
     const drive = category === 'folder' ? undefined : drives.find(candidate => item.id === `system-drive-${candidate.id}`);
     let icon: React.ReactNode;
     if (drive?.type === 'network') icon = <Network className="h-7 w-7" />;
@@ -934,7 +945,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         ) : effectiveViewMode === 'details' ? (
           <div className="divide-y divide-neutral-900/40">
             {files.map((item, idx) => {
-              const isSelected = tab.selectedIds.includes(item.id);
+              const isSelected = visibleSelectedIds.includes(item.id);
               const isEditing = editingItemId === item.id;
               const isZebra = idx % 2 === 1;
 
@@ -1028,7 +1039,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         ) : effectiveViewMode === 'compact' ? (
           <div className="grid grid-cols-1 gap-x-2 gap-y-1 p-1.5 sm:grid-cols-2 lg:grid-cols-3">
             {files.map((item, idx) => {
-              const isSelected = tab.selectedIds.includes(item.id);
+              const isSelected = visibleSelectedIds.includes(item.id);
               return (
                 <div
                   key={item.id}
@@ -1062,7 +1073,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           /* Icons / Grid View */
           <div className="grid grid-cols-2 gap-3 p-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
             {files.map((item, idx) => {
-              const isSelected = tab.selectedIds.includes(item.id);
+              const isSelected = visibleSelectedIds.includes(item.id);
 
               return (
                 <div

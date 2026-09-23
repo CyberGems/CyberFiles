@@ -917,13 +917,8 @@ fn restore_windows_recycle_bin_item(id: &str) -> Result<(), String> {
     };
     use windows::Win32::UI::WindowsAndMessaging::{CreatePopupMenu, DestroyMenu};
 
-    const RECYCLE_BIN_PARSING_PREFIX: &str = "::{645ff040-5081-101b-9f08-00aa002f954e}";
-    if id.len() > 32_768
-        || !id
-            .to_ascii_lowercase()
-            .starts_with(RECYCLE_BIN_PARSING_PREFIX)
-    {
-        return Err("The selected Shell item is not inside the Windows Recycle Bin.".to_string());
+    if id.trim().is_empty() || id.len() > 32_768 {
+        return Err("The selected Recycle Bin item identifier is invalid.".to_string());
     }
 
     let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
