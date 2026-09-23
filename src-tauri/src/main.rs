@@ -70,8 +70,19 @@ fn runtime_info() -> RuntimeInfo {
 }
 
 #[tauri::command]
-fn show_main_window(window: tauri::WebviewWindow) -> Result<(), String> {
+fn show_main_window(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+    let state_path = window_state_path(&app)?;
+    let restore_maximized = fs::read(state_path)
+        .ok()
+        .and_then(|encoded| serde_json::from_slice::<StoredWindowState>(&encoded).ok())
+        .is_some_and(|state| state.maximized);
+    if restore_maximized {
+        let _ = window.maximize();
+    }
     window.show().map_err(|error| error.to_string())?;
+    if restore_maximized && !window.is_maximized().unwrap_or(false) {
+        window.maximize().map_err(|error| error.to_string())?;
+    }
     window.set_focus().map_err(|error| error.to_string())
 }
 
@@ -984,7 +995,7 @@ async fn image_thumbnail(path: String) -> Option<String> {
     .flatten()
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StoredWindowState {
     monitor_name: Option<String>,
@@ -1007,6 +1018,18 @@ fn window_state_path<R: tauri::Runtime, M: Manager<R>>(app: &M) -> Result<PathBu
         .map_err(|error| error.to_string())
 }
 
+fn write_window_state(path: &PathBuf, state: &StoredWindowState) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or("Window state path has no parent directory")?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    fs::write(
+        path,
+        serde_json::to_vec(state).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())
+}
+
 fn save_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result<(), String> {
     let monitor = window
         .current_monitor()
@@ -1019,28 +1042,68 @@ fn save_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result<()
     let monitor = monitor.ok_or("No monitor is available to save window state")?;
     let monitor_position = monitor.position();
     let monitor_size = monitor.size();
-    let state = StoredWindowState {
-        monitor_name: monitor.name().cloned(),
-        monitor_x: monitor_position.x,
-        monitor_y: monitor_position.y,
-        monitor_width: monitor_size.width,
-        monitor_height: monitor_size.height,
-        x: position.x,
-        y: position.y,
-        width: size.width,
-        height: size.height,
-        maximized: window.is_maximized().unwrap_or(false),
-    };
+    let maximized = window.is_maximized().map_err(|error| error.to_string())?;
+    let minimized = window.is_minimized().map_err(|error| error.to_string())?;
+    let previous_state = fs::read(path)
+        .ok()
+        .and_then(|encoded| serde_json::from_slice::<StoredWindowState>(&encoded).ok());
 
-    let parent = path
-        .parent()
-        .ok_or("Window state path has no parent directory")?;
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    fs::write(
-        path,
-        serde_json::to_vec(&state).map_err(|error| error.to_string())?,
-    )
-    .map_err(|error| error.to_string())
+    // A maximized window reports the full monitor rectangle as its outer size.
+    // Keep its last normal bounds so unmaximizing after relaunch does not restore
+    // that oversized rectangle. A minimized window likewise keeps its prior state.
+    if let Some(mut state) = previous_state.clone().filter(|_| maximized || minimized) {
+        if maximized {
+            let offset_x = state.x.saturating_sub(state.monitor_x);
+            let offset_y = state.y.saturating_sub(state.monitor_y);
+            state.monitor_name = monitor.name().cloned();
+            state.monitor_x = monitor_position.x;
+            state.monitor_y = monitor_position.y;
+            state.monitor_width = monitor_size.width;
+            state.monitor_height = monitor_size.height;
+            state.x = monitor_position.x.saturating_add(offset_x);
+            state.y = monitor_position.y.saturating_add(offset_y);
+            state.maximized = true;
+        }
+        return write_window_state(path, &state);
+    }
+
+    let state = if maximized {
+        let work_area = monitor.work_area();
+        let work_position = work_area.position;
+        let work_size = work_area.size;
+        let width = 1440.min(work_size.width);
+        let height = 900.min(work_size.height);
+        StoredWindowState {
+            monitor_name: monitor.name().cloned(),
+            monitor_x: monitor_position.x,
+            monitor_y: monitor_position.y,
+            monitor_width: monitor_size.width,
+            monitor_height: monitor_size.height,
+            x: work_position
+                .x
+                .saturating_add(work_size.width.saturating_sub(width) as i32 / 2),
+            y: work_position
+                .y
+                .saturating_add(work_size.height.saturating_sub(height) as i32 / 2),
+            width,
+            height,
+            maximized: true,
+        }
+    } else {
+        StoredWindowState {
+            monitor_name: monitor.name().cloned(),
+            monitor_x: monitor_position.x,
+            monitor_y: monitor_position.y,
+            monitor_width: monitor_size.width,
+            monitor_height: monitor_size.height,
+            x: position.x,
+            y: position.y,
+            width: size.width,
+            height: size.height,
+            maximized: false,
+        }
+    };
+    write_window_state(path, &state)
 }
 
 fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result<(), String> {
@@ -1077,30 +1140,56 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
         })
         .ok_or("No monitor is available to restore window state")?;
 
-    let monitor_position = monitor.position();
+    let work_area = monitor.work_area();
+    let work_position = work_area.position;
+    let work_size = work_area.size;
+    if work_size.width == 0 || work_size.height == 0 {
+        return Ok(());
+    }
     let monitor_size = monitor.size();
-    let width = state
-        .width
-        .clamp(1024.min(monitor_size.width), monitor_size.width);
-    let height = state
-        .height
-        .clamp(680.min(monitor_size.height), monitor_size.height);
-    let max_x = monitor_position
+    let oversized_for_monitor =
+        state.width > monitor_size.width || state.height > monitor_size.height;
+    let requested_width = if oversized_for_monitor {
+        1440
+    } else {
+        state.width
+    };
+    let requested_height = if oversized_for_monitor {
+        900
+    } else {
+        state.height
+    };
+    let width = requested_width.clamp(1024.min(work_size.width), work_size.width);
+    let height = requested_height.clamp(680.min(work_size.height), work_size.height);
+    let max_x = work_position
         .x
-        .saturating_add(monitor_size.width as i32)
+        .saturating_add(work_size.width as i32)
         .saturating_sub(width as i32);
-    let max_y = monitor_position
+    let max_y = work_position
         .y
-        .saturating_add(monitor_size.height as i32)
+        .saturating_add(work_size.height as i32)
         .saturating_sub(height as i32);
-    let x = monitor_position
-        .x
-        .saturating_add(state.x.saturating_sub(state.monitor_x))
-        .clamp(monitor_position.x, max_x.max(monitor_position.x));
-    let y = monitor_position
-        .y
-        .saturating_add(state.y.saturating_sub(state.monitor_y))
-        .clamp(monitor_position.y, max_y.max(monitor_position.y));
+    let (requested_x, requested_y) = if oversized_for_monitor {
+        (
+            work_position
+                .x
+                .saturating_add(work_size.width.saturating_sub(width) as i32 / 2),
+            work_position
+                .y
+                .saturating_add(work_size.height.saturating_sub(height) as i32 / 2),
+        )
+    } else {
+        (
+            work_position
+                .x
+                .saturating_add(state.x.saturating_sub(state.monitor_x)),
+            work_position
+                .y
+                .saturating_add(state.y.saturating_sub(state.monitor_y)),
+        )
+    };
+    let x = requested_x.clamp(work_position.x, max_x.max(work_position.x));
+    let y = requested_y.clamp(work_position.y, max_y.max(work_position.y));
 
     window
         .set_size(PhysicalSize::new(width, height))
