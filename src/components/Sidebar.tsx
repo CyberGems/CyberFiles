@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, QuickAccessItem } from '../types';
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
+import type { RecycleBinStatus } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 
@@ -46,6 +47,9 @@ interface SidebarProps {
   onOpenSelectedFolder: (item: FileItem) => void;
   onPreviewSelectedFile: (item: FileItem) => void;
   onCopySelectedPaths: (items: FileItem[]) => void;
+  recycleBinSupported: boolean;
+  recycleBinStatus: RecycleBinStatus | null;
+  onRequestEmptyRecycleBin: () => void;
   isCollapsed?: boolean;
 }
 
@@ -67,6 +71,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenSelectedFolder,
   onPreviewSelectedFile,
   onCopySelectedPaths,
+  recycleBinSupported,
+  recycleBinStatus,
+  onRequestEmptyRecycleBin,
 }) => {
   const { t, language } = useLanguage();
   const [activeTab, setActiveTab] = useState<'tree' | 'recent'>('tree');
@@ -157,6 +164,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
     });
   }, [recentFiles, recentCategory, recentSearch]);
 
+  const canEmptyRecycleBin = recycleBinSupported && recycleBinStatus?.available === true && recycleBinStatus.itemCount > 0;
+  const recycleBinStateLabel = !recycleBinSupported
+    ? t.sidebar.recycleBinDesktopOnly
+    : !recycleBinStatus
+      ? t.sidebar.recycleBinChecking
+      : !recycleBinStatus.available
+        ? t.sidebar.recycleBinUnavailable
+        : recycleBinStatus.itemCount === 0
+          ? t.sidebar.recycleBinEmpty
+          : t.sidebar.recycleBinContents
+            .replace('{count}', new Intl.NumberFormat(language === 'es' ? 'es' : 'en').format(recycleBinStatus.itemCount))
+            .replace('{size}', formatFileSize(recycleBinStatus.totalBytes));
+
   return (
     <aside className="w-64 bg-neutral-950 border-r border-neutral-800/80 flex flex-col justify-between select-none flex-shrink-0 text-xs">
       
@@ -190,6 +210,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </span>
           )}
         </button>
+      </div>
+
+      <div className="border-b border-neutral-800/80 bg-neutral-950 px-2 py-2">
+        <Tooltip label={canEmptyRecycleBin ? t.sidebar.emptyRecycleBinAction : recycleBinStateLabel} placement="right" disabled={!canEmptyRecycleBin}>
+          <button
+            type="button"
+            disabled={!canEmptyRecycleBin}
+            onClick={onRequestEmptyRecycleBin}
+            aria-label={`${t.sidebar.recycleBinTitle}: ${recycleBinStateLabel}`}
+            className="flex w-full items-center gap-2 rounded-md border border-neutral-800 bg-neutral-900/60 px-2.5 py-2 text-left transition-colors enabled:hover:border-rose-800/80 enabled:hover:bg-rose-950/25 disabled:cursor-default"
+          >
+            <Trash2 className={`h-4 w-4 flex-shrink-0 ${canEmptyRecycleBin ? 'text-rose-300' : 'text-neutral-500'}`} />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[10px] font-semibold text-neutral-200">{t.sidebar.recycleBinTitle}</span>
+              <span className={`block truncate text-[9px] ${canEmptyRecycleBin ? 'text-neutral-400' : 'text-neutral-500'}`}>{recycleBinStateLabel}</span>
+            </span>
+            {canEmptyRecycleBin && <span className="flex-shrink-0 rounded border border-rose-900/60 px-1.5 py-0.5 text-[9px] font-semibold text-rose-200">{t.sidebar.emptyRecycleBinButton}</span>}
+          </button>
+        </Tooltip>
       </div>
 
       {/* 2. Main Tab Body */}

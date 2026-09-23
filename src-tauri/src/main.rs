@@ -677,6 +677,283 @@ fn list_system_locations(app: tauri::AppHandle) -> Vec<NativeLocation> {
     .collect()
 }
 
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct RecycleBinStatus {
+    available: bool,
+    item_count: u64,
+    total_bytes: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecycleBinFailure {
+    path: String,
+    error: String,
+}
+
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct RecycleBinDeleteResult {
+    recycled_paths: Vec<String>,
+    failures: Vec<RecycleBinFailure>,
+}
+
+#[cfg(target_os = "windows")]
+const CLSID_FILE_OPERATION: windows::core::GUID =
+    windows::core::GUID::from_u128(0x3ad0557588574850927711b85bdb8e09);
+
+#[cfg(target_os = "windows")]
+fn query_windows_recycle_bin() -> Result<RecycleBinStatus, String> {
+    use windows_sys::Win32::{
+        Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives},
+        System::WindowsProgramming::{DRIVE_FIXED, DRIVE_REMOVABLE},
+        UI::Shell::{SHQueryRecycleBinW, SHQUERYRBINFO},
+    };
+
+    let drive_mask = unsafe { GetLogicalDrives() };
+    if drive_mask == 0 {
+        return Err("Windows did not report any logical drives.".to_string());
+    }
+
+    let mut status = RecycleBinStatus::default();
+    let mut queried_drives = 0_u32;
+    let mut had_query_errors = false;
+
+    for index in 0..26 {
+        if drive_mask & (1 << index) == 0 {
+            continue;
+        }
+        let root = format!("{}:\\", (b'A' + index as u8) as char);
+        let root_wide: Vec<u16> = root.encode_utf16().chain(Some(0)).collect();
+        let drive_type = unsafe { GetDriveTypeW(root_wide.as_ptr()) };
+        if drive_type != DRIVE_FIXED && drive_type != DRIVE_REMOVABLE {
+            continue;
+        }
+
+        let mut info = SHQUERYRBINFO {
+            cbSize: std::mem::size_of::<SHQUERYRBINFO>() as u32,
+            ..Default::default()
+        };
+        let result = unsafe { SHQueryRecycleBinW(root_wide.as_ptr(), &mut info) };
+        if result < 0 {
+            had_query_errors = true;
+            continue;
+        }
+
+        queried_drives += 1;
+        status.item_count = status
+            .item_count
+            .saturating_add(info.i64NumItems.max(0) as u64);
+        status.total_bytes = status
+            .total_bytes
+            .saturating_add(info.i64Size.max(0) as u64);
+    }
+
+    status.available = queried_drives > 0 && !had_query_errors;
+    Ok(status)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn query_windows_recycle_bin() -> Result<RecycleBinStatus, String> {
+    Err("The Windows Recycle Bin is available only in the Windows desktop app.".to_string())
+}
+
+fn validate_recycle_source(source: &Path) -> Result<(), String> {
+    if !source.is_absolute() {
+        return Err("Only fully qualified paths can be sent to the Recycle Bin.".to_string());
+    }
+    if source.components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::Prefix(prefix)
+                if matches!(
+                    prefix.kind(),
+                    std::path::Prefix::UNC(..) | std::path::Prefix::VerbatimUNC(..)
+                )
+        )
+    }) {
+        return Err("Network shares cannot be safely sent to the Windows Recycle Bin.".to_string());
+    }
+    let mut depth = 0_i64;
+    for component in source.components() {
+        match component {
+            std::path::Component::Normal(_) => depth += 1,
+            std::path::Component::ParentDir => depth -= 1,
+            _ => {}
+        }
+        if depth < 0 {
+            return Err("The path traverses above a filesystem root.".to_string());
+        }
+    }
+    if depth == 0 {
+        return Err("A filesystem root cannot be sent to the Recycle Bin.".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_recycle_bin_status() -> Result<RecycleBinStatus, String> {
+    tauri::async_runtime::spawn_blocking(query_windows_recycle_bin)
+        .await
+        .map_err(|error| format!("Recycle Bin status worker failed: {error}"))?
+}
+
+#[cfg(target_os = "windows")]
+fn recycle_path(path: &str) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::{IUnknown, PCWSTR};
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoUninitialize, IBindCtx, CLSCTX_INPROC_SERVER,
+        COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::{
+        IFileOperation, IFileOperationProgressSink, IShellItem, SHCreateItemFromParsingName,
+        FOFX_RECYCLEONDELETE, FOF_NO_UI,
+    };
+
+    let source = Path::new(path);
+    validate_recycle_source(source)?;
+    let metadata = fs::symlink_metadata(source).map_err(|error| error.to_string())?;
+    if metadata.file_type().is_symlink() {
+        return Err("Symbolic links are not supported for Recycle Bin operations.".to_string());
+    }
+
+    let resolved = source.canonicalize().map_err(|error| error.to_string())?;
+    validate_recycle_source(&resolved)?;
+    let shell_path = display_path(&resolved);
+    let path_bytes = shell_path.as_bytes();
+    if path_bytes.len() < 3 || path_bytes[1] != b':' || path_bytes[2] != b'\\' {
+        return Err(
+            "Only local drive-letter paths can be safely sent to the Recycle Bin.".to_string(),
+        );
+    }
+    let root = format!("{}:\\", path_bytes[0] as char);
+    let root_wide: Vec<u16> = root.encode_utf16().chain(Some(0)).collect();
+    let drive_type =
+        unsafe { windows_sys::Win32::Storage::FileSystem::GetDriveTypeW(root_wide.as_ptr()) };
+    if drive_type != windows_sys::Win32::System::WindowsProgramming::DRIVE_FIXED
+        && drive_type != windows_sys::Win32::System::WindowsProgramming::DRIVE_REMOVABLE
+    {
+        return Err(
+            "This drive type cannot be safely sent to the Windows Recycle Bin.".to_string(),
+        );
+    }
+
+    let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    if initialized.is_err() {
+        return Err(format!(
+            "Could not initialize the Windows Shell apartment (HRESULT 0x{:08X}).",
+            initialized.0 as u32
+        ));
+    }
+    struct ComApartment;
+    impl Drop for ComApartment {
+        fn drop(&mut self) {
+            unsafe { CoUninitialize() };
+        }
+    }
+    let _apartment = ComApartment;
+
+    let wide_path: Vec<u16> = std::ffi::OsStr::new(&shell_path)
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let shell_item: IShellItem =
+        unsafe { SHCreateItemFromParsingName(PCWSTR(wide_path.as_ptr()), None::<&IBindCtx>) }
+            .map_err(|error| format!("Could not open the selected Shell item: {error}"))?;
+    let operation: IFileOperation = unsafe {
+        CoCreateInstance(
+            &CLSID_FILE_OPERATION,
+            None::<&IUnknown>,
+            CLSCTX_INPROC_SERVER,
+        )
+    }
+    .map_err(|error| format!("Could not start the Windows file operation: {error}"))?;
+    unsafe {
+        operation
+            .SetOperationFlags(FOF_NO_UI | FOFX_RECYCLEONDELETE)
+            .map_err(|error| format!("Could not configure Recycle Bin deletion: {error}"))?;
+        operation
+            .DeleteItem(&shell_item, None::<&IFileOperationProgressSink>)
+            .map_err(|error| format!("Could not queue Recycle Bin deletion: {error}"))?;
+        operation.PerformOperations().map_err(|error| {
+            format!("Windows could not move the item to the Recycle Bin: {error}")
+        })?;
+        if operation
+            .GetAnyOperationsAborted()
+            .map_err(|error| format!("Could not verify the Recycle Bin operation: {error}"))?
+            .as_bool()
+        {
+            return Err("Windows aborted the Recycle Bin operation.".to_string());
+        }
+    }
+    if resolved.exists() {
+        return Err("Windows reported success but the selected item still exists.".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn recycle_path(_path: &str) -> Result<(), String> {
+    Err("The Windows Recycle Bin is available only in the Windows desktop app.".to_string())
+}
+
+#[tauri::command]
+async fn move_to_recycle_bin(paths: Vec<String>) -> Result<RecycleBinDeleteResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut result = RecycleBinDeleteResult::default();
+        let mut seen = std::collections::HashSet::new();
+        for path in paths {
+            let key = path.replace('/', "\\").to_lowercase();
+            if !seen.insert(key) {
+                continue;
+            }
+            match recycle_path(&path) {
+                Ok(()) => result.recycled_paths.push(path),
+                Err(error) => result.failures.push(RecycleBinFailure { path, error }),
+            }
+        }
+        Ok(result)
+    })
+    .await
+    .map_err(|error| format!("Recycle Bin worker failed: {error}"))?
+}
+
+#[cfg(target_os = "windows")]
+fn empty_windows_recycle_bin() -> Result<(), String> {
+    use windows_sys::Win32::UI::Shell::{
+        SHEmptyRecycleBinW, SHERB_NOCONFIRMATION, SHERB_NOPROGRESSUI, SHERB_NOSOUND,
+    };
+
+    let result = unsafe {
+        SHEmptyRecycleBinW(
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND,
+        )
+    };
+    if result < 0 {
+        return Err(format!(
+            "Windows could not empty the Recycle Bin (HRESULT 0x{:08X}).",
+            result as u32
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn empty_windows_recycle_bin() -> Result<(), String> {
+    Err("The Windows Recycle Bin is available only in the Windows desktop app.".to_string())
+}
+
+#[tauri::command]
+async fn empty_recycle_bin() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(empty_windows_recycle_bin)
+        .await
+        .map_err(|error| format!("Recycle Bin worker failed: {error}"))?
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -829,6 +1106,9 @@ fn main() {
             image_thumbnail,
             list_drives,
             list_system_locations,
+            get_recycle_bin_status,
+            move_to_recycle_bin,
+            empty_recycle_bin,
             set_tray_language,
             get_global_shortcut_settings,
             set_global_shortcut_settings,
@@ -839,7 +1119,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::runtime_info;
+    use super::{runtime_info, validate_recycle_source};
+    use std::path::Path;
 
     #[test]
     fn exposes_development_runtime_metadata() {
@@ -848,5 +1129,63 @@ mod tests {
         assert_eq!(info.app_name, "CyberFiles");
         assert_eq!(info.mode, "development");
         assert!(!info.version.is_empty());
+    }
+
+    #[test]
+    fn rejects_drive_and_unc_roots_for_recycle_bin_operations() {
+        assert!(validate_recycle_source(Path::new(r"C:\")).is_err());
+        assert!(validate_recycle_source(Path::new(r"\\server\share")).is_err());
+    }
+
+    #[test]
+    fn rejects_paths_that_traverse_above_a_filesystem_root() {
+        assert!(validate_recycle_source(Path::new(r"C:\folder\..")).is_err());
+        assert!(validate_recycle_source(Path::new(r"C:\..\folder")).is_err());
+    }
+
+    #[test]
+    fn accepts_fully_qualified_paths_below_a_root() {
+        assert!(validate_recycle_source(Path::new(r"C:\folder\file.txt")).is_ok());
+        assert!(validate_recycle_source(Path::new(r"\\server\share\folder")).is_err());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn reads_recycle_bin_status_without_mutating_files() {
+        assert!(super::query_windows_recycle_bin().is_ok());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn configures_recycle_on_delete_without_performing_an_operation() {
+        use super::CLSID_FILE_OPERATION;
+        use windows::core::IUnknown;
+        use windows::Win32::System::Com::{
+            CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
+            COINIT_APARTMENTTHREADED,
+        };
+        use windows::Win32::UI::Shell::{IFileOperation, FOFX_RECYCLEONDELETE, FOF_NO_UI};
+
+        assert!(unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.is_ok());
+        struct ComApartment;
+        impl Drop for ComApartment {
+            fn drop(&mut self) {
+                unsafe { CoUninitialize() };
+            }
+        }
+        let _apartment = ComApartment;
+        let operation: IFileOperation = unsafe {
+            CoCreateInstance(
+                &CLSID_FILE_OPERATION,
+                None::<&IUnknown>,
+                CLSCTX_INPROC_SERVER,
+            )
+        }
+        .expect("Windows should create its IFileOperation shell object");
+        unsafe {
+            operation
+                .SetOperationFlags(FOF_NO_UI | FOFX_RECYCLEONDELETE)
+                .expect("Windows should accept recycle-on-delete flags");
+        }
     }
 }

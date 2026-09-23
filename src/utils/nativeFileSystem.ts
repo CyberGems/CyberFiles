@@ -37,6 +37,17 @@ export interface NativeLocation {
   path: string;
 }
 
+export interface RecycleBinStatus {
+  available: boolean;
+  itemCount: number;
+  totalBytes: number;
+}
+
+export interface RecycleBinDeleteResult {
+  recycledPaths: string[];
+  failures: Array<{ path: string; error: string }>;
+}
+
 const formatModifiedDate = (timestamp: number | null) => timestamp
   ? new Date(timestamp).toISOString().replace('T', ' ').slice(0, 16)
   : '';
@@ -95,6 +106,18 @@ export async function listNativeDrives(): Promise<DriveInfo[]> {
 export async function listNativeSystemLocations(): Promise<NativeLocation[]> {
   if (!isTauriDesktop()) return [];
   return invoke<NativeLocation[]>('list_system_locations');
+}
+
+export async function getNativeRecycleBinStatus(): Promise<RecycleBinStatus> {
+  return invoke<RecycleBinStatus>('get_recycle_bin_status');
+}
+
+export async function moveNativeItemsToRecycleBin(paths: string[]): Promise<RecycleBinDeleteResult> {
+  return invoke<RecycleBinDeleteResult>('move_to_recycle_bin', { paths });
+}
+
+export async function emptyNativeRecycleBin(): Promise<void> {
+  await invoke('empty_recycle_bin');
 }
 
 const thumbnailCache = new Map<string, string>();

@@ -45,7 +45,7 @@ import { CloseWindowModal } from './components/CloseWindowModal';
 import { SettingsModal } from './components/SettingsModal';
 import { OnboardingWelcome } from './components/OnboardingWelcome';
 import { useLanguage } from './locales/LanguageContext';
-import { chooseNativeFolder, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeSystemLocations, loadNativeFolder, setNativeTrayLanguage, type NativeLocation } from './utils/nativeFileSystem';
+import { chooseNativeFolder, emptyNativeRecycleBin, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeSystemLocations, loadNativeFolder, moveNativeItemsToRecycleBin, setNativeTrayLanguage, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
 
 const ONBOARDING_STORAGE_KEY = 'cyberfiles_onboarding_complete';
 const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
@@ -299,6 +299,27 @@ export default function App() {
     }, 3200);
   }, []);
 
+  const [recycleBinStatus, setRecycleBinStatus] = useState<RecycleBinStatus | null>(null);
+  const refreshRecycleBinStatus = useCallback(async () => {
+    if (!isTauriDesktop()) return;
+    try {
+      setRecycleBinStatus(await getNativeRecycleBinStatus());
+    } catch {
+      setRecycleBinStatus({ available: false, itemCount: 0, totalBytes: 0 });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    void refreshRecycleBinStatus();
+    const refreshInterval = window.setInterval(() => void refreshRecycleBinStatus(), 15_000);
+    window.addEventListener('focus', refreshRecycleBinStatus);
+    return () => {
+      window.clearInterval(refreshInterval);
+      window.removeEventListener('focus', refreshRecycleBinStatus);
+    };
+  }, [refreshRecycleBinStatus]);
+
   const refreshSystemHome = useCallback(async () => {
     if (!isTauriDesktop()) {
       setSystemHomeLoading(false);
@@ -367,6 +388,9 @@ export default function App() {
     }
   });
   const [pendingDeleteItems, setPendingDeleteItems] = useState<FileItem[]>([]);
+  const [isFileOperationBusy, setIsFileOperationBusy] = useState(false);
+  const [isEmptyRecycleBinConfirmOpen, setIsEmptyRecycleBinConfirmOpen] = useState(false);
+  const [isRecycleBinBusy, setIsRecycleBinBusy] = useState(false);
 
   useEffect(() => {
     void refreshSystemHome();
@@ -1403,6 +1427,10 @@ export default function App() {
   }, [allFiles, currentTab.currentPath, language, showToast, t.core.createdFolder, t.core.invalidName, t.pane.chooseRealFolderFirst, t.pane.noFolderOpen, updateActiveTab]);
 
   const handleDeleteSelected = useCallback((itemsToDelete?: FileItem[]) => {
+    if (!isTauriDesktop()) {
+      showToast(t.core.desktopFileOperationsOnly);
+      return;
+    }
     const selectedItems = itemsToDelete ?? selectedItemsForDelete;
     const idsToDelete = selectedItems.map(item => item.id);
     const roots = getRootItems(allFiles, idsToDelete);
@@ -1412,26 +1440,66 @@ export default function App() {
     }
 
     showToast(t.core.noSelection);
-  }, [allFiles, selectedItemsForDelete, t.core.noSelection]);
+  }, [allFiles, selectedItemsForDelete, showToast, t.core.desktopFileOperationsOnly, t.core.noSelection]);
 
-  const handleConfirmDelete = useCallback(() => {
-    const rootPaths = pendingDeleteItems.map(item => item.path);
-    const deletedIds = new Set(
-      allFiles
-        .filter(item => rootPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath)))
-        .map(item => item.id)
-    );
-    setAllFiles(prev => prev.filter(item => !rootPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath))));
-    const clearDeletedSelections = (tabs: TabState[]) => tabs.map(tab => ({
-      ...tab,
-      selectedIds: tab.selectedIds.filter(id => !deletedIds.has(id)),
-      focusedId: tab.focusedId && deletedIds.has(tab.focusedId) ? null : tab.focusedId,
-    }));
-    setLeftTabs(clearDeletedSelections);
-    setRightTabs(clearDeletedSelections);
-    showToast(t.core.deletedCount.replace('{count}', String(pendingDeleteItems.length)));
-    setPendingDeleteItems([]);
-  }, [allFiles, pendingDeleteItems, t.core.deletedCount]);
+  const handleConfirmDelete = useCallback(async () => {
+    if (isFileOperationBusy || pendingDeleteItems.length === 0) return;
+    setIsFileOperationBusy(true);
+    try {
+      const result = await moveNativeItemsToRecycleBin(pendingDeleteItems.map(item => item.path));
+      const recycledPaths = result.recycledPaths;
+      const recycledIds = new Set(
+        allFiles
+          .filter(item => recycledPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath)))
+          .map(item => item.id)
+      );
+      if (recycledPaths.length > 0) {
+        setAllFiles(previous => previous.filter(item => !recycledPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath))));
+        const clearRecycledSelections = (tabs: TabState[]) => tabs.map(tab => ({
+          ...tab,
+          selectedIds: tab.selectedIds.filter(id => !recycledIds.has(id)),
+          focusedId: tab.focusedId && recycledIds.has(tab.focusedId) ? null : tab.focusedId,
+        }));
+        setLeftTabs(clearRecycledSelections);
+        setRightTabs(clearRecycledSelections);
+      }
+
+      if (result.failures.length > 0) {
+        showToast(t.core.deletePartial
+          .replace('{moved}', String(recycledPaths.length))
+          .replace('{failed}', String(result.failures.length)));
+      } else {
+        showToast(t.core.deletedCount.replace('{count}', String(recycledPaths.length)));
+      }
+      setPendingDeleteItems([]);
+      void refreshRecycleBinStatus();
+    } catch {
+      showToast(t.core.deleteFailed);
+    } finally {
+      setIsFileOperationBusy(false);
+    }
+  }, [allFiles, isFileOperationBusy, pendingDeleteItems, refreshRecycleBinStatus, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount]);
+
+  const handleRequestEmptyRecycleBin = useCallback(() => {
+    if (!recycleBinStatus?.available || recycleBinStatus.itemCount === 0) return;
+    setIsEmptyRecycleBinConfirmOpen(true);
+  }, [recycleBinStatus]);
+
+  const handleConfirmEmptyRecycleBin = useCallback(async () => {
+    if (isRecycleBinBusy) return;
+    setIsRecycleBinBusy(true);
+    try {
+      await emptyNativeRecycleBin();
+      await refreshRecycleBinStatus();
+      setIsEmptyRecycleBinConfirmOpen(false);
+      showToast(t.core.recycleBinEmptied);
+    } catch {
+      await refreshRecycleBinStatus();
+      showToast(t.core.recycleBinEmptyFailed);
+    } finally {
+      setIsRecycleBinBusy(false);
+    }
+  }, [isRecycleBinBusy, refreshRecycleBinStatus, showToast, t.core.recycleBinEmptied, t.core.recycleBinEmptyFailed]);
 
   // Opens only a user-selected folder. Native builds scan it without following links.
   const handleOpenRealFolder = async () => {
@@ -1783,6 +1851,9 @@ export default function App() {
           onOpenSelectedFolder={item => { void handleNavigate(item.path, activePane); }}
           onPreviewSelectedFile={handleSelectRecentFile}
           onCopySelectedPaths={handleCopySelectedPaths}
+          recycleBinSupported={isTauriDesktop()}
+          recycleBinStatus={recycleBinStatus}
+          onRequestEmptyRecycleBin={handleRequestEmptyRecycleBin}
         />
 
         {/* File Panes Canvas */}
@@ -2075,6 +2146,20 @@ export default function App() {
         items={pendingDeleteItems}
         onCancel={() => setPendingDeleteItems([])}
         onConfirm={handleConfirmDelete}
+        isBusy={isFileOperationBusy}
+      />
+
+      <ConfirmActionModal
+        items={[]}
+        title={isEmptyRecycleBinConfirmOpen ? t.core.emptyRecycleBinTitle : undefined}
+        description={t.core.emptyRecycleBinMessage
+          .replace('{count}', new Intl.NumberFormat(language === 'es' ? 'es' : 'en').format(recycleBinStatus?.itemCount ?? 0))
+          .replace('{size}', formatFileSize(recycleBinStatus?.totalBytes ?? 0))}
+        confirmLabel={t.core.emptyRecycleBinConfirm}
+        busyLabel={t.core.emptyRecycleBinBusy}
+        isBusy={isRecycleBinBusy}
+        onCancel={() => setIsEmptyRecycleBinConfirmOpen(false)}
+        onConfirm={handleConfirmEmptyRecycleBin}
       />
 
       <CloseWindowModal

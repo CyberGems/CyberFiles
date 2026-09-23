@@ -494,6 +494,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-window-state",
+ "windows",
  "windows-sys 0.61.2",
 ]
 
