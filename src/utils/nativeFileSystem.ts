@@ -120,6 +120,10 @@ export async function emptyNativeRecycleBin(): Promise<void> {
   await invoke('empty_recycle_bin');
 }
 
+export async function showNativeFileProperties(path: string): Promise<void> {
+  await invoke('open_windows_file_properties', { path });
+}
+
 const thumbnailCache = new Map<string, string>();
 
 export async function loadNativeImageThumbnail(path: string): Promise<string | null> {

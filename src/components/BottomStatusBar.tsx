@@ -96,10 +96,17 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
       {/* Left section: selection and capacity summary */}
       <div className="flex items-center gap-1 min-w-0">
         {/* Active Pane Indicator */}
-        <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-[10px] text-neutral-200 mr-1 flex-shrink-0">
-          <span className={`w-2 h-2 rounded-full ${activePane === 'left' ? 'bg-cyan-400' : 'bg-amber-400'}`} />
-          <span className="font-bold">{activePane === 'left' ? 'L' : 'R'}</span>
-        </div>
+        <Tooltip label={activePane === 'left' ? t.statusBar.leftPane : t.statusBar.rightPane} placement="top">
+          <div
+            role="img"
+            aria-label={activePane === 'left' ? t.statusBar.leftPane : t.statusBar.rightPane}
+            tabIndex={0}
+            className="flex items-center gap-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-[10px] text-neutral-200 mr-1 flex-shrink-0 outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+          >
+            <span className={`w-2 h-2 rounded-full ${activePane === 'left' ? 'bg-cyan-400' : 'bg-amber-400'}`} />
+            <span className="font-bold">{activePane === 'left' ? (language === 'es' ? 'I' : 'L') : (language === 'es' ? 'D' : 'R')}</span>
+          </div>
+        </Tooltip>
 
         {/* 1. Files: X/Y */}
         <Tooltip label={language === 'es' ? `Archivos: ${selectedFileItems.length} seleccionados de ${fileItems.length} totales` : `Files: ${selectedFileItems.length} selected out of ${fileItems.length}`} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-400 font-bold">{language === 'es' ? 'Archivos:' : 'Files:'}</span><span className="text-yellow-300 font-bold">{selectedFileItems.length}/{fileItems.length}</span></div></Tooltip>

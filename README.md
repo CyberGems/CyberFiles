@@ -14,7 +14,7 @@ CyberFiles is an early-stage desktop file manager focused on fast, clear folder 
 - Send confirmed deletions to the Windows Recycle Bin and view its item count and size. Emptying it requires a separate permanent-action confirmation.
 - Choose CyberFiles, grayscale, or light appearance, and English or Spanish UI language.
 - Use the system tray to show, hide, or quit the app. Window size, position, and maximized state are restored on the next launch.
-- In supported browsers, browse a user-selected local folder through the File System Access API.
+- Use a development-only browser preview to browse a user-selected local folder through the File System Access API, where supported.
 
 ## Development status
 
@@ -37,13 +37,13 @@ npm ci
 npm run dev:desktop
 ```
 
-To run the web interface instead:
+For a limited browser preview instead of the desktop app:
 
 ```powershell
 npm run dev
 ```
 
-Browser mode can access only a folder the user explicitly chooses, and only in browsers that support the File System Access API.
+Browser preview is a development fallback, not the target CyberFiles experience. It can access only a folder the user explicitly chooses, and only in browsers that support the File System Access API. It cannot use the Windows Shell, inspect arbitrary drives, or manage the Windows Recycle Bin. Those capabilities belong to the Tauri desktop app.
 
 ## Build and checks
 

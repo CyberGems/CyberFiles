@@ -954,6 +954,67 @@ async fn empty_recycle_bin() -> Result<(), String> {
         .map_err(|error| format!("Recycle Bin worker failed: {error}"))?
 }
 
+#[cfg(target_os = "windows")]
+fn show_windows_file_properties(path: &str) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
+    use windows::Win32::UI::Shell::{SHObjectProperties, SHOP_FILEPATH};
+
+    let item_path = Path::new(path);
+    if !item_path.is_absolute() {
+        return Err("Windows Properties requires a fully qualified filesystem path.".to_string());
+    }
+    if !item_path.exists() {
+        return Err("The selected item no longer exists.".to_string());
+    }
+
+    let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    if initialized.is_err() {
+        return Err(format!(
+            "Could not initialize the Windows Shell apartment (HRESULT 0x{:08X}).",
+            initialized.0 as u32
+        ));
+    }
+    struct ComApartment;
+    impl Drop for ComApartment {
+        fn drop(&mut self) {
+            unsafe { CoUninitialize() };
+        }
+    }
+    let _apartment = ComApartment;
+
+    let wide_path: Vec<u16> = std::ffi::OsStr::new(path)
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let opened = unsafe {
+        SHObjectProperties(
+            None,
+            SHOP_FILEPATH,
+            PCWSTR(wide_path.as_ptr()),
+            PCWSTR::null(),
+        )
+    };
+    if opened.as_bool() {
+        Ok(())
+    } else {
+        Err("Windows could not open the selected item's Properties dialog.".to_string())
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn show_windows_file_properties(_path: &str) -> Result<(), String> {
+    Err("Windows Properties is available only in the Windows desktop app.".to_string())
+}
+
+#[tauri::command]
+async fn open_windows_file_properties(path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || show_windows_file_properties(&path))
+        .await
+        .map_err(|error| format!("Windows Properties worker failed: {error}"))?
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -1109,6 +1170,7 @@ fn main() {
             get_recycle_bin_status,
             move_to_recycle_bin,
             empty_recycle_bin,
+            open_windows_file_properties,
             set_tray_language,
             get_global_shortcut_settings,
             set_global_shortcut_settings,

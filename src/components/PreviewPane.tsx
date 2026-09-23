@@ -9,9 +9,11 @@ interface PreviewPaneProps {
   item: FileItem | null;
   onClose: () => void;
   onRename: () => void;
+  nativePropertiesSupported: boolean;
+  onOpenWindowsProperties: () => void;
 }
 
-export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRename }) => {
+export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRename, nativePropertiesSupported, onOpenWindowsProperties }) => {
   const [copied, setCopied] = useState(false);
   const { t } = useLanguage();
 
@@ -64,7 +66,10 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
     <aside className="w-80 bg-neutral-950 border-l border-neutral-800 flex flex-col justify-between select-none text-xs flex-shrink-0 h-full overflow-hidden">
       <div className="h-10 px-3 border-b border-neutral-800 flex items-center justify-between bg-neutral-900/60">
         <span className="font-semibold text-neutral-200 truncate">{item.name}</span>
-        <Tooltip label={t.preview.close} placement="bottom"><button onClick={onClose} className="p-1 rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"><X className="w-4 h-4" /></button></Tooltip>
+        <div className="flex flex-shrink-0 items-center gap-1">
+          {nativePropertiesSupported && <Tooltip label={t.preview.openWindowsProperties} placement="bottom"><button type="button" onClick={onOpenWindowsProperties} aria-label={t.preview.openWindowsProperties} className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300"><Info className="h-4 w-4" /></button></Tooltip>}
+          <Tooltip label={t.preview.close} placement="bottom"><button onClick={onClose} className="p-1 rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"><X className="w-4 h-4" /></button></Tooltip>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 space-y-4">

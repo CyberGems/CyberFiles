@@ -329,7 +329,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           event.stopPropagation();
           setColumnWidths(previous => resizeFileColumns(previous, column, event.key === 'ArrowRight' ? 10 : -10));
         }}
-        className="absolute -right-1.5 top-0 z-10 h-full w-3 cursor-col-resize touch-none outline-none after:absolute after:bottom-1 after:left-1/2 after:top-1 after:w-px after:-translate-x-1/2 after:bg-transparent hover:after:bg-cyan-400/80 focus-visible:after:bg-cyan-300"
+        className="absolute -right-1.5 top-0 z-10 h-full w-3 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:left-1/2 before:top-1/2 before:h-5 before:w-1 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:bg-transparent before:transition-colors after:pointer-events-none after:absolute after:bottom-1 after:left-1/2 after:top-1 after:w-0.5 after:-translate-x-1/2 after:bg-transparent after:transition-colors group-hover:before:bg-neutral-500/70 group-hover:after:bg-neutral-600 hover:before:bg-cyan-300 hover:after:bg-cyan-300 focus-visible:before:bg-cyan-300 focus-visible:after:bg-cyan-300"
       />
     </Tooltip>
   );
@@ -733,7 +733,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {effectiveViewMode === 'details' && (
         <div className="grid items-center gap-2 bg-neutral-950 border-b border-neutral-800 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 select-none" style={{ gridTemplateColumns: `${columnWidths.extension}px minmax(100px, 1fr) ${columnWidths.size}px ${columnWidths.modified}px` }}>
           <Tooltip label={t.pane.columns.extension} placement="bottom">
-            <div onClick={() => onSortChange('extension')} className="group relative flex min-w-0 items-center gap-1 cursor-pointer hover:text-neutral-200">
+            <div onClick={() => onSortChange('extension')} className="group relative flex min-w-0 items-center gap-1 rounded-sm cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100">
               <span>{t.pane.columns.extension}</span>
               {tab.sortField === 'extension' && <ArrowUpDown className="w-2.5 h-2.5 text-cyan-400" />}
               {resizeHandle('extension', t.pane.columns.extension)}
@@ -742,7 +742,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
           <div 
             onClick={() => onSortChange('name')}
-            className="group relative flex min-w-0 items-center gap-1 cursor-pointer hover:text-neutral-200"
+            className="group relative flex min-w-0 items-center gap-1 rounded-sm cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100"
           >
             <span>{t.pane.columns.name}</span>
             {tab.sortField === 'name' && <ArrowUpDown className="w-2.5 h-2.5 text-cyan-400" />}
@@ -751,7 +751,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
           <div 
             onClick={() => onSortChange('size')}
-            className="group relative flex min-w-0 items-center justify-end gap-1 cursor-pointer hover:text-neutral-200"
+            className="group relative flex min-w-0 items-center justify-end gap-1 rounded-sm cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100"
           >
             <span>{t.pane.columns.size}</span>
             {tab.sortField === 'size' && <ArrowUpDown className="w-2.5 h-2.5 text-cyan-400" />}
@@ -760,7 +760,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
           <div 
             onClick={() => onSortChange('modifiedDate')}
-            className="group relative hidden min-w-0 items-center justify-end gap-1 cursor-pointer hover:text-neutral-200 sm:flex"
+            className="group relative hidden min-w-0 items-center justify-end gap-1 rounded-sm cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 sm:flex"
           >
             <span>{t.pane.columns.modified}</span>
             {tab.sortField === 'modifiedDate' && <ArrowUpDown className="w-2.5 h-2.5 text-cyan-400" />}

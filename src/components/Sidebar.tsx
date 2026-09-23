@@ -22,6 +22,10 @@ import {
   Copy,
   MoveRight,
   Pencil,
+  Check,
+  Square,
+  ListRestart,
+  Info,
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, QuickAccessItem } from '../types';
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
@@ -40,6 +44,11 @@ interface SidebarProps {
   onClearRecentFiles?: () => void;
   selectedItems: FileItem[];
   onClearSelection: () => void;
+  onSelectAll: () => void;
+  onUnselectAll: () => void;
+  onInvertSelection: () => void;
+  onShowProperties: () => void;
+  previewOpen: boolean;
   onCopySelected: () => void;
   onMoveSelected: () => void;
   onRenameSelected: () => void;
@@ -64,6 +73,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onClearRecentFiles,
   selectedItems,
   onClearSelection,
+  onSelectAll,
+  onUnselectAll,
+  onInvertSelection,
+  onShowProperties,
+  previewOpen,
   onCopySelected,
   onMoveSelected,
   onRenameSelected,
@@ -253,6 +267,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </Tooltip>
           </div>
 
+          <div className="grid grid-cols-2 gap-1.5">
+            <button type="button" onClick={onSelectAll} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800">
+              <Check className="h-3.5 w-3.5 flex-shrink-0 text-cyan-300" /><span>{t.sidebar.selectAll}</span>
+            </button>
+            <button type="button" onClick={onUnselectAll} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800">
+              <Square className="h-3.5 w-3.5 flex-shrink-0 text-neutral-400" /><span>{t.sidebar.unselectAll}</span>
+            </button>
+            <button type="button" onClick={onInvertSelection} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800">
+              <ListRestart className="h-3.5 w-3.5 flex-shrink-0 text-amber-300" /><span>{t.sidebar.invertSelection}</span>
+            </button>
+            <Tooltip label={previewOpen ? t.sidebar.propertiesPanelOpen : t.sidebar.properties} placement="right">
+              <span className="block" tabIndex={previewOpen ? 0 : undefined} aria-label={previewOpen ? t.sidebar.propertiesPanelOpen : undefined}>
+                <button type="button" onClick={onShowProperties} disabled={previewOpen} className="flex min-w-0 w-full items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40">
+                  <Info className="h-3.5 w-3.5 flex-shrink-0 text-cyan-300" /><span className="min-w-0 leading-tight">{t.sidebar.properties}</span>
+                </button>
+              </span>
+            </Tooltip>
+          </div>
+
           <div className="space-y-1 rounded-lg border border-neutral-800 bg-neutral-900/60 p-2">
             {selectedItems.slice(0, 3).map(item => (
               <div key={item.id} className="flex min-w-0 items-center gap-2 py-1">
@@ -295,7 +328,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           <button type="button" onClick={() => onCopySelectedPaths(selectedItems)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[10px] text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-200">
-            <Copy className="h-3.5 w-3.5" />{t.sidebar.copySelectedPaths}
+            <Copy className="h-3.5 w-3.5" />{selectedItems.length === 1 ? t.sidebar.copySelectedPath : t.sidebar.copySelectedPaths}
           </button>
         </div>
       ) : activeTab === 'tree' ? (

@@ -45,7 +45,7 @@ import { CloseWindowModal } from './components/CloseWindowModal';
 import { SettingsModal } from './components/SettingsModal';
 import { OnboardingWelcome } from './components/OnboardingWelcome';
 import { useLanguage } from './locales/LanguageContext';
-import { chooseNativeFolder, emptyNativeRecycleBin, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeSystemLocations, loadNativeFolder, moveNativeItemsToRecycleBin, setNativeTrayLanguage, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
+import { chooseNativeFolder, emptyNativeRecycleBin, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeSystemLocations, loadNativeFolder, moveNativeItemsToRecycleBin, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
 
 const ONBOARDING_STORAGE_KEY = 'cyberfiles_onboarding_complete';
 const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
@@ -745,11 +745,11 @@ export default function App() {
     return item ? [item] : [];
   });
   const previewItem = React.useMemo(() => {
-    if (currentTab.currentPath === SYSTEM_HOME_PATH) return null;
     if (currentTab.selectedIds.length > 0) {
       const found = filesById.get(currentTab.selectedIds[0]);
       if (found) return found;
     }
+    if (currentTab.currentPath === SYSTEM_HOME_PATH) return null;
     return activeDisplayFiles[0] || null;
   }, [currentTab.currentPath, currentTab.selectedIds, filesById, activeDisplayFiles]);
 
@@ -1198,6 +1198,29 @@ export default function App() {
     });
   };
 
+  const handleSelectAllVisible = () => {
+    const visibleIds = activeDisplayFiles.map(file => file.id);
+    updateActiveTab(tab => ({ ...tab, selectedIds: visibleIds, focusedId: visibleIds[0] || null }));
+  };
+
+  const handleUnselectAll = () => {
+    updateActiveTab(tab => ({ ...tab, selectedIds: [], focusedId: null }));
+  };
+
+  const handleInvertVisibleSelection = () => {
+    const visibleIds = new Set(activeDisplayFiles.map(file => file.id));
+    updateActiveTab(tab => {
+      const selected = new Set(tab.selectedIds);
+      const preservedIds = tab.selectedIds.filter(id => !visibleIds.has(id));
+      const invertedVisibleIds = activeDisplayFiles.filter(file => !selected.has(file.id)).map(file => file.id);
+      return {
+        ...tab,
+        selectedIds: [...preservedIds, ...invertedVisibleIds],
+        focusedId: invertedVisibleIds[0] || preservedIds[0] || null,
+      };
+    });
+  };
+
   // Double click on file/folder
   const handleItemDoubleClick = (item: FileItem, pane: 'left' | 'right') => {
     if (item.isFolder) {
@@ -1346,11 +1369,20 @@ export default function App() {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
       await navigator.clipboard.writeText(items.map(item => item.path).join('\n'));
-      showToast(t.sidebar.copyPathsSuccess);
+      showToast(items.length === 1 ? t.sidebar.copyPathSuccess : t.sidebar.copyPathsSuccess);
     } catch {
-      showToast(t.sidebar.copyPathsFailure);
+      showToast(items.length === 1 ? t.sidebar.copyPathFailure : t.sidebar.copyPathsFailure);
     }
-  }, [showToast, t.sidebar.copyPathsFailure, t.sidebar.copyPathsSuccess]);
+  }, [showToast, t.sidebar.copyPathFailure, t.sidebar.copyPathSuccess, t.sidebar.copyPathsFailure, t.sidebar.copyPathsSuccess]);
+
+  const handleOpenWindowsProperties = useCallback(async (item: FileItem | null) => {
+    if (!item || !isTauriDesktop()) return;
+    try {
+      await showNativeFileProperties(item.path);
+    } catch {
+      showToast(t.preview.windowsPropertiesFailed);
+    }
+  }, [showToast, t.preview.windowsPropertiesFailed]);
 
   const handleApplyBatchRename = useCallback((renames: { id: string; original: string; renamed: string }[]) => {
     const lookup = new Map(renames.map(rename => [rename.id, rename.renamed]));
@@ -1844,6 +1876,11 @@ export default function App() {
           onClearRecentFiles={handleClearRecentFiles}
           selectedItems={selectedItemsForDelete}
           onClearSelection={() => updateActiveTab(tab => ({ ...tab, selectedIds: [], focusedId: null }))}
+          onSelectAll={handleSelectAllVisible}
+          onUnselectAll={handleUnselectAll}
+          onInvertSelection={handleInvertVisibleSelection}
+          onShowProperties={() => setPreviewOpen(true)}
+          previewOpen={previewOpen}
           onCopySelected={handleCopySelected}
           onMoveSelected={handleMoveSelected}
           onRenameSelected={handleRenameSelected}
@@ -2068,6 +2105,8 @@ export default function App() {
               item={previewItem}
               onClose={() => setPreviewOpen(false)}
               onRename={handleRenameSelected}
+              nativePropertiesSupported={isTauriDesktop()}
+              onOpenWindowsProperties={() => void handleOpenWindowsProperties(previewItem)}
             />
           )}
         </div>
