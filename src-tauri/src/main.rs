@@ -906,12 +906,14 @@ fn list_windows_recycle_bin(_offset: usize) -> Result<LoadedRecycleBin, String> 
 #[cfg(target_os = "windows")]
 fn restore_windows_recycle_bin_item(id: &str) -> Result<(), String> {
     use windows::core::{w, Interface, PCSTR};
+    use windows::Win32::Foundation::HWND;
     use windows::Win32::System::Com::{
-        CoInitializeEx, CoUninitialize, IBindCtx, COINIT_APARTMENTTHREADED,
+        CoInitializeEx, CoTaskMemFree, CoUninitialize, IBindCtx, COINIT_APARTMENTTHREADED,
     };
     use windows::Win32::UI::Shell::{
-        BHID_EnumItems, BHID_SFUIObject, IContextMenu, IEnumShellItems, IShellItem, IShellItem2,
-        SHCreateItemFromParsingName, CMF_NORMAL, CMINVOKECOMMANDINFO, SIGDN_DESKTOPABSOLUTEPARSING,
+        BHID_EnumItems, Common::ITEMIDLIST, IContextMenu, IEnumShellItems, IShellFolder,
+        IShellItem, IShellItem2, SHBindToParent, SHCreateItemFromParsingName,
+        SHGetIDListFromObject, CMF_NORMAL, CMINVOKECOMMANDINFO, SIGDN_DESKTOPABSOLUTEPARSING,
     };
     use windows::Win32::UI::WindowsAndMessaging::{CreatePopupMenu, DestroyMenu};
 
@@ -987,11 +989,29 @@ fn restore_windows_recycle_bin_item(id: &str) -> Result<(), String> {
     if !destination.parent().is_some_and(|path| path.is_dir()) {
         return Err("The original folder is no longer available.".to_string());
     }
+    let absolute_pidl = unsafe { SHGetIDListFromObject(&source) }.map_err(|error| {
+        format!("Could not identify the Recycle Bin item for restoration: {error}")
+    })?;
+    if absolute_pidl.is_null() {
+        return Err("Windows returned an empty Recycle Bin item identifier.".to_string());
+    }
+    struct OwnedItemIdList(*mut ITEMIDLIST);
+    impl Drop for OwnedItemIdList {
+        fn drop(&mut self) {
+            unsafe { CoTaskMemFree(Some(self.0.cast())) };
+        }
+    }
+    let absolute_pidl = OwnedItemIdList(absolute_pidl);
+    let mut child_pidl: *mut ITEMIDLIST = std::ptr::null_mut();
+    let parent_folder: IShellFolder =
+        unsafe { SHBindToParent(absolute_pidl.0.cast_const(), Some(&mut child_pidl)) }
+            .map_err(|error| format!("Could not locate the Recycle Bin item parent: {error}"))?;
+    if child_pidl.is_null() {
+        return Err("Windows returned an empty Recycle Bin child identifier.".to_string());
+    }
     let context_menu: IContextMenu =
-        unsafe { source.BindToHandler::<_, IContextMenu>(None::<&IBindCtx>, &BHID_SFUIObject) }
-            .map_err(|error| {
-                format!("Could not access the Recycle Bin restore command: {error}")
-            })?;
+        unsafe { parent_folder.GetUIObjectOf(HWND::default(), &[child_pidl.cast_const()], None) }
+            .map_err(|error| format!("Could not access the Windows restore command: {error}"))?;
     let menu = unsafe { CreatePopupMenu() }
         .map_err(|error| format!("Could not prepare the Windows restore command: {error}"))?;
     let invoke_result = unsafe {
@@ -1113,10 +1133,13 @@ async fn restore_recycle_bin_items(
             }
             match restore_windows_recycle_bin_item(&item.id) {
                 Ok(()) => result.restored_ids.push(item.id),
-                Err(error) => result.failures.push(RecycleBinFailure {
-                    path: item.id,
-                    error,
-                }),
+                Err(error) => {
+                    eprintln!("CyberFiles Recycle Bin restore failed: {error}");
+                    result.failures.push(RecycleBinFailure {
+                        path: item.id,
+                        error,
+                    });
+                }
             }
         }
         Ok(result)

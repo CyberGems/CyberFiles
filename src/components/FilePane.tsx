@@ -60,7 +60,7 @@ interface FilePaneProps {
   onNavigateForward: () => void;
   onNavigateUp: () => void;
   onFilterChange: (query: string) => void;
-  onSelectItems: (ids: string[], isAdditive?: boolean, isRange?: boolean) => void;
+  onSelectItems: (ids: string[], isAdditive?: boolean, isRange?: boolean, replaceExactly?: boolean) => void;
   onSortChange: (field: SortField) => void;
   onItemDoubleClick: (item: FileItem) => void;
   onItemContextMenu: (e: React.MouseEvent, item: FileItem) => void;
@@ -86,6 +86,22 @@ interface ColumnResizeDrag {
   startX: number;
   column: ResizableColumn;
   widths: FileColumnWidths;
+}
+
+interface MarqueeBounds {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+interface MarqueeDrag {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  additive: boolean;
+  initialIds: string[];
+  hasMoved: boolean;
 }
 
 const COLLAPSED_SYSTEM_HOME_SECTIONS_KEY = 'cyberfiles_system_home_collapsed_sections_v1';
@@ -255,6 +271,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const columnResizeDragRef = useRef<ColumnResizeDrag | null>(null);
   const columnWidthsSaveTimeoutRef = useRef<number | null>(null);
   const previousPathRef = useRef(tab.currentPath);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const marqueeDragRef = useRef<MarqueeDrag | null>(null);
+  const suppressViewportClickRef = useRef(false);
+  const [marqueeBounds, setMarqueeBounds] = useState<MarqueeBounds | null>(null);
 
   useEffect(() => {
     setPathInput(tab.currentPath);
@@ -457,6 +477,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   const handleViewportClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (suppressViewportClickRef.current) {
+      suppressViewportClickRef.current = false;
+      return;
+    }
     if ((event.target as HTMLElement).closest('[data-file-item], button, input, select, textarea, a, [contenteditable="true"]')) return;
     onBackgroundClick(event, paneId);
   };
@@ -469,6 +493,65 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const handleFileItemContextMenu = (event: React.MouseEvent, item: FileItem) => {
     if ((event.target as HTMLElement).closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
     onItemContextMenu(event, item);
+  };
+
+  const updateMarqueeSelection = (drag: MarqueeDrag, clientX: number, clientY: number) => {
+    const left = Math.min(drag.startX, clientX);
+    const top = Math.min(drag.startY, clientY);
+    const right = Math.max(drag.startX, clientX);
+    const bottom = Math.max(drag.startY, clientY);
+    setMarqueeBounds({ left, top, width: right - left, height: bottom - top });
+
+    const matchingIds = [...(viewportRef.current?.querySelectorAll<HTMLElement>('[data-file-item][data-file-id]') ?? [])]
+      .filter(element => {
+        const bounds = element.getBoundingClientRect();
+        return left < bounds.right && right > bounds.left && top < bounds.bottom && bottom > bounds.top;
+      })
+      .map(element => element.dataset.fileId)
+      .filter((id): id is string => Boolean(id));
+    const selectedIds = drag.additive
+      ? [...new Set([...drag.initialIds, ...matchingIds])]
+      : matchingIds;
+    onSelectItems(selectedIds, false, false, true);
+  };
+
+  const handleMarqueePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('[data-file-item], button, input, select, textarea, a, [contenteditable="true"]')) return;
+    onActivate();
+    marqueeDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      additive: event.ctrlKey || event.metaKey,
+      initialIds: tab.selectedIds,
+      hasMoved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleMarqueePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = marqueeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag.hasMoved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 4) return;
+    if (!drag.hasMoved) {
+      drag.hasMoved = true;
+      marqueeDragRef.current = drag;
+    }
+    event.preventDefault();
+    updateMarqueeSelection(drag, event.clientX, event.clientY);
+  };
+
+  const finishMarqueeSelection = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = marqueeDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    marqueeDragRef.current = null;
+    if (drag.hasMoved) suppressViewportClickRef.current = true;
+    setMarqueeBounds(null);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   };
 
   const selectedFiles = files.filter(f => tab.selectedIds.includes(f.id));
@@ -514,6 +597,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         key={item.id}
         type="button"
         data-file-item="true"
+        data-file-id={item.id}
         onClick={event => handleItemClick(event, item, index)}
         onDoubleClick={() => onItemDoubleClick(item)}
         onContextMenu={event => handleFileItemContextMenu(event, item)}
@@ -789,12 +873,24 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
       {/* 5. File Items Viewport */}
       <div 
-        className="flex-1 overflow-y-auto p-0.5 select-none focus:outline-none"
+        ref={viewportRef}
+        className={`relative flex-1 overflow-y-auto p-0.5 select-none focus:outline-none ${marqueeBounds ? 'cursor-crosshair' : ''}`}
         tabIndex={0}
         onClick={handleViewportClick}
         onContextMenu={handleViewportContextMenu}
         onDoubleClick={handleViewportDoubleClick}
+        onPointerDown={handleMarqueePointerDown}
+        onPointerMove={handleMarqueePointerMove}
+        onPointerUp={finishMarqueeSelection}
+        onPointerCancel={finishMarqueeSelection}
       >
+        {marqueeBounds && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none fixed z-20 border border-cyan-300/90 bg-cyan-400/15 shadow-[0_0_0_1px_rgba(8,145,178,0.2)]"
+            style={marqueeBounds}
+          />
+        )}
         {files.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-neutral-500 gap-2 p-6">
             {isLoadingDirectory ? <RotateCw className="w-7 h-7 text-cyan-500 animate-spin" /> : <Folder className="w-8 h-8 text-neutral-600 stroke-[1.5]" />}
@@ -846,6 +942,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 <div
                   key={item.id}
                   data-file-item="true"
+                  data-file-id={item.id}
                   draggable={!item.recycleBinId}
                   onDragStart={(e) => handleDragStart(e, item)}
                   onDrop={(e) => {
@@ -936,6 +1033,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 <div
                   key={item.id}
                   data-file-item="true"
+                  data-file-id={item.id}
                   draggable={!item.recycleBinId}
                   onDragStart={event => handleDragStart(event, item)}
                   onDrop={event => {
@@ -970,6 +1068,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 <div
                   key={item.id}
                   data-file-item="true"
+                  data-file-id={item.id}
                   draggable={!item.recycleBinId}
                   onDragStart={(e) => handleDragStart(e, item)}
                   onClick={(e) => handleItemClick(e, item, idx)}

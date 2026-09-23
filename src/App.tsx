@@ -1273,12 +1273,14 @@ export default function App() {
   };
 
   // Selection handler
-  const handleSelectItems = (pane: 'left' | 'right', ids: string[], isAdditive = false, isRange = false) => {
+  const handleSelectItems = (pane: 'left' | 'right', ids: string[], isAdditive = false, isRange = false, replaceExactly = false) => {
     setActivePane(pane);
     updatePaneTab(pane, tab => {
       let newSelection = [...tab.selectedIds];
 
-      if (isRange && tab.selectedIds.length > 0) {
+      if (replaceExactly) {
+        newSelection = [...new Set(ids)];
+      } else if (isRange && tab.selectedIds.length > 0) {
         const displayList = pane === 'left' ? leftDisplayFiles : rightDisplayFiles;
         const lastSelectedId = tab.selectedIds[tab.selectedIds.length - 1];
         const lastIdx = displayList.findIndex(f => f.id === lastSelectedId);
@@ -1712,7 +1714,10 @@ export default function App() {
       void refreshRecycleBinContents();
       const failedCount = result.failures.length + unavailableCount;
       if (result.restoredIds.length === 0) {
-        showToast(t.core.recycleBinRestoreFailed);
+        const reason = result.failures[0]?.error;
+        showToast(reason
+          ? t.core.recycleBinRestoreFailedWithReason.replace('{reason}', reason)
+          : t.core.recycleBinRestoreFailed);
       } else if (failedCount > 0) {
         showToast(t.core.recycleBinRestorePartial
           .replace('{restored}', String(result.restoredIds.length))
@@ -2328,9 +2333,9 @@ export default function App() {
 
       {/* Floating Action Toast */}
       {toastMessage && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 bg-neutral-900/95 border border-cyan-500/50 text-cyan-200 px-4 py-2 rounded-lg shadow-2xl backdrop-blur-md text-xs font-medium flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
+        <div className="fixed bottom-10 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-start gap-2 rounded-lg border border-cyan-500/50 bg-neutral-900/95 px-4 py-2 text-xs font-medium text-cyan-200 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-150">
           <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-          <span>{toastMessage}</span>
+          <span className="max-w-[42rem] break-words">{toastMessage}</span>
         </div>
       )}
 
