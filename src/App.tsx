@@ -52,6 +52,8 @@ const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
 const PANEL_VIEW_PREFERENCES_KEY = 'cyberfiles_panel_view_preferences_v1';
 const EMPTY_AREA_DOUBLE_CLICK_KEY = 'cyberfiles_empty_area_double_click_navigate_up';
 const FOLDER_STYLE_LOCKED_KEY = 'cyberfiles_folder_style_locked';
+const SIDEBAR_LOCATIONS_NEW_TAB_KEY = 'cyberfiles_sidebar_locations_open_in_new_tab_v1';
+const NEW_TABS_NEXT_TO_CURRENT_KEY = 'cyberfiles_new_tabs_next_to_current_v1';
 const DEFAULT_GLOBAL_SHORTCUT = 'Alt+Shift+F';
 const DEFAULT_FOLDER_STYLE = { viewMode: 'details' as ViewMode, sortField: 'name' as SortField, sortOrder: 'asc' as SortOrder };
 
@@ -129,6 +131,15 @@ function readFolderStyleLockPreference(): boolean {
   }
 }
 
+function readBooleanPreference(key: string, defaultValue: boolean): boolean {
+  try {
+    const saved = window.localStorage.getItem(key);
+    return saved === null ? defaultValue : saved === 'true';
+  } catch {
+    return defaultValue;
+  }
+}
+
 function styleForPath(path: string, style: typeof DEFAULT_FOLDER_STYLE) {
   return { ...style, viewMode: isMediaPreviewPath(path) ? 'icons' as ViewMode : style.viewMode };
 }
@@ -201,6 +212,8 @@ export default function App() {
   const startsAtSystemHome = isTauriDesktop();
   const [initialPanelPreferences] = useState(readPanelViewPreferences);
   const [folderStyleLocked, setFolderStyleLocked] = useState(readFolderStyleLockPreference);
+  const [sidebarLocationsOpenInNewTab, setSidebarLocationsOpenInNewTab] = useState(() => readBooleanPreference(SIDEBAR_LOCATIONS_NEW_TAB_KEY, true));
+  const [newTabsNextToCurrent, setNewTabsNextToCurrent] = useState(() => readBooleanPreference(NEW_TABS_NEXT_TO_CURRENT_KEY, true));
 
   // Global file system state
   const [allFiles, setAllFiles] = useState<FileItem[]>([]);
@@ -545,6 +558,22 @@ export default function App() {
 
   useEffect(() => {
     try {
+      window.localStorage.setItem(SIDEBAR_LOCATIONS_NEW_TAB_KEY, String(sidebarLocationsOpenInNewTab));
+    } catch {
+      // Keep the selected behavior for the current session when storage is unavailable.
+    }
+  }, [sidebarLocationsOpenInNewTab]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(NEW_TABS_NEXT_TO_CURRENT_KEY, String(newTabsNextToCurrent));
+    } catch {
+      // Keep the selected behavior for the current session when storage is unavailable.
+    }
+  }, [newTabsNextToCurrent]);
+
+  useEffect(() => {
+    try {
       window.localStorage.setItem(EMPTY_AREA_DOUBLE_CLICK_KEY, String(emptyAreaDoubleClickNavigatesUp));
     } catch {
       // Keep the in-memory preference when browser storage is unavailable.
@@ -724,7 +753,7 @@ export default function App() {
   }, [previewItem?.id, previewItem?.handle, previewItem?.type, previewItem?.isFolder, previewItem?.contentPreview]);
 
   // Navigation handlers
-  const handleNavigate = useCallback(async (newPath: string, targetPane: 'left' | 'right' = activePane, forceRefresh = false) => {
+  const handleNavigate = useCallback(async (newPath: string, targetPane: 'left' | 'right' = activePane, forceRefresh = false, openInNewTab = false) => {
     const targetPath = newPath === SYSTEM_HOME_PATH ? newPath : normalizeWindowsPath(newPath);
     const pathKey = getPathKey(targetPath);
     if (nativeOpeningWorkspace.current) return;
@@ -742,23 +771,60 @@ export default function App() {
     const folderName = targetPath === SYSTEM_HOME_PATH
       ? t.sidebar.thisPc
       : targetPath.split(/\\|\//).filter(Boolean).pop() || targetPath;
-    updatePaneTab(targetPane, tab => {
-      if (getPathKey(tab.currentPath) === pathKey) return { ...tab, selectedIds: [], focusedId: null };
-      const newHistory = [...tab.history.slice(0, tab.historyIndex + 1), targetPath].slice(-MAX_TAB_HISTORY_ENTRIES);
-      const rememberedStyle = folderStyleLocked ? getTabFolderStyle(tab) : DEFAULT_FOLDER_STYLE;
-      return {
-        ...tab,
+    if (openInNewTab) {
+      const sourceTab = targetTab ?? createEmptyTab(`tab-source-${Date.now()}`);
+      const rememberedStyle = folderStyleLocked ? getTabFolderStyle(sourceTab) : DEFAULT_FOLDER_STYLE;
+      const newHistory = getPathKey(sourceTab.currentPath) === pathKey
+        ? sourceTab.history.slice()
+        : [...sourceTab.history.slice(0, sourceTab.historyIndex + 1), targetPath].slice(-MAX_TAB_HISTORY_ENTRIES);
+      const newTab: TabState = {
+        ...sourceTab,
+        id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
         currentPath: targetPath,
         title: folderName,
-        history: newHistory,
-        historyIndex: newHistory.length - 1,
+        history: newHistory.length > 0 ? newHistory : [targetPath],
+        historyIndex: newHistory.length > 0 ? newHistory.length - 1 : 0,
         ...styleForPath(targetPath, rememberedStyle),
         folderStyle: rememberedStyle,
         filterQuery: '',
         selectedIds: [],
         focusedId: null,
       };
-    });
+      const insertIndex = newTabsNextToCurrent ? targetTabIndex + 1 : targetTabs.length;
+      if (targetPane === 'left') {
+        setLeftTabs(previous => {
+          const next = [...previous];
+          next.splice(Math.min(insertIndex, next.length), 0, newTab);
+          return next;
+        });
+        setActiveLeftTabIndex(insertIndex);
+      } else {
+        setRightTabs(previous => {
+          const next = [...previous];
+          next.splice(Math.min(insertIndex, next.length), 0, newTab);
+          return next;
+        });
+        setActiveRightTabIndex(insertIndex);
+      }
+    } else {
+      updatePaneTab(targetPane, tab => {
+        if (getPathKey(tab.currentPath) === pathKey) return { ...tab, selectedIds: [], focusedId: null };
+        const newHistory = [...tab.history.slice(0, tab.historyIndex + 1), targetPath].slice(-MAX_TAB_HISTORY_ENTRIES);
+        const rememberedStyle = folderStyleLocked ? getTabFolderStyle(tab) : DEFAULT_FOLDER_STYLE;
+        return {
+          ...tab,
+          currentPath: targetPath,
+          title: folderName,
+          history: newHistory,
+          historyIndex: newHistory.length - 1,
+          ...styleForPath(targetPath, rememberedStyle),
+          folderStyle: rememberedStyle,
+          filterQuery: '',
+          selectedIds: [],
+          focusedId: null,
+        };
+      });
+    }
 
     if (targetPath === SYSTEM_HOME_PATH) {
       if (forceRefresh) void refreshSystemHome();
@@ -807,7 +873,7 @@ export default function App() {
     } finally {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
-  }, [activePane, activeLeftTabIndex, activeRightTabIndex, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectoryPage, refreshSystemHome, showToast, t.sidebar.thisPc, folderStyleLocked]);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectoryPage, refreshSystemHome, showToast, t.sidebar.thisPc, folderStyleLocked, newTabsNextToCurrent]);
 
   const loadMoreNativeDirectory = useCallback(async (path: string) => {
     const pathKey = getPathKey(path);
@@ -1027,7 +1093,7 @@ export default function App() {
     const newPath = isTauriDesktop() ? SYSTEM_HOME_PATH : currentActive.currentPath;
     const newTab: TabState = {
       ...currentActive,
-      id: `tab-${Date.now()}`,
+      id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
       title: isTauriDesktop() ? t.sidebar.thisPc : `${currentActive.title} (2)`,
       currentPath: newPath,
       history: isTauriDesktop() ? [SYSTEM_HOME_PATH] : currentActive.history,
@@ -1038,12 +1104,22 @@ export default function App() {
       selectedIds: [],
       focusedId: null,
     };
+    const activeIndex = pane === 'left' ? activeLeftTabIndex : activeRightTabIndex;
+    const insertIndex = newTabsNextToCurrent ? activeIndex + 1 : sourceTabs.length;
     if (pane === 'left') {
-      setLeftTabs(prev => [...prev, newTab]);
-      setActiveLeftTabIndex(sourceTabs.length);
+      setLeftTabs(prev => {
+        const next = [...prev];
+        next.splice(Math.min(insertIndex, next.length), 0, newTab);
+        return next;
+      });
+      setActiveLeftTabIndex(insertIndex);
     } else {
-      setRightTabs(prev => [...prev, newTab]);
-      setActiveRightTabIndex(sourceTabs.length);
+      setRightTabs(prev => {
+        const next = [...prev];
+        next.splice(Math.min(insertIndex, next.length), 0, newTab);
+        return next;
+      });
+      setActiveRightTabIndex(insertIndex);
     }
   };
 
@@ -1241,6 +1317,16 @@ export default function App() {
       handleInlineRename(item.id, newName);
     }
   }, [handleInlineRename, language, selectedItemsForDelete, t.core.noSelection]);
+
+  const handleCopySelectedPaths = useCallback(async (items: FileItem[]) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(items.map(item => item.path).join('\n'));
+      showToast(t.sidebar.copyPathsSuccess);
+    } catch {
+      showToast(t.sidebar.copyPathsFailure);
+    }
+  }, [showToast, t.sidebar.copyPathsFailure, t.sidebar.copyPathsSuccess]);
 
   const handleApplyBatchRename = useCallback((renames: { id: string; original: string; renamed: string }[]) => {
     const lookup = new Map(renames.map(rename => [rename.id, rename.renamed]));
@@ -1455,8 +1541,8 @@ export default function App() {
       nativeRootPath.current = SYSTEM_HOME_PATH;
       browserRootPath.current = '';
     }
-    void handleNavigate(path, activePane);
-  }, [activePane, handleNavigate]);
+    void handleNavigate(path, activePane, false, sidebarLocationsOpenInNewTab);
+  }, [activePane, handleNavigate, sidebarLocationsOpenInNewTab]);
 
   // Keyboard Shortcuts listener
   useEffect(() => {
@@ -1684,10 +1770,19 @@ export default function App() {
           quickAccess={sidebarQuickAccess}
           allFiles={allFiles}
           currentPath={currentTab.currentPath}
-          onNavigate={(path) => handleNavigate(path)}
+          onNavigate={(path) => handleNavigate(path, activePane, false, sidebarLocationsOpenInNewTab)}
           onOpenDrive={handleOpenDrive}
           onSelectRecentFile={handleSelectRecentFile}
           onClearRecentFiles={handleClearRecentFiles}
+          selectedItems={selectedItemsForDelete}
+          onClearSelection={() => updateActiveTab(tab => ({ ...tab, selectedIds: [], focusedId: null }))}
+          onCopySelected={handleCopySelected}
+          onMoveSelected={handleMoveSelected}
+          onRenameSelected={handleRenameSelected}
+          onDeleteSelected={() => handleDeleteSelected(selectedItemsForDelete)}
+          onOpenSelectedFolder={item => { void handleNavigate(item.path, activePane); }}
+          onPreviewSelectedFile={handleSelectRecentFile}
+          onCopySelectedPaths={handleCopySelectedPaths}
         />
 
         {/* File Panes Canvas */}
@@ -1999,6 +2094,10 @@ export default function App() {
         onEmptyAreaDoubleClickNavigatesUpChange={setEmptyAreaDoubleClickNavigatesUp}
         folderStyleLocked={folderStyleLocked}
         onFolderStyleLockedChange={setFolderStyleLocked}
+        sidebarLocationsOpenInNewTab={sidebarLocationsOpenInNewTab}
+        onSidebarLocationsOpenInNewTabChange={setSidebarLocationsOpenInNewTab}
+        newTabsNextToCurrent={newTabsNextToCurrent}
+        onNewTabsNextToCurrentChange={setNewTabsNextToCurrent}
         onShowOnboarding={() => {
           setIsSettingsOpen(false);
           setIsOnboardingOpen(true);

@@ -18,6 +18,10 @@ interface SettingsModalProps {
   onEmptyAreaDoubleClickNavigatesUpChange: (enabled: boolean) => void;
   folderStyleLocked: boolean;
   onFolderStyleLockedChange: (enabled: boolean) => void;
+  sidebarLocationsOpenInNewTab: boolean;
+  onSidebarLocationsOpenInNewTabChange: (enabled: boolean) => void;
+  newTabsNextToCurrent: boolean;
+  onNewTabsNextToCurrentChange: (enabled: boolean) => void;
 }
 
 const themes: AppTheme[] = ['cyberfiles', 'gray', 'light'];
@@ -50,6 +54,10 @@ export function SettingsModal({
   onEmptyAreaDoubleClickNavigatesUpChange,
   folderStyleLocked,
   onFolderStyleLockedChange,
+  sidebarLocationsOpenInNewTab,
+  onSidebarLocationsOpenInNewTabChange,
+  newTabsNextToCurrent,
+  onNewTabsNextToCurrentChange,
 }: SettingsModalProps) {
   const { t, language, setLanguage } = useLanguage();
   const { theme, setTheme } = useTheme();
@@ -110,7 +118,7 @@ export function SettingsModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
-        className="w-full max-w-xl overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl"
+        className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl"
         onMouseDown={event => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-4">
@@ -130,7 +138,7 @@ export function SettingsModal({
           </Tooltip>
         </div>
 
-        <div className="space-y-3 p-5">
+        <div className="flex-1 space-y-3 overflow-y-auto p-5">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">{t.settings.appearance}</div>
           <div role="radiogroup" aria-label={t.settings.appearance} className="grid gap-2.5 sm:grid-cols-3">
             {themes.map(option => {
@@ -230,6 +238,40 @@ export function SettingsModal({
                     ? globalShortcut.registered ? t.settings.hotkeyActive : t.settings.hotkeyNotRegistered
                     : t.settings.hotkeyDisabled)}
             </p>
+          </div>
+
+          <div className="border-t border-neutral-800 pt-4">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.navigationSection}</div>
+            <div className="space-y-2">
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                <label className="flex cursor-pointer items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={sidebarLocationsOpenInNewTab}
+                    onChange={event => onSidebarLocationsOpenInNewTabChange(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                  />
+                  <span>
+                    <span className="block font-medium text-neutral-200">{t.settings.sidebarLocationsNewTab}</span>
+                    <span className="mt-1 block">{t.settings.sidebarLocationsNewTabDescription}</span>
+                  </span>
+                </label>
+              </div>
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                <label className="flex cursor-pointer items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={newTabsNextToCurrent}
+                    onChange={event => onNewTabsNextToCurrentChange(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                  />
+                  <span>
+                    <span className="block font-medium text-neutral-200">{t.settings.newTabsNextToCurrent}</span>
+                    <span className="mt-1 block">{t.settings.newTabsNextToCurrentDescription}</span>
+                  </span>
+                </label>
+              </div>
+            </div>
           </div>
 
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">

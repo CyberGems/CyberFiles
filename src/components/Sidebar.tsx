@@ -18,8 +18,10 @@ import {
   Search,
   Trash2,
   Eye,
-  ExternalLink,
-  X
+  X,
+  Copy,
+  MoveRight,
+  Pencil,
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, QuickAccessItem } from '../types';
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
@@ -35,6 +37,15 @@ interface SidebarProps {
   onOpenDrive?: (path: string) => void;
   onSelectRecentFile?: (file: FileItem) => void;
   onClearRecentFiles?: () => void;
+  selectedItems: FileItem[];
+  onClearSelection: () => void;
+  onCopySelected: () => void;
+  onMoveSelected: () => void;
+  onRenameSelected: () => void;
+  onDeleteSelected: () => void;
+  onOpenSelectedFolder: (item: FileItem) => void;
+  onPreviewSelectedFile: (item: FileItem) => void;
+  onCopySelectedPaths: (items: FileItem[]) => void;
   isCollapsed?: boolean;
 }
 
@@ -47,6 +58,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenDrive,
   onSelectRecentFile,
   onClearRecentFiles,
+  selectedItems,
+  onClearSelection,
+  onCopySelected,
+  onMoveSelected,
+  onRenameSelected,
+  onDeleteSelected,
+  onOpenSelectedFolder,
+  onPreviewSelectedFile,
+  onCopySelectedPaths,
 }) => {
   const { t, language } = useLanguage();
   const [activeTab, setActiveTab] = useState<'tree' | 'recent'>('tree');
@@ -151,7 +171,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }`}
         >
           <FolderTree className="w-3.5 h-3.5 text-cyan-400" />
-          <span>{t.sidebar.tabExplorer}</span>
+          <span>{t.sidebar.tabLocations}</span>
         </button>
 
         <button
@@ -173,7 +193,73 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* 2. Main Tab Body */}
-      {activeTab === 'tree' ? (
+      {selectedItems.length > 0 ? (
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h2 className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.sidebar.selectionTitle}</h2>
+              <p className="mt-1 text-xs font-medium text-neutral-100">
+                {selectedItems.length === 1 ? t.sidebar.oneItemSelected : t.sidebar.manyItemsSelected.replace('{count}', String(selectedItems.length))}
+              </p>
+            </div>
+            <Tooltip label={t.sidebar.clearSelection}>
+              <button
+                type="button"
+                onClick={onClearSelection}
+                aria-label={t.sidebar.clearSelection}
+                className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+          </div>
+
+          <div className="space-y-1 rounded-lg border border-neutral-800 bg-neutral-900/60 p-2">
+            {selectedItems.slice(0, 3).map(item => (
+              <div key={item.id} className="flex min-w-0 items-center gap-2 py-1">
+                <span className="flex-shrink-0">{item.isFolder ? <FolderOpen className="h-3.5 w-3.5 text-amber-300" /> : getFileTypeIcon(item.type)}</span>
+                <div className="min-w-0 flex-1">
+                  <Tooltip label={item.name} placement="top"><p className="truncate text-[11px] font-medium text-neutral-200">{item.name}</p></Tooltip>
+                  <Tooltip label={item.path} placement="top"><p className="truncate font-mono text-[9px] text-neutral-500">{item.path}</p></Tooltip>
+                </div>
+              </div>
+            ))}
+            {selectedItems.length > 3 && (
+              <p className="pt-1 text-[10px] text-neutral-500">{t.sidebar.moreSelected.replace('{count}', String(selectedItems.length - 3))}</p>
+            )}
+          </div>
+
+          {selectedItems.length === 1 && (
+            <button
+              type="button"
+              onClick={() => selectedItems[0].isFolder ? onOpenSelectedFolder(selectedItems[0]) : onPreviewSelectedFile(selectedItems[0])}
+              className="flex w-full items-center gap-2 rounded-md border border-cyan-800/70 bg-cyan-950/40 px-2.5 py-2 text-left text-[11px] font-medium text-cyan-200 transition-colors hover:border-cyan-600 hover:bg-cyan-950/70"
+            >
+              {selectedItems[0].isFolder ? <FolderOpen className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              <span>{selectedItems[0].isFolder ? t.sidebar.openSelected : t.sidebar.previewSelected}</span>
+            </button>
+          )}
+
+          <div className="grid grid-cols-2 gap-1.5">
+            <button type="button" onClick={onCopySelected} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800">
+              <Copy className="h-3.5 w-3.5 flex-shrink-0 text-cyan-300" /><span>{t.toolbar.copyOpposite}</span>
+            </button>
+            <button type="button" onClick={onMoveSelected} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800">
+              <MoveRight className="h-3.5 w-3.5 flex-shrink-0 text-cyan-300" /><span>{t.toolbar.moveOpposite}</span>
+            </button>
+            <button type="button" onClick={onRenameSelected} disabled={selectedItems.length !== 1} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40">
+              <Pencil className="h-3.5 w-3.5 flex-shrink-0 text-amber-300" /><span>{t.toolbar.rename}</span>
+            </button>
+            <button type="button" onClick={onDeleteSelected} className="flex min-w-0 items-center gap-1.5 rounded-md border border-rose-900/60 bg-rose-950/20 px-2 py-2 text-left text-[10px] text-rose-200 transition-colors hover:border-rose-700 hover:bg-rose-950/50">
+              <Trash2 className="h-3.5 w-3.5 flex-shrink-0" /><span>{t.toolbar.delete}</span>
+            </button>
+          </div>
+
+          <button type="button" onClick={() => onCopySelectedPaths(selectedItems)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[10px] text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-200">
+            <Copy className="h-3.5 w-3.5" />{t.sidebar.copySelectedPaths}
+          </button>
+        </div>
+      ) : activeTab === 'tree' ? (
         <div className="p-3 space-y-5 overflow-y-auto flex-1">
           {drives.length > 0 && (
           <div className="space-y-1.5">
