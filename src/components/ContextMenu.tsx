@@ -13,6 +13,7 @@ import {
   StretchHorizontal,
   Trash2,
   Layers,
+  RotateCcw,
 } from 'lucide-react';
 import { ContextMenuPosition, FileItem, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
@@ -34,6 +35,7 @@ interface ContextMenuProps {
   onRename: (item: FileItem) => void;
   onBatchRename: () => void;
   onDelete: (item: FileItem) => void;
+  onRestore: (item: FileItem) => void;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -53,6 +55,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onRename,
   onBatchRename,
   onDelete,
+  onRestore,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const { t } = useLanguage();
@@ -78,7 +81,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const item = position.targetItem;
   const isSystemLocation = Boolean(item && (item.id.startsWith('system-drive-') || item.id.startsWith('system-location-')));
   const menuWidth = 264;
-  const menuHeight = isSystemLocation ? 96 : item ? 270 : 330;
+  const menuHeight = isSystemLocation || item?.recycleBinId ? 96 : item ? 270 : 330;
   const adjustedX = Math.max(8, Math.min(position.x, window.innerWidth - menuWidth - 8));
   const adjustedY = Math.max(8, Math.min(position.y, window.innerHeight - menuHeight - 8));
 
@@ -91,7 +94,19 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       className="fixed z-50 w-[264px] max-h-[calc(100vh-16px)] overflow-y-auto rounded-lg border border-neutral-700/80 bg-neutral-900/95 py-1 text-xs shadow-2xl backdrop-blur-md select-none"
     >
       {item ? (
-        isSystemLocation ? (
+        item.recycleBinId ? (
+          <>
+            <div className="truncate border-b border-neutral-800 px-3 py-1.5 font-mono text-[10px] text-neutral-400">{item.name}</div>
+            <div className="py-0.5">
+              <MenuButton
+                icon={<RotateCcw className="h-3.5 w-3.5 text-cyan-400" />}
+                label={t.contextMenu.restore}
+                disabled={!item.originalPath}
+                onClick={() => { onRestore(item); onClose(); }}
+              />
+            </div>
+          </>
+        ) : isSystemLocation ? (
           <>
             <div className="truncate border-b border-neutral-800 px-3 py-1.5 font-mono text-[10px] text-neutral-400">{item.name}</div>
             <div className="py-0.5">

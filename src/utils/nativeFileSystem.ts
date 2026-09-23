@@ -48,6 +48,26 @@ export interface RecycleBinDeleteResult {
   failures: Array<{ path: string; error: string }>;
 }
 
+interface NativeRecycleBinEntry {
+  id: string;
+  name: string;
+  originalPath: string | null;
+  isFolder: boolean;
+  size: number;
+  deletedAtMs: number | null;
+}
+
+interface LoadedRecycleBin {
+  entries: NativeRecycleBinEntry[];
+  hasMore: boolean;
+  nextOffset: number;
+}
+
+export interface RecycleBinRestoreResult {
+  restoredIds: string[];
+  failures: Array<{ path: string; error: string }>;
+}
+
 const formatModifiedDate = (timestamp: number | null) => timestamp
   ? new Date(timestamp).toISOString().replace('T', ' ').slice(0, 16)
   : '';
@@ -110,6 +130,30 @@ export async function listNativeSystemLocations(): Promise<NativeLocation[]> {
 
 export async function getNativeRecycleBinStatus(): Promise<RecycleBinStatus> {
   return invoke<RecycleBinStatus>('get_recycle_bin_status');
+}
+
+export async function listNativeRecycleBin(offset = 0): Promise<{ entries: FileItem[]; hasMore: boolean; nextOffset: number }> {
+  const result = await invoke<LoadedRecycleBin>('list_recycle_bin', { offset });
+  return {
+    entries: result.entries.map(entry => ({
+      id: `recycle-bin-${encodeURIComponent(entry.id.toLowerCase())}`,
+      name: entry.name,
+      path: entry.originalPath ?? '',
+      originalPath: entry.originalPath ?? undefined,
+      recycleBinId: entry.id,
+      isFolder: entry.isFolder,
+      type: detectFileType(entry.name, entry.isFolder),
+      size: entry.size,
+      modifiedDate: formatModifiedDate(entry.deletedAtMs),
+      extension: entry.isFolder ? '' : getFileExtension(entry.name),
+    })),
+    hasMore: result.hasMore,
+    nextOffset: result.nextOffset,
+  };
+}
+
+export async function restoreNativeRecycleBinItems(items: Array<{ id: string }>): Promise<RecycleBinRestoreResult> {
+  return invoke<RecycleBinRestoreResult>('restore_recycle_bin_items', { items });
 }
 
 export async function moveNativeItemsToRecycleBin(paths: string[]): Promise<RecycleBinDeleteResult> {

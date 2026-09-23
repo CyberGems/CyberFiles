@@ -26,10 +26,11 @@ import {
   Disc3,
   Network,
   ChevronDown,
+  Trash2,
   LockKeyhole,
   UnlockKeyhole,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, SortField, TabState, ViewMode, SYSTEM_HOME_PATH } from '../types';
+import { DriveInfo, FileItem, FileType, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
 import { isTauriDesktop, loadNativeImageThumbnail } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
@@ -239,6 +240,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 }) => {
   const { t, language } = useLanguage();
   const isSystemHome = tab.currentPath === SYSTEM_HOME_PATH;
+  const isRecycleBin = tab.currentPath === RECYCLE_BIN_PATH;
   const effectiveViewMode = tab.viewMode;
   const [isEditingPath, setIsEditingPath] = useState(false);
   const [pathInput, setPathInput] = useState(tab.currentPath);
@@ -386,7 +388,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   // Breadcrumbs generator for Windows paths: "C:\Users\Cali\Documents"
   const breadcrumbSegments = React.useMemo(() => {
-    if (!tab.currentPath || isSystemHome) return [];
+    if (!tab.currentPath || isSystemHome || isRecycleBin) return [];
     const raw = tab.currentPath.replace(/\/+$/, '').replace(/\\+$/, '');
     const segments = raw.split(/\\|\//);
     const result: { label: string; fullPath: string }[] = [];
@@ -402,7 +404,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       }
     });
     return result;
-  }, [tab.currentPath, isSystemHome]);
+  }, [tab.currentPath, isSystemHome, isRecycleBin]);
 
   // Handle Drag & Drop between panes
   const handleDragStart = (e: React.DragEvent, item: FileItem) => {
@@ -658,13 +660,18 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
         {/* Breadcrumb Path Box */}
         <div 
-          onClick={() => tab.currentPath && !isSystemHome && setIsEditingPath(true)}
-          className={`flex-1 flex items-center bg-neutral-950 px-2 py-1 rounded border border-neutral-800 min-h-[28px] overflow-hidden ${tab.currentPath && !isSystemHome ? 'cursor-text hover:border-neutral-700' : 'cursor-default'}`}
+          onClick={() => tab.currentPath && !isSystemHome && !isRecycleBin && setIsEditingPath(true)}
+          className={`flex-1 flex items-center bg-neutral-950 px-2 py-1 rounded border border-neutral-800 min-h-[28px] overflow-hidden ${tab.currentPath && !isSystemHome && !isRecycleBin ? 'cursor-text hover:border-neutral-700' : 'cursor-default'}`}
         >
           {isSystemHome ? (
             <div className="flex items-center gap-1.5 px-1 text-neutral-200 text-xs font-mono">
               <Monitor className="h-3.5 w-3.5 text-cyan-400" />
               <span>{t.sidebar.thisPc}</span>
+            </div>
+          ) : isRecycleBin ? (
+            <div className="flex items-center gap-1.5 px-1 text-neutral-200 text-xs font-mono">
+              <Trash2 className="h-3.5 w-3.5 text-rose-300" />
+              <span>{t.sidebar.recycleBinTitle}</span>
             </div>
           ) : isEditingPath ? (
             <form onSubmit={handlePathSubmit} className="w-full">
@@ -773,7 +780,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             onClick={() => onSortChange('modifiedDate')}
             className="group relative hidden min-w-0 items-center justify-end gap-1 rounded-sm cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 sm:flex"
           >
-            <span>{t.pane.columns.modified}</span>
+            <span>{isRecycleBin ? t.pane.columns.deleted : t.pane.columns.modified}</span>
             {tab.sortField === 'modifiedDate' && <ArrowUpDown className="w-2.5 h-2.5 text-cyan-400" />}
             {resizeHandle('modified', t.pane.columns.modified)}
           </div>
@@ -839,10 +846,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 <div
                   key={item.id}
                   data-file-item="true"
-                  draggable
+                  draggable={!item.recycleBinId}
                   onDragStart={(e) => handleDragStart(e, item)}
                   onDrop={(e) => {
-                    if (item.isFolder) {
+                    if (item.isFolder && !item.recycleBinId) {
                       e.stopPropagation();
                       handleDrop(e, item);
                     }
@@ -929,10 +936,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 <div
                   key={item.id}
                   data-file-item="true"
-                  draggable
+                  draggable={!item.recycleBinId}
                   onDragStart={event => handleDragStart(event, item)}
                   onDrop={event => {
-                    if (item.isFolder) {
+                    if (item.isFolder && !item.recycleBinId) {
                       event.stopPropagation();
                       handleDrop(event, item);
                     }
@@ -963,7 +970,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 <div
                   key={item.id}
                   data-file-item="true"
-                  draggable
+                  draggable={!item.recycleBinId}
                   onDragStart={(e) => handleDragStart(e, item)}
                   onClick={(e) => handleItemClick(e, item, idx)}
                   onDoubleClick={() => onItemDoubleClick(item)}

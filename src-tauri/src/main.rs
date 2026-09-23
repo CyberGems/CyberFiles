@@ -687,6 +687,38 @@ struct RecycleBinStatus {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct RecycleBinEntry {
+    id: String,
+    name: String,
+    original_path: Option<String>,
+    is_folder: bool,
+    size: u64,
+    deleted_at_ms: Option<u64>,
+}
+
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct LoadedRecycleBin {
+    entries: Vec<RecycleBinEntry>,
+    has_more: bool,
+    next_offset: usize,
+}
+
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct RecycleBinRestoreResult {
+    restored_ids: Vec<String>,
+    failures: Vec<RecycleBinFailure>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RecycleBinRestoreRequest {
+    id: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct RecycleBinFailure {
     path: String,
     error: String,
@@ -702,6 +734,274 @@ struct RecycleBinDeleteResult {
 #[cfg(target_os = "windows")]
 const CLSID_FILE_OPERATION: windows::core::GUID =
     windows::core::GUID::from_u128(0x3ad0557588574850927711b85bdb8e09);
+
+#[cfg(target_os = "windows")]
+const RECYCLE_BIN_PAGE_SIZE: usize = 400;
+
+#[cfg(target_os = "windows")]
+fn recycle_bin_property_key(name: &str) -> Result<windows::Win32::Foundation::PROPERTYKEY, String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::PROPERTYKEY;
+    use windows::Win32::UI::Shell::PropertiesSystem::PSGetPropertyKeyFromName;
+
+    let wide_name: Vec<u16> = std::ffi::OsStr::new(name)
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let mut key: PROPERTYKEY = unsafe { std::mem::zeroed() };
+    unsafe { PSGetPropertyKeyFromName(PCWSTR(wide_name.as_ptr()), &mut key) }
+        .map_err(|error| format!("Could not resolve Windows property {name}: {error}"))?;
+    Ok(key)
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn take_shell_string(value: windows::core::PWSTR) -> Result<String, String> {
+    use windows::Win32::System::Com::CoTaskMemFree;
+
+    let pointer = value.0;
+    if pointer.is_null() {
+        return Err("Windows returned an empty Shell string.".to_string());
+    }
+    let mut length = 0;
+    while unsafe { *pointer.add(length) } != 0 {
+        length += 1;
+    }
+    let text = String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(pointer, length) });
+    unsafe { CoTaskMemFree(Some(pointer.cast())) };
+    Ok(text)
+}
+
+#[cfg(target_os = "windows")]
+fn filetime_to_unix_millis(filetime: windows::Win32::Foundation::FILETIME) -> Option<u64> {
+    const WINDOWS_TO_UNIX_EPOCH_100NS: u64 = 116_444_736_000_000_000;
+    let ticks = (u64::from(filetime.dwHighDateTime) << 32) | u64::from(filetime.dwLowDateTime);
+    ticks
+        .checked_sub(WINDOWS_TO_UNIX_EPOCH_100NS)
+        .map(|unix_ticks| unix_ticks / 10_000)
+}
+
+#[cfg(target_os = "windows")]
+fn list_windows_recycle_bin(offset: usize) -> Result<LoadedRecycleBin, String> {
+    use windows::core::{w, Interface};
+    use windows::Win32::System::Com::{
+        CoInitializeEx, CoUninitialize, IBindCtx, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::System::SystemServices::SFGAO_FOLDER;
+    use windows::Win32::UI::Shell::{
+        BHID_EnumItems, IEnumShellItems, IShellItem, IShellItem2, SHCreateItemFromParsingName,
+        SIGDN_DESKTOPABSOLUTEPARSING,
+    };
+
+    let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    if initialized.is_err() {
+        return Err(format!(
+            "Could not initialize the Windows Shell apartment (HRESULT 0x{:08X}).",
+            initialized.0 as u32
+        ));
+    }
+    struct ComApartment;
+    impl Drop for ComApartment {
+        fn drop(&mut self) {
+            unsafe { CoUninitialize() };
+        }
+    }
+    let _apartment = ComApartment;
+
+    let recycle_bin: IShellItem =
+        unsafe { SHCreateItemFromParsingName(w!("shell:RecycleBinFolder"), None::<&IBindCtx>) }
+            .map_err(|error| {
+                format!("Could not open the Windows Recycle Bin namespace: {error}")
+            })?;
+    let enumeration: IEnumShellItems = unsafe {
+        recycle_bin.BindToHandler::<_, IEnumShellItems>(None::<&IBindCtx>, &BHID_EnumItems)
+    }
+    .map_err(|error| format!("Could not enumerate Windows Recycle Bin items: {error}"))?;
+
+    let name_key = recycle_bin_property_key("System.ItemNameDisplay")?;
+    let original_location_key = recycle_bin_property_key("System.Recycle.DeletedFrom")?;
+    let size_key = recycle_bin_property_key("System.Size")?;
+    let deleted_date_key = recycle_bin_property_key("System.Recycle.DateDeleted")?;
+    let mut result = LoadedRecycleBin::default();
+    let mut skipped = 0_usize;
+
+    loop {
+        let mut fetched = 0_u32;
+        let mut next_item: [Option<IShellItem>; 1] = [None];
+        unsafe { enumeration.Next(&mut next_item, Some(&mut fetched)) }
+            .map_err(|error| format!("Could not read Recycle Bin entries: {error}"))?;
+        if fetched == 0 {
+            break;
+        }
+        if skipped < offset {
+            skipped += 1;
+            continue;
+        }
+        if result.entries.len() == RECYCLE_BIN_PAGE_SIZE {
+            result.has_more = true;
+            break;
+        }
+
+        let shell_item = next_item[0]
+            .take()
+            .ok_or_else(|| "Windows returned an empty Recycle Bin entry.".to_string())?;
+        let shell_item2: IShellItem2 = shell_item
+            .cast()
+            .map_err(|error| format!("Could not inspect a Recycle Bin entry: {error}"))?;
+
+        let name = unsafe { shell_item2.GetString(&name_key) }
+            .map_err(|error| format!("Could not read a Recycle Bin item name: {error}"))?;
+        let name = unsafe { take_shell_string(name) }?;
+        let parsing_name = unsafe { shell_item2.GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING) }
+            .map_err(|error| format!("Could not identify a Recycle Bin item: {error}"))?;
+        let id = unsafe { take_shell_string(parsing_name) }?;
+        let original_location = unsafe { shell_item2.GetString(&original_location_key) }
+            .ok()
+            .and_then(|value| unsafe { take_shell_string(value) }.ok());
+        let original_path = original_location.map(|location| {
+            Path::new(&location)
+                .join(&name)
+                .to_string_lossy()
+                .into_owned()
+        });
+        let is_folder = unsafe { shell_item2.GetAttributes(SFGAO_FOLDER) }
+            .map(|attributes| attributes.0 & SFGAO_FOLDER.0 != 0)
+            .unwrap_or(false);
+        let size = unsafe { shell_item2.GetUInt64(&size_key) }.unwrap_or(0);
+        let deleted_at_ms = unsafe { shell_item2.GetFileTime(&deleted_date_key) }
+            .ok()
+            .and_then(filetime_to_unix_millis);
+
+        result.entries.push(RecycleBinEntry {
+            id,
+            name,
+            original_path,
+            is_folder,
+            size,
+            deleted_at_ms,
+        });
+    }
+
+    result.next_offset = offset + result.entries.len();
+    Ok(result)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn list_windows_recycle_bin(_offset: usize) -> Result<LoadedRecycleBin, String> {
+    Err("The Windows Recycle Bin is available only in the Windows desktop app.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn restore_windows_recycle_bin_item(id: &str) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::{IUnknown, Interface, PCWSTR};
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoUninitialize, IBindCtx, CLSCTX_INPROC_SERVER,
+        COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::{
+        IFileOperation, IFileOperationProgressSink, IShellItem, IShellItem2,
+        SHCreateItemFromParsingName, FOF_NO_UI,
+    };
+
+    const RECYCLE_BIN_PARSING_PREFIX: &str = "::{645ff040-5081-101b-9f08-00aa002f954e}";
+    if id.len() > 32_768
+        || !id
+            .to_ascii_lowercase()
+            .starts_with(RECYCLE_BIN_PARSING_PREFIX)
+    {
+        return Err("The selected Shell item is not inside the Windows Recycle Bin.".to_string());
+    }
+
+    let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    if initialized.is_err() {
+        return Err(format!(
+            "Could not initialize the Windows Shell apartment (HRESULT 0x{:08X}).",
+            initialized.0 as u32
+        ));
+    }
+    struct ComApartment;
+    impl Drop for ComApartment {
+        fn drop(&mut self) {
+            unsafe { CoUninitialize() };
+        }
+    }
+    let _apartment = ComApartment;
+
+    let id_wide: Vec<u16> = id.encode_utf16().chain(Some(0)).collect();
+    let source: IShellItem =
+        unsafe { SHCreateItemFromParsingName(PCWSTR(id_wide.as_ptr()), None::<&IBindCtx>) }
+            .map_err(|error| format!("The Recycle Bin item is no longer available: {error}"))?;
+    let source_metadata: IShellItem2 = source
+        .cast()
+        .map_err(|error| format!("Could not inspect the Recycle Bin item: {error}"))?;
+    let original_location_key = recycle_bin_property_key("System.Recycle.DeletedFrom")?;
+    let name_key = recycle_bin_property_key("System.ItemNameDisplay")?;
+    let original_location = unsafe { source_metadata.GetString(&original_location_key) }
+        .map_err(|error| format!("The original folder could not be read: {error}"))?;
+    let original_location = unsafe { take_shell_string(original_location) }?;
+    let item_name = unsafe { source_metadata.GetString(&name_key) }
+        .map_err(|error| format!("The original item name could not be read: {error}"))?;
+    let item_name = unsafe { take_shell_string(item_name) }?;
+    let destination = Path::new(&original_location).join(&item_name);
+    validate_recycle_source(&destination)?;
+    if destination.exists() {
+        return Err("The original location already contains an item with that name.".to_string());
+    }
+    let parent = destination
+        .parent()
+        .filter(|path| path.is_dir())
+        .ok_or_else(|| "The original folder is no longer available.".to_string())?;
+    let name = destination
+        .file_name()
+        .ok_or_else(|| "The original file name is unavailable.".to_string())?;
+    let parent_wide: Vec<u16> = parent.as_os_str().encode_wide().chain(Some(0)).collect();
+    let name_wide: Vec<u16> = name.encode_wide().chain(Some(0)).collect();
+    let destination_folder: IShellItem =
+        unsafe { SHCreateItemFromParsingName(PCWSTR(parent_wide.as_ptr()), None::<&IBindCtx>) }
+            .map_err(|error| format!("Could not open the original folder: {error}"))?;
+    let operation: IFileOperation = unsafe {
+        CoCreateInstance(
+            &CLSID_FILE_OPERATION,
+            None::<&IUnknown>,
+            CLSCTX_INPROC_SERVER,
+        )
+    }
+    .map_err(|error| format!("Could not start Windows restore operation: {error}"))?;
+
+    unsafe {
+        operation
+            .SetOperationFlags(FOF_NO_UI)
+            .map_err(|error| format!("Could not configure item restoration: {error}"))?;
+        operation
+            .MoveItem(
+                &source,
+                &destination_folder,
+                PCWSTR(name_wide.as_ptr()),
+                None::<&IFileOperationProgressSink>,
+            )
+            .map_err(|error| format!("Could not queue item restoration: {error}"))?;
+        operation
+            .PerformOperations()
+            .map_err(|error| format!("Windows could not restore the selected item: {error}"))?;
+        if operation
+            .GetAnyOperationsAborted()
+            .map_err(|error| format!("Could not verify the restore operation: {error}"))?
+            .as_bool()
+        {
+            return Err("Windows aborted the item restoration.".to_string());
+        }
+    }
+    if !destination.exists() {
+        return Err("Windows reported success, but the item was not restored.".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn restore_windows_recycle_bin_item(_id: &str) -> Result<(), String> {
+    Err("The Windows Recycle Bin is available only in the Windows desktop app.".to_string())
+}
 
 #[cfg(target_os = "windows")]
 fn query_windows_recycle_bin() -> Result<RecycleBinStatus, String> {
@@ -797,6 +1097,38 @@ async fn get_recycle_bin_status() -> Result<RecycleBinStatus, String> {
     tauri::async_runtime::spawn_blocking(query_windows_recycle_bin)
         .await
         .map_err(|error| format!("Recycle Bin status worker failed: {error}"))?
+}
+
+#[tauri::command]
+async fn list_recycle_bin(offset: usize) -> Result<LoadedRecycleBin, String> {
+    tauri::async_runtime::spawn_blocking(move || list_windows_recycle_bin(offset))
+        .await
+        .map_err(|error| format!("Recycle Bin listing worker failed: {error}"))?
+}
+
+#[tauri::command]
+async fn restore_recycle_bin_items(
+    items: Vec<RecycleBinRestoreRequest>,
+) -> Result<RecycleBinRestoreResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut result = RecycleBinRestoreResult::default();
+        let mut seen = std::collections::HashSet::new();
+        for item in items {
+            if !seen.insert(item.id.clone()) {
+                continue;
+            }
+            match restore_windows_recycle_bin_item(&item.id) {
+                Ok(()) => result.restored_ids.push(item.id),
+                Err(error) => result.failures.push(RecycleBinFailure {
+                    path: item.id,
+                    error,
+                }),
+            }
+        }
+        Ok(result)
+    })
+    .await
+    .map_err(|error| format!("Recycle Bin restore worker failed: {error}"))?
 }
 
 #[cfg(target_os = "windows")]
@@ -1274,6 +1606,8 @@ fn main() {
             list_drives,
             list_system_locations,
             get_recycle_bin_status,
+            list_recycle_bin,
+            restore_recycle_bin_items,
             move_to_recycle_bin,
             empty_recycle_bin,
             open_windows_file_properties,
@@ -1323,6 +1657,15 @@ mod tests {
     #[test]
     fn reads_recycle_bin_status_without_mutating_files() {
         assert!(super::query_windows_recycle_bin().is_ok());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn enumerates_the_recycle_bin_without_mutating_files() {
+        let page =
+            super::list_windows_recycle_bin(0).expect("Recycle Bin enumeration should succeed");
+        assert!(page.entries.len() <= super::RECYCLE_BIN_PAGE_SIZE);
+        assert_eq!(page.next_offset, page.entries.len());
     }
 
     #[cfg(target_os = "windows")]

@@ -26,6 +26,7 @@ import {
   Square,
   ListRestart,
   Info,
+  RotateCcw,
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, QuickAccessItem } from '../types';
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
@@ -59,6 +60,7 @@ interface SidebarProps {
   recycleBinSupported: boolean;
   recycleBinStatus: RecycleBinStatus | null;
   onOpenRecycleBin: () => void;
+  onRestoreRecycleBinItems: () => void;
   onRequestEmptyRecycleBin: () => void;
   isCollapsed?: boolean;
 }
@@ -89,6 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   recycleBinSupported,
   recycleBinStatus,
   onOpenRecycleBin,
+  onRestoreRecycleBinItems,
   onRequestEmptyRecycleBin,
 }) => {
   const { t, language } = useLanguage();
@@ -181,6 +184,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, [recentFiles, recentCategory, recentSearch]);
 
   const canEmptyRecycleBin = recycleBinSupported && recycleBinStatus?.available === true && recycleBinStatus.itemCount > 0;
+  const hasRecycleBinSelection = selectedItems.length > 0 && selectedItems.every(item => Boolean(item.recycleBinId));
+  const canRestoreRecycleBinSelection = hasRecycleBinSelection && selectedItems.every(item => Boolean(item.originalPath));
   const recycleBinStateLabel = !recycleBinSupported
     ? t.sidebar.recycleBinDesktopOnly
     : !recycleBinStatus
@@ -316,7 +321,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </div>
 
-          {selectedItems.length === 1 && (
+          {hasRecycleBinSelection ? (
+            <button
+              type="button"
+              onClick={onRestoreRecycleBinItems}
+              disabled={!canRestoreRecycleBinSelection}
+              className="flex w-full items-center gap-2 rounded-md border border-cyan-800/70 bg-cyan-950/40 px-2.5 py-2 text-left text-[11px] font-medium text-cyan-200 transition-colors hover:border-cyan-600 hover:bg-cyan-950/70 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span>{t.sidebar.restoreSelected}</span>
+            </button>
+          ) : selectedItems.length === 1 && (
             <button
               type="button"
               onClick={() => selectedItems[0].isFolder ? onOpenSelectedFolder(selectedItems[0]) : onPreviewSelectedFile(selectedItems[0])}
@@ -327,6 +342,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           )}
 
+          {!hasRecycleBinSelection && <>
           <div className="grid grid-cols-2 gap-1.5">
             <button type="button" onClick={onCopySelected} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800">
               <Copy className="h-3.5 w-3.5 flex-shrink-0 text-cyan-300" /><span>{t.toolbar.copyOpposite}</span>
@@ -345,6 +361,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button type="button" onClick={() => onCopySelectedPaths(selectedItems)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[10px] text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-200">
             <Copy className="h-3.5 w-3.5" />{selectedItems.length === 1 ? t.sidebar.copySelectedPath : t.sidebar.copySelectedPaths}
           </button>
+          </>}
         </div>
       ) : activeTab === 'tree' ? (
         <div className="p-3 space-y-5 overflow-y-auto flex-1">

@@ -8,6 +8,7 @@ import {
   ViewMode, 
   SortField,
   SortOrder,
+  RECYCLE_BIN_PATH,
   SYSTEM_HOME_PATH,
   ContextMenuPosition, 
   DriveInfo, 
@@ -45,7 +46,7 @@ import { CloseWindowModal } from './components/CloseWindowModal';
 import { SettingsModal } from './components/SettingsModal';
 import { OnboardingWelcome } from './components/OnboardingWelcome';
 import { useLanguage } from './locales/LanguageContext';
-import { chooseNativeFolder, emptyNativeRecycleBin, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeSystemLocations, loadNativeFolder, moveNativeItemsToRecycleBin, openNativeImageWithDefaultApp, openNativeRecycleBinInExplorer, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
+import { chooseNativeFolder, emptyNativeRecycleBin, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, moveNativeItemsToRecycleBin, openNativeImageWithDefaultApp, restoreNativeRecycleBinItems, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
 
 const ONBOARDING_STORAGE_KEY = 'cyberfiles_onboarding_complete';
 const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
@@ -301,6 +302,10 @@ export default function App() {
   }, []);
 
   const [recycleBinStatus, setRecycleBinStatus] = useState<RecycleBinStatus | null>(null);
+  const [recycleBinItems, setRecycleBinItems] = useState<FileItem[]>([]);
+  const [recycleBinPage, setRecycleBinPage] = useState({ hasMore: false, nextOffset: 0, loading: false });
+  const recycleBinListingInFlight = useRef(false);
+  const recycleBinLoaded = useRef(false);
   const refreshRecycleBinStatus = useCallback(async () => {
     if (!isTauriDesktop()) return;
     try {
@@ -309,6 +314,43 @@ export default function App() {
       setRecycleBinStatus({ available: false, itemCount: 0, totalBytes: 0 });
     }
   }, []);
+
+  const refreshRecycleBinContents = useCallback(async () => {
+    if (!isTauriDesktop() || recycleBinListingInFlight.current) return;
+    recycleBinListingInFlight.current = true;
+    setRecycleBinPage(previous => ({ ...previous, loading: true }));
+    try {
+      const page = await listNativeRecycleBin(0);
+      setRecycleBinItems(page.entries);
+      setRecycleBinPage({ hasMore: page.hasMore, nextOffset: page.nextOffset, loading: false });
+      recycleBinLoaded.current = true;
+    } catch {
+      setRecycleBinPage(previous => ({ ...previous, loading: false }));
+      recycleBinLoaded.current = false;
+      showToast(t.core.recycleBinLoadFailed);
+    } finally {
+      recycleBinListingInFlight.current = false;
+    }
+  }, [showToast, t.core.recycleBinLoadFailed]);
+
+  const loadMoreRecycleBin = useCallback(async () => {
+    if (!recycleBinPage.hasMore || recycleBinListingInFlight.current) return;
+    recycleBinListingInFlight.current = true;
+    setRecycleBinPage(previous => ({ ...previous, loading: true }));
+    try {
+      const page = await listNativeRecycleBin(recycleBinPage.nextOffset);
+      setRecycleBinItems(previous => {
+        const existingIds = new Set(previous.map(item => item.id));
+        return [...previous, ...page.entries.filter(item => !existingIds.has(item.id))];
+      });
+      setRecycleBinPage({ hasMore: page.hasMore, nextOffset: page.nextOffset, loading: false });
+    } catch {
+      setRecycleBinPage(previous => ({ ...previous, loading: false }));
+      showToast(t.core.recycleBinLoadFailed);
+    } finally {
+      recycleBinListingInFlight.current = false;
+    }
+  }, [recycleBinPage.hasMore, recycleBinPage.nextOffset, showToast, t.core.recycleBinLoadFailed]);
 
   useEffect(() => {
     if (!isTauriDesktop()) return;
@@ -364,6 +406,11 @@ export default function App() {
   ]);
   const [activeRightTabIndex, setActiveRightTabIndex] = useState(0);
 
+  useEffect(() => {
+    const recycleBinOpen = [...leftTabs, ...rightTabs].some(tab => tab.currentPath === RECYCLE_BIN_PATH);
+    if (recycleBinOpen && !recycleBinLoaded.current) void refreshRecycleBinContents();
+  }, [leftTabs, rightTabs, refreshRecycleBinContents]);
+
   // Modals state
   const [isBatchRenameOpen, setIsBatchRenameOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
@@ -392,6 +439,7 @@ export default function App() {
   const [isFileOperationBusy, setIsFileOperationBusy] = useState(false);
   const [isEmptyRecycleBinConfirmOpen, setIsEmptyRecycleBinConfirmOpen] = useState(false);
   const [isRecycleBinBusy, setIsRecycleBinBusy] = useState(false);
+  const recycleBinRestoreInFlight = useRef(false);
 
   useEffect(() => {
     void refreshSystemHome();
@@ -703,7 +751,9 @@ export default function App() {
   const getPaneDisplayFiles = useCallback((tabState: TabState) => {
     let items = tabState.currentPath === SYSTEM_HOME_PATH
       ? systemHomeItems
-      : childrenByParent.get(getPathKey(tabState.currentPath)) ?? [];
+      : tabState.currentPath === RECYCLE_BIN_PATH
+        ? recycleBinItems
+        : childrenByParent.get(getPathKey(tabState.currentPath)) ?? [];
 
     // Simple, predictable filtering. Advanced filters belong in the global search.
     if (tabState.filterQuery.trim()) {
@@ -733,11 +783,11 @@ export default function App() {
       ];
     }
     return sortFiles(items, tabState.sortField, tabState.sortOrder);
-  }, [childrenByParent, systemHomeItems]);
+  }, [childrenByParent, recycleBinItems, systemHomeItems]);
 
   const leftDisplayFiles = getPaneDisplayFiles(leftTabs[activeLeftTabIndex]);
   const rightDisplayFiles = getPaneDisplayFiles(rightTabs[activeRightTabIndex]);
-  const filesById = useMemo(() => new Map(allFiles.map(file => [file.id, file])), [allFiles]);
+  const filesById = useMemo(() => new Map([...allFiles, ...recycleBinItems].map(file => [file.id, file])), [allFiles, recycleBinItems]);
 
   // Current item for the Preview Pane
   const activeDisplayFiles = activePane === 'left' ? leftDisplayFiles : rightDisplayFiles;
@@ -750,7 +800,7 @@ export default function App() {
       const found = filesById.get(currentTab.selectedIds[0]);
       if (found) return found;
     }
-    if (currentTab.currentPath === SYSTEM_HOME_PATH) return null;
+    if (currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH) return null;
     return activeDisplayFiles[0] || null;
   }, [currentTab.currentPath, currentTab.selectedIds, filesById, activeDisplayFiles]);
 
@@ -779,7 +829,7 @@ export default function App() {
 
   // Navigation handlers
   const handleNavigate = useCallback(async (newPath: string, targetPane: 'left' | 'right' = activePane, forceRefresh = false, openInNewTab = false) => {
-    const targetPath = newPath === SYSTEM_HOME_PATH ? newPath : normalizeWindowsPath(newPath);
+    const targetPath = newPath === SYSTEM_HOME_PATH || newPath === RECYCLE_BIN_PATH ? newPath : normalizeWindowsPath(newPath);
     const pathKey = getPathKey(targetPath);
     if (nativeOpeningWorkspace.current) return;
     const isDesktop = isTauriDesktop();
@@ -788,14 +838,16 @@ export default function App() {
     const targetTab = targetTabs[targetTabIndex];
     const systemWorkspace = systemHomeWorkspace.current || targetTab?.history.includes(SYSTEM_HOME_PATH) === true;
     const workspaceRoot = isDesktop ? nativeRootPath.current : browserRootPath.current;
-    if (workspaceRoot && !systemWorkspace && !isSameOrDescendantPath(targetPath, workspaceRoot)) {
+    if (targetPath !== RECYCLE_BIN_PATH && workspaceRoot && !systemWorkspace && !isSameOrDescendantPath(targetPath, workspaceRoot)) {
       showToast(language === 'es' ? 'Abre una unidad o carpeta para cambiar el espacio de trabajo.' : 'Open a drive or folder to change the workspace.');
       return;
     }
 
     const folderName = targetPath === SYSTEM_HOME_PATH
       ? t.sidebar.thisPc
-      : targetPath.split(/\\|\//).filter(Boolean).pop() || targetPath;
+      : targetPath === RECYCLE_BIN_PATH
+        ? t.sidebar.recycleBinTitle
+        : targetPath.split(/\\|\//).filter(Boolean).pop() || targetPath;
     if (openInNewTab) {
       const sourceTab = targetTab ?? createEmptyTab(`tab-source-${Date.now()}`);
       const rememberedStyle = folderStyleLocked ? getTabFolderStyle(sourceTab) : DEFAULT_FOLDER_STYLE;
@@ -857,6 +909,10 @@ export default function App() {
       if (forceRefresh) void refreshSystemHome();
       return;
     }
+    if (targetPath === RECYCLE_BIN_PATH) {
+      void refreshRecycleBinContents();
+      return;
+    }
     if (!workspaceRoot || (!systemWorkspace && !isSameOrDescendantPath(targetPath, workspaceRoot))) return;
     if (!forceRefresh && nativeLoadedDirectories.current.has(pathKey)) return;
     if (nativeInFlightDirectories.current.has(pathKey)) return;
@@ -911,7 +967,7 @@ export default function App() {
     } finally {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
-  }, [activePane, activeLeftTabIndex, activeRightTabIndex, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectoryPage, refreshSystemHome, showToast, t.sidebar.thisPc, folderStyleLocked, newTabsNextToCurrent]);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectoryPage, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, newTabsNextToCurrent]);
 
   const focusRefreshSnapshot = useRef({
     layout,
@@ -1062,7 +1118,9 @@ export default function App() {
         const prevPath = tab.history[nextIdx];
         const folderName = prevPath === SYSTEM_HOME_PATH
           ? t.sidebar.thisPc
-          : prevPath.split(/\\|\//).filter(Boolean).pop() || prevPath;
+          : prevPath === RECYCLE_BIN_PATH
+            ? t.sidebar.recycleBinTitle
+            : prevPath.split(/\\|\//).filter(Boolean).pop() || prevPath;
         const rememberedStyle = folderStyleLocked ? getTabFolderStyle(tab) : DEFAULT_FOLDER_STYLE;
         return {
           ...tab,
@@ -1078,7 +1136,7 @@ export default function App() {
       }
       return tab;
     });
-  }, [activePane, updatePaneTab, t.sidebar.thisPc, folderStyleLocked]);
+  }, [activePane, updatePaneTab, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked]);
 
   const handleNavigateForward = useCallback((targetPane: 'left' | 'right' = activePane) => {
     updatePaneTab(targetPane, tab => {
@@ -1087,7 +1145,9 @@ export default function App() {
         const nextPath = tab.history[nextIdx];
         const folderName = nextPath === SYSTEM_HOME_PATH
           ? t.sidebar.thisPc
-          : nextPath.split(/\\|\//).filter(Boolean).pop() || nextPath;
+          : nextPath === RECYCLE_BIN_PATH
+            ? t.sidebar.recycleBinTitle
+            : nextPath.split(/\\|\//).filter(Boolean).pop() || nextPath;
         const rememberedStyle = folderStyleLocked ? getTabFolderStyle(tab) : DEFAULT_FOLDER_STYLE;
         return {
           ...tab,
@@ -1103,10 +1163,15 @@ export default function App() {
       }
       return tab;
     });
-  }, [activePane, updatePaneTab, t.sidebar.thisPc, folderStyleLocked]);
+  }, [activePane, updatePaneTab, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked]);
 
   const handleNavigateUp = useCallback((targetPane: 'left' | 'right' = activePane) => {
     const activeTabObj = targetPane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
+    if (activeTabObj.currentPath === RECYCLE_BIN_PATH) {
+      if (activeTabObj.historyIndex > 0) handleNavigateBack(targetPane);
+      else if (systemHomeWorkspace.current) handleNavigate(SYSTEM_HOME_PATH, targetPane);
+      return;
+    }
     const currentPath = activeTabObj.currentPath === SYSTEM_HOME_PATH
       ? SYSTEM_HOME_PATH
       : normalizeWindowsPath(activeTabObj.currentPath);
@@ -1121,7 +1186,7 @@ export default function App() {
     if (parent && parent !== currentPath) {
       handleNavigate(parent, targetPane);
     }
-  }, [leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, handleNavigate]);
+  }, [leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, handleNavigate, handleNavigateBack]);
 
   // Helper to update lastAccessed timestamp for files across the filesystem
   const touchFileAccessed = useCallback((ids: string | string[], customDate?: string) => {
@@ -1308,6 +1373,10 @@ export default function App() {
 
   // Double click on file/folder
   const handleItemDoubleClick = (item: FileItem, pane: 'left' | 'right') => {
+    if (item.recycleBinId) {
+      void handleRestoreRecycleBinItems([item]);
+      return;
+    }
     if (item.isFolder) {
       handleNavigate(item.path, pane);
     } else {
@@ -1446,12 +1515,16 @@ export default function App() {
       showToast(t.core.noSelection);
       return;
     }
+    if (item.recycleBinId) {
+      showToast(t.core.recycleBinRestoreFirst);
+      return;
+    }
 
     const newName = window.prompt(language === 'es' ? 'Renombrar:' : 'Rename:', item.name);
     if (newName && newName !== item.name) {
       handleInlineRename(item.id, newName);
     }
-  }, [handleInlineRename, language, selectedItemsForDelete, t.core.noSelection]);
+  }, [handleInlineRename, language, selectedItemsForDelete, showToast, t.core.noSelection, t.core.recycleBinRestoreFirst]);
 
   const handleCopySelectedPaths = useCallback(async (items: FileItem[]) => {
     try {
@@ -1517,7 +1590,7 @@ export default function App() {
       showToast(t.pane.noFolderOpen);
       return;
     }
-    if (currentTab.currentPath === SYSTEM_HOME_PATH) {
+    if (currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH) {
       showToast(t.pane.chooseRealFolderFirst);
       return;
     }
@@ -1552,6 +1625,10 @@ export default function App() {
       return;
     }
     const selectedItems = itemsToDelete ?? selectedItemsForDelete;
+    if (selectedItems.some(item => item.recycleBinId)) {
+      showToast(t.core.recycleBinRestoreFirst);
+      return;
+    }
     const idsToDelete = selectedItems.map(item => item.id);
     const roots = getRootItems(allFiles, idsToDelete);
     if (roots.length > 0) {
@@ -1560,7 +1637,7 @@ export default function App() {
     }
 
     showToast(t.core.noSelection);
-  }, [allFiles, selectedItemsForDelete, showToast, t.core.desktopFileOperationsOnly, t.core.noSelection]);
+  }, [allFiles, selectedItemsForDelete, showToast, t.core.desktopFileOperationsOnly, t.core.noSelection, t.core.recycleBinRestoreFirst]);
 
   const handleConfirmDelete = useCallback(async () => {
     if (isFileOperationBusy || pendingDeleteItems.length === 0) return;
@@ -1593,12 +1670,13 @@ export default function App() {
       }
       setPendingDeleteItems([]);
       void refreshRecycleBinStatus();
+      void refreshRecycleBinContents();
     } catch {
       showToast(t.core.deleteFailed);
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [allFiles, isFileOperationBusy, pendingDeleteItems, refreshRecycleBinStatus, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount]);
+  }, [allFiles, isFileOperationBusy, pendingDeleteItems, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount]);
 
   const handleRequestEmptyRecycleBin = useCallback(() => {
     if (!recycleBinStatus?.available || recycleBinStatus.itemCount === 0) return;
@@ -1610,24 +1688,67 @@ export default function App() {
     setIsRecycleBinBusy(true);
     try {
       await emptyNativeRecycleBin();
-      await refreshRecycleBinStatus();
+      await Promise.all([refreshRecycleBinStatus(), refreshRecycleBinContents()]);
       setIsEmptyRecycleBinConfirmOpen(false);
       showToast(t.core.recycleBinEmptied);
     } catch {
-      await refreshRecycleBinStatus();
+      await Promise.all([refreshRecycleBinStatus(), refreshRecycleBinContents()]);
       showToast(t.core.recycleBinEmptyFailed);
     } finally {
       setIsRecycleBinBusy(false);
     }
-  }, [isRecycleBinBusy, refreshRecycleBinStatus, showToast, t.core.recycleBinEmptied, t.core.recycleBinEmptyFailed]);
+  }, [isRecycleBinBusy, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.recycleBinEmptied, t.core.recycleBinEmptyFailed]);
+
+  const handleRestoreRecycleBinItems = useCallback(async (items: FileItem[]) => {
+    if (recycleBinRestoreInFlight.current || recycleBinListingInFlight.current) return;
+    const requests = items.flatMap(item => item.recycleBinId && item.originalPath
+      ? [{ id: item.recycleBinId }]
+      : []);
+    const unavailableCount = items.length - requests.length;
+    if (requests.length === 0) {
+      showToast(t.core.recycleBinRestoreFailed);
+      return;
+    }
+
+    recycleBinRestoreInFlight.current = true;
+    try {
+      const result = await restoreNativeRecycleBinItems(requests);
+      const restoredIds = new Set(result.restoredIds);
+      const restoredFrontendIds = new Set(items
+        .filter(item => item.recycleBinId && restoredIds.has(item.recycleBinId))
+        .map(item => item.id));
+      if (restoredFrontendIds.size > 0) {
+        const clearRestoredSelections = (tabs: TabState[]) => tabs.map(tab => ({
+          ...tab,
+          selectedIds: tab.selectedIds.filter(id => !restoredFrontendIds.has(id)),
+          focusedId: tab.focusedId && restoredFrontendIds.has(tab.focusedId) ? null : tab.focusedId,
+        }));
+        setLeftTabs(clearRestoredSelections);
+        setRightTabs(clearRestoredSelections);
+      }
+
+      await Promise.all([refreshRecycleBinStatus(), refreshRecycleBinContents()]);
+      const failedCount = result.failures.length + unavailableCount;
+      if (result.restoredIds.length === 0) {
+        showToast(t.core.recycleBinRestoreFailed);
+      } else if (failedCount > 0) {
+        showToast(t.core.recycleBinRestorePartial
+          .replace('{restored}', String(result.restoredIds.length))
+          .replace('{failed}', String(failedCount)));
+      } else {
+        showToast(t.core.recycleBinRestored.replace('{count}', String(result.restoredIds.length)));
+      }
+    } catch {
+      await Promise.all([refreshRecycleBinStatus(), refreshRecycleBinContents()]);
+      showToast(t.core.recycleBinRestoreFailed);
+    } finally {
+      recycleBinRestoreInFlight.current = false;
+    }
+  }, [refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.recycleBinRestoreFailed, t.core.recycleBinRestorePartial, t.core.recycleBinRestored]);
 
   const handleOpenRecycleBin = useCallback(async () => {
-    try {
-      await openNativeRecycleBinInExplorer();
-    } catch {
-      showToast(t.sidebar.openRecycleBinFailed);
-    }
-  }, [showToast, t.sidebar.openRecycleBinFailed]);
+    await handleNavigate(RECYCLE_BIN_PATH, activePane);
+  }, [activePane, handleNavigate]);
 
   // Opens only a user-selected folder. Native builds scan it without following links.
   const handleOpenRealFolder = async () => {
@@ -1919,7 +2040,8 @@ export default function App() {
     if (!preserveNativeMenu) event.preventDefault();
   };
 
-  const selectedCount = currentTab.selectedIds.filter(id => filesById.has(id)).length;
+  const currentAtRecycleBin = currentTab.currentPath === RECYCLE_BIN_PATH;
+  const selectedCount = currentAtRecycleBin ? 0 : currentTab.selectedIds.filter(id => filesById.has(id)).length;
   const selectedItemsForRename = currentTab.selectedIds.flatMap(id => {
     const item = filesById.get(id);
     return item ? [item] : [];
@@ -1928,6 +2050,8 @@ export default function App() {
   const rightDirectoryState = nativeDirectories[getPathKey(rightTabs[activeRightTabIndex].currentPath)];
   const leftAtSystemHome = leftTabs[activeLeftTabIndex].currentPath === SYSTEM_HOME_PATH;
   const rightAtSystemHome = rightTabs[activeRightTabIndex].currentPath === SYSTEM_HOME_PATH;
+  const leftAtRecycleBin = leftTabs[activeLeftTabIndex].currentPath === RECYCLE_BIN_PATH;
+  const rightAtRecycleBin = rightTabs[activeRightTabIndex].currentPath === RECYCLE_BIN_PATH;
   const contextPane = contextMenuPos?.paneId ?? activePane;
   const contextPaneTab = contextPane === 'left'
     ? leftTabs[activeLeftTabIndex]
@@ -1987,6 +2111,7 @@ export default function App() {
           recycleBinSupported={isTauriDesktop()}
           recycleBinStatus={recycleBinStatus}
           onOpenRecycleBin={() => { void handleOpenRecycleBin(); }}
+          onRestoreRecycleBinItems={() => { void handleRestoreRecycleBinItems(selectedItemsForDelete); }}
           onRequestEmptyRecycleBin={handleRequestEmptyRecycleBin}
         />
 
@@ -2011,9 +2136,9 @@ export default function App() {
                   onCloseTab={(idx) => handleCloseTab('left', idx)}
                   files={leftDisplayFiles}
                   drives={drives}
-                  hasMore={leftDirectoryState?.hasMore}
-                  isLoadingDirectory={leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading)}
-                  onLoadMore={() => void loadMoreNativeDirectory(leftTabs[activeLeftTabIndex].currentPath)}
+                  hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
+                  isLoadingDirectory={leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
+                  onLoadMore={() => leftAtRecycleBin ? void loadMoreRecycleBin() : void loadMoreNativeDirectory(leftTabs[activeLeftTabIndex].currentPath)}
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'left')}
                   onRefresh={() => void handleNavigate(leftTabs[activeLeftTabIndex].currentPath, 'left', true)}
@@ -2052,9 +2177,9 @@ export default function App() {
                   onCloseTab={(idx) => handleCloseTab('right', idx)}
                   files={rightDisplayFiles}
                   drives={drives}
-                  hasMore={rightDirectoryState?.hasMore}
-                  isLoadingDirectory={rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading)}
-                  onLoadMore={() => void loadMoreNativeDirectory(rightTabs[activeRightTabIndex].currentPath)}
+                  hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
+                  isLoadingDirectory={rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
+                  onLoadMore={() => rightAtRecycleBin ? void loadMoreRecycleBin() : void loadMoreNativeDirectory(rightTabs[activeRightTabIndex].currentPath)}
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'right')}
                   onRefresh={() => void handleNavigate(rightTabs[activeRightTabIndex].currentPath, 'right', true)}
@@ -2094,9 +2219,9 @@ export default function App() {
                   onCloseTab={(idx) => handleCloseTab('left', idx)}
                   files={leftDisplayFiles}
                   drives={drives}
-                  hasMore={leftDirectoryState?.hasMore}
-                  isLoadingDirectory={leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading)}
-                  onLoadMore={() => void loadMoreNativeDirectory(leftTabs[activeLeftTabIndex].currentPath)}
+                  hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
+                  isLoadingDirectory={leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
+                  onLoadMore={() => leftAtRecycleBin ? void loadMoreRecycleBin() : void loadMoreNativeDirectory(leftTabs[activeLeftTabIndex].currentPath)}
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'left')}
                   onRefresh={() => void handleNavigate(leftTabs[activeLeftTabIndex].currentPath, 'left', true)}
@@ -2131,9 +2256,9 @@ export default function App() {
                   onCloseTab={(idx) => handleCloseTab('right', idx)}
                   files={rightDisplayFiles}
                   drives={drives}
-                  hasMore={rightDirectoryState?.hasMore}
-                  isLoadingDirectory={rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading)}
-                  onLoadMore={() => void loadMoreNativeDirectory(rightTabs[activeRightTabIndex].currentPath)}
+                  hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
+                  isLoadingDirectory={rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
+                  onLoadMore={() => rightAtRecycleBin ? void loadMoreRecycleBin() : void loadMoreNativeDirectory(rightTabs[activeRightTabIndex].currentPath)}
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'right')}
                   onRefresh={() => void handleNavigate(rightTabs[activeRightTabIndex].currentPath, 'right', true)}
@@ -2173,9 +2298,9 @@ export default function App() {
                 onCloseTab={(idx) => handleCloseTab(activePane, idx)}
                   files={activeDisplayFiles}
                   drives={drives}
-                  hasMore={(activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.hasMore}
-                  isLoadingDirectory={(activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.loading || (currentTab.currentPath === SYSTEM_HOME_PATH && systemHomeLoading)}
-                  onLoadMore={() => void loadMoreNativeDirectory(currentTab.currentPath)}
+                  hasMore={currentAtRecycleBin ? recycleBinPage.hasMore : (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.hasMore}
+                  isLoadingDirectory={(activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.loading || (currentTab.currentPath === SYSTEM_HOME_PATH && systemHomeLoading) || (currentAtRecycleBin && recycleBinPage.loading)}
+                  onLoadMore={() => currentAtRecycleBin ? void loadMoreRecycleBin() : void loadMoreNativeDirectory(currentTab.currentPath)}
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, activePane)}
                   onRefresh={() => void handleNavigate(currentTab.currentPath, activePane, true)}
@@ -2251,7 +2376,8 @@ export default function App() {
           }
         }}
         onBatchRename={() => setIsBatchRenameOpen(true)}
-          onDelete={(item) => handleDeleteSelected([item])}
+        onDelete={(item) => handleDeleteSelected([item])}
+        onRestore={(item) => { void handleRestoreRecycleBinItems([item]); }}
       />
 
       {/* Batch Rename Modal */}

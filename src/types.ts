@@ -27,6 +27,8 @@ export interface FileItem {
   dimensions?: string;
   tags?: string[];
   colorLabel?: 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | null;
+  recycleBinId?: string;
+  originalPath?: string;
   lastAccessed?: string; // ISO 8601 string or timestamp when last opened, moved, or renamed
   // If loaded via File System Access API
   handle?: FileSystemHandle;
@@ -39,6 +41,7 @@ export type ViewLayout = 'dual-vertical' | 'dual-horizontal' | 'single';
 export type ViewMode = 'details' | 'compact' | 'icons';
 
 export const SYSTEM_HOME_PATH = '::cyberfiles-this-pc::';
+export const RECYCLE_BIN_PATH = '::cyberfiles-recycle-bin::';
 
 export interface TabState {
   id: string;
