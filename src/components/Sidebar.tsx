@@ -58,6 +58,7 @@ interface SidebarProps {
   onCopySelectedPaths: (items: FileItem[]) => void;
   recycleBinSupported: boolean;
   recycleBinStatus: RecycleBinStatus | null;
+  onOpenRecycleBin: () => void;
   onRequestEmptyRecycleBin: () => void;
   isCollapsed?: boolean;
 }
@@ -87,6 +88,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCopySelectedPaths,
   recycleBinSupported,
   recycleBinStatus,
+  onOpenRecycleBin,
   onRequestEmptyRecycleBin,
 }) => {
   const { t, language } = useLanguage();
@@ -227,22 +229,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       <div className="border-b border-neutral-800/80 bg-neutral-950 px-2 py-2">
-        <Tooltip label={canEmptyRecycleBin ? t.sidebar.emptyRecycleBinAction : recycleBinStateLabel} placement="right" disabled={!canEmptyRecycleBin}>
-          <button
-            type="button"
-            disabled={!canEmptyRecycleBin}
-            onClick={onRequestEmptyRecycleBin}
-            aria-label={`${t.sidebar.recycleBinTitle}: ${recycleBinStateLabel}`}
-            className="flex w-full items-center gap-2 rounded-md border border-neutral-800 bg-neutral-900/60 px-2.5 py-2 text-left transition-colors enabled:hover:border-rose-800/80 enabled:hover:bg-rose-950/25 disabled:cursor-default"
-          >
-            <Trash2 className={`h-4 w-4 flex-shrink-0 ${canEmptyRecycleBin ? 'text-rose-300' : 'text-neutral-500'}`} />
-            <span className="min-w-0 flex-1">
-              <span className="block text-[10px] font-semibold text-neutral-200">{t.sidebar.recycleBinTitle}</span>
-              <span className={`block truncate text-[9px] ${canEmptyRecycleBin ? 'text-neutral-400' : 'text-neutral-500'}`}>{recycleBinStateLabel}</span>
-            </span>
-            {canEmptyRecycleBin && <span className="flex-shrink-0 rounded border border-rose-900/60 px-1.5 py-0.5 text-[9px] font-semibold text-rose-200">{t.sidebar.emptyRecycleBinButton}</span>}
-          </button>
-        </Tooltip>
+        <div className="flex items-stretch gap-1.5">
+          <Tooltip label={canEmptyRecycleBin ? t.sidebar.emptyRecycleBinAction : recycleBinStateLabel} placement="right" disabled={!canEmptyRecycleBin}>
+            <button
+              type="button"
+              disabled={!canEmptyRecycleBin}
+              onClick={onRequestEmptyRecycleBin}
+              aria-label={`${t.sidebar.recycleBinTitle}: ${recycleBinStateLabel}`}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-neutral-800 bg-neutral-900/60 px-2.5 py-2 text-left transition-colors enabled:hover:border-rose-800/80 enabled:hover:bg-rose-950/25 disabled:cursor-default"
+            >
+              <Trash2 className={`h-4 w-4 flex-shrink-0 ${canEmptyRecycleBin ? 'text-rose-300' : 'text-neutral-500'}`} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[10px] font-semibold text-neutral-200">{t.sidebar.recycleBinTitle}</span>
+                <span className={`block truncate text-[9px] ${canEmptyRecycleBin ? 'text-neutral-400' : 'text-neutral-500'}`}>{recycleBinStateLabel}</span>
+              </span>
+              {canEmptyRecycleBin && <span className="flex-shrink-0 rounded border border-rose-900/60 px-1.5 py-0.5 text-[9px] font-semibold text-rose-200">{t.sidebar.emptyRecycleBinButton}</span>}
+            </button>
+          </Tooltip>
+          <Tooltip label={recycleBinSupported ? t.sidebar.openRecycleBinAction : t.sidebar.recycleBinDesktopOnly} placement="right">
+            <button
+              type="button"
+              disabled={!recycleBinSupported}
+              onClick={onOpenRecycleBin}
+              aria-label={t.sidebar.openRecycleBinAction}
+              className="flex w-10 flex-shrink-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900/60 text-neutral-400 transition-colors enabled:hover:border-cyan-800/80 enabled:hover:bg-cyan-950/25 enabled:hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <Eye className="h-4 w-4" />
+            </button>
+          </Tooltip>
+        </div>
       </div>
 
       {/* 2. Main Tab Body */}

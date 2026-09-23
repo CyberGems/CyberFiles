@@ -120,6 +120,14 @@ export async function emptyNativeRecycleBin(): Promise<void> {
   await invoke('empty_recycle_bin');
 }
 
+export async function openNativeRecycleBinInExplorer(): Promise<void> {
+  await invoke('open_recycle_bin_in_explorer');
+}
+
+export async function openNativeImageWithDefaultApp(path: string): Promise<void> {
+  await invoke('open_image_with_default_app', { path });
+}
+
 export async function showNativeFileProperties(path: string): Promise<void> {
   await invoke('open_windows_file_properties', { path });
 }

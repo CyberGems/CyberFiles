@@ -1015,6 +1015,112 @@ async fn open_windows_file_properties(path: String) -> Result<(), String> {
         .map_err(|error| format!("Windows Properties worker failed: {error}"))?
 }
 
+#[cfg(target_os = "windows")]
+fn open_image_using_windows_default_app(path: &str) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::System::Com::{
+        CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
+    };
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let source = Path::new(path);
+    if !source.is_absolute() {
+        return Err("Only fully qualified image paths can be opened.".to_string());
+    }
+    let resolved = source
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve the selected image: {error}"))?;
+    if !resolved.is_file() {
+        return Err("The selected image is no longer available.".to_string());
+    }
+    let extension = resolved
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !matches!(
+        extension.as_str(),
+        "bmp" | "gif" | "ico" | "jpeg" | "jpg" | "png" | "svg" | "webp"
+    ) {
+        return Err("The selected file is not a supported image type.".to_string());
+    }
+
+    let initialized =
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) };
+    if initialized.is_err() {
+        return Err(format!(
+            "Could not initialize the Windows Shell apartment (HRESULT 0x{:08X}).",
+            initialized.0 as u32
+        ));
+    }
+    struct ComApartment;
+    impl Drop for ComApartment {
+        fn drop(&mut self) {
+            unsafe { CoUninitialize() };
+        }
+    }
+    let _apartment = ComApartment;
+
+    let verb: Vec<u16> = "open".encode_utf16().chain(Some(0)).collect();
+    let wide_path: Vec<u16> = resolved.as_os_str().encode_wide().chain(Some(0)).collect();
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            PCWSTR(verb.as_ptr()),
+            PCWSTR(wide_path.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    let result_code = result.0 as isize;
+    if result_code > 32 {
+        Ok(())
+    } else {
+        Err(format!(
+            "Windows could not open the image with its default app (ShellExecute error {result_code})."
+        ))
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn open_image_using_windows_default_app(_path: &str) -> Result<(), String> {
+    Err(
+        "Opening images with a Windows default app is available only in the Windows desktop app."
+            .to_string(),
+    )
+}
+
+#[tauri::command]
+async fn open_image_with_default_app(path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || open_image_using_windows_default_app(&path))
+        .await
+        .map_err(|error| format!("Windows image-open worker failed: {error}"))?
+}
+
+#[cfg(target_os = "windows")]
+fn launch_recycle_bin_in_explorer() -> Result<(), String> {
+    std::process::Command::new("explorer.exe")
+        .arg("shell:RecycleBinFolder")
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not open the Windows Recycle Bin: {error}"))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn launch_recycle_bin_in_explorer() -> Result<(), String> {
+    Err("The Windows Recycle Bin is available only in the Windows desktop app.".to_string())
+}
+
+#[tauri::command]
+async fn open_recycle_bin_in_explorer() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(launch_recycle_bin_in_explorer)
+        .await
+        .map_err(|error| format!("Recycle Bin launch worker failed: {error}"))?
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -1171,6 +1277,8 @@ fn main() {
             move_to_recycle_bin,
             empty_recycle_bin,
             open_windows_file_properties,
+            open_image_with_default_app,
+            open_recycle_bin_in_explorer,
             set_tray_language,
             get_global_shortcut_settings,
             set_global_shortcut_settings,

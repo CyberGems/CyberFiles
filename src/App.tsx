@@ -45,7 +45,7 @@ import { CloseWindowModal } from './components/CloseWindowModal';
 import { SettingsModal } from './components/SettingsModal';
 import { OnboardingWelcome } from './components/OnboardingWelcome';
 import { useLanguage } from './locales/LanguageContext';
-import { chooseNativeFolder, emptyNativeRecycleBin, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeSystemLocations, loadNativeFolder, moveNativeItemsToRecycleBin, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
+import { chooseNativeFolder, emptyNativeRecycleBin, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeSystemLocations, loadNativeFolder, moveNativeItemsToRecycleBin, openNativeImageWithDefaultApp, openNativeRecycleBinInExplorer, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
 
 const ONBOARDING_STORAGE_KEY = 'cyberfiles_onboarding_complete';
 const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
@@ -240,6 +240,7 @@ export default function App() {
   const nativeInFlightDirectories = useRef(new Map<string, number>());
   const nativeWorkspaceGeneration = useRef(0);
   const nativeOpeningWorkspace = useRef(false);
+  const focusRefreshTimer = useRef<number | null>(null);
 
   const systemHomeItems = useMemo<FileItem[]>(() => {
     const locationLabels: Record<NativeLocation['id'], string> = {
@@ -832,7 +833,9 @@ export default function App() {
       }
     } else {
       updatePaneTab(targetPane, tab => {
-        if (getPathKey(tab.currentPath) === pathKey) return { ...tab, selectedIds: [], focusedId: null };
+        if (getPathKey(tab.currentPath) === pathKey) {
+          return forceRefresh ? tab : { ...tab, selectedIds: [], focusedId: null };
+        }
         const newHistory = [...tab.history.slice(0, tab.historyIndex + 1), targetPath].slice(-MAX_TAB_HISTORY_ENTRIES);
         const rememberedStyle = folderStyleLocked ? getTabFolderStyle(tab) : DEFAULT_FOLDER_STYLE;
         return {
@@ -878,6 +881,17 @@ export default function App() {
         );
         return [...retained, ...listing.entries];
       });
+      if (forceRefresh) {
+        const refreshedIds = new Set(listing.entries.map(item => item.id));
+        updatePaneTab(targetPane, tab => {
+          if (getPathKey(tab.currentPath) !== pathKey) return tab;
+          const selectedIds = tab.selectedIds.filter(id => refreshedIds.has(id));
+          const focusedId = tab.focusedId && selectedIds.includes(tab.focusedId)
+            ? tab.focusedId
+            : selectedIds[0] || null;
+          return { ...tab, selectedIds, focusedId };
+        });
+      }
       nativeLoadedDirectories.current.add(pathKey);
       setNativeDirectories(previous => ({
         ...previous,
@@ -898,6 +912,72 @@ export default function App() {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
   }, [activePane, activeLeftTabIndex, activeRightTabIndex, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectoryPage, refreshSystemHome, showToast, t.sidebar.thisPc, folderStyleLocked, newTabsNextToCurrent]);
+
+  const focusRefreshSnapshot = useRef({
+    layout,
+    activePane,
+    leftTabs,
+    rightTabs,
+    activeLeftTabIndex,
+    activeRightTabIndex,
+  });
+  focusRefreshSnapshot.current = {
+    layout,
+    activePane,
+    leftTabs,
+    rightTabs,
+    activeLeftTabIndex,
+    activeRightTabIndex,
+  };
+  const handleNavigateRef = useRef(handleNavigate);
+  handleNavigateRef.current = handleNavigate;
+  const refreshSystemHomeRef = useRef(refreshSystemHome);
+  refreshSystemHomeRef.current = refreshSystemHome;
+
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+
+    const refreshVisibleDirectories = () => {
+      if (focusRefreshTimer.current !== null) window.clearTimeout(focusRefreshTimer.current);
+      focusRefreshTimer.current = window.setTimeout(() => {
+        focusRefreshTimer.current = null;
+        const snapshot = focusRefreshSnapshot.current;
+        const visiblePanes: Array<'left' | 'right'> = snapshot.layout === 'single'
+          ? [snapshot.activePane]
+          : ['left', 'right'];
+        const refreshedPaths = new Set<string>();
+        let refreshedSystemHome = false;
+
+        for (const pane of visiblePanes) {
+          const tab = pane === 'left'
+            ? snapshot.leftTabs[snapshot.activeLeftTabIndex]
+            : snapshot.rightTabs[snapshot.activeRightTabIndex];
+          if (!tab?.currentPath) continue;
+          const pathKey = getPathKey(tab.currentPath);
+          if (refreshedPaths.has(pathKey)) continue;
+          refreshedPaths.add(pathKey);
+
+          if (tab.currentPath === SYSTEM_HOME_PATH) {
+            if (!refreshedSystemHome) {
+              refreshedSystemHome = true;
+              void refreshSystemHomeRef.current();
+            }
+            continue;
+          }
+          void handleNavigateRef.current(tab.currentPath, pane, true);
+        }
+      }, 250);
+    };
+
+    window.addEventListener('focus', refreshVisibleDirectories);
+    return () => {
+      window.removeEventListener('focus', refreshVisibleDirectories);
+      if (focusRefreshTimer.current !== null) {
+        window.clearTimeout(focusRefreshTimer.current);
+        focusRefreshTimer.current = null;
+      }
+    };
+  }, []);
 
   const loadMoreNativeDirectory = useCallback(async (path: string) => {
     const pathKey = getPathKey(path);
@@ -1226,9 +1306,12 @@ export default function App() {
     if (item.isFolder) {
       handleNavigate(item.path, pane);
     } else {
-      // Toggle or focus preview & update lastAccessed
       touchFileAccessed(item.id);
       setPreviewOpen(true);
+      if (item.type === 'image' && isTauriDesktop()) {
+        void openNativeImageWithDefaultApp(item.path).catch(() => showToast(t.core.imageOpenFailed));
+        return;
+      }
       showToast(`Visualizando "${item.name}"`);
     }
   };
@@ -1532,6 +1615,14 @@ export default function App() {
       setIsRecycleBinBusy(false);
     }
   }, [isRecycleBinBusy, refreshRecycleBinStatus, showToast, t.core.recycleBinEmptied, t.core.recycleBinEmptyFailed]);
+
+  const handleOpenRecycleBin = useCallback(async () => {
+    try {
+      await openNativeRecycleBinInExplorer();
+    } catch {
+      showToast(t.sidebar.openRecycleBinFailed);
+    }
+  }, [showToast, t.sidebar.openRecycleBinFailed]);
 
   // Opens only a user-selected folder. Native builds scan it without following links.
   const handleOpenRealFolder = async () => {
@@ -1890,6 +1981,7 @@ export default function App() {
           onCopySelectedPaths={handleCopySelectedPaths}
           recycleBinSupported={isTauriDesktop()}
           recycleBinStatus={recycleBinStatus}
+          onOpenRecycleBin={() => { void handleOpenRecycleBin(); }}
           onRequestEmptyRecycleBin={handleRequestEmptyRecycleBin}
         />
 

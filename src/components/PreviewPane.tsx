@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, FileText, Image as ImageIcon, Code2, Copy, Check, Info, Music, Video } from 'lucide-react';
 import { FileItem } from '../types';
 import { formatFileSize } from '../utils/fileSystem';
+import { isTauriDesktop, loadNativeImageThumbnail } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 
@@ -15,7 +16,65 @@ interface PreviewPaneProps {
 
 export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRename, nativePropertiesSupported, onOpenWindowsProperties }) => {
   const [copied, setCopied] = useState(false);
+  const [imagePreviewSource, setImagePreviewSource] = useState<string | null>(null);
+  const [imagePreviewState, setImagePreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const { t } = useLanguage();
+
+  useEffect(() => {
+    if (!item || item.isFolder || item.type !== 'image') {
+      setImagePreviewSource(null);
+      setImagePreviewState('idle');
+      return;
+    }
+
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    setImagePreviewSource(null);
+    setImagePreviewState('loading');
+
+    const loadPreview = async () => {
+      try {
+        if (item.contentPreview) {
+          setImagePreviewSource(item.contentPreview);
+          setImagePreviewState('ready');
+          return;
+        }
+
+        if (item.handle && 'getFile' in item.handle) {
+          const file = await (item.handle as FileSystemFileHandle).getFile();
+          if (file.size > 64 * 1024 * 1024) throw new Error('Image exceeds the preview size limit');
+          const nextObjectUrl = URL.createObjectURL(file);
+          if (cancelled) {
+            URL.revokeObjectURL(nextObjectUrl);
+            return;
+          }
+          objectUrl = nextObjectUrl;
+          setImagePreviewSource(nextObjectUrl);
+          setImagePreviewState('ready');
+          return;
+        }
+
+        if (isTauriDesktop()) {
+          const thumbnail = await loadNativeImageThumbnail(item.path);
+          if (!cancelled) {
+            setImagePreviewSource(thumbnail);
+            setImagePreviewState(thumbnail ? 'ready' : 'unavailable');
+          }
+          return;
+        }
+
+        if (!cancelled) setImagePreviewState('unavailable');
+      } catch {
+        if (!cancelled) setImagePreviewState('unavailable');
+      }
+    };
+
+    void loadPreview();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [item?.id, item?.path, item?.handle, item?.contentPreview, item?.type, item?.isFolder]);
 
   if (!item) {
     return (
@@ -38,8 +97,18 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
   };
 
   const renderContent = () => {
-    if (item.type === 'image' && item.contentPreview) {
-      return <img src={item.contentPreview} alt={item.name} className="max-h-52 max-w-full object-contain rounded shadow" referrerPolicy="no-referrer" />;
+    if (item.type === 'image') {
+      if (imagePreviewSource) {
+        return <img src={imagePreviewSource} alt={item.name} className="max-h-52 max-w-full object-contain rounded shadow" referrerPolicy="no-referrer" />;
+      }
+      return (
+        <div className="flex flex-col items-center justify-center gap-2 p-6 text-neutral-400">
+          <ImageIcon className="h-10 w-10 text-cyan-400" />
+          <span className="text-[11px] text-center">
+            {imagePreviewState === 'unavailable' ? t.preview.imagePreviewUnavailable : t.preview.imagePreviewLoading}
+          </span>
+        </div>
+      );
     }
 
     if (item.type === 'code' || item.type === 'text' || item.type === 'document') {
