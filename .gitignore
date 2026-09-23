@@ -1,0 +1,23 @@
+node_modules/
+build/
+dist/
+src-tauri/target/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Runtime user config — keep folder, not contents
+config/*
+!config/.gitkeep
+
+# Local reference images and generated artifacts
+artifacts/
+
+# Private local agent instructions and configuration
+AGENTS.md
+CLAUDE.md
+.cursorrules
+.cursor/
+.github/copilot-instructions.md

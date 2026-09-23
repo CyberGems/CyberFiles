@@ -1,0 +1,20 @@
+[package]
+name = "cyberfiles"
+version = "0.1.0"
+description = "CyberFiles desktop development shell"
+authors = ["CyberGems"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+base64 = "0.22.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-window-state = "2"
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }

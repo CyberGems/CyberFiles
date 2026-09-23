@@ -1,0 +1,6 @@
+{
+  "name": "CyberFiles",
+  "description": "High-performance dual-pane file explorer for Windows inspired by Directory Opus with batch rename, instant filtering, and quick preview.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

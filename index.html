@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CyberFiles</title>
+    <meta name="description" content="High-performance dual-pane file explorer for Windows inspired by Directory Opus with batch rename, instant filtering, and quick preview." />
+    <meta property="og:title" content="CyberFiles" />
+    <meta property="og:description" content="High-performance dual-pane file explorer for Windows inspired by Directory Opus with batch rename, instant filtering, and quick preview." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <style>
+      :root, html, body, #root {
+        min-width: 100%;
+        min-height: 100%;
+        margin: 0;
+        background: #080d16;
+        color: #f5f8ff;
+        color-scheme: dark;
+      }
+      body { overflow: hidden; }
+    </style>
+    <script>
+      try {
+        const savedTheme = localStorage.getItem('cyberfiles_theme');
+        if (savedTheme === 'cyberfiles' || savedTheme === 'gray' || savedTheme === 'light') {
+          document.documentElement.dataset.theme = savedTheme;
+        }
+      } catch {}
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-neutral-950 text-neutral-100 antialiased selection:bg-cyan-500/30 selection:text-cyan-200 overflow-hidden">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

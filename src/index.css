@@ -1,0 +1,163 @@
+@import "tailwindcss";
+
+:root {
+  background: #080d16;
+  color-scheme: dark;
+  --cyberfiles-tooltip-background: #101826;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 100%;
+  min-height: 100%;
+  margin: 0;
+  background: #080d16;
+}
+
+body {
+  overflow: hidden;
+}
+
+#root {
+  opacity: 0;
+  transition: opacity 140ms ease-out;
+}
+
+#root.cyberfiles-ready {
+  opacity: 1;
+}
+
+/* Theme tokens override Tailwind's colour variables, so existing components
+   inherit each palette without a fragile visual filter. */
+html[data-theme='gray'] {
+  background: #0d0d0d;
+  --cyberfiles-tooltip-background: #171717;
+  --color-cyan-200: oklch(0.84 0 0);
+  --color-cyan-300: oklch(0.74 0 0);
+  --color-cyan-400: oklch(0.64 0 0);
+  --color-cyan-500: oklch(0.54 0 0);
+  --color-cyan-600: oklch(0.45 0 0);
+  --color-cyan-700: oklch(0.36 0 0);
+  --color-cyan-800: oklch(0.27 0 0);
+  --color-cyan-900: oklch(0.19 0 0);
+  --color-cyan-950: oklch(0.13 0 0);
+  --color-blue-300: oklch(0.74 0 0);
+  --color-blue-400: oklch(0.64 0 0);
+  --color-blue-500: oklch(0.54 0 0);
+  --color-blue-600: oklch(0.44 0 0);
+  --color-amber-300: oklch(0.74 0 0);
+  --color-amber-400: oklch(0.64 0 0);
+  --color-amber-500: oklch(0.54 0 0);
+  --color-emerald-400: oklch(0.64 0 0);
+  --color-rose-200: oklch(0.84 0 0);
+  --color-rose-300: oklch(0.74 0 0);
+  --color-rose-400: oklch(0.64 0 0);
+  --color-rose-500: oklch(0.54 0 0);
+  --color-rose-600: oklch(0.44 0 0);
+  --color-rose-700: oklch(0.35 0 0);
+  --color-rose-950: oklch(0.13 0 0);
+  --color-yellow-300: oklch(0.74 0 0);
+  --color-yellow-400: oklch(0.64 0 0);
+  --color-purple-400: oklch(0.64 0 0);
+  --color-pink-400: oklch(0.64 0 0);
+  --color-orange-400: oklch(0.64 0 0);
+}
+
+html[data-theme='gray'] body,
+html[data-theme='gray'] #root {
+  background: #0d0d0d;
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+  --color-neutral-50: oklch(0.24 0.01 250);
+  --color-neutral-100: oklch(0.29 0.01 250);
+  --color-neutral-200: oklch(0.37 0.01 250);
+  --color-neutral-300: oklch(0.46 0.01 250);
+  --color-neutral-400: oklch(0.55 0.01 250);
+  --color-neutral-500: oklch(0.63 0.01 250);
+  --color-neutral-600: oklch(0.72 0.008 250);
+  --color-neutral-700: oklch(0.81 0.006 250);
+  --color-neutral-800: oklch(0.88 0.005 250);
+  --color-neutral-900: oklch(0.94 0.004 250);
+  --color-neutral-950: oklch(0.98 0.003 250);
+  --color-cyan-200: oklch(0.42 0.1 235);
+  --color-cyan-300: oklch(0.48 0.12 235);
+  --color-cyan-400: oklch(0.55 0.14 235);
+  --color-cyan-500: oklch(0.5 0.14 235);
+  --color-cyan-600: oklch(0.44 0.13 235);
+  --color-cyan-700: oklch(0.37 0.11 235);
+  --color-cyan-800: oklch(0.3 0.08 235);
+  --color-cyan-900: oklch(0.24 0.06 235);
+  --color-cyan-950: oklch(0.96 0.025 235);
+  --color-blue-300: oklch(0.5 0.13 255);
+  --color-blue-400: oklch(0.54 0.15 255);
+  --color-blue-600: oklch(0.42 0.15 255);
+  --color-amber-400: oklch(0.62 0.13 75);
+  --color-emerald-400: oklch(0.56 0.12 160);
+  --color-rose-200: oklch(0.48 0.12 15);
+  --color-rose-300: oklch(0.53 0.15 15);
+  --color-rose-400: oklch(0.58 0.18 15);
+  --color-rose-500: oklch(0.54 0.2 15);
+  --color-rose-600: oklch(0.48 0.19 15);
+  --color-rose-700: oklch(0.41 0.16 15);
+  --color-rose-950: oklch(0.96 0.02 15);
+  --color-yellow-300: oklch(0.62 0.13 95);
+  --color-yellow-400: oklch(0.61 0.14 95);
+  --color-purple-400: oklch(0.55 0.15 300);
+  --color-pink-400: oklch(0.57 0.17 345);
+  --color-orange-400: oklch(0.62 0.16 55);
+  --cyberfiles-tooltip-background: oklch(0.98 0.003 250);
+}
+
+html[data-theme='light'] body,
+html[data-theme='light'] #root {
+  background: var(--color-neutral-950);
+}
+
+html[data-theme='light'] .bg-black {
+  background-color: var(--color-neutral-900) !important;
+}
+
+html[data-theme='light'] .cyberfiles-tooltip-card {
+  color: var(--color-neutral-100);
+}
+
+.theme-preview {
+  display: grid;
+  grid-template-columns: 0.24fr 1fr 0.46fr;
+}
+
+.theme-preview span:first-child { border-right: 1px solid rgba(255, 255, 255, 0.1); }
+.theme-preview span:last-child { border-left: 1px solid rgba(255, 255, 255, 0.1); }
+.theme-preview-cyberfiles { background: #0a101c; }
+.theme-preview-cyberfiles span:first-child { background: #05080e; }
+.theme-preview-cyberfiles span:nth-child(2) { background: linear-gradient(135deg, #101b2d, #0b1220); }
+.theme-preview-cyberfiles span:last-child { background: #0b1220; border-top: 2px solid #22d3ee; }
+.theme-preview-gray { background: #171717; }
+.theme-preview-gray span:first-child { background: #0c0c0c; }
+.theme-preview-gray span:nth-child(2) { background: linear-gradient(135deg, #303030, #1c1c1c); }
+.theme-preview-gray span:last-child { background: #242424; border-top: 2px solid #bdbdbd; }
+.theme-preview-light { background: #f8fafc; }
+.theme-preview-light span:first-child { background: #e5e7eb; border-color: rgba(15, 23, 42, 0.12); }
+.theme-preview-light span:nth-child(2) { background: linear-gradient(135deg, #ffffff, #e8eef5); }
+.theme-preview-light span:last-child { background: #f1f5f9; border-color: rgba(15, 23, 42, 0.12); border-top: 2px solid #2787c8; }
+
+@keyframes cyberfiles-tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #root {
+    transition: none;
+  }
+}
