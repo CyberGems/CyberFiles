@@ -1821,6 +1821,7 @@ export default function App() {
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'left')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'left')}
                   onBackgroundContextMenu={handleBackgroundContextMenu}
+                  onBackgroundClick={(_event, pane) => handleSelectItems(pane, [])}
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFilesFromOtherPane={handleDropFiles}
                   onInlineRename={handleInlineRename}
@@ -1861,6 +1862,7 @@ export default function App() {
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'right')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'right')}
                   onBackgroundContextMenu={handleBackgroundContextMenu}
+                  onBackgroundClick={(_event, pane) => handleSelectItems(pane, [])}
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFilesFromOtherPane={handleDropFiles}
                   onInlineRename={handleInlineRename}
@@ -1902,6 +1904,7 @@ export default function App() {
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'left')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'left')}
                   onBackgroundContextMenu={handleBackgroundContextMenu}
+                  onBackgroundClick={(_event, pane) => handleSelectItems(pane, [])}
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFilesFromOtherPane={handleDropFiles}
                   onInlineRename={handleInlineRename}
@@ -1938,6 +1941,7 @@ export default function App() {
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'right')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'right')}
                   onBackgroundContextMenu={handleBackgroundContextMenu}
+                  onBackgroundClick={(_event, pane) => handleSelectItems(pane, [])}
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFilesFromOtherPane={handleDropFiles}
                   onInlineRename={handleInlineRename}
@@ -1979,6 +1983,7 @@ export default function App() {
                 onItemDoubleClick={(item) => handleItemDoubleClick(item, activePane)}
                 onItemContextMenu={(e, item) => handleItemContextMenu(e, item, activePane)}
                 onBackgroundContextMenu={handleBackgroundContextMenu}
+                onBackgroundClick={(_event, pane) => handleSelectItems(pane, [])}
                 onBackgroundDoubleClick={handleBackgroundDoubleClick}
                 onDropFilesFromOtherPane={handleDropFiles}
                 onInlineRename={handleInlineRename}

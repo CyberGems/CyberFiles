@@ -13,7 +13,7 @@ CyberFiles is an early-stage desktop file manager focused on fast, clear folder 
 - Keep frequently used locations and recent files close at hand in the sidebar.
 - Choose CyberFiles, grayscale, or light appearance, and English or Spanish UI language.
 - Use the system tray to show, hide, or quit the app. Window size, position, and maximized state are restored on the next launch.
-- Browse a selected folder in a supported browser using the File System Access API.
+- In supported browsers, browse a user-selected local folder through the File System Access API.
 
 ## Development status
 
@@ -42,7 +42,7 @@ To run the web interface instead:
 npm run dev
 ```
 
-Browser filesystem access depends on browser support and the folder permission granted by the user.
+Browser mode can access only a folder the user explicitly chooses, and only in browsers that support the File System Access API.
 
 ## Build and checks
 

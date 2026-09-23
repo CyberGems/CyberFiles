@@ -64,6 +64,7 @@ interface FilePaneProps {
   onItemDoubleClick: (item: FileItem) => void;
   onItemContextMenu: (e: React.MouseEvent, item: FileItem) => void;
   onBackgroundContextMenu: (e: React.MouseEvent, pane: 'left' | 'right') => void;
+  onBackgroundClick: (e: React.MouseEvent, pane: 'left' | 'right') => void;
   onBackgroundDoubleClick: (e: React.MouseEvent, pane: 'left' | 'right') => void;
   onDropFilesFromOtherPane: (droppedIds: string[], targetFolder?: string, sourcePane?: 'left' | 'right') => void;
   onInlineRename: (itemId: string, newName: string) => void;
@@ -231,6 +232,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onItemDoubleClick,
   onItemContextMenu,
   onBackgroundContextMenu,
+  onBackgroundClick,
   onBackgroundDoubleClick,
   onDropFilesFromOtherPane,
   onInlineRename,
@@ -450,6 +452,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const handleViewportContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest('[data-file-item], button, input, select, textarea, a')) return;
     onBackgroundContextMenu(event, paneId);
+  };
+
+  const handleViewportClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('[data-file-item], button, input, select, textarea, a, [contenteditable="true"]')) return;
+    onBackgroundClick(event, paneId);
   };
 
   const handleViewportDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -766,6 +773,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       <div 
         className="flex-1 overflow-y-auto p-0.5 select-none focus:outline-none"
         tabIndex={0}
+        onClick={handleViewportClick}
         onContextMenu={handleViewportContextMenu}
         onDoubleClick={handleViewportDoubleClick}
       >
