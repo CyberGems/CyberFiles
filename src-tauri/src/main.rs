@@ -2,7 +2,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    io::Cursor,
+    io::{self, Cursor},
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -235,6 +235,635 @@ struct DirectoryListing {
 }
 
 const DIRECTORY_PAGE_SIZE: usize = 400;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeOperationFailure {
+    path: String,
+    error: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeOperationResult {
+    completed_paths: Vec<String>,
+    failures: Vec<NativeOperationFailure>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeCreatedFolder {
+    path: String,
+    name: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeFileClipboard {
+    paths: Vec<String>,
+    is_cut: bool,
+    sequence_number: u32,
+}
+
+fn validate_child_name(name: &str) -> Result<(), String> {
+    let trimmed = name.trim();
+    let device_stem = name
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .trim_end()
+        .to_ascii_uppercase();
+    let is_reserved_device = matches!(device_stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ["COM", "LPT"].iter().any(|prefix| {
+            device_stem.strip_prefix(prefix).is_some_and(|number| {
+                matches!(number, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9")
+            })
+        });
+    if trimmed.is_empty()
+        || trimmed == "."
+        || trimmed == ".."
+        || trimmed.ends_with('.')
+        || trimmed.ends_with(' ')
+        || name.chars().any(|c| {
+            c.is_control() || matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
+        })
+        || name.encode_utf16().count() > 255
+        || is_reserved_device
+    {
+        return Err("The name is not valid for a Windows file or folder.".to_string());
+    }
+    Ok(())
+}
+
+fn canonical_directory(path: &str) -> Result<PathBuf, String> {
+    let requested = Path::new(path);
+    if !requested.is_absolute() {
+        return Err("The destination must be an absolute folder path.".to_string());
+    }
+    let metadata = fs::symlink_metadata(requested).map_err(|e| e.to_string())?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err("The destination is not a regular folder.".to_string());
+    }
+    fs::canonicalize(requested).map_err(|e| e.to_string())
+}
+
+fn canonical_item(path: &str) -> Result<PathBuf, String> {
+    let requested = Path::new(path);
+    if !requested.is_absolute() {
+        return Err("The source must be an absolute filesystem path.".to_string());
+    }
+    let metadata = fs::symlink_metadata(requested).map_err(|e| e.to_string())?;
+    if metadata.file_type().is_symlink() {
+        return Err("Symbolic links are not followed by file operations.".to_string());
+    }
+    fs::canonicalize(requested).map_err(|e| e.to_string())
+}
+
+fn same_or_descendant_path(candidate: &Path, root: &Path) -> bool {
+    let candidate = display_path(candidate)
+        .replace('/', "\\")
+        .trim_end_matches('\\')
+        .to_lowercase();
+    let root = display_path(root)
+        .replace('/', "\\")
+        .trim_end_matches('\\')
+        .to_lowercase();
+    candidate == root || candidate.starts_with(&format!("{root}\\"))
+}
+
+fn unique_child_path(parent: &Path, desired_name: &str) -> PathBuf {
+    let first = parent.join(desired_name);
+    if !first.exists() {
+        return first;
+    }
+    let desired = Path::new(desired_name);
+    let stem = desired.file_stem().unwrap_or_default().to_string_lossy();
+    let extension = desired
+        .extension()
+        .map(|v| format!(".{}", v.to_string_lossy()))
+        .unwrap_or_default();
+    for index in 1..=1_000_000u32 {
+        let candidate = parent.join(format!("{stem} ({index}){extension}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    first
+}
+
+fn remove_path_without_following_links(path: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+    if metadata.is_dir() && !metadata.file_type().is_symlink() {
+        fs::remove_dir_all(path).map_err(|e| e.to_string())
+    } else {
+        fs::remove_file(path).map_err(|e| e.to_string())
+    }
+}
+
+fn copy_path_recursive(source: &Path, destination: &Path) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
+    if metadata.file_type().is_symlink() {
+        return Err("Symbolic links are not followed by file operations.".to_string());
+    }
+    if metadata.is_dir() {
+        fs::create_dir(destination).map_err(|e| e.to_string())?;
+        for entry in fs::read_dir(source).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            copy_path_recursive(&entry.path(), &destination.join(entry.file_name()))?;
+        }
+        Ok(())
+    } else if metadata.is_file() {
+        let mut input = fs::File::open(source).map_err(|e| e.to_string())?;
+        let mut output = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(destination)
+            .map_err(|e| e.to_string())?;
+        if let Err(error) = io::copy(&mut input, &mut output) {
+            drop(output);
+            let _ = fs::remove_file(destination);
+            return Err(error.to_string());
+        }
+        drop(output);
+        if let Err(error) = fs::set_permissions(destination, metadata.permissions()) {
+            let _ = fs::remove_file(destination);
+            return Err(error.to_string());
+        }
+        Ok(())
+    } else {
+        Err("This filesystem item type is not supported.".to_string())
+    }
+}
+
+fn create_native_directory(parent_path: &str, name: &str) -> Result<NativeCreatedFolder, String> {
+    validate_child_name(name)?;
+    let parent = canonical_directory(parent_path)?;
+    let requested = unique_child_path(&parent, name);
+    fs::create_dir(&requested).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            "An item with that name already exists.".to_string()
+        } else {
+            e.to_string()
+        }
+    })?;
+    let created = fs::canonicalize(&requested).map_err(|e| e.to_string())?;
+    Ok(NativeCreatedFolder {
+        path: display_path(&created),
+        name: created
+            .file_name()
+            .map(|value| value.to_string_lossy().to_string())
+            .unwrap_or_else(|| name.to_string()),
+    })
+}
+
+fn rename_native_item(source_path: &str, new_name: &str) -> Result<String, String> {
+    validate_child_name(new_name)?;
+    let source = canonical_item(source_path)?;
+    let parent = source
+        .parent()
+        .ok_or("The selected item has no parent folder.")?;
+    let destination = parent.join(new_name);
+    let source_key = display_path(&source).to_lowercase();
+    let destination_key = display_path(&destination).to_lowercase();
+    if source_key == destination_key {
+        if source
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy() == new_name)
+        {
+            return Ok(display_path(&source));
+        }
+        let temporary = parent.join(format!(
+            ".cyberfiles-rename-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        fs::rename(&source, &temporary).map_err(|e| e.to_string())?;
+        if let Err(error) = fs::rename(&temporary, &destination) {
+            let rollback = fs::rename(&temporary, &source);
+            return Err(match rollback {
+                Ok(()) => error.to_string(),
+                Err(e) => format!("{error}; rollback failed: {e}"),
+            });
+        }
+    } else {
+        fs::rename(&source, &destination).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AlreadyExists || destination.exists() {
+                "An item with that name already exists.".to_string()
+            } else {
+                e.to_string()
+            }
+        })?;
+    }
+    let renamed = fs::canonicalize(&destination).map_err(|e| e.to_string())?;
+    Ok(display_path(&renamed))
+}
+
+fn transfer_native_items(
+    paths: Vec<String>,
+    target_path: &str,
+    move_items: bool,
+) -> NativeOperationResult {
+    let target = match canonical_directory(target_path) {
+        Ok(target) => target,
+        Err(error) => {
+            return NativeOperationResult {
+                completed_paths: Vec::new(),
+                failures: paths
+                    .into_iter()
+                    .map(|path| NativeOperationFailure {
+                        path,
+                        error: error.clone(),
+                    })
+                    .collect(),
+            }
+        }
+    };
+    let mut sources: Vec<(String, PathBuf)> = Vec::new();
+    let mut failures = Vec::new();
+    for path in paths {
+        match canonical_item(&path) {
+            Ok(source) => {
+                if !sources
+                    .iter()
+                    .any(|(_, existing)| same_or_descendant_path(&source, existing))
+                {
+                    sources.retain(|(_, existing)| !same_or_descendant_path(existing, &source));
+                    sources.push((path, source));
+                }
+            }
+            Err(error) => failures.push(NativeOperationFailure { path, error }),
+        }
+    }
+
+    let mut completed_paths = Vec::new();
+    for (original_path, source) in sources {
+        if same_or_descendant_path(&target, &source) {
+            failures.push(NativeOperationFailure {
+                path: original_path,
+                error: if move_items {
+                    "A folder cannot be moved inside itself."
+                } else {
+                    "A folder cannot be copied inside itself."
+                }
+                .to_string(),
+            });
+            continue;
+        }
+        let Some(name) = source.file_name() else {
+            failures.push(NativeOperationFailure {
+                path: original_path,
+                error: "A filesystem root cannot be transferred as an item.".to_string(),
+            });
+            continue;
+        };
+        let name = name.to_string_lossy().to_string();
+        if move_items && source.parent().is_some_and(|parent| parent == target) {
+            completed_paths.push(display_path(&source));
+            continue;
+        }
+        let destination = unique_child_path(&target, &name);
+        let result = if move_items {
+            match fs::rename(&source, &destination) {
+                Ok(()) => Ok(()),
+                Err(rename_error) => {
+                    match copy_path_recursive(&source, &destination) {
+                        Err(copy_error) => {
+                            if destination.exists() {
+                                let _ = remove_path_without_following_links(&destination);
+                            }
+                            Err(format!("Move failed ({rename_error}); copy fallback failed ({copy_error})."))
+                        }
+                        Ok(()) => match remove_path_without_following_links(&source) {
+                            Ok(()) => Ok(()),
+                            Err(remove_error) => {
+                                let _ = remove_path_without_following_links(&destination);
+                                Err(format!("The item was copied, but its original could not be removed ({remove_error})."))
+                            }
+                        },
+                    }
+                }
+            }
+        } else {
+            match copy_path_recursive(&source, &destination) {
+                Ok(()) => Ok(()),
+                Err(error) => {
+                    if destination.exists() {
+                        let _ = remove_path_without_following_links(&destination);
+                    }
+                    Err(error)
+                }
+            }
+        };
+        match result {
+            Ok(()) => completed_paths.push(display_path(&destination)),
+            Err(error) => failures.push(NativeOperationFailure {
+                path: original_path,
+                error,
+            }),
+        }
+    }
+    NativeOperationResult {
+        completed_paths,
+        failures,
+    }
+}
+
+#[tauri::command]
+async fn create_directory(
+    parent_path: String,
+    name: String,
+) -> Result<NativeCreatedFolder, String> {
+    tauri::async_runtime::spawn_blocking(move || create_native_directory(&parent_path, &name))
+        .await
+        .map_err(|e| format!("Folder creation worker failed: {e}"))?
+}
+
+#[tauri::command]
+async fn rename_item(path: String, new_name: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || rename_native_item(&path, &new_name))
+        .await
+        .map_err(|e| format!("Rename worker failed: {e}"))?
+}
+
+#[tauri::command]
+async fn copy_items_to_directory(
+    paths: Vec<String>,
+    target_path: String,
+) -> Result<NativeOperationResult, String> {
+    Ok(tauri::async_runtime::spawn_blocking(move || {
+        transfer_native_items(paths, &target_path, false)
+    })
+    .await
+    .map_err(|e| format!("Copy worker failed: {e}"))?)
+}
+
+#[tauri::command]
+async fn move_items_to_directory(
+    paths: Vec<String>,
+    target_path: String,
+) -> Result<NativeOperationResult, String> {
+    Ok(tauri::async_runtime::spawn_blocking(move || {
+        transfer_native_items(paths, &target_path, true)
+    })
+    .await
+    .map_err(|e| format!("Move worker failed: {e}"))?)
+}
+
+#[cfg(target_os = "windows")]
+fn set_windows_file_clipboard(paths: &[String], is_cut: bool) -> Result<u32, String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::{
+        Foundation::GlobalFree,
+        System::{
+            DataExchange::{
+                CloseClipboard, EmptyClipboard, OpenClipboard, RegisterClipboardFormatW,
+                SetClipboardData,
+            },
+            Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE},
+        },
+        UI::Shell::DROPFILES,
+    };
+    if paths.is_empty() {
+        return Err("There are no files to place on the clipboard.".to_string());
+    }
+    let mut wide_paths = Vec::new();
+    for path in paths {
+        let canonical = canonical_item(path)?;
+        wide_paths.extend(std::ffi::OsStr::new(&canonical).encode_wide());
+        wide_paths.push(0);
+    }
+    wide_paths.push(0);
+    let header_size = std::mem::size_of::<DROPFILES>();
+    let file_list = unsafe { GlobalAlloc(GMEM_MOVEABLE, header_size + wide_paths.len() * 2) };
+    if file_list.is_null() {
+        return Err("Windows could not allocate file clipboard data.".to_string());
+    }
+    let data = unsafe { GlobalLock(file_list) }.cast::<u8>();
+    if data.is_null() {
+        unsafe {
+            GlobalFree(file_list);
+        }
+        return Err("Windows could not lock file clipboard data.".to_string());
+    }
+    unsafe {
+        std::ptr::write_bytes(data, 0, header_size);
+        let header = data.cast::<DROPFILES>();
+        (*header).pFiles = header_size as u32;
+        (*header).fWide = 1;
+        std::ptr::copy_nonoverlapping(
+            wide_paths.as_ptr(),
+            data.add(header_size).cast::<u16>(),
+            wide_paths.len(),
+        );
+        GlobalUnlock(file_list);
+    }
+
+    let effect_name: Vec<u16> = "Preferred DropEffect"
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+    let effect_format = unsafe { RegisterClipboardFormatW(effect_name.as_ptr()) };
+    let effect_handle = unsafe { GlobalAlloc(GMEM_MOVEABLE, 4) };
+    if effect_format == 0 || effect_handle.is_null() {
+        unsafe {
+            GlobalFree(file_list);
+            if !effect_handle.is_null() {
+                GlobalFree(effect_handle);
+            }
+        }
+        return Err("Windows could not prepare the file transfer format.".to_string());
+    }
+    let effect = unsafe { GlobalLock(effect_handle) }.cast::<u32>();
+    if effect.is_null() {
+        unsafe {
+            GlobalFree(file_list);
+            GlobalFree(effect_handle);
+        }
+        return Err("Windows could not lock file transfer data.".to_string());
+    }
+    unsafe {
+        *effect = if is_cut { 2 } else { 1 };
+        GlobalUnlock(effect_handle);
+    }
+    if unsafe { OpenClipboard(std::ptr::null_mut()) } == 0 {
+        unsafe {
+            GlobalFree(file_list);
+            GlobalFree(effect_handle);
+        }
+        return Err("Windows could not open the clipboard. Try again shortly.".to_string());
+    }
+    let mut owns_files = true;
+    let mut owns_effect = true;
+    let result = unsafe {
+        if EmptyClipboard() == 0 {
+            Err("Windows could not update the clipboard.".to_string())
+        } else if SetClipboardData(15, file_list).is_null() {
+            Err("Windows could not place the files on the clipboard.".to_string())
+        } else {
+            owns_files = false;
+            if SetClipboardData(effect_format, effect_handle).is_null() {
+                Err("Windows placed the files on the clipboard, but could not mark them as cut or copied.".to_string())
+            } else {
+                owns_effect = false;
+                Ok(())
+            }
+        }
+    };
+    unsafe {
+        CloseClipboard();
+        if owns_files {
+            GlobalFree(file_list);
+        }
+        if owns_effect {
+            GlobalFree(effect_handle);
+        }
+    }
+    result?;
+    Ok(unsafe { windows_sys::Win32::System::DataExchange::GetClipboardSequenceNumber() })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_windows_file_clipboard(_paths: &[String], _is_cut: bool) -> Result<u32, String> {
+    Err("File clipboard integration is available only in the Windows desktop app.".to_string())
+}
+
+#[tauri::command]
+async fn set_file_clipboard(paths: Vec<String>, is_cut: bool) -> Result<u32, String> {
+    tauri::async_runtime::spawn_blocking(move || set_windows_file_clipboard(&paths, is_cut))
+        .await
+        .map_err(|e| format!("Clipboard worker failed: {e}"))?
+}
+
+#[cfg(target_os = "windows")]
+fn get_windows_file_clipboard() -> Result<NativeFileClipboard, String> {
+    use windows_sys::Win32::{
+        System::{
+            DataExchange::{
+                GetClipboardData, GetClipboardSequenceNumber, IsClipboardFormatAvailable,
+                OpenClipboard, RegisterClipboardFormatW,
+            },
+            Memory::{GlobalLock, GlobalSize, GlobalUnlock},
+        },
+        UI::Shell::{DragQueryFileW, HDROP},
+    };
+    const CF_HDROP: u32 = 15;
+    if unsafe { OpenClipboard(std::ptr::null_mut()) } == 0 {
+        return Err("Windows could not open the clipboard. Try again shortly.".to_string());
+    }
+    struct ClipboardGuard;
+    impl Drop for ClipboardGuard {
+        fn drop(&mut self) {
+            unsafe {
+                windows_sys::Win32::System::DataExchange::CloseClipboard();
+            }
+        }
+    }
+    let _guard = ClipboardGuard;
+    let sequence_number = unsafe { GetClipboardSequenceNumber() };
+    if unsafe { IsClipboardFormatAvailable(CF_HDROP) } == 0 {
+        return Ok(NativeFileClipboard {
+            paths: Vec::new(),
+            is_cut: false,
+            sequence_number,
+        });
+    }
+    let drop_handle = unsafe { GetClipboardData(CF_HDROP) } as HDROP;
+    if drop_handle.is_null() {
+        return Err("Windows could not read file paths from the clipboard.".to_string());
+    }
+    let count = unsafe { DragQueryFileW(drop_handle, u32::MAX, std::ptr::null_mut(), 0) };
+    let mut paths = Vec::with_capacity(count as usize);
+    for index in 0..count {
+        let length =
+            unsafe { DragQueryFileW(drop_handle, index, std::ptr::null_mut(), 0) } as usize;
+        if length == 0 {
+            continue;
+        }
+        let mut buffer = vec![0u16; length + 1];
+        let written =
+            unsafe { DragQueryFileW(drop_handle, index, buffer.as_mut_ptr(), buffer.len() as u32) }
+                as usize;
+        buffer.truncate(written);
+        paths.push(String::from_utf16_lossy(&buffer));
+    }
+    let name: Vec<u16> = "Preferred DropEffect"
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+    let format = unsafe { RegisterClipboardFormatW(name.as_ptr()) };
+    let handle = if format == 0 {
+        std::ptr::null_mut()
+    } else {
+        unsafe { GetClipboardData(format) }
+    };
+    let is_cut = if handle.is_null() || unsafe { GlobalSize(handle) } < std::mem::size_of::<u32>() {
+        false
+    } else {
+        let effect = unsafe { GlobalLock(handle) }.cast::<u32>();
+        if effect.is_null() {
+            false
+        } else {
+            let value = unsafe { std::ptr::read_unaligned(effect) };
+            unsafe {
+                GlobalUnlock(handle);
+            }
+            value & 2 != 0
+        }
+    };
+    Ok(NativeFileClipboard {
+        paths,
+        is_cut,
+        sequence_number,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn get_windows_file_clipboard() -> Result<NativeFileClipboard, String> {
+    Err("File clipboard integration is available only in the Windows desktop app.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn clear_windows_file_clipboard(expected_sequence_number: u32) -> Result<bool, String> {
+    use windows_sys::Win32::System::DataExchange::{
+        CloseClipboard, EmptyClipboard, GetClipboardSequenceNumber, OpenClipboard,
+    };
+    if unsafe { OpenClipboard(std::ptr::null_mut()) } == 0 {
+        return Err("Windows could not open the clipboard. Try again shortly.".to_string());
+    }
+    let same_contents = unsafe { GetClipboardSequenceNumber() } == expected_sequence_number;
+    let cleared = !same_contents || unsafe { EmptyClipboard() } != 0;
+    unsafe {
+        CloseClipboard();
+    }
+    if !cleared {
+        return Err(
+            "Windows could not clear the completed file transfer from the clipboard.".to_string(),
+        );
+    }
+    Ok(same_contents)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn clear_windows_file_clipboard(_expected_sequence_number: u32) -> Result<bool, String> {
+    Err("File clipboard integration is available only in the Windows desktop app.".to_string())
+}
+
+#[tauri::command]
+async fn get_file_clipboard() -> Result<NativeFileClipboard, String> {
+    tauri::async_runtime::spawn_blocking(get_windows_file_clipboard)
+        .await
+        .map_err(|e| format!("Clipboard worker failed: {e}"))?
+}
+
+#[tauri::command]
+async fn clear_file_clipboard(sequence_number: u32) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || clear_windows_file_clipboard(sequence_number))
+        .await
+        .map_err(|e| format!("Clipboard worker failed: {e}"))?
+}
 
 fn display_path(path: &Path) -> String {
     let value = path.to_string_lossy();
@@ -1806,6 +2435,13 @@ fn main() {
             hide_main_window,
             quit_app,
             list_directory,
+            create_directory,
+            rename_item,
+            copy_items_to_directory,
+            move_items_to_directory,
+            set_file_clipboard,
+            get_file_clipboard,
+            clear_file_clipboard,
             image_thumbnail,
             list_drives,
             list_system_locations,

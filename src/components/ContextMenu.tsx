@@ -1,10 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import {
   Check,
+  ClipboardPaste,
   Copy,
   Edit3,
   Eye,
   FilterX,
+  FolderPlus,
   FolderOpen,
   LayoutGrid,
   List,
@@ -14,6 +16,7 @@ import {
   Trash2,
   Layers,
   RotateCcw,
+  Scissors,
 } from 'lucide-react';
 import { ContextMenuPosition, FileItem, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
@@ -32,6 +35,12 @@ interface ContextMenuProps {
   onPreview: (item: FileItem) => void;
   onCopyOpposite: (item: FileItem) => void;
   onMoveOpposite: (item: FileItem) => void;
+  onCopyToClipboard: (item: FileItem) => void;
+  onCutToClipboard: (item: FileItem) => void;
+  onPaste: () => void;
+  onNewFolder: () => void;
+  canModifyFolder: boolean;
+  fileClipboardSupported: boolean;
   onRename: (item: FileItem) => void;
   onBatchRename: () => void;
   onDelete: (item: FileItem) => void;
@@ -52,6 +61,12 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onPreview,
   onCopyOpposite,
   onMoveOpposite,
+  onCopyToClipboard,
+  onCutToClipboard,
+  onPaste,
+  onNewFolder,
+  canModifyFolder,
+  fileClipboardSupported,
   onRename,
   onBatchRename,
   onDelete,
@@ -81,7 +96,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const item = position.targetItem;
   const isSystemLocation = Boolean(item && (item.id.startsWith('system-drive-') || item.id.startsWith('system-location-')));
   const menuWidth = 264;
-  const menuHeight = isSystemLocation || item?.recycleBinId ? 96 : item ? 270 : 330;
+  const menuHeight = isSystemLocation || item?.recycleBinId ? 96 : item ? 330 : 390;
   const adjustedX = Math.max(8, Math.min(position.x, window.innerWidth - menuWidth - 8));
   const adjustedY = Math.max(8, Math.min(position.y, window.innerHeight - menuHeight - 8));
 
@@ -118,6 +133,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           <div className="truncate border-b border-neutral-800 px-3 py-1.5 font-mono text-[10px] text-neutral-400">{item.name}</div>
           <div className="py-0.5">
             <MenuButton icon={<Eye className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.openPreview} shortcut="Space" onClick={() => { onPreview(item); onClose(); }} />
+            <MenuButton icon={<Copy className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.copyToClipboard} shortcut="Ctrl+C" onClick={() => { onCopyToClipboard(item); onClose(); }} />
+            <MenuButton icon={<Scissors className="h-3.5 w-3.5 text-amber-400" />} label={t.contextMenu.cutToClipboard} shortcut="Ctrl+X" onClick={() => { onCutToClipboard(item); onClose(); }} />
             <MenuButton icon={<Copy className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.copyToOpposite} shortcut="F5" onClick={() => { onCopyOpposite(item); onClose(); }} />
             <MenuButton icon={<MoveRight className="h-3.5 w-3.5 text-blue-400" />} label={t.contextMenu.moveToOpposite} shortcut="F6" onClick={() => { onMoveOpposite(item); onClose(); }} />
           </div>
@@ -137,6 +154,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           <div className="border-b border-neutral-800 px-3 py-1.5 font-medium text-neutral-300">{t.contextMenu.workspace}</div>
           <div className="py-0.5">
             <MenuButton icon={<FolderOpen className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.openFolder} onClick={() => { onOpenFolder(); onClose(); }} />
+            <MenuButton icon={<FolderPlus className="h-3.5 w-3.5 text-emerald-400" />} label={t.contextMenu.newFolder} shortcut="F7" disabled={!canModifyFolder} onClick={() => { onNewFolder(); onClose(); }} />
+            <MenuButton icon={<ClipboardPaste className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.paste} shortcut="Ctrl+V" disabled={!canModifyFolder || !fileClipboardSupported} onClick={() => { onPaste(); onClose(); }} />
             <MenuButton icon={<RotateCw className="h-3.5 w-3.5 text-neutral-400" />} label={t.toolbar.refresh} disabled={!hasFolder} onClick={() => { onRefresh(); onClose(); }} />
             {hasFilter && <MenuButton icon={<FilterX className="h-3.5 w-3.5 text-amber-400" />} label={t.contextMenu.clearFilter} onClick={() => { onClearFilter(); onClose(); }} />}
           </div>

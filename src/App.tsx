@@ -46,7 +46,7 @@ import { CloseWindowModal } from './components/CloseWindowModal';
 import { SettingsModal } from './components/SettingsModal';
 import { OnboardingWelcome } from './components/OnboardingWelcome';
 import { useLanguage } from './locales/LanguageContext';
-import { chooseNativeFolder, emptyNativeRecycleBin, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, moveNativeItemsToRecycleBin, openNativeImageWithDefaultApp, restoreNativeRecycleBinItems, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
+import { chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, emptyNativeRecycleBin, getNativeFileClipboard, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeImageWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
 
 const ONBOARDING_STORAGE_KEY = 'cyberfiles_onboarding_complete';
 const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
@@ -930,17 +930,23 @@ export default function App() {
       const newEntryPaths = new Set(listing.entries.map(item => getPathKey(item.path)));
       setAllFiles(previous => {
         const previousDirectChildren = previous.filter(item => getPathKey(getParentPath(item.path)) === pathKey);
-        const vanishedRoots = previousDirectChildren
+        const preservedLaterPages = listing.hasMore
+          ? previousDirectChildren.filter(item => !newEntryPaths.has(getPathKey(item.path)))
+          : [];
+        const vanishedRoots = listing.hasMore ? [] : previousDirectChildren
           .filter(item => !newEntryPaths.has(getPathKey(item.path)))
           .map(item => item.path);
         const retained = previous.filter(item =>
           getPathKey(getParentPath(item.path)) !== pathKey &&
           !vanishedRoots.some(root => isSameOrDescendantPath(item.path, root))
         );
-        return [...retained, ...listing.entries];
+        return [...retained, ...preservedLaterPages, ...listing.entries];
       });
       if (forceRefresh) {
-        const refreshedIds = new Set(listing.entries.map(item => item.id));
+        const cachedIds = listing.hasMore
+          ? allFiles.filter(item => getPathKey(getParentPath(item.path)) === pathKey).map(item => item.id)
+          : [];
+        const refreshedIds = new Set([...listing.entries.map(item => item.id), ...cachedIds]);
         updatePaneTab(targetPane, tab => {
           if (getPathKey(tab.currentPath) !== pathKey) return tab;
           const selectedIds = tab.selectedIds.filter(id => refreshedIds.has(id));
@@ -969,7 +975,45 @@ export default function App() {
     } finally {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
-  }, [activePane, activeLeftTabIndex, activeRightTabIndex, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectoryPage, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, newTabsNextToCurrent]);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectoryPage, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, newTabsNextToCurrent]);
+
+  const refreshChangedDirectories = useCallback(async (paths: string[]) => {
+    const affectedKeys = new Set(paths.filter(Boolean).map(getPathKey));
+    for (const key of affectedKeys) nativeLoadedDirectories.current.delete(key);
+    setAllFiles(previous => {
+      const affectedRoots = new Map<string, string[]>();
+      for (const item of previous) {
+        const parentKey = getPathKey(getParentPath(item.path));
+        if (!affectedKeys.has(parentKey)) continue;
+        affectedRoots.set(parentKey, [...(affectedRoots.get(parentKey) || []), item.path]);
+      }
+      return previous.filter(item => {
+        const parentKey = getPathKey(getParentPath(item.path));
+        return !affectedKeys.has(parentKey) && !Array.from(affectedRoots.values()).some(roots =>
+          roots.some(root => isSameOrDescendantPath(item.path, root))
+        );
+      });
+    });
+    setNativeDirectories(previous => {
+      const next = { ...previous };
+      for (const key of affectedKeys) next[key] = { nextOffset: 0, hasMore: false, loading: false };
+      return next;
+    });
+    const visible = [
+      { pane: 'left' as const, path: leftTabs[activeLeftTabIndex]?.currentPath },
+      { pane: 'right' as const, path: rightTabs[activeRightTabIndex]?.currentPath },
+    ];
+    const refreshes = new Map<string, 'left' | 'right'>();
+    for (const entry of visible) {
+      if (entry.path && affectedKeys.has(getPathKey(entry.path)) && entry.path !== SYSTEM_HOME_PATH && entry.path !== RECYCLE_BIN_PATH) {
+        refreshes.set(entry.pane + ':' + getPathKey(entry.path), entry.pane);
+      }
+    }
+    await Promise.all(Array.from(refreshes, ([key, pane]) => {
+      const path = visible.find(entry => entry.pane + ':' + getPathKey(entry.path || '') === key)?.path;
+      return path ? handleNavigate(path, pane, true) : Promise.resolve();
+    }));
+  }, [activeLeftTabIndex, activeRightTabIndex, handleNavigate, leftTabs, rightTabs]);
 
   const focusRefreshSnapshot = useRef({
     layout,
@@ -1360,8 +1404,8 @@ export default function App() {
 
   const createOperationId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-  const moveItemsToPath = useCallback((selectedIds: string[], targetPath: string, sourcePane: 'left' | 'right' = activePane) => {
-    if (targetPath === SYSTEM_HOME_PATH) {
+  const moveItemsToPath = useCallback(async (selectedIds: string[], targetPath: string, sourcePane: 'left' | 'right' = activePane) => {
+    if (targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH) {
       showToast(t.pane.chooseRealFolderFirst);
       return;
     }
@@ -1370,6 +1414,30 @@ export default function App() {
 
     if (roots.some(root => root.isFolder && isSameOrDescendantPath(targetPath, root.path))) {
       showToast(t.core.cannotMoveIntoSelf);
+      return;
+    }
+
+    if (isTauriDesktop()) {
+      if (isFileOperationBusy) return;
+      setIsFileOperationBusy(true);
+      try {
+        const result = await moveNativeItemsToDirectory(roots.map(root => root.path), targetPath);
+        await refreshChangedDirectories([...roots.map(root => getParentPath(root.path)), targetPath]);
+        updatePaneTab(sourcePane, tab => ({ ...tab, selectedIds: [], focusedId: null }));
+        if (result.failures.length > 0) {
+          const message = t.core.operationPartial
+            .replace('{completed}', String(result.completedPaths.length))
+            .replace('{failed}', String(result.failures.length))
+            .replace('{reason}', result.failures[0].error);
+          showToast(message);
+        } else if (result.completedPaths.length > 0) {
+          showToast(t.core.moved.replace('{count}', String(result.completedPaths.length)).replace('{target}', targetPath));
+        }
+      } catch (error) {
+        showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
+      } finally {
+        setIsFileOperationBusy(false);
+      }
       return;
     }
 
@@ -1402,18 +1470,38 @@ export default function App() {
 
     updatePaneTab(sourcePane, tab => ({ ...tab, selectedIds: [], focusedId: null }));
     showToast(t.core.moved.replace('{count}', String(roots.length)).replace('{target}', targetPath));
-  }, [activePane, allFiles, t.core.cannotMoveIntoSelf, t.core.moved, t.pane.chooseRealFolderFirst, showToast, updatePaneTab]);
+  }, [activePane, allFiles, isFileOperationBusy, refreshChangedDirectories, t.core.cannotMoveIntoSelf, t.core.moved, t.core.operationFailedWithReason, t.core.operationPartial, t.pane.chooseRealFolderFirst, showToast, updatePaneTab]);
 
   const handleCopySelected = useCallback(() => {
     const roots = getRootItems(allFiles, currentTab.selectedIds);
     if (roots.length === 0) return;
     const targetPath = inactiveTab.currentPath;
-    if (targetPath === SYSTEM_HOME_PATH) {
+    if (targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH) {
       showToast(t.pane.chooseRealFolderFirst);
       return;
     }
     if (roots.some(root => root.isFolder && isSameOrDescendantPath(targetPath, root.path))) {
       showToast(t.core.cannotCopyIntoSelf);
+      return;
+    }
+
+    if (isTauriDesktop()) {
+      if (isFileOperationBusy) return;
+      setIsFileOperationBusy(true);
+      void copyNativeItemsToDirectory(roots.map(root => root.path), targetPath)
+        .then(async result => {
+          await refreshChangedDirectories([targetPath]);
+          if (result.failures.length > 0) {
+            showToast(t.core.operationPartial
+              .replace('{completed}', String(result.completedPaths.length))
+              .replace('{failed}', String(result.failures.length))
+              .replace('{reason}', result.failures[0].error));
+          } else if (result.completedPaths.length > 0) {
+            showToast(t.core.copied.replace('{count}', String(result.completedPaths.length)).replace('{target}', inactiveTab.title));
+          }
+        })
+        .catch(error => showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))))
+        .finally(() => setIsFileOperationBusy(false));
       return;
     }
 
@@ -1435,17 +1523,83 @@ export default function App() {
 
     setAllFiles(prev => [...prev, ...newCopies]);
     showToast(t.core.copied.replace('{count}', String(roots.length)).replace('{target}', inactiveTab.title));
-  }, [allFiles, currentTab.selectedIds, inactiveTab.currentPath, inactiveTab.title, t.core.cannotCopyIntoSelf, t.core.copied, t.pane.chooseRealFolderFirst, showToast]);
+  }, [allFiles, currentTab.selectedIds, inactiveTab.currentPath, inactiveTab.title, isFileOperationBusy, refreshChangedDirectories, t.core.cannotCopyIntoSelf, t.core.copied, t.core.operationFailedWithReason, t.core.operationPartial, t.pane.chooseRealFolderFirst, showToast]);
 
   const handleMoveSelected = useCallback(() => {
     moveItemsToPath(currentTab.selectedIds, inactiveTab.currentPath);
   }, [currentTab.selectedIds, inactiveTab.currentPath, moveItemsToPath]);
 
+  const handleFileClipboard = useCallback(async (item: FileItem | undefined, isCut: boolean, pane: 'left' | 'right' = activePane) => {
+    if (!isTauriDesktop()) {
+      showToast(t.core.desktopFileOperationsOnly);
+      return;
+    }
+    const paneTab = pane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
+    const selectedIds = item
+      ? paneTab.selectedIds.includes(item.id) ? paneTab.selectedIds : [item.id]
+      : paneTab.selectedIds;
+    const roots = getRootItems(allFiles, selectedIds).filter(file => !file.recycleBinId && !file.path.startsWith('::'));
+    if (roots.length === 0) {
+      showToast(t.core.noSelection);
+      return;
+    }
+    try {
+      await setNativeFileClipboard(roots.map(file => file.path), isCut);
+      showToast(isCut ? t.core.filesCutToClipboard : t.core.filesCopiedToClipboard);
+    } catch (error) {
+      showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
+    }
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, allFiles, leftTabs, rightTabs, showToast, t.core.desktopFileOperationsOnly, t.core.filesCopiedToClipboard, t.core.filesCutToClipboard, t.core.noSelection, t.core.operationFailedWithReason]);
+
+  const handlePasteFiles = useCallback(async (pane: 'left' | 'right' = activePane, destinationOverride?: string) => {
+    if (!isTauriDesktop()) {
+      showToast(t.core.desktopFileOperationsOnly);
+      return;
+    }
+    if (isFileOperationBusy) return;
+    const paneTab = pane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
+    const targetPath = destinationOverride || paneTab.currentPath;
+    if (!targetPath || targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH) {
+      showToast(t.pane.chooseRealFolderFirst);
+      return;
+    }
+    setIsFileOperationBusy(true);
+    try {
+      const clipboard = await getNativeFileClipboard();
+      if (clipboard.paths.length === 0) {
+        showToast(t.core.fileClipboardEmpty);
+        return;
+      }
+      const result = clipboard.isCut
+        ? await moveNativeItemsToDirectory(clipboard.paths, targetPath)
+        : await copyNativeItemsToDirectory(clipboard.paths, targetPath);
+      await refreshChangedDirectories([
+        ...(clipboard.isCut ? clipboard.paths.map(getParentPath) : []),
+        targetPath,
+      ]);
+      if (clipboard.isCut && result.completedPaths.length > 0 && result.failures.length === 0) {
+        await clearNativeFileClipboard(clipboard.sequenceNumber);
+      }
+      if (result.failures.length > 0) {
+        showToast(t.core.operationPartial
+          .replace('{completed}', String(result.completedPaths.length))
+          .replace('{failed}', String(result.failures.length))
+          .replace('{reason}', result.failures[0].error));
+      } else if (result.completedPaths.length > 0) {
+        showToast(t.core.pasted.replace('{count}', String(result.completedPaths.length)));
+      }
+    } catch (error) {
+      showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
+    } finally {
+      setIsFileOperationBusy(false);
+    }
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, refreshChangedDirectories, rightTabs, showToast, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.operationPartial, t.core.pasted, t.pane.chooseRealFolderFirst]);
+
   const handleDropFiles = useCallback((droppedIds: string[], targetFolderPath?: string, sourcePane?: 'left' | 'right') => {
     moveItemsToPath(droppedIds, targetFolderPath || currentTab.currentPath, sourcePane);
   }, [currentTab.currentPath, moveItemsToPath]);
 
-  const handleInlineRename = useCallback((itemId: string, newName: string) => {
+  const handleInlineRename = useCallback(async (itemId: string, newName: string, pane: 'left' | 'right' = activePane) => {
     const item = allFiles.find(file => file.id === itemId);
     if (!item || !isValidFileName(newName)) {
       showToast(t.core.invalidName);
@@ -1457,6 +1611,35 @@ export default function App() {
     );
     if (siblingConflict) {
       showToast(t.core.conflict);
+      return;
+    }
+
+    if (isTauriDesktop()) {
+      if (isFileOperationBusy) return;
+      setIsFileOperationBusy(true);
+      try {
+        const renamedPath = await renameNativeItem(item.path, newName);
+        await refreshChangedDirectories([getParentPath(item.path)]);
+        const renamedId = `native-${encodeURIComponent(renamedPath.toLowerCase())}`;
+        const renamedEntry: FileItem = {
+          ...item,
+          id: renamedId,
+          name: newName,
+          path: renamedPath,
+          extension: item.isFolder ? '' : getFileExtension(newName),
+          type: detectFileType(newName, item.isFolder),
+        };
+        setAllFiles(previous => [
+          ...previous.filter(candidate => !isSameOrDescendantPath(candidate.path, item.path)),
+          renamedEntry,
+        ]);
+        updatePaneTab(pane, tab => ({ ...tab, selectedIds: [renamedId], focusedId: renamedId }));
+        showToast(t.core.renamed.replace('{name}', newName));
+      } catch (error) {
+        showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
+      } finally {
+        setIsFileOperationBusy(false);
+      }
       return;
     }
 
@@ -1475,7 +1658,7 @@ export default function App() {
       };
     }));
     showToast(t.core.renamed.replace('{name}', newName));
-  }, [allFiles, t.core.conflict, t.core.invalidName, t.core.renamed]);
+  }, [activePane, allFiles, isFileOperationBusy, refreshChangedDirectories, showToast, t.core.conflict, t.core.invalidName, t.core.operationFailedWithReason, t.core.renamed, updatePaneTab]);
 
   const handleRenameSelected = useCallback(() => {
     const item = selectedItemsForDelete[0];
@@ -1513,7 +1696,7 @@ export default function App() {
     }
   }, [showToast, t.preview.windowsPropertiesFailed]);
 
-  const handleApplyBatchRename = useCallback((renames: { id: string; original: string; renamed: string }[]) => {
+  const handleApplyBatchRename = useCallback(async (renames: { id: string; original: string; renamed: string }[]) => {
     const lookup = new Map(renames.map(rename => [rename.id, rename.renamed]));
     const roots = getRootItems(allFiles, renames.map(rename => rename.id));
     const destinations = new Map<string, string>();
@@ -1535,6 +1718,54 @@ export default function App() {
       destinations.set(root.id, joinWindowsPath(getParentPath(root.path), newName));
     }
 
+    if (isTauriDesktop()) {
+      if (isFileOperationBusy) return;
+      const changedRoots = roots.filter(root => destinations.has(root.id));
+      if (changedRoots.length === 0) return;
+      setIsFileOperationBusy(true);
+      const renamedPaths: string[] = [];
+      const renamedEntries: FileItem[] = [];
+      const failures: string[] = [];
+      try {
+        for (const root of changedRoots) {
+          try {
+            const newName = lookup.get(root.id)!;
+            const path = await renameNativeItem(root.path, newName);
+            const id = `native-${encodeURIComponent(path.toLowerCase())}`;
+            renamedPaths.push(path);
+            renamedEntries.push({
+              ...root,
+              id,
+              name: newName,
+              path,
+              extension: root.isFolder ? '' : getFileExtension(newName),
+              type: detectFileType(newName, root.isFolder),
+            });
+          } catch (error) {
+            failures.push(String(error));
+          }
+        }
+        await refreshChangedDirectories(changedRoots.map(root => getParentPath(root.path)));
+        setAllFiles(previous => [
+          ...previous.filter(candidate => !changedRoots.some(root => isSameOrDescendantPath(candidate.path, root.path))),
+          ...renamedEntries,
+        ]);
+        const renamedIds = renamedPaths.map(path => `native-${encodeURIComponent(path.toLowerCase())}`);
+        if (renamedIds.length > 0) updateActiveTab(tab => ({ ...tab, selectedIds: renamedIds, focusedId: renamedIds[0] }));
+        if (failures.length > 0) {
+          showToast(t.core.operationPartial
+            .replace('{completed}', String(renamedPaths.length))
+            .replace('{failed}', String(failures.length))
+            .replace('{reason}', failures[0]));
+        } else {
+          showToast(`${renamedPaths.length} ${language === 'es' ? 'elementos renombrados.' : 'items renamed.'}`);
+        }
+      } finally {
+        setIsFileOperationBusy(false);
+      }
+      return;
+    }
+
     const now = new Date().toISOString();
     setAllFiles(prev => prev.map(candidate => {
       const root = roots.find(item => isSameOrDescendantPath(candidate.path, item.path));
@@ -1551,24 +1782,58 @@ export default function App() {
       };
     }));
     showToast(`${renames.length} ${language === 'es' ? 'elementos renombrados.' : 'items renamed.'}`);
-  }, [allFiles, language, t.core.conflict, t.core.invalidName]);
+  }, [allFiles, isFileOperationBusy, language, refreshChangedDirectories, showToast, t.core.conflict, t.core.invalidName, t.core.operationPartial, updateActiveTab]);
 
-  const handleNewFolder = useCallback((suggestedName?: string) => {
-    if (!currentTab.currentPath) {
+  const handleNewFolder = useCallback(async (suggestedName?: string, pane: 'left' | 'right' = activePane) => {
+    const paneTab = pane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
+    const activePath = paneTab.currentPath;
+    if (!activePath) {
       showToast(t.pane.noFolderOpen);
       return;
     }
-    if (currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH) {
+    if (activePath === SYSTEM_HOME_PATH || activePath === RECYCLE_BIN_PATH) {
       showToast(t.pane.chooseRealFolderFirst);
       return;
     }
-    const baseName = suggestedName || (language === 'es' ? 'Nueva Carpeta' : 'New Folder');
+    const defaultName = language === 'es' ? 'Nueva Carpeta' : 'New Folder';
+    const baseName = suggestedName || window.prompt(language === 'es' ? 'Nombre de la carpeta:' : 'Folder name:', defaultName);
+    if (baseName === null) return;
     if (!isValidFileName(baseName)) {
       showToast(t.core.invalidName);
       return;
     }
-    const activePath = currentTab.currentPath;
     const folderName = getUniqueName(baseName, getChildItems(allFiles, activePath).map(item => item.name));
+    if (isTauriDesktop()) {
+      if (isFileOperationBusy) return;
+      setIsFileOperationBusy(true);
+      try {
+        const created = await createNativeDirectory(activePath, folderName);
+        await refreshChangedDirectories([activePath]);
+        const createdId = `native-${encodeURIComponent(created.path.toLowerCase())}`;
+        const createdEntry: FileItem = {
+          id: createdId,
+          name: created.name,
+          path: created.path,
+          isFolder: true,
+          type: 'folder',
+          size: 0,
+          modifiedDate: new Date().toISOString().replace('T', ' ').slice(0, 16),
+          extension: '',
+        };
+        setAllFiles(previous => [
+          ...previous.filter(item => getPathKey(item.path) !== getPathKey(created.path)),
+          createdEntry,
+        ]);
+        updatePaneTab(pane, tab => ({ ...tab, selectedIds: [createdId], focusedId: createdId }));
+        showToast(t.core.createdFolder.replace('{name}', created.name));
+      } catch (error) {
+        showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
+      } finally {
+        setIsFileOperationBusy(false);
+      }
+      return;
+    }
+
     const now = new Date().toISOString();
     const newFolderItem: FileItem = {
       id: createOperationId('folder'),
@@ -1583,9 +1848,9 @@ export default function App() {
     };
 
     setAllFiles(prev => [...prev, newFolderItem]);
-    updateActiveTab(tab => ({ ...tab, selectedIds: [newFolderItem.id], focusedId: newFolderItem.id }));
+    updatePaneTab(pane, tab => ({ ...tab, selectedIds: [newFolderItem.id], focusedId: newFolderItem.id }));
     showToast(t.core.createdFolder.replace('{name}', folderName));
-  }, [allFiles, currentTab.currentPath, language, showToast, t.core.createdFolder, t.core.invalidName, t.pane.chooseRealFolderFirst, t.pane.noFolderOpen, updateActiveTab]);
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, allFiles, isFileOperationBusy, language, leftTabs, refreshChangedDirectories, rightTabs, showToast, t.core.createdFolder, t.core.invalidName, t.core.operationFailedWithReason, t.pane.chooseRealFolderFirst, t.pane.noFolderOpen, updatePaneTab]);
 
   const handleDeleteSelected = useCallback((itemsToDelete?: FileItem[]) => {
     if (!isTauriDesktop()) {
@@ -1852,7 +2117,7 @@ export default function App() {
   // Keyboard Shortcuts listener
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (isCloseDialogOpen || isSettingsOpen || isSearchOpen || isShortcutsOpen || isBatchRenameOpen || pendingDeleteItems.length > 0) return;
+      if (isCloseDialogOpen || isSettingsOpen || isSearchOpen || isShortcutsOpen || isBatchRenameOpen || pendingDeleteItems.length > 0 || isFileOperationBusy) return;
 
       // If typing inside an input/textarea, don't hijack keys
       if (
@@ -1878,6 +2143,22 @@ export default function App() {
           selectedIds: visibleIds,
           focusedId: visibleIds[0] || null,
         }));
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
+        e.preventDefault();
+        void handleFileClipboard(undefined, false);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'x' || e.key === 'X')) {
+        e.preventDefault();
+        void handleFileClipboard(undefined, true);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V')) {
+        e.preventDefault();
+        void handlePasteFiles(activePane);
         return;
       }
 
@@ -1979,6 +2260,8 @@ export default function App() {
     language,
     handleCopySelected,
     handleMoveSelected,
+    handleFileClipboard,
+    handlePasteFiles,
     handleDeleteSelected,
     handleNewFolder,
     handleRenameSelected,
@@ -1991,6 +2274,7 @@ export default function App() {
     isShortcutsOpen,
     isBatchRenameOpen,
     pendingDeleteItems.length,
+    isFileOperationBusy,
   ]);
 
   // Context Menu trigger
@@ -2344,6 +2628,8 @@ export default function App() {
         position={contextMenuPos}
         viewMode={contextPaneTab.viewMode}
         hasFolder={Boolean(contextPaneTab.currentPath)}
+        canModifyFolder={Boolean(contextPaneTab.currentPath) && contextPaneTab.currentPath !== SYSTEM_HOME_PATH && contextPaneTab.currentPath !== RECYCLE_BIN_PATH}
+        fileClipboardSupported={isTauriDesktop()}
         hasFilter={Boolean(contextPaneTab.filterQuery)}
         onClose={() => setContextMenuPos(null)}
         onOpenFolder={handleOpenRealFolder}
@@ -2357,10 +2643,14 @@ export default function App() {
         }}
         onCopyOpposite={() => handleCopySelected()}
         onMoveOpposite={() => handleMoveSelected()}
+        onCopyToClipboard={item => { void handleFileClipboard(item, false, contextPane); }}
+        onCutToClipboard={item => { void handleFileClipboard(item, true, contextPane); }}
+        onPaste={() => { void handlePasteFiles(contextPane, contextPaneTab.currentPath); }}
+        onNewFolder={() => { void handleNewFolder(undefined, contextPane); }}
         onRename={(item) => {
           const newName = window.prompt(language === 'es' ? 'Nuevo nombre para el archivo:' : 'New file name:', item.name);
           if (newName && newName !== item.name) {
-            handleInlineRename(item.id, newName);
+            void handleInlineRename(item.id, newName, contextPane);
           }
         }}
         onBatchRename={() => setIsBatchRenameOpen(true)}

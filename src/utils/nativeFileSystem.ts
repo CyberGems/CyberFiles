@@ -68,6 +68,17 @@ export interface RecycleBinRestoreResult {
   failures: Array<{ path: string; error: string }>;
 }
 
+export interface NativeOperationResult {
+  completedPaths: string[];
+  failures: Array<{ path: string; error: string }>;
+}
+
+export interface NativeFileClipboard {
+  paths: string[];
+  isCut: boolean;
+  sequenceNumber: number;
+}
+
 const formatModifiedDate = (timestamp: number | null) => timestamp
   ? new Date(timestamp).toISOString().replace('T', ' ').slice(0, 16)
   : '';
@@ -100,6 +111,34 @@ export async function listNativeDirectory(path: string, offset = 0): Promise<{ r
     hasMore: result.hasMore,
     nextOffset: result.nextOffset,
   };
+}
+
+export async function createNativeDirectory(parentPath: string, name: string): Promise<{ path: string; name: string }> {
+  return invoke<{ path: string; name: string }>('create_directory', { parentPath, name });
+}
+
+export async function renameNativeItem(path: string, newName: string): Promise<string> {
+  return invoke<string>('rename_item', { path, newName });
+}
+
+export async function copyNativeItemsToDirectory(paths: string[], targetPath: string): Promise<NativeOperationResult> {
+  return invoke<NativeOperationResult>('copy_items_to_directory', { paths, targetPath });
+}
+
+export async function moveNativeItemsToDirectory(paths: string[], targetPath: string): Promise<NativeOperationResult> {
+  return invoke<NativeOperationResult>('move_items_to_directory', { paths, targetPath });
+}
+
+export async function setNativeFileClipboard(paths: string[], isCut: boolean): Promise<number> {
+  return invoke<number>('set_file_clipboard', { paths, isCut });
+}
+
+export async function getNativeFileClipboard(): Promise<NativeFileClipboard> {
+  return invoke<NativeFileClipboard>('get_file_clipboard');
+}
+
+export async function clearNativeFileClipboard(sequenceNumber: number): Promise<boolean> {
+  return invoke<boolean>('clear_file_clipboard', { sequenceNumber });
 }
 
 export async function loadNativeFolder(path: string): Promise<{ rootPath: string; rootName: string; files: FileItem[]; hasMore: boolean; nextOffset: number }> {
