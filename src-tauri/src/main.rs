@@ -2,7 +2,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    io::{self, Cursor, Write},
+    io::{self, Cursor},
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -105,7 +105,6 @@ fn show_main_window(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Resu
     if restore_maximized {
         window.maximize().map_err(|error| error.to_string())?;
     }
-    log_window_geometry(&window, &state_path, "after-show");
     window.set_focus().map_err(|error| error.to_string())
 }
 
@@ -1193,56 +1192,6 @@ fn write_window_state(path: &PathBuf, state: &StoredWindowState) -> Result<(), S
     .map_err(|error| error.to_string())
 }
 
-fn log_window_geometry(window: &tauri::WebviewWindow, state_path: &PathBuf, stage: &str) {
-    let monitor_details = window
-        .current_monitor()
-        .ok()
-        .flatten()
-        .map(|monitor| {
-            let position = monitor.position();
-            let size = monitor.size();
-            let work_area = monitor.work_area();
-            format!(
-                "name={:?} monitor=({}, {}) {}x{} work=({}, {}) {}x{} scale={:.2}",
-                monitor.name(),
-                position.x,
-                position.y,
-                size.width,
-                size.height,
-                work_area.position.x,
-                work_area.position.y,
-                work_area.size.width,
-                work_area.size.height,
-                monitor.scale_factor(),
-            )
-        })
-        .unwrap_or_else(|| "monitor=unavailable".to_string());
-    let position = window.outer_position().ok();
-    let outer_size = window.outer_size().ok();
-    let inner_size = window.inner_size().ok();
-    let line = format!(
-        "[window] {stage}: outer_position={position:?} outer_size={outer_size:?} inner_size={inner_size:?} visible={:?} maximized={:?} {monitor_details}\n",
-        window.is_visible().ok(),
-        window.is_maximized().ok(),
-    );
-
-    eprint!("{line}");
-    let log_path = state_path.with_file_name("cyberfiles-window.log");
-    if fs::metadata(&log_path)
-        .map(|metadata| metadata.len() > 64 * 1024)
-        .unwrap_or(false)
-    {
-        let _ = fs::write(&log_path, "");
-    }
-    if let Ok(mut file) = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(log_path)
-    {
-        let _ = file.write_all(line.as_bytes());
-    }
-}
-
 fn default_window_state(
     monitor: &tauri::Monitor,
     frame_width: u32,
@@ -1506,7 +1455,6 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
     window
         .set_position(PhysicalPosition::new(x, y))
         .map_err(|error| error.to_string())?;
-    log_window_geometry(window, path, "after-normal-bounds");
     Ok(())
 }
 
@@ -2844,9 +2792,6 @@ fn main() {
                         &toggle_for_window_events,
                         &window_for_close,
                     );
-                }
-                tauri::WindowEvent::Moved(_) => {
-                    log_window_geometry(&window_for_close, &state_path, "moved");
                 }
                 tauri::WindowEvent::Focused(_) => {
                     refresh_tray_toggle_label(
