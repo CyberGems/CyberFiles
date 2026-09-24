@@ -1011,6 +1011,12 @@ struct StoredWindowState {
     maximized: bool,
 }
 
+const DEFAULT_WINDOW_WIDTH_LOGICAL: f64 = 1200.0;
+const DEFAULT_WINDOW_HEIGHT_LOGICAL: f64 = 760.0;
+const MIN_WINDOW_WIDTH_LOGICAL: f64 = 900.0;
+const MIN_WINDOW_HEIGHT_LOGICAL: f64 = 480.0;
+const DEFAULT_WINDOW_WORK_AREA_RATIO: f64 = 0.85;
+
 fn window_state_path<R: tauri::Runtime, M: Manager<R>>(app: &M) -> Result<PathBuf, String> {
     app.path()
         .app_config_dir()
@@ -1028,6 +1034,53 @@ fn write_window_state(path: &PathBuf, state: &StoredWindowState) -> Result<(), S
         serde_json::to_vec(state).map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())
+}
+
+fn default_window_state(
+    monitor: &tauri::Monitor,
+    frame_width: u32,
+    frame_height: u32,
+) -> StoredWindowState {
+    let monitor_position = monitor.position();
+    let monitor_size = monitor.size();
+    let work_area = monitor.work_area();
+    let (work_position, work_size) = if work_area.size.width > 0 && work_area.size.height > 0 {
+        (work_area.position, work_area.size)
+    } else {
+        (*monitor_position, *monitor_size)
+    };
+    let scale = monitor.scale_factor();
+    let max_default_width = ((work_size.width as f64) * DEFAULT_WINDOW_WORK_AREA_RATIO)
+        .round()
+        .max(1.0) as u32;
+    let max_default_height = ((work_size.height as f64) * DEFAULT_WINDOW_WORK_AREA_RATIO)
+        .round()
+        .max(1.0) as u32;
+    let width = ((DEFAULT_WINDOW_WIDTH_LOGICAL * scale).round() as u32)
+        .saturating_add(frame_width)
+        .min(max_default_width)
+        .min(work_size.width);
+    let height = ((DEFAULT_WINDOW_HEIGHT_LOGICAL * scale).round() as u32)
+        .saturating_add(frame_height)
+        .min(max_default_height)
+        .min(work_size.height);
+
+    StoredWindowState {
+        monitor_name: monitor.name().cloned(),
+        monitor_x: monitor_position.x,
+        monitor_y: monitor_position.y,
+        monitor_width: monitor_size.width,
+        monitor_height: monitor_size.height,
+        x: work_position
+            .x
+            .saturating_add(work_size.width.saturating_sub(width) as i32 / 2),
+        y: work_position
+            .y
+            .saturating_add(work_size.height.saturating_sub(height) as i32 / 2),
+        width,
+        height,
+        maximized: false,
+    }
 }
 
 fn save_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result<(), String> {
@@ -1107,12 +1160,9 @@ fn save_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result<()
 }
 
 fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result<(), String> {
-    let Ok(encoded_state) = fs::read(path) else {
-        return Ok(());
-    };
-    let Ok(mut state) = serde_json::from_slice::<StoredWindowState>(&encoded_state) else {
-        return Ok(());
-    };
+    let mut saved_state = fs::read(path)
+        .ok()
+        .and_then(|encoded| serde_json::from_slice::<StoredWindowState>(&encoded).ok());
     let monitors = window
         .available_monitors()
         .map_err(|error| error.to_string())?;
@@ -1120,24 +1170,36 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
         return Ok(());
     }
 
-    let monitor = state
-        .monitor_name
+    let primary_monitor = window
+        .primary_monitor()
+        .map_err(|error| error.to_string())?;
+    let monitor = saved_state
         .as_ref()
-        .and_then(|name| {
-            monitors
-                .iter()
-                .find(|monitor| monitor.name().map(String::as_str) == Some(name.as_str()))
-        })
-        .or_else(|| {
-            monitors.iter().min_by_key(|monitor| {
-                let position = monitor.position();
-                let size = monitor.size();
-                i64::from(position.x.saturating_sub(state.monitor_x)).abs()
-                    + i64::from(position.y.saturating_sub(state.monitor_y)).abs()
-                    + i64::from(size.width.abs_diff(state.monitor_width))
-                    + i64::from(size.height.abs_diff(state.monitor_height))
+        .and_then(|state| {
+            state.monitor_name.as_ref().and_then(|name| {
+                monitors
+                    .iter()
+                    .find(|monitor| monitor.name().map(String::as_str) == Some(name.as_str()))
+                    .cloned()
             })
         })
+        .or_else(|| {
+            saved_state.as_ref().and_then(|state| {
+                monitors
+                    .iter()
+                    .min_by_key(|monitor| {
+                        let position = monitor.position();
+                        let size = monitor.size();
+                        i64::from(position.x.saturating_sub(state.monitor_x)).abs()
+                            + i64::from(position.y.saturating_sub(state.monitor_y)).abs()
+                            + i64::from(size.width.abs_diff(state.monitor_width))
+                            + i64::from(size.height.abs_diff(state.monitor_height))
+                    })
+                    .cloned()
+            })
+        })
+        .or(primary_monitor)
+        .or_else(|| monitors.first().cloned())
         .ok_or("No monitor is available to restore window state")?;
 
     let work_area = monitor.work_area();
@@ -1147,20 +1209,59 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
         return Ok(());
     }
     let monitor_size = monitor.size();
+
+    // Stored bounds and monitor work areas are physical pixels. Tauri's
+    // configured minimum size is in logical pixels, so translate it using the
+    // destination monitor's DPI and include the non-client frame.
+    let current_scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let scale_ratio = monitor.scale_factor() / current_scale.max(f64::EPSILON);
+    let current_outer_size = window.outer_size().map_err(|error| error.to_string())?;
+    let current_inner_size = window.inner_size().map_err(|error| error.to_string())?;
+    let frame_width = (current_outer_size
+        .width
+        .saturating_sub(current_inner_size.width) as f64
+        * scale_ratio)
+        .round() as u32;
+    let frame_height = (current_outer_size
+        .height
+        .saturating_sub(current_inner_size.height) as f64
+        * scale_ratio)
+        .round() as u32;
+
+    if saved_state.is_none() {
+        saved_state = Some(default_window_state(&monitor, frame_width, frame_height));
+    }
+    let mut state = saved_state.expect("window state was initialized above");
+    let default_width = ((DEFAULT_WINDOW_WIDTH_LOGICAL * monitor.scale_factor()).round() as u32)
+        .saturating_add(frame_width)
+        .min(((work_size.width as f64) * DEFAULT_WINDOW_WORK_AREA_RATIO).round() as u32)
+        .min(work_size.width);
+    let default_height = ((DEFAULT_WINDOW_HEIGHT_LOGICAL * monitor.scale_factor()).round() as u32)
+        .saturating_add(frame_height)
+        .min(((work_size.height as f64) * DEFAULT_WINDOW_WORK_AREA_RATIO).round() as u32)
+        .min(work_size.height);
     let oversized_for_monitor =
         state.width > monitor_size.width || state.height > monitor_size.height;
     let requested_width = if oversized_for_monitor {
-        1440
+        default_width
     } else {
         state.width
     };
     let requested_height = if oversized_for_monitor {
-        900
+        default_height
     } else {
         state.height
     };
-    let width = requested_width.clamp(1024.min(work_size.width), work_size.width);
-    let height = requested_height.clamp(680.min(work_size.height), work_size.height);
+    let minimum_width = (((MIN_WINDOW_WIDTH_LOGICAL * monitor.scale_factor()).round() as u32)
+        .saturating_add(frame_width))
+    .min(work_size.width)
+    .max(1);
+    let minimum_height = (((MIN_WINDOW_HEIGHT_LOGICAL * monitor.scale_factor()).round() as u32)
+        .saturating_add(frame_height))
+    .min(work_size.height)
+    .max(1);
+    let width = requested_width.clamp(minimum_width, work_size.width);
+    let height = requested_height.clamp(minimum_height, work_size.height);
     let max_x = work_position
         .x
         .saturating_add(work_size.width as i32)
@@ -1191,41 +1292,24 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
     let x = requested_x.clamp(work_position.x, max_x.max(work_position.x));
     let y = requested_y.clamp(work_position.y, max_y.max(work_position.y));
 
-    // Older builds could save a restored rectangle larger than its monitor.
-    // Treat that invalid geometry as a maximized launch, then retain sane normal
-    // bounds for the next time the user unmaximizes the window.
-    if oversized_for_monitor && !state.maximized {
-        let monitor_position = monitor.position();
-        state.monitor_name = monitor.name().cloned();
-        state.monitor_x = monitor_position.x;
-        state.monitor_y = monitor_position.y;
-        state.monitor_width = monitor_size.width;
-        state.monitor_height = monitor_size.height;
-        state.x = x;
-        state.y = y;
-        state.width = width;
-        state.height = height;
-        state.maximized = true;
-        let _ = write_window_state(path, &state);
-    }
+    // Normalize saved bounds even when launching maximized. Older state files
+    // could retain an oversized restore rectangle, which Windows would reuse
+    // when the user unmaximized the window.
+    let monitor_position = monitor.position();
+    state.monitor_name = monitor.name().cloned();
+    state.monitor_x = monitor_position.x;
+    state.monitor_y = monitor_position.y;
+    state.monitor_width = monitor_size.width;
+    state.monitor_height = monitor_size.height;
+    state.x = x;
+    state.y = y;
+    state.width = width;
+    state.height = height;
+    state.maximized |= oversized_for_monitor;
+    write_window_state(path, &state)?;
 
-    // Tauri's set_size changes the client area, while the saved bounds and
-    // Windows work area describe the complete window including its frame.
-    // Convert the outer target size back to the inner size at the target DPI.
-    let current_scale = window.scale_factor().map_err(|error| error.to_string())?;
-    let scale_ratio = monitor.scale_factor() / current_scale.max(f64::EPSILON);
-    let current_outer_size = window.outer_size().map_err(|error| error.to_string())?;
-    let current_inner_size = window.inner_size().map_err(|error| error.to_string())?;
-    let frame_width = (current_outer_size
-        .width
-        .saturating_sub(current_inner_size.width) as f64
-        * scale_ratio)
-        .round() as u32;
-    let frame_height = (current_outer_size
-        .height
-        .saturating_sub(current_inner_size.height) as f64
-        * scale_ratio)
-        .round() as u32;
+    // set_size changes the client area, while stored bounds describe the full
+    // decorated window. Convert the desired outer size to its client size.
     let inner_width = width.saturating_sub(frame_width).max(1);
     let inner_height = height.saturating_sub(frame_height).max(1);
 

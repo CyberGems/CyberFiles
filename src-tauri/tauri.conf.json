@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "CyberFiles Dev",
-        "width": 1440,
-        "height": 900,
-        "minWidth": 1024,
-        "minHeight": 680,
+        "width": 1200,
+        "height": 760,
+        "minWidth": 900,
+        "minHeight": 480,
         "resizable": true,
         "visible": false,
         "theme": "Dark"
