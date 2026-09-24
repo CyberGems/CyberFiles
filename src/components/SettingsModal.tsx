@@ -14,6 +14,11 @@ interface SettingsModalProps {
   globalShortcutSupported: boolean;
   globalShortcutError: string | null;
   onGlobalShortcutChange: (settings: { enabled: boolean; shortcut: string }) => Promise<void>;
+  instancePreferences: { allowMultipleInstances: boolean };
+  instancePreferencesLoaded: boolean;
+  instancePreferencesSupported: boolean;
+  instancePreferencesError: string | null;
+  onInstancePreferencesChange: (allowMultipleInstances: boolean) => Promise<void>;
   emptyAreaDoubleClickNavigatesUp: boolean;
   onEmptyAreaDoubleClickNavigatesUpChange: (enabled: boolean) => void;
   folderStyleLocked: boolean;
@@ -50,6 +55,11 @@ export function SettingsModal({
   globalShortcutSupported,
   globalShortcutError,
   onGlobalShortcutChange,
+  instancePreferences,
+  instancePreferencesLoaded,
+  instancePreferencesSupported,
+  instancePreferencesError,
+  onInstancePreferencesChange,
   emptyAreaDoubleClickNavigatesUp,
   onEmptyAreaDoubleClickNavigatesUpChange,
   folderStyleLocked,
@@ -238,6 +248,34 @@ export function SettingsModal({
                     ? globalShortcut.registered ? t.settings.hotkeyActive : t.settings.hotkeyNotRegistered
                     : t.settings.hotkeyDisabled)}
             </p>
+          </div>
+
+          <div className="border-t border-neutral-800 pt-4">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.instancesSection}</div>
+            <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+              <Tooltip label={t.settings.multipleInstancesTooltip} placement="top">
+                <label className={`flex items-center gap-2 ${instancePreferencesSupported ? 'cursor-pointer text-neutral-200' : 'text-neutral-500'}`}>
+                  <input
+                    type="checkbox"
+                    checked={instancePreferences.allowMultipleInstances}
+                    disabled={!instancePreferencesLoaded || !instancePreferencesSupported}
+                    onChange={event => void onInstancePreferencesChange(event.target.checked).catch(() => {})}
+                    className="h-4 w-4 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400 disabled:cursor-not-allowed"
+                  />
+                  {t.settings.multipleInstancesAllowed}
+                </label>
+              </Tooltip>
+              <p className="mt-1 pl-6">{t.settings.multipleInstancesDescription}</p>
+              {instancePreferencesError && (
+                <p className="mt-1 pl-6 text-rose-300">{instancePreferencesError}</p>
+              )}
+              {instancePreferencesLoaded && !instancePreferencesSupported && !instancePreferencesError && (
+                <p className="mt-1 pl-6">{t.settings.instancePreferencesDesktopOnly}</p>
+              )}
+              {instancePreferencesSupported && !instancePreferencesLoaded && (
+                <p className="mt-1 pl-6">{t.settings.instancePreferencesUnavailable}</p>
+              )}
+            </div>
           </div>
 
           <div className="border-t border-neutral-800 pt-4">

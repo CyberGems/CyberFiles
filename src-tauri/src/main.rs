@@ -51,6 +51,27 @@ struct GlobalShortcutState {
     config_path: PathBuf,
 }
 
+const APP_IDENTIFIER: &str = "com.cybergems.cyberfiles";
+const INSTANCE_PREFERENCES_FILE: &str = "cyberfiles-instance-preferences.json";
+
+#[derive(Clone, Deserialize, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct InstancePreferences {
+    allow_multiple_instances: bool,
+}
+
+struct InstancePreferencesState {
+    preferences: Mutex<InstancePreferences>,
+    config_path: PathBuf,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstancePreferencesStatus {
+    allow_multiple_instances: bool,
+    supported: bool,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct GlobalShortcutStatus {
@@ -160,6 +181,140 @@ fn global_shortcut_status(state: &GlobalShortcutState) -> Result<GlobalShortcutS
 #[tauri::command]
 fn get_global_shortcut_settings(app: tauri::AppHandle) -> Result<GlobalShortcutStatus, String> {
     global_shortcut_status(&app.state::<GlobalShortcutState>())
+}
+
+fn instance_preferences_config_path<R: tauri::Runtime, M: Manager<R>>(
+    app: &M,
+) -> Result<PathBuf, String> {
+    app.path()
+        .app_config_dir()
+        .map(|directory| directory.join(INSTANCE_PREFERENCES_FILE))
+        .map_err(|error| error.to_string())
+}
+
+fn load_instance_preferences(path: &Path) -> InstancePreferences {
+    fs::read(path)
+        .ok()
+        .and_then(|contents| serde_json::from_slice(&contents).ok())
+        .unwrap_or_default()
+}
+
+fn save_instance_preferences(path: &Path, preferences: &InstancePreferences) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or("Instance preference path has no parent directory")?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let contents = serde_json::to_vec(preferences).map_err(|error| error.to_string())?;
+    fs::write(path, contents).map_err(|error| error.to_string())
+}
+
+fn instance_preferences_status(preferences: &InstancePreferences) -> InstancePreferencesStatus {
+    InstancePreferencesStatus {
+        allow_multiple_instances: preferences.allow_multiple_instances,
+        supported: cfg!(target_os = "windows"),
+    }
+}
+
+#[tauri::command]
+fn get_instance_preferences(app: tauri::AppHandle) -> Result<InstancePreferencesStatus, String> {
+    let state = app.state::<InstancePreferencesState>();
+    state
+        .preferences
+        .lock()
+        .map(|preferences| instance_preferences_status(&preferences))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_instance_preferences(
+    allow_multiple_instances: bool,
+    app: tauri::AppHandle,
+) -> Result<InstancePreferencesStatus, String> {
+    let state = app.state::<InstancePreferencesState>();
+    let next_preferences = InstancePreferences {
+        allow_multiple_instances,
+    };
+    save_instance_preferences(&state.config_path, &next_preferences)?;
+    let mut preferences = state
+        .preferences
+        .lock()
+        .map_err(|error| error.to_string())?;
+    *preferences = next_preferences.clone();
+    Ok(instance_preferences_status(&next_preferences))
+}
+
+#[cfg(target_os = "windows")]
+struct SingleInstanceGuard(windows_sys::Win32::Foundation::HANDLE);
+
+#[cfg(target_os = "windows")]
+impl Drop for SingleInstanceGuard {
+    fn drop(&mut self) {
+        unsafe {
+            windows_sys::Win32::Foundation::CloseHandle(self.0);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn startup_instance_preferences_path() -> Result<PathBuf, String> {
+    std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .map(|directory| {
+            directory
+                .join(APP_IDENTIFIER)
+                .join(INSTANCE_PREFERENCES_FILE)
+        })
+        .ok_or("The Windows roaming application-data directory is unavailable".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn focus_existing_main_window() {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        FindWindowW, SetForegroundWindow, ShowWindow, SW_RESTORE,
+    };
+
+    let title: Vec<u16> = "CyberFiles Dev".encode_utf16().chain(Some(0)).collect();
+    let window = unsafe { FindWindowW(std::ptr::null(), title.as_ptr()) };
+    if !window.is_null() {
+        unsafe {
+            ShowWindow(window, SW_RESTORE);
+            SetForegroundWindow(window);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn acquire_single_instance_guard() -> Result<Option<SingleInstanceGuard>, String> {
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, GetLastError, SetLastError, ERROR_ALREADY_EXISTS},
+        System::Threading::CreateMutexW,
+    };
+
+    let name: Vec<u16> = "Local"
+        .encode_utf16()
+        .chain(Some(92))
+        .chain("com.cybergems.cyberfiles.single-instance".encode_utf16())
+        .chain(Some(0))
+        .collect();
+    unsafe {
+        SetLastError(0);
+    }
+    let handle = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
+    let last_error = unsafe { GetLastError() };
+    if handle.is_null() {
+        return Err(format!(
+            "Could not create the CyberFiles single-instance mutex (Windows error {last_error})."
+        ));
+    }
+    if last_error == ERROR_ALREADY_EXISTS {
+        unsafe {
+            CloseHandle(handle);
+        }
+        focus_existing_main_window();
+        Ok(None)
+    } else {
+        Ok(Some(SingleInstanceGuard(handle)))
+    }
 }
 
 #[tauri::command]
@@ -2543,6 +2698,23 @@ async fn open_recycle_bin_in_explorer() -> Result<(), String> {
 }
 
 fn main() {
+    #[cfg(target_os = "windows")]
+    let _single_instance_guard = {
+        let preferences_path = startup_instance_preferences_path()
+            .expect("Could not locate CyberFiles instance preferences");
+        let preferences = load_instance_preferences(&preferences_path);
+        if preferences.allow_multiple_instances {
+            None
+        } else {
+            let guard = acquire_single_instance_guard()
+                .expect("Could not enforce CyberFiles single-instance mode");
+            if guard.is_none() {
+                return;
+            }
+            guard
+        }
+    };
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(
@@ -2556,6 +2728,13 @@ fn main() {
                 .build(),
         )
         .setup(|app| {
+            let instance_config_path = instance_preferences_config_path(app)?;
+            let instance_preferences = load_instance_preferences(&instance_config_path);
+            app.manage(InstancePreferencesState {
+                preferences: Mutex::new(instance_preferences),
+                config_path: instance_config_path,
+            });
+
             let shortcut_config_path = global_shortcut_config_path(app)?;
             let shortcut_preferences = load_global_shortcut_preferences(&shortcut_config_path);
             app.manage(GlobalShortcutState {
@@ -2707,6 +2886,8 @@ fn main() {
             set_tray_language,
             get_global_shortcut_settings,
             set_global_shortcut_settings,
+            get_instance_preferences,
+            set_instance_preferences,
         ])
         .run(tauri::generate_context!())
         .expect("CyberFiles desktop shell failed to start");

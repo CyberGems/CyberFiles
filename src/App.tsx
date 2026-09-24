@@ -76,6 +76,11 @@ interface GlobalShortcutSettingsState {
   registered: boolean;
 }
 
+interface InstancePreferencesState {
+  allowMultipleInstances: boolean;
+  supported: boolean;
+}
+
 const DEFAULT_PANEL_VIEW_PREFERENCES: PanelViewPreferences = {
   layout: 'dual-vertical',
   previewOpen: true,
@@ -427,6 +432,13 @@ export default function App() {
   const [globalShortcutLoaded, setGlobalShortcutLoaded] = useState(false);
   const [globalShortcutSupported, setGlobalShortcutSupported] = useState(false);
   const [globalShortcutError, setGlobalShortcutError] = useState<string | null>(null);
+  const [instancePreferences, setInstancePreferences] = useState<InstancePreferencesState>({
+    allowMultipleInstances: false,
+    supported: false,
+  });
+  const [instancePreferencesLoaded, setInstancePreferencesLoaded] = useState(false);
+  const [instancePreferencesSupported, setInstancePreferencesSupported] = useState(false);
+  const [instancePreferencesError, setInstancePreferencesError] = useState<string | null>(null);
   const closeActionInProgress = useRef(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(() => {
     try {
@@ -475,6 +487,38 @@ export default function App() {
       throw new Error(t.settings.shortcutRegisterError);
     }
   }, [t.settings.shortcutDesktopOnly, t.settings.shortcutRegisterError]);
+
+  useEffect(() => {
+    if (!isTauriDesktop()) {
+      setInstancePreferencesLoaded(true);
+      return;
+    }
+    void invoke<InstancePreferencesState>('get_instance_preferences')
+      .then(saved => {
+        setInstancePreferences(saved);
+        setInstancePreferencesSupported(saved.supported);
+      })
+      .catch(() => setInstancePreferencesError(t.settings.instancePreferencesUnavailable))
+      .finally(() => setInstancePreferencesLoaded(true));
+  }, [t.settings.instancePreferencesUnavailable]);
+
+  const changeInstancePreferences = useCallback(async (allowMultipleInstances: boolean) => {
+    if (!isTauriDesktop()) {
+      setInstancePreferencesError(t.settings.instancePreferencesDesktopOnly);
+      return;
+    }
+    setInstancePreferencesError(null);
+    try {
+      const saved = await invoke<InstancePreferencesState>('set_instance_preferences', {
+        allowMultipleInstances,
+      });
+      setInstancePreferences(saved);
+      setInstancePreferencesSupported(saved.supported);
+    } catch {
+      setInstancePreferencesError(t.settings.instancePreferencesSaveError);
+      throw new Error(t.settings.instancePreferencesSaveError);
+    }
+  }, [t.settings.instancePreferencesDesktopOnly, t.settings.instancePreferencesSaveError]);
 
   const runCloseAction = useCallback(async (choice: 'hide' | 'quit', remember = rememberCloseChoice) => {
     if (closeActionInProgress.current) return;
@@ -2720,6 +2764,11 @@ export default function App() {
         globalShortcutSupported={globalShortcutSupported}
         globalShortcutError={globalShortcutError}
         onGlobalShortcutChange={changeGlobalShortcutSettings}
+        instancePreferences={instancePreferences}
+        instancePreferencesLoaded={instancePreferencesLoaded}
+        instancePreferencesSupported={instancePreferencesSupported}
+        instancePreferencesError={instancePreferencesError}
+        onInstancePreferencesChange={changeInstancePreferences}
         emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
         onEmptyAreaDoubleClickNavigatesUpChange={setEmptyAreaDoubleClickNavigatesUp}
         folderStyleLocked={folderStyleLocked}
