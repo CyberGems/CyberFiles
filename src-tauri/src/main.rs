@@ -72,7 +72,7 @@ fn runtime_info() -> RuntimeInfo {
 #[tauri::command]
 fn show_main_window(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
     let state_path = window_state_path(&app)?;
-    let restore_maximized = fs::read(state_path)
+    let restore_maximized = fs::read(&state_path)
         .ok()
         .and_then(|encoded| serde_json::from_slice::<StoredWindowState>(&encoded).ok())
         .is_some_and(|state| state.maximized);
@@ -1299,9 +1299,6 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
     window
         .set_position(PhysicalPosition::new(x, y))
         .map_err(|error| error.to_string())?;
-    if state.maximized {
-        window.maximize().map_err(|error| error.to_string())?;
-    }
     Ok(())
 }
 
