@@ -1110,7 +1110,7 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
     let Ok(encoded_state) = fs::read(path) else {
         return Ok(());
     };
-    let Ok(state) = serde_json::from_slice::<StoredWindowState>(&encoded_state) else {
+    let Ok(mut state) = serde_json::from_slice::<StoredWindowState>(&encoded_state) else {
         return Ok(());
     };
     let monitors = window
@@ -1191,8 +1191,46 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
     let x = requested_x.clamp(work_position.x, max_x.max(work_position.x));
     let y = requested_y.clamp(work_position.y, max_y.max(work_position.y));
 
+    // Older builds could save a restored rectangle larger than its monitor.
+    // Treat that invalid geometry as a maximized launch, then retain sane normal
+    // bounds for the next time the user unmaximizes the window.
+    if oversized_for_monitor && !state.maximized {
+        let monitor_position = monitor.position();
+        state.monitor_name = monitor.name().cloned();
+        state.monitor_x = monitor_position.x;
+        state.monitor_y = monitor_position.y;
+        state.monitor_width = monitor_size.width;
+        state.monitor_height = monitor_size.height;
+        state.x = x;
+        state.y = y;
+        state.width = width;
+        state.height = height;
+        state.maximized = true;
+        let _ = write_window_state(path, &state);
+    }
+
+    // Tauri's set_size changes the client area, while the saved bounds and
+    // Windows work area describe the complete window including its frame.
+    // Convert the outer target size back to the inner size at the target DPI.
+    let current_scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let scale_ratio = monitor.scale_factor() / current_scale.max(f64::EPSILON);
+    let current_outer_size = window.outer_size().map_err(|error| error.to_string())?;
+    let current_inner_size = window.inner_size().map_err(|error| error.to_string())?;
+    let frame_width = (current_outer_size
+        .width
+        .saturating_sub(current_inner_size.width) as f64
+        * scale_ratio)
+        .round() as u32;
+    let frame_height = (current_outer_size
+        .height
+        .saturating_sub(current_inner_size.height) as f64
+        * scale_ratio)
+        .round() as u32;
+    let inner_width = width.saturating_sub(frame_width).max(1);
+    let inner_height = height.saturating_sub(frame_height).max(1);
+
     window
-        .set_size(PhysicalSize::new(width, height))
+        .set_size(PhysicalSize::new(inner_width, inner_height))
         .map_err(|error| error.to_string())?;
     window
         .set_position(PhysicalPosition::new(x, y))
@@ -2507,7 +2545,25 @@ fn main() {
                 tauri::WindowEvent::CloseRequested { .. } => {
                     let _ = save_window_state(&window_for_close, &state_path);
                 }
-                tauri::WindowEvent::Focused(_) | tauri::WindowEvent::Resized(_) => {
+                tauri::WindowEvent::Resized(_) => {
+                    let saved_maximized = fs::read(&state_path)
+                        .ok()
+                        .and_then(|encoded| {
+                            serde_json::from_slice::<StoredWindowState>(&encoded).ok()
+                        })
+                        .is_some_and(|state| state.maximized);
+                    let maximized = window_for_close.is_maximized().unwrap_or(saved_maximized);
+                    let minimized = window_for_close.is_minimized().unwrap_or(false);
+                    if !minimized && maximized != saved_maximized {
+                        let _ = save_window_state(&window_for_close, &state_path);
+                    }
+                    refresh_tray_toggle_label(
+                        &app_for_window_events,
+                        &toggle_for_window_events,
+                        &window_for_close,
+                    );
+                }
+                tauri::WindowEvent::Focused(_) => {
                     refresh_tray_toggle_label(
                         &app_for_window_events,
                         &toggle_for_window_events,
