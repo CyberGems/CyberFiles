@@ -1262,35 +1262,15 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
     .max(1);
     let width = requested_width.clamp(minimum_width, work_size.width);
     let height = requested_height.clamp(minimum_height, work_size.height);
-    let max_x = work_position
+    // Keep the selected monitor and restored dimensions, but center each
+    // launch within its work area. This prevents legacy coordinates, often
+    // saved across monitors with different DPI, from straddling displays.
+    let x = work_position
         .x
-        .saturating_add(work_size.width as i32)
-        .saturating_sub(width as i32);
-    let max_y = work_position
+        .saturating_add(work_size.width.saturating_sub(width) as i32 / 2);
+    let y = work_position
         .y
-        .saturating_add(work_size.height as i32)
-        .saturating_sub(height as i32);
-    let (requested_x, requested_y) = if oversized_for_monitor {
-        (
-            work_position
-                .x
-                .saturating_add(work_size.width.saturating_sub(width) as i32 / 2),
-            work_position
-                .y
-                .saturating_add(work_size.height.saturating_sub(height) as i32 / 2),
-        )
-    } else {
-        (
-            work_position
-                .x
-                .saturating_add(state.x.saturating_sub(state.monitor_x)),
-            work_position
-                .y
-                .saturating_add(state.y.saturating_sub(state.monitor_y)),
-        )
-    };
-    let x = requested_x.clamp(work_position.x, max_x.max(work_position.x));
-    let y = requested_y.clamp(work_position.y, max_y.max(work_position.y));
+        .saturating_add(work_size.height.saturating_sub(height) as i32 / 2);
 
     // Normalize saved bounds even when launching maximized. Older state files
     // could retain an oversized restore rectangle, which Windows would reuse
