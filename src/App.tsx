@@ -2652,6 +2652,7 @@ export default function App() {
 
       {/* 3. Global Bottom Status Bar */}
       <BottomStatusBar
+        layout={layout}
         activePane={activePane}
         currentTab={currentTab}
         activeFiles={activeDisplayFiles}

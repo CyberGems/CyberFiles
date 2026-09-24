@@ -323,8 +323,8 @@ export const translations = {
       close: 'Cerrar Visor (Esc)',
     },
     statusBar: {
-      leftPane: 'Panel Izquierdo',
-      rightPane: 'Panel Derecho',
+      leftPane: 'Panel activo: izquierdo',
+      rightPane: 'Panel activo: derecho',
       itemsSelected: '{selected} de {total} elementos seleccionados',
       freeSpaceOn: 'Libre en {drive}: {free} de {total}',
       ready: 'Listo',
@@ -767,8 +767,8 @@ export const translations = {
       close: 'Close Viewer (Esc)',
     },
     statusBar: {
-      leftPane: 'Left Pane',
-      rightPane: 'Right Pane',
+      leftPane: 'Active pane: left',
+      rightPane: 'Active pane: right',
       itemsSelected: '{selected} of {total} items selected',
       freeSpaceOn: 'Free on {drive}: {free} of {total}',
       ready: 'Ready',

@@ -353,7 +353,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           event.stopPropagation();
           setColumnWidths(previous => resizeFileColumns(previous, column, event.key === 'ArrowRight' ? 10 : -10));
         }}
-        className="absolute -right-1.5 top-0 z-10 h-full w-3 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:left-1/2 before:top-1/2 before:h-5 before:w-1 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:bg-transparent before:transition-colors after:pointer-events-none after:absolute after:bottom-1 after:left-1/2 after:top-1 after:w-0.5 after:-translate-x-1/2 after:bg-transparent after:transition-colors group-hover:before:bg-neutral-500/70 group-hover:after:bg-neutral-600 hover:before:bg-cyan-300 hover:after:bg-cyan-300 focus-visible:before:bg-cyan-300 focus-visible:after:bg-cyan-300"
+        className="absolute -right-1.5 top-0 z-10 h-full w-3 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:left-1/2 before:top-1/2 before:h-5 before:w-1 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:bg-transparent before:transition-colors after:pointer-events-none after:absolute after:bottom-1 after:left-1/2 after:top-1 after:w-0.5 after:-translate-x-1/2 after:rounded-full after:bg-neutral-700/80 after:transition-colors group-hover:before:bg-neutral-500/70 group-hover:after:bg-neutral-500 hover:before:bg-cyan-300 hover:after:bg-cyan-300 focus-visible:before:bg-cyan-300 focus-visible:after:bg-cyan-300"
       />
     </Tooltip>
   );
@@ -844,7 +844,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
       {/* 4. Column Headers (Details View) */}
       {effectiveViewMode === 'details' && (
-        <div className="grid items-center gap-2 bg-neutral-950 border-b border-neutral-800 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 select-none" style={{ gridTemplateColumns: `${columnWidths.extension}px minmax(100px, 1fr) ${columnWidths.size}px ${columnWidths.modified}px` }}>
+        <div className="grid items-center gap-2 bg-neutral-950 border-b border-neutral-800 px-[11px] py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 select-none" style={{ gridTemplateColumns: `${columnWidths.extension}px minmax(100px, 1fr) ${columnWidths.size}px ${columnWidths.modified}px` }}>
           <Tooltip label={t.pane.columns.extension} placement="bottom">
             <div onClick={() => onSortChange('extension')} className="group relative flex min-w-0 items-center gap-1 rounded-sm cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100">
               <span>{t.pane.columns.extension}</span>
@@ -855,7 +855,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
           <div 
             onClick={() => onSortChange('name')}
-            className="group relative flex min-w-0 items-center gap-1 rounded-sm cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100"
+            className="group relative flex min-w-0 items-center gap-1 rounded-sm pl-6 cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100"
           >
             <span>{t.pane.columns.name}</span>
             {tab.sortField === 'name' && <ArrowUpDown className="w-2.5 h-2.5 text-cyan-400" />}
