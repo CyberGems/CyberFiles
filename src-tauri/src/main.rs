@@ -2,7 +2,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    io::{self, Cursor},
+    io::{self, Cursor, Write},
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -76,13 +76,15 @@ fn show_main_window(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Resu
         .ok()
         .and_then(|encoded| serde_json::from_slice::<StoredWindowState>(&encoded).ok())
         .is_some_and(|state| state.maximized);
-    if restore_maximized {
-        let _ = window.maximize();
-    }
     window.show().map_err(|error| error.to_string())?;
-    if restore_maximized && !window.is_maximized().unwrap_or(false) {
+    // Bounds assigned while the initially hidden native window is being
+    // created can be ignored by Windows. Apply its normal, centered rectangle
+    // once it is visible, before switching back to maximized mode.
+    restore_window_state(&window, &state_path)?;
+    if restore_maximized {
         window.maximize().map_err(|error| error.to_string())?;
     }
+    log_window_geometry(&window, &state_path, "after-show");
     window.set_focus().map_err(|error| error.to_string())
 }
 
@@ -1036,6 +1038,56 @@ fn write_window_state(path: &PathBuf, state: &StoredWindowState) -> Result<(), S
     .map_err(|error| error.to_string())
 }
 
+fn log_window_geometry(window: &tauri::WebviewWindow, state_path: &PathBuf, stage: &str) {
+    let monitor_details = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .map(|monitor| {
+            let position = monitor.position();
+            let size = monitor.size();
+            let work_area = monitor.work_area();
+            format!(
+                "name={:?} monitor=({}, {}) {}x{} work=({}, {}) {}x{} scale={:.2}",
+                monitor.name(),
+                position.x,
+                position.y,
+                size.width,
+                size.height,
+                work_area.position.x,
+                work_area.position.y,
+                work_area.size.width,
+                work_area.size.height,
+                monitor.scale_factor(),
+            )
+        })
+        .unwrap_or_else(|| "monitor=unavailable".to_string());
+    let position = window.outer_position().ok();
+    let outer_size = window.outer_size().ok();
+    let inner_size = window.inner_size().ok();
+    let line = format!(
+        "[window] {stage}: outer_position={position:?} outer_size={outer_size:?} inner_size={inner_size:?} visible={:?} maximized={:?} {monitor_details}\n",
+        window.is_visible().ok(),
+        window.is_maximized().ok(),
+    );
+
+    eprint!("{line}");
+    let log_path = state_path.with_file_name("cyberfiles-window.log");
+    if fs::metadata(&log_path)
+        .map(|metadata| metadata.len() > 64 * 1024)
+        .unwrap_or(false)
+    {
+        let _ = fs::write(&log_path, "");
+    }
+    if let Ok(mut file) = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)
+    {
+        let _ = file.write_all(line.as_bytes());
+    }
+}
+
 fn default_window_state(
     monitor: &tauri::Monitor,
     frame_width: u32,
@@ -1299,6 +1351,7 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
     window
         .set_position(PhysicalPosition::new(x, y))
         .map_err(|error| error.to_string())?;
+    log_window_geometry(window, path, "after-normal-bounds");
     Ok(())
 }
 
@@ -2607,22 +2660,14 @@ fn main() {
                     let _ = save_window_state(&window_for_close, &state_path);
                 }
                 tauri::WindowEvent::Resized(_) => {
-                    let saved_maximized = fs::read(&state_path)
-                        .ok()
-                        .and_then(|encoded| {
-                            serde_json::from_slice::<StoredWindowState>(&encoded).ok()
-                        })
-                        .is_some_and(|state| state.maximized);
-                    let maximized = window_for_close.is_maximized().unwrap_or(saved_maximized);
-                    let minimized = window_for_close.is_minimized().unwrap_or(false);
-                    if !minimized && maximized != saved_maximized {
-                        let _ = save_window_state(&window_for_close, &state_path);
-                    }
                     refresh_tray_toggle_label(
                         &app_for_window_events,
                         &toggle_for_window_events,
                         &window_for_close,
                     );
+                }
+                tauri::WindowEvent::Moved(_) => {
+                    log_window_geometry(&window_for_close, &state_path, "moved");
                 }
                 tauri::WindowEvent::Focused(_) => {
                     refresh_tray_toggle_label(
