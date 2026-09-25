@@ -691,7 +691,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
         className={`group flex min-h-[68px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
           selected
             ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
-            : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'
+            : isRecentlyChanged(item)
+              ? 'border-transparent border-l-2 border-l-amber-400/45 bg-amber-950/20 hover:bg-amber-950/30'
+              : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'
         }`}
       >
         <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg ${
@@ -706,7 +708,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           {icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span className={`block truncate text-xs text-neutral-100 ${isRecentlyChanged(item) ? 'font-bold' : 'font-medium'}`}>{item.name}</span>
+          <span className={`block truncate text-xs text-neutral-100 ${isRecentlyChanged(item) && !selected ? 'font-bold text-amber-100' : 'font-medium'}`}>{item.name}</span>
           {category === 'folder' ? (
             <span className="mt-1 block truncate text-[10px] text-neutral-500">{item.path}</span>
           ) : hasCapacity && drive ? (
@@ -1047,6 +1049,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   className={`grid items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-700/60 text-neutral-100 font-medium'
+                      : isRecentlyChanged(item)
+                      ? 'border-l-2 border-l-amber-400/45 bg-amber-950/20 text-neutral-200 hover:bg-amber-950/30 hover:text-neutral-100'
                       : isZebra
                       ? 'bg-neutral-900/30 border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
                       : 'bg-transparent border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
@@ -1098,7 +1102,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       </form>
                     ) : (
                       <Tooltip label={renderItemTooltip(item)} placement="top">
-                        <span className={`truncate text-[11.5px] ${isRecentlyChanged(item) ? 'font-bold' : 'font-medium'}`}>{item.name}</span>
+                        <span className={`truncate text-[11.5px] ${isRecentlyChanged(item) && !isSelected ? 'font-bold text-amber-100' : 'font-medium'}`}>{item.name}</span>
                       </Tooltip>
                     )}
                   </div>
@@ -1139,12 +1143,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   className={`flex min-w-0 items-center gap-2 rounded border px-2 py-1.5 text-xs transition-colors ${
                     isSelected
                       ? 'border-cyan-700/60 bg-cyan-950/70 text-neutral-100'
-                      : 'border-transparent text-neutral-300 hover:border-neutral-800 hover:bg-neutral-800/60 hover:text-neutral-100'
+                      : isRecentlyChanged(item)
+                        ? 'border-transparent border-l-2 border-l-amber-400/45 bg-amber-950/15 text-neutral-200 hover:bg-amber-950/25'
+                        : 'border-transparent text-neutral-300 hover:border-neutral-800 hover:bg-neutral-800/60 hover:text-neutral-100'
                   }`}
                 >
                   <span className="flex-shrink-0">{getFileIcon(item.type, item.isFolder)}</span>
                   <Tooltip label={renderItemTooltip(item)} placement="top">
-                    <span className={`min-w-0 flex-1 truncate ${isRecentlyChanged(item) ? 'font-bold' : ''}`}>{item.name}</span>
+                    <span className={`min-w-0 flex-1 truncate ${isRecentlyChanged(item) && !isSelected ? 'font-bold text-amber-100' : ''}`}>{item.name}</span>
                   </Tooltip>
                   {!item.isFolder && <span className="flex-shrink-0 font-mono text-[10px] text-neutral-500">{formatFileSize(item.size)}</span>}
                 </div>
@@ -1170,7 +1176,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   className={`flex min-w-0 flex-col items-center justify-start gap-1.5 rounded-lg border p-2.5 text-center cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-600/70 text-neutral-100 shadow'
-                      : 'border-neutral-800/40 bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60 hover:border-neutral-700'
+                      : isRecentlyChanged(item)
+                        ? 'border-amber-400/25 bg-amber-950/20 text-neutral-200 ring-1 ring-inset ring-amber-400/10 hover:bg-amber-950/30'
+                        : 'border-neutral-800/40 bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60 hover:border-neutral-700'
                   }`}
                 >
                   <div className="flex w-full items-center justify-center">
@@ -1185,7 +1193,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     )}
                   </div>
                   <Tooltip label={renderItemTooltip(item)} placement="top">
-                    <span className={`w-full truncate px-1 text-[11px] ${isRecentlyChanged(item) ? 'font-bold' : 'font-medium'}`}>{item.name}</span>
+                    <span className={`w-full truncate px-1 text-[11px] ${isRecentlyChanged(item) && !isSelected ? 'font-bold text-amber-100' : 'font-medium'}`}>{item.name}</span>
                   </Tooltip>
                   <span className="mt-0.5 text-[9px] font-mono text-neutral-400">
                     {item.isFolder ? 'Carpeta' : formatFileSize(item.size)}

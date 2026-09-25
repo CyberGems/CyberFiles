@@ -79,6 +79,7 @@ export interface QuickAccessItem {
   path: string;
   icon: string;
   count?: number;
+  isCustom?: boolean;
 }
 
 export interface BatchRenameRule {

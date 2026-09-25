@@ -19,6 +19,7 @@ import {
   Trash2,
   Eye,
   X,
+  Plus,
   Copy,
   MoveRight,
   Pencil,
@@ -37,6 +38,10 @@ import { Tooltip } from './Tooltip';
 interface SidebarProps {
   drives: DriveInfo[];
   quickAccess: QuickAccessItem[];
+  onAddQuickAccess?: () => void;
+  onOpenCustomQuickAccess: (item: QuickAccessItem) => void;
+  onRenameQuickAccess: (id: string, name: string) => void;
+  onRemoveQuickAccess: (id: string) => void;
   allFiles?: FileItem[];
   currentPath: string;
   onNavigate: (path: string) => void;
@@ -68,6 +73,10 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   drives,
   quickAccess,
+  onAddQuickAccess,
+  onOpenCustomQuickAccess,
+  onRenameQuickAccess,
+  onRemoveQuickAccess,
   allFiles = [],
   currentPath,
   onNavigate,
@@ -98,6 +107,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [activeTab, setActiveTab] = useState<'tree' | 'recent'>('tree');
   const [recentSearch, setRecentSearch] = useState('');
   const [recentCategory, setRecentCategory] = useState<'all' | 'code' | 'image' | 'document' | 'media'>('all');
+  const [editingQuickAccessId, setEditingQuickAccessId] = useState<string | null>(null);
+  const [editingQuickAccessName, setEditingQuickAccessName] = useState('');
   const [collapsedSections, setCollapsedSections] = useState(() => {
     try {
       const saved = JSON.parse(window.localStorage.getItem('cyberfiles_sidebar_collapsed_sections_v1') || 'null');
@@ -120,6 +131,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const toggleSection = (section: 'drives' | 'quickAccess') => {
     setCollapsedSections(previous => ({ ...previous, [section]: !previous[section] }));
+  };
+
+  const startQuickAccessRename = (item: QuickAccessItem) => {
+    setEditingQuickAccessId(item.id);
+    setEditingQuickAccessName(item.name);
+  };
+
+  const cancelQuickAccessRename = () => {
+    setEditingQuickAccessId(null);
+    setEditingQuickAccessName('');
+  };
+
+  const saveQuickAccessRename = (id: string) => {
+    const name = editingQuickAccessName.trim().slice(0, 80);
+    if (!name) return;
+    onRenameQuickAccess(id, name);
+    cancelQuickAccessRename();
   };
 
   const getQuickAccessIcon = (iconName: string) => {
@@ -424,50 +452,145 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           )}
 
-          {quickAccess.length > 0 && (
-          <div className="space-y-1">
-            <button
-              type="button"
-              onClick={() => toggleSection('quickAccess')}
-              aria-expanded={!collapsedSections.quickAccess}
-              aria-label={`${t.sidebar.quickAccessTitle}: ${collapsedSections.quickAccess ? t.sidebar.expandSection : t.sidebar.collapseSection}`}
-              className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[10px] font-semibold uppercase tracking-wider text-neutral-400 transition-colors hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
-            >
-              {collapsedSections.quickAccess ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              <span>{t.sidebar.quickAccessTitle}</span>
-            </button>
+          {(quickAccess.length > 0 || onAddQuickAccess) && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => toggleSection('quickAccess')}
+                  aria-expanded={!collapsedSections.quickAccess}
+                  aria-label={`${t.sidebar.quickAccessTitle}: ${collapsedSections.quickAccess ? t.sidebar.expandSection : t.sidebar.collapseSection}`}
+                  className="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-left text-[10px] font-semibold uppercase tracking-wider text-neutral-400 transition-colors hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+                >
+                  {collapsedSections.quickAccess ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  <span>{t.sidebar.quickAccessTitle}</span>
+                </button>
+                {onAddQuickAccess && (
+                  <Tooltip label={t.sidebar.addQuickAccess} placement="right">
+                    <button
+                      type="button"
+                      onClick={onAddQuickAccess}
+                      aria-label={t.sidebar.addQuickAccess}
+                      className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </button>
+                  </Tooltip>
+                )}
+              </div>
 
-            {!collapsedSections.quickAccess && <div className="space-y-0.5">
-              {quickAccess.map((item) => {
-                const isSelected = currentPath.toLowerCase() === item.path.toLowerCase();
+              {!collapsedSections.quickAccess && <div className="space-y-0.5">
+                {quickAccess.map(item => {
+                  const isSelected = currentPath.toLowerCase() === item.path.toLowerCase();
+                  const isEditing = editingQuickAccessId === item.id;
 
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => onNavigate(item.path)}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-left transition-colors ${
-                      isSelected
-                        ? 'bg-neutral-800/90 text-cyan-300 font-medium'
-                        : 'text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <span className={isSelected ? 'text-cyan-400' : 'text-neutral-400'}>
-                        {getQuickAccessIcon(item.icon)}
-                      </span>
-                      <span className="truncate text-[11px]">{item.name}</span>
+                  if (isEditing && item.isCustom) {
+                    return (
+                      <form
+                        key={item.id}
+                        onSubmit={event => {
+                          event.preventDefault();
+                          saveQuickAccessRename(item.id);
+                        }}
+                        className="flex min-w-0 items-center gap-1 rounded-md bg-neutral-900/80 px-1 py-1"
+                      >
+                        <Tooltip label={t.sidebar.quickAccessNamePlaceholder} placement="right">
+                          <input
+                            autoFocus
+                            type="text"
+                            value={editingQuickAccessName}
+                            aria-label={t.sidebar.quickAccessNamePlaceholder}
+                            maxLength={80}
+                            onChange={event => setEditingQuickAccessName(event.target.value)}
+                            onKeyDown={event => {
+                              if (event.key === 'Escape') {
+                                event.preventDefault();
+                                cancelQuickAccessRename();
+                              }
+                            }}
+                            className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-950 px-1.5 py-1 text-[11px] text-neutral-100 outline-none focus:border-cyan-500/70"
+                          />
+                        </Tooltip>
+                        <Tooltip label={t.sidebar.saveQuickAccessName} placement="right">
+                          <button
+                            type="submit"
+                            disabled={!editingQuickAccessName.trim()}
+                            aria-label={t.sidebar.saveQuickAccessName}
+                            className="rounded p-1 text-cyan-300 transition-colors hover:bg-neutral-800 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Check className="h-3 w-3" />
+                          </button>
+                        </Tooltip>
+                        <Tooltip label={t.sidebar.cancelQuickAccessRename} placement="right">
+                          <button
+                            type="button"
+                            onClick={cancelQuickAccessRename}
+                            aria-label={t.sidebar.cancelQuickAccessRename}
+                            className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Tooltip>
+                      </form>
+                    );
+                  }
+
+                  return (
+                    <div key={item.id} className="group flex min-w-0 items-center gap-0.5">
+                      <Tooltip label={item.path} placement="right">
+                        <button
+                          type="button"
+                          onClick={() => item.isCustom ? onOpenCustomQuickAccess(item) : onNavigate(item.path)}
+                          className={`flex min-w-0 flex-1 items-center justify-between rounded-md px-2.5 py-1.5 text-left transition-colors ${
+                            isSelected
+                              ? 'bg-neutral-800/90 text-cyan-300 font-medium'
+                              : 'text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100'
+                          }`}
+                        >
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className={isSelected ? 'text-cyan-400' : 'text-neutral-400'}>
+                              {getQuickAccessIcon(item.icon)}
+                            </span>
+                            <span className="truncate text-[11px]">{item.name}</span>
+                          </span>
+
+                          {item.count !== undefined && (
+                            <span className="ml-1 flex-shrink-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-[9px] font-mono text-neutral-400">
+                              {item.count}
+                            </span>
+                          )}
+                        </button>
+                      </Tooltip>
+
+                      {item.isCustom && (
+                        <div className="flex flex-shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                          <Tooltip label={t.sidebar.renameQuickAccess} placement="right">
+                            <button
+                              type="button"
+                              onClick={() => startQuickAccessRename(item)}
+                              aria-label={t.sidebar.renameQuickAccess}
+                              className="rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip label={t.sidebar.removeQuickAccess} placement="right">
+                            <button
+                              type="button"
+                              onClick={() => onRemoveQuickAccess(item.id)}
+                              aria-label={t.sidebar.removeQuickAccess}
+                              className="rounded p-1 text-neutral-500 transition-colors hover:bg-rose-950/60 hover:text-rose-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-500/70"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </Tooltip>
+                        </div>
+                      )}
                     </div>
-
-                    {item.count !== undefined && (
-                      <span className="text-[9px] font-mono text-neutral-400 bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-800">
-                        {item.count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>}
-          </div>
+                  );
+                })}
+              </div>}
+            </div>
           )}
         </div>
       ) : (

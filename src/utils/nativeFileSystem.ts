@@ -104,9 +104,9 @@ export async function loadNativeTextPreview(path: string): Promise<string> {
   return invoke<string>('read_text_preview', { path });
 }
 
-export async function chooseNativeFolder(): Promise<string | null> {
+export async function chooseNativeFolder(title = 'Open a folder in CyberFiles'): Promise<string | null> {
   if (!isTauriDesktop()) return null;
-  const selected = await open({ directory: true, multiple: false, title: 'Open a folder in CyberFiles' });
+  const selected = await open({ directory: true, multiple: false, title });
   return typeof selected === 'string' ? selected : null;
 }
 
