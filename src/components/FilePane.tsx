@@ -41,6 +41,7 @@ interface FilePaneProps {
   isActive: boolean;
   styleLocked: boolean;
   recentItemsBold: boolean;
+  imageTooltipThumbnailsEnabled: boolean;
   onStyleLockToggle: () => void;
   onActivate: () => void;
   tab: TabState;
@@ -160,7 +161,17 @@ function readCollapsedSystemHomeSections(paneId: 'left' | 'right'): CollapsedSys
   }
 }
 
-function ImageFileThumbnail({ item, fallback }: { item: FileItem; fallback: React.ReactNode }) {
+function ImageFileThumbnail({
+  item,
+  fallback,
+  className = 'h-20 w-full',
+  fit = 'cover',
+}: {
+  item: FileItem;
+  fallback: React.ReactNode;
+  className?: string;
+  fit?: 'cover' | 'contain';
+}) {
   const [source, setSource] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -216,9 +227,9 @@ function ImageFileThumbnail({ item, fallback }: { item: FileItem; fallback: Reac
   }, [item.handle, item.path]);
 
   return (
-    <div ref={containerRef} className="flex h-20 w-full items-center justify-center overflow-hidden rounded-md border border-neutral-700/70 bg-neutral-900/80">
+    <div ref={containerRef} className={`flex ${className} items-center justify-center overflow-hidden rounded-md border border-neutral-700/70 bg-neutral-900/80`}>
       {source
-        ? <img src={source} alt={item.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+        ? <img src={source} alt={item.name} loading="lazy" decoding="async" className={`h-full w-full ${fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
         : <div className="scale-150">{fallback}</div>}
     </div>
   );
@@ -229,6 +240,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   isActive,
   styleLocked,
   recentItemsBold,
+  imageTooltipThumbnailsEnabled,
   onStyleLockToggle,
   onActivate,
   tab,
@@ -289,11 +301,39 @@ export const FilePane: React.FC<FilePaneProps> = ({
     return () => window.clearInterval(interval);
   }, []);
 
-  const isRecentlyChanged = (item: FileItem) => {
-    if (!recentItemsBold) return false;
+  const hasRecentActivity = (item: FileItem) => {
     const changedAt = Math.max(item.createdAtMs ?? 0, item.modifiedAtMs ?? 0);
-    return changedAt > 0 && changedAt <= currentTime && currentTime - changedAt < RECENT_ITEM_WINDOW_MS;
+    return changedAt > 0 && changedAt <= currentTime && currentTime - changedAt <= RECENT_ITEM_WINDOW_MS;
   };
+
+  const isRecentlyChanged = (item: FileItem) => recentItemsBold && hasRecentActivity(item);
+
+  const renderItemTooltip = (item: FileItem, additionalDetails?: React.ReactNode) => (
+    <div className="flex max-w-[18rem] flex-col items-center gap-1 text-center">
+      {imageTooltipThumbnailsEnabled && item.type === 'image' && !item.isFolder && (
+        <ImageFileThumbnail
+          item={item}
+          fallback={getFileIcon(item.type, item.isFolder)}
+          className="h-28 w-48"
+          fit="contain"
+        />
+      )}
+      <span className="font-semibold">{item.name}</span>
+      {item.path && <span className="break-all font-mono text-[10px] text-cyan-200">{item.path}</span>}
+      {!item.isFolder && <span>{formatFileSize(item.size)}</span>}
+      {item.modifiedDate && (
+        <span className="text-[10px] text-neutral-300">
+          {t.pane.itemTooltipModifiedDate.replace('{date}', item.modifiedDate)}
+        </span>
+      )}
+      {hasRecentActivity(item) && (
+        <span className="mt-0.5 rounded-full border border-cyan-400/25 bg-cyan-950/50 px-2 py-0.5 text-[10px] text-cyan-200">
+          {t.pane.itemTooltipRecentActivity}
+        </span>
+      )}
+      {additionalDetails}
+    </div>
+  );
 
   const fileGridTemplateColumns = `${columnWidths.extension}px ${columnWidths.name === null ? `minmax(${MIN_NAME_COLUMN_WIDTH}px, 1fr)` : `${columnWidths.name}px`} ${columnWidths.size}px ${columnWidths.modified}px`;
   const detailsTableMinimumWidth = columnWidths.extension + (columnWidths.name ?? MIN_NAME_COLUMN_WIDTH) + columnWidths.size + columnWidths.modified + 24 + 18 + viewportScrollbarWidth;
@@ -628,17 +668,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const usedPercent = hasCapacity && drive
       ? Math.min(100, Math.round((drive.usedBytes / drive.totalBytes) * 100))
       : 0;
-    const tooltipLabel = drive ? (
-      <span className="flex max-w-[20rem] flex-col gap-0.5">
-        <span className="font-semibold">{item.name}</span>
-        <span className="font-mono text-cyan-200">{item.path}</span>
-        <span>{hasCapacity
+    const tooltipLabel = renderItemTooltip(item, drive ? (
+      <span className="mt-1">
+        {hasCapacity
           ? t.pane.availableOf
             .replace('{free}', formatFileSize(Math.max(0, drive.totalBytes - drive.usedBytes)))
             .replace('{total}', formatFileSize(drive.totalBytes))
-          : t.pane.capacityUnavailable}</span>
+          : t.pane.capacityUnavailable}
       </span>
-    ) : item.path;
+    ) : undefined);
 
     return (
       <Tooltip label={tooltipLabel} placement="top">
@@ -1059,7 +1097,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
                         />
                       </form>
                     ) : (
-                      <span className={`truncate text-[11.5px] ${isRecentlyChanged(item) ? 'font-bold' : 'font-medium'}`}>{item.name}</span>
+                      <Tooltip label={renderItemTooltip(item)} placement="top">
+                        <span className={`truncate text-[11.5px] ${isRecentlyChanged(item) ? 'font-bold' : 'font-medium'}`}>{item.name}</span>
+                      </Tooltip>
                     )}
                   </div>
 
@@ -1103,7 +1143,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   }`}
                 >
                   <span className="flex-shrink-0">{getFileIcon(item.type, item.isFolder)}</span>
-                  <span className={`min-w-0 flex-1 truncate ${isRecentlyChanged(item) ? 'font-bold' : ''}`}>{item.name}</span>
+                  <Tooltip label={renderItemTooltip(item)} placement="top">
+                    <span className={`min-w-0 flex-1 truncate ${isRecentlyChanged(item) ? 'font-bold' : ''}`}>{item.name}</span>
+                  </Tooltip>
                   {!item.isFolder && <span className="flex-shrink-0 font-mono text-[10px] text-neutral-500">{formatFileSize(item.size)}</span>}
                 </div>
               );
@@ -1142,7 +1184,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       </div>
                     )}
                   </div>
-                  <span className={`w-full truncate px-1 text-[11px] ${isRecentlyChanged(item) ? 'font-bold' : 'font-medium'}`}>{item.name}</span>
+                  <Tooltip label={renderItemTooltip(item)} placement="top">
+                    <span className={`w-full truncate px-1 text-[11px] ${isRecentlyChanged(item) ? 'font-bold' : 'font-medium'}`}>{item.name}</span>
+                  </Tooltip>
                   <span className="mt-0.5 text-[9px] font-mono text-neutral-400">
                     {item.isFolder ? 'Carpeta' : formatFileSize(item.size)}
                   </span>

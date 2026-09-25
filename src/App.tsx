@@ -57,6 +57,7 @@ const FOLDER_STYLE_LOCKED_KEY = 'cyberfiles_folder_style_locked';
 const SIDEBAR_LOCATIONS_NEW_TAB_KEY = 'cyberfiles_sidebar_locations_open_in_new_tab_v1';
 const NEW_TABS_NEXT_TO_CURRENT_KEY = 'cyberfiles_new_tabs_next_to_current_v1';
 const RECENT_ITEMS_BOLD_KEY = 'cyberfiles_bold_recent_items_v1';
+const IMAGE_TOOLTIP_THUMBNAILS_KEY = 'cyberfiles_image_tooltip_thumbnails_v1';
 const MAX_TEXT_PREVIEW_BYTES = 200_000;
 const DEFAULT_GLOBAL_SHORTCUT = 'Alt+Shift+F';
 const DEFAULT_FOLDER_STYLE = { viewMode: 'details' as ViewMode, sortField: 'name' as SortField, sortOrder: 'asc' as SortOrder };
@@ -224,6 +225,7 @@ export default function App() {
   const [sidebarLocationsOpenInNewTab, setSidebarLocationsOpenInNewTab] = useState(() => readBooleanPreference(SIDEBAR_LOCATIONS_NEW_TAB_KEY, true));
   const [newTabsNextToCurrent, setNewTabsNextToCurrent] = useState(() => readBooleanPreference(NEW_TABS_NEXT_TO_CURRENT_KEY, true));
   const [recentItemsBold, setRecentItemsBold] = useState(() => readBooleanPreference(RECENT_ITEMS_BOLD_KEY, true));
+  const [imageTooltipThumbnailsEnabled, setImageTooltipThumbnailsEnabled] = useState(() => readBooleanPreference(IMAGE_TOOLTIP_THUMBNAILS_KEY, true));
 
   // Global file system state
   const [allFiles, setAllFiles] = useState<FileItem[]>([]);
@@ -700,6 +702,14 @@ export default function App() {
       // Keep the selected behavior for the current session when storage is unavailable.
     }
   }, [recentItemsBold]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(IMAGE_TOOLTIP_THUMBNAILS_KEY, String(imageTooltipThumbnailsEnabled));
+    } catch {
+      // Keep the selected behavior for the current session when storage is unavailable.
+    }
+  }, [imageTooltipThumbnailsEnabled]);
 
   useEffect(() => {
     try {
@@ -2481,6 +2491,7 @@ export default function App() {
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
                   recentItemsBold={recentItemsBold}
+                  imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('left')}
                   tab={leftTabs[activeLeftTabIndex]}
@@ -2523,6 +2534,7 @@ export default function App() {
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
                   recentItemsBold={recentItemsBold}
+                  imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('right')}
                   tab={rightTabs[activeRightTabIndex]}
@@ -2566,6 +2578,7 @@ export default function App() {
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
                   recentItemsBold={recentItemsBold}
+                  imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('left')}
                   tab={leftTabs[activeLeftTabIndex]}
@@ -2604,6 +2617,7 @@ export default function App() {
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
                   recentItemsBold={recentItemsBold}
+                  imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('right')}
                   tab={rightTabs[activeRightTabIndex]}
@@ -2647,6 +2661,7 @@ export default function App() {
                 isActive={true}
                 styleLocked={folderStyleLocked}
                   recentItemsBold={recentItemsBold}
+                  imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                 onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                 onActivate={() => {}}
                 tab={currentTab}
@@ -2819,6 +2834,8 @@ export default function App() {
         onFolderStyleLockedChange={setFolderStyleLocked}
         recentItemsBold={recentItemsBold}
         onRecentItemsBoldChange={setRecentItemsBold}
+        imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+        onImageTooltipThumbnailsEnabledChange={setImageTooltipThumbnailsEnabled}
         sidebarLocationsOpenInNewTab={sidebarLocationsOpenInNewTab}
         onSidebarLocationsOpenInNewTabChange={setSidebarLocationsOpenInNewTab}
         newTabsNextToCurrent={newTabsNextToCurrent}

@@ -25,6 +25,8 @@ interface SettingsModalProps {
   onFolderStyleLockedChange: (enabled: boolean) => void;
   recentItemsBold: boolean;
   onRecentItemsBoldChange: (enabled: boolean) => void;
+  imageTooltipThumbnailsEnabled: boolean;
+  onImageTooltipThumbnailsEnabledChange: (enabled: boolean) => void;
   sidebarLocationsOpenInNewTab: boolean;
   onSidebarLocationsOpenInNewTabChange: (enabled: boolean) => void;
   newTabsNextToCurrent: boolean;
@@ -68,6 +70,8 @@ export function SettingsModal({
   onFolderStyleLockedChange,
   recentItemsBold,
   onRecentItemsBoldChange,
+  imageTooltipThumbnailsEnabled,
+  onImageTooltipThumbnailsEnabledChange,
   sidebarLocationsOpenInNewTab,
   onSidebarLocationsOpenInNewTabChange,
   newTabsNextToCurrent,
@@ -343,6 +347,23 @@ export function SettingsModal({
                 <span>
                   <span className="block font-medium text-neutral-200">{t.settings.boldRecentItems}</span>
                   <span className="mt-1 block">{t.settings.boldRecentItemsDescription}</span>
+                </span>
+              </label>
+            </Tooltip>
+          </div>
+
+          <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+            <Tooltip label={t.settings.imageTooltipThumbnailsDescription} placement="top">
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={imageTooltipThumbnailsEnabled}
+                  onChange={event => onImageTooltipThumbnailsEnabledChange(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                />
+                <span>
+                  <span className="block font-medium text-neutral-200">{t.settings.imageTooltipThumbnails}</span>
+                  <span className="mt-1 block">{t.settings.imageTooltipThumbnailsDescription}</span>
                 </span>
               </label>
             </Tooltip>
