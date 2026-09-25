@@ -10,7 +10,7 @@ CyberFiles is an early Windows-first file manager preview. Its workspace combine
 
 ## Releases
 
-Windows installers and release notes will be published on the [GitHub Releases page](https://github.com/CyberGems/CyberFiles/releases).
+Download the Windows installer and release notes from the [GitHub Releases page](https://github.com/CyberGems/CyberFiles/releases).
 
 ## Features
 

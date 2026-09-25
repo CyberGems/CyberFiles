@@ -88,9 +88,21 @@ jobs:
           $checksumPath = Join-Path $installer.DirectoryName 'SHA256SUMS.txt'
           [System.IO.File]::WriteAllText($checksumPath, "$installerHash  $($installer.Name)`n", [System.Text.UTF8Encoding]::new($false))
 
-          $releaseSummary = (git tag --list --format='%(contents)' $env:RELEASE_TAG | Out-String).Trim()
+          $tagObject = git cat-file -p "refs/tags/$($env:RELEASE_TAG)" | Out-String
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not read annotated tag $($env:RELEASE_TAG)."
+          }
+          $separator = [regex]::Match($tagObject, "\r?\n\r?\n")
+          if (-not $separator.Success) {
+            throw "Tag $($env:RELEASE_TAG) is not an annotated tag."
+          }
+          $releaseSummary = $tagObject.Substring($separator.Index + $separator.Length).Trim()
+          $signatureIndex = $releaseSummary.IndexOf('-----BEGIN PGP SIGNATURE-----')
+          if ($signatureIndex -ge 0) {
+            $releaseSummary = $releaseSummary.Substring(0, $signatureIndex).Trim()
+          }
           if ([string]::IsNullOrWhiteSpace($releaseSummary)) {
-            throw 'Create an annotated release tag with a concise user-facing summary in its message.'
+            throw 'Add a concise user-facing summary to the annotated release tag message.'
           }
 
           $template = [System.IO.File]::ReadAllText('.github/release-template.md', [System.Text.Encoding]::UTF8)
