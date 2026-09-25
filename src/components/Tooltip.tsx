@@ -37,6 +37,44 @@ const GAP = 8;
 const VIEWPORT_MARGIN = 8;
 const SHOW_DELAY_MS = 280;
 
+let activeTooltipOwner: symbol | null = null;
+let dismissActiveTooltip: (() => void) | null = null;
+let pendingTooltipOwner: symbol | null = null;
+let cancelPendingTooltip: (() => void) | null = null;
+let mountedTooltipInstances = 0;
+
+const dismissAllTooltips = () => {
+  const cancelPending = cancelPendingTooltip;
+  cancelPendingTooltip = null;
+  pendingTooltipOwner = null;
+  cancelPending?.();
+
+  const dismissActive = dismissActiveTooltip;
+  dismissActiveTooltip = null;
+  activeTooltipOwner = null;
+  dismissActive?.();
+};
+
+const dismissTooltipWhenHidden = () => {
+  if (document.visibilityState === 'hidden') dismissAllTooltips();
+};
+
+const attachTooltipWindowListeners = () => {
+  window.addEventListener('blur', dismissAllTooltips);
+  window.addEventListener('focus', dismissAllTooltips);
+  window.addEventListener('pagehide', dismissAllTooltips);
+  document.addEventListener('visibilitychange', dismissTooltipWhenHidden);
+  document.addEventListener('pointerdown', dismissAllTooltips, true);
+};
+
+const detachTooltipWindowListeners = () => {
+  window.removeEventListener('blur', dismissAllTooltips);
+  window.removeEventListener('focus', dismissAllTooltips);
+  window.removeEventListener('pagehide', dismissAllTooltips);
+  document.removeEventListener('visibilitychange', dismissTooltipWhenHidden);
+  document.removeEventListener('pointerdown', dismissAllTooltips, true);
+};
+
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.max(minimum, Math.min(value, Math.max(minimum, maximum)));
 }
@@ -122,32 +160,81 @@ export function Tooltip({ label, placement = 'bottom', children, disabled = fals
   const cardRef = useRef<HTMLDivElement>(null);
   const delayRef = useRef<number | null>(null);
   const tooltipId = useId();
+  const tooltipOwnerRef = useRef(Symbol('cyberfiles-tooltip'));
 
   const clearDelay = () => {
     if (delayRef.current !== null) {
       window.clearTimeout(delayRef.current);
       delayRef.current = null;
     }
+    if (pendingTooltipOwner === tooltipOwnerRef.current) {
+      pendingTooltipOwner = null;
+      cancelPendingTooltip = null;
+    }
   };
 
   const hide = () => {
     clearDelay();
     setAnchorElement(null);
+    if (activeTooltipOwner === tooltipOwnerRef.current) {
+      activeTooltipOwner = null;
+      dismissActiveTooltip = null;
+    }
   };
 
   const scheduleShow = (element: HTMLElement) => {
     clearDelay();
+    const owner = tooltipOwnerRef.current;
+
+    if (pendingTooltipOwner && pendingTooltipOwner !== owner) {
+      const cancelPending = cancelPendingTooltip;
+      pendingTooltipOwner = null;
+      cancelPendingTooltip = null;
+      cancelPending?.();
+    }
+    if (activeTooltipOwner && activeTooltipOwner !== owner) {
+      const dismissActive = dismissActiveTooltip;
+      activeTooltipOwner = null;
+      dismissActiveTooltip = null;
+      dismissActive?.();
+    }
+
     delayRef.current = window.setTimeout(() => {
+      pendingTooltipOwner = null;
+      cancelPendingTooltip = null;
+      activeTooltipOwner = owner;
+      dismissActiveTooltip = hide;
       setAnchorElement(element);
       delayRef.current = null;
     }, SHOW_DELAY_MS);
+    pendingTooltipOwner = owner;
+    cancelPendingTooltip = clearDelay;
   };
 
   useEffect(() => {
     if (disabled) hide();
   }, [disabled]);
 
-  useEffect(() => () => clearDelay(), []);
+  useEffect(() => {
+    mountedTooltipInstances += 1;
+    if (mountedTooltipInstances === 1) attachTooltipWindowListeners();
+
+    return () => {
+      mountedTooltipInstances -= 1;
+      clearDelay();
+      if (activeTooltipOwner === tooltipOwnerRef.current) {
+        activeTooltipOwner = null;
+        dismissActiveTooltip = null;
+      }
+      if (mountedTooltipInstances === 0) {
+        detachTooltipWindowListeners();
+        activeTooltipOwner = null;
+        dismissActiveTooltip = null;
+        pendingTooltipOwner = null;
+        cancelPendingTooltip = null;
+      }
+    };
+  }, []);
 
   useLayoutEffect(() => {
     if (!anchorElement || !cardRef.current) {

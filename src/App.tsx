@@ -38,6 +38,7 @@ import { HeaderBar } from './components/HeaderBar';
 import { WindowTitleBar } from './components/WindowTitleBar';
 import { Sidebar } from './components/Sidebar';
 import { FilePane } from './components/FilePane';
+import { PaneSplitter } from './components/PaneSplitter';
 import { PreviewPane } from './components/PreviewPane';
 import { BatchRenameModal } from './components/BatchRenameModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
@@ -81,6 +82,8 @@ interface PanelViewPreferences {
   leftSortOrder: SortOrder;
   rightSortField: SortField;
   rightSortOrder: SortOrder;
+  verticalSplitPercent: number;
+  horizontalSplitPercent: number;
 }
 
 interface GlobalShortcutSettingsState {
@@ -104,6 +107,8 @@ const DEFAULT_PANEL_VIEW_PREFERENCES: PanelViewPreferences = {
   leftSortOrder: 'asc',
   rightSortField: 'name',
   rightSortOrder: 'asc',
+  verticalSplitPercent: 50,
+  horizontalSplitPercent: 50,
 };
 
 function isViewMode(value: unknown): value is ViewMode {
@@ -112,6 +117,11 @@ function isViewMode(value: unknown): value is ViewMode {
 
 function isSortField(value: unknown): value is SortField {
   return value === 'name' || value === 'size' || value === 'type' || value === 'modifiedDate' || value === 'extension';
+}
+
+function readPaneSplitPercent(value: unknown) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 50;
+  return Math.max(20, Math.min(80, value));
 }
 
 function readPanelViewPreferences(): PanelViewPreferences {
@@ -128,6 +138,8 @@ function readPanelViewPreferences(): PanelViewPreferences {
       leftSortOrder: saved.leftSortOrder === 'desc' ? 'desc' : 'asc',
       rightSortField: isSortField(saved.rightSortField) ? saved.rightSortField : 'name',
       rightSortOrder: saved.rightSortOrder === 'desc' ? 'desc' : 'asc',
+      verticalSplitPercent: readPaneSplitPercent(saved.verticalSplitPercent),
+      horizontalSplitPercent: readPaneSplitPercent(saved.horizontalSplitPercent),
     };
   } catch {
     return DEFAULT_PANEL_VIEW_PREFERENCES;
@@ -360,6 +372,8 @@ export default function App() {
 
   // Layout & Global View Modes
   const [layout, setLayout] = useState<ViewLayout>(initialPanelPreferences.layout);
+  const [verticalSplitPercent, setVerticalSplitPercent] = useState(initialPanelPreferences.verticalSplitPercent);
+  const [horizontalSplitPercent, setHorizontalSplitPercent] = useState(initialPanelPreferences.horizontalSplitPercent);
   const [previewOpen, setPreviewOpen] = useState<boolean>(initialPanelPreferences.previewOpen);
   const [activePane, setActivePane] = useState<'left' | 'right'>(initialPanelPreferences.activePane);
   const [emptyAreaDoubleClickNavigatesUp, setEmptyAreaDoubleClickNavigatesUp] = useState(readEmptyAreaDoubleClickPreference);
@@ -751,11 +765,13 @@ export default function App() {
         leftSortOrder: leftSort.sortOrder,
         rightSortField: rightSort.sortField,
         rightSortOrder: rightSort.sortOrder,
+        verticalSplitPercent,
+        horizontalSplitPercent,
       } satisfies PanelViewPreferences));
     } catch {
       // Preference persistence is optional if browser storage is unavailable.
     }
-  }, [layout, previewOpen, activePane, leftViewMode, rightViewMode, leftSort.sortField, leftSort.sortOrder, rightSort.sortField, rightSort.sortOrder]);
+  }, [layout, previewOpen, activePane, leftViewMode, rightViewMode, leftSort.sortField, leftSort.sortOrder, rightSort.sortField, rightSort.sortOrder, verticalSplitPercent, horizontalSplitPercent]);
 
   useEffect(() => {
     try {
@@ -2717,9 +2733,9 @@ export default function App() {
         <div className="flex-1 flex overflow-hidden">
           {/* Dual Vertical Layout */}
           {layout === 'dual-vertical' && (
-            <div className="flex-1 flex h-full overflow-hidden">
+            <div className="flex-1 grid h-full min-h-0 min-w-0 overflow-hidden" style={{ gridTemplateColumns: 'minmax(0, ' + verticalSplitPercent + 'fr) 8px minmax(0, ' + (100 - verticalSplitPercent) + 'fr)' }}>
               {/* Left file pane */}
-              <div className="flex-1 h-full overflow-hidden">
+              <div className="min-w-0 min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="left"
                   isActive={activePane === 'left'}
@@ -2760,10 +2776,10 @@ export default function App() {
               </div>
 
               {/* Vertical Splitter Visual Bar */}
-              <div className="w-1 bg-neutral-900 border-x border-neutral-800/80 hover:bg-cyan-500/40 cursor-col-resize flex-shrink-0" />
+              <PaneSplitter orientation="vertical" value={verticalSplitPercent} onChange={setVerticalSplitPercent} label={t.header.resizePanels} />
 
               {/* Right file pane */}
-              <div className="flex-1 h-full overflow-hidden">
+              <div className="min-w-0 min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="right"
                   isActive={activePane === 'right'}
@@ -2807,8 +2823,8 @@ export default function App() {
 
           {/* Dual Horizontal Layout */}
           {layout === 'dual-horizontal' && (
-            <div className="flex-1 flex flex-col h-full overflow-hidden">
-              <div className="flex-1 h-1/2 overflow-hidden">
+            <div className="flex-1 grid h-full min-h-0 min-w-0 overflow-hidden" style={{ gridTemplateRows: 'minmax(0, ' + horizontalSplitPercent + 'fr) 8px minmax(0, ' + (100 - horizontalSplitPercent) + 'fr)' }}>
+              <div className="min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="left"
                   isActive={activePane === 'left'}
@@ -2847,8 +2863,8 @@ export default function App() {
                   onInlineRename={handleInlineRename}
                 />
               </div>
-              <div className="h-1 bg-neutral-900 border-y border-neutral-800/80 hover:bg-cyan-500/40 cursor-row-resize flex-shrink-0" />
-              <div className="flex-1 h-1/2 overflow-hidden">
+              <PaneSplitter orientation="horizontal" value={horizontalSplitPercent} onChange={setHorizontalSplitPercent} label={t.header.resizePanels} />
+              <div className="min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="right"
                   isActive={activePane === 'right'}
