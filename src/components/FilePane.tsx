@@ -12,6 +12,7 @@ import {
   ArrowLeft, 
   ArrowRight, 
   ArrowUp, 
+  CornerUpLeft,
   Search, 
   X, 
   Plus, 
@@ -41,6 +42,7 @@ interface FilePaneProps {
   isActive: boolean;
   styleLocked: boolean;
   recentItemsBold: boolean;
+  emptyAreaDoubleClickNavigatesUp: boolean;
   imageTooltipThumbnailsEnabled: boolean;
   onStyleLockToggle: () => void;
   onActivate: () => void;
@@ -240,6 +242,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   isActive,
   styleLocked,
   recentItemsBold,
+  emptyAreaDoubleClickNavigatesUp,
   imageTooltipThumbnailsEnabled,
   onStyleLockToggle,
   onActivate,
@@ -986,6 +989,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <div className="h-full flex flex-col items-center justify-center text-neutral-500 gap-2 p-6">
             {isLoadingDirectory ? <RotateCw className="w-7 h-7 text-cyan-500 animate-spin" /> : <Folder className="w-8 h-8 text-neutral-600 stroke-[1.5]" />}
             <div className="text-xs">{isLoadingDirectory ? t.pane.loadingFolder : tab.currentPath ? t.pane.emptyFolder : t.pane.noFolderOpen}</div>
+            {!isLoadingDirectory && !tab.filterQuery && tab.currentPath && !isSystemHome && !isRecycleBin && getParentPath(tab.currentPath) !== tab.currentPath && (
+              <div className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-neutral-800 bg-neutral-900/60 px-2.5 py-1 text-[11px] tracking-wide text-neutral-500">
+                <CornerUpLeft className="h-3 w-3 text-cyan-500/80" aria-hidden="true" />
+                <span>{emptyAreaDoubleClickNavigatesUp ? t.pane.emptyFolderDoubleClickHint : t.pane.emptyFolderBackspaceHint}</span>
+              </div>
+            )}
             {tab.filterQuery && (
               <button 
                 onClick={() => onFilterChange('')}

@@ -35,6 +35,7 @@ import {
   normalizeWindowsPath,
 } from './utils/fileSystem';
 import { HeaderBar } from './components/HeaderBar';
+import { WindowTitleBar } from './components/WindowTitleBar';
 import { Sidebar } from './components/Sidebar';
 import { FilePane } from './components/FilePane';
 import { PreviewPane } from './components/PreviewPane';
@@ -2645,7 +2646,14 @@ export default function App() {
       className="h-screen w-screen flex flex-col bg-neutral-950 text-neutral-100 font-sans select-none overflow-hidden"
       onContextMenuCapture={handleApplicationContextMenuCapture}
     >
-      {/* 1. Top Command Bar */}
+      <WindowTitleBar
+        showWindowControls={isTauriDesktop()}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenShortcuts={() => setIsShortcutsOpen(true)}
+        onOpenAbout={() => setIsAboutOpen(true)}
+      />
+
+      {/* 2. Top Command Bar */}
       <HeaderBar
         layout={layout}
         onLayoutChange={setLayout}
@@ -2654,7 +2662,6 @@ export default function App() {
         previewOpen={previewOpen}
         onTogglePreview={() => setPreviewOpen(!previewOpen)}
         onRenameSelected={handleRenameSelected}
-        onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onNewFolder={handleNewFolder}
         onCopySelected={handleCopySelected}
         onMoveSelected={handleMoveSelected}
@@ -2662,7 +2669,6 @@ export default function App() {
         selectedCount={selectedCount}
         onOpenRealFolder={handleOpenRealFolder}
         onOpenSearch={() => setIsSearchOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
       {/* 2. Main Workstation Area */}
@@ -2719,6 +2725,7 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemsBold={recentItemsBold}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('left')}
                   tab={leftTabs[activeLeftTabIndex]}
@@ -2762,6 +2769,7 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemsBold={recentItemsBold}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('right')}
                   tab={rightTabs[activeRightTabIndex]}
@@ -2806,6 +2814,7 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemsBold={recentItemsBold}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('left')}
                   tab={leftTabs[activeLeftTabIndex]}
@@ -2845,6 +2854,7 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemsBold={recentItemsBold}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('right')}
                   tab={rightTabs[activeRightTabIndex]}
@@ -2889,6 +2899,7 @@ export default function App() {
                 styleLocked={folderStyleLocked}
                   recentItemsBold={recentItemsBold}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                 onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                 onActivate={() => {}}
                 tab={currentTab}
