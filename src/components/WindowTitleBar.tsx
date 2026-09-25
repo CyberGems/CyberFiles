@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Copy, Globe, Info, Keyboard, Minus, MoreHorizontal, Settings, Square, X } from 'lucide-react';
+import { Globe, Info, Keyboard, Minus, MoreHorizontal, Settings, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 
@@ -9,9 +9,10 @@ interface WindowTitleBarProps {
   onOpenSettings: () => void;
   onOpenShortcuts: () => void;
   onOpenAbout: () => void;
+  onWindowControlError: () => void;
 }
 
-export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenShortcuts, onOpenAbout }: WindowTitleBarProps) {
+export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenShortcuts, onOpenAbout, onWindowControlError }: WindowTitleBarProps) {
   const { t, language, toggleLanguage } = useLanguage();
   const [appWindow, setAppWindow] = useState<ReturnType<typeof getCurrentWindow> | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -78,9 +79,22 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenShort
     };
   }, [moreMenuOpen]);
 
+  const runWindowCommand = (action: string, command: () => Promise<void>) => {
+    void command().catch(error => {
+      console.error('CyberFiles window command failed:', action, error);
+      onWindowControlError();
+    });
+  };
+
   const toggleMaximize = () => {
     if (!appWindow) return;
-    void appWindow.toggleMaximize().then(() => appWindow.isMaximized()).then(setIsMaximized).catch(() => undefined);
+    void appWindow.toggleMaximize()
+      .then(() => appWindow.isMaximized())
+      .then(setIsMaximized)
+      .catch(error => {
+        console.error('CyberFiles window command failed:', 'toggle maximize', error);
+        onWindowControlError();
+      });
   };
 
   const toggleFromTitlebarDoubleClick = (event: ReactMouseEvent<HTMLElement>) => {
@@ -199,7 +213,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenShort
             <button
               type="button"
               aria-label={tTitlebar('Minimizar', 'Minimize')}
-              onClick={() => { void appWindow.minimize().catch(() => undefined); }}
+              onClick={() => runWindowCommand('minimize', () => appWindow.minimize())}
               className="flex h-9 w-10 items-center justify-center text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
             >
               <Minus className="h-4 w-4" />
@@ -213,7 +227,21 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenShort
               onClick={toggleMaximize}
               className="flex h-9 w-10 items-center justify-center text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
             >
-              {isMaximized ? <Copy className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+              {isMaximized ? (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="4 14 10 14 10 20" />
+                  <polyline points="20 10 14 10 14 4" />
+                  <line x1="14" y1="10" x2="21" y2="3" />
+                  <line x1="10" y1="14" x2="3" y2="21" />
+                </svg>
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 3 21 3 21 9" />
+                  <polyline points="9 21 3 21 3 15" />
+                  <line x1="21" y1="3" x2="14" y2="10" />
+                  <line x1="3" y1="21" x2="10" y2="14" />
+                </svg>
+              )}
             </button>
           </Tooltip>
 
@@ -221,7 +249,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenShort
             <button
               type="button"
               aria-label={tTitlebar('Cerrar', 'Close')}
-              onClick={() => { void appWindow.close().catch(() => undefined); }}
+              onClick={() => runWindowCommand('close', () => appWindow.close())}
               className="flex h-9 w-10 items-center justify-center text-neutral-400 transition-colors hover:bg-rose-600 hover:text-white"
             >
               <X className="h-4 w-4" />

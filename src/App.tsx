@@ -2651,6 +2651,7 @@ export default function App() {
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onOpenAbout={() => setIsAboutOpen(true)}
+        onWindowControlError={() => showToast(t.core.windowControlFailed)}
       />
 
       {/* 2. Top Command Bar */}
