@@ -6,9 +6,9 @@
 
 ### What is new in this release
 
-The first Windows installer for CyberFiles brings together dual-pane navigation, real file operations, common document previews, recent-item highlighting, and personal Quick Access shortcuts with manual or alphabetical sorting.
+{{RELEASE_SUMMARY}}
 
-> CyberFiles is an early Windows-first file manager preview. This prerelease is intended for installer and workflow testing.
+> CyberFiles is a Windows-first file manager by CyberGems.
 
 ### Key features
 
@@ -30,6 +30,10 @@ The first Windows installer for CyberFiles brings together dual-pane navigation,
 
 - **CyberFiles_{{VERSION_NUM}}_x64-setup.exe**: **{{SETUP_SHA256}}**
 - The SHA-256 checksum is also included in the downloadable SHA256SUMS.txt file.
+
+### VirusTotal
+
+[Open the VirusTotal report for this installer](https://www.virustotal.com/gui/file/{{SETUP_SHA256}}). If there is no report yet, use the SHA-256 above to look up the file.
 
 ---
 
