@@ -14,13 +14,15 @@
     "check": "npm run lint && npm run build",
     "test": "npm run test:unit",
     "test:unit": "tsx --test src/utils/fileSystem.test.ts",
-    "test:native": "cargo test --manifest-path src-tauri/Cargo.toml"
+    "test:native": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "build:installer": "tauri build --bundles nsis"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.3",
+    "@tauri-apps/plugin-opener": "^2.5.5",
     "@tauri-apps/plugin-window-state": "^2.4.1",
     "@vitejs/plugin-react": "^6.1.1",
     "dotenv": "^17.2.3",

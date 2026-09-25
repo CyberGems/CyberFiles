@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { 
@@ -12,7 +12,8 @@ import {
   SYSTEM_HOME_PATH,
   ContextMenuPosition, 
   DriveInfo, 
-  QuickAccessItem 
+  QuickAccessItem,
+  QuickAccessSortMode,
 } from './types';
 import {
   getChildItems, 
@@ -41,14 +42,17 @@ import { BatchRenameModal } from './components/BatchRenameModal';
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { BottomStatusBar } from './components/BottomStatusBar';
 import { ContextMenu } from './components/ContextMenu';
-import { FindFilesModal } from './components/FindFilesModal';
+
 import { ConfirmActionModal } from './components/ConfirmActionModal';
 import { CloseWindowModal } from './components/CloseWindowModal';
 import { SettingsModal } from './components/SettingsModal';
+
 import { OnboardingWelcome } from './components/OnboardingWelcome';
 import { useLanguage } from './locales/LanguageContext';
 import { chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, emptyNativeRecycleBin, getNativeFileClipboard, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeImageWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
 
+const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
+const FindFilesModal = lazy(() => import('./components/FindFilesModal').then(module => ({ default: module.FindFilesModal })));
 const ONBOARDING_STORAGE_KEY = 'cyberfiles_onboarding_complete';
 const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
 const PANEL_VIEW_PREFERENCES_KEY = 'cyberfiles_panel_view_preferences_v1';
@@ -59,6 +63,8 @@ const NEW_TABS_NEXT_TO_CURRENT_KEY = 'cyberfiles_new_tabs_next_to_current_v1';
 const RECENT_ITEMS_BOLD_KEY = 'cyberfiles_bold_recent_items_v1';
 const IMAGE_TOOLTIP_THUMBNAILS_KEY = 'cyberfiles_image_tooltip_thumbnails_v1';
 const CUSTOM_QUICK_ACCESS_KEY = 'cyberfiles_custom_quick_access_v1';
+const QUICK_ACCESS_ORDER_KEY = 'cyberfiles_quick_access_order_v1';
+const QUICK_ACCESS_SORT_MODE_KEY = 'cyberfiles_quick_access_sort_mode_v1';
 const MAX_CUSTOM_QUICK_ACCESS_ITEMS = 100;
 const MAX_TEXT_PREVIEW_BYTES = 200_000;
 const DEFAULT_GLOBAL_SHORTCUT = 'Alt+Shift+F';
@@ -184,6 +190,23 @@ function readCustomQuickAccess(): QuickAccessItem[] {
   }
 }
 
+function readQuickAccessSortMode(): QuickAccessSortMode {
+  try {
+    return window.localStorage.getItem(QUICK_ACCESS_SORT_MODE_KEY) === 'name' ? 'name' : 'manual';
+  } catch {
+    return 'manual';
+  }
+}
+
+function readQuickAccessOrder(): string[] {
+  try {
+    const saved: unknown = JSON.parse(window.localStorage.getItem(QUICK_ACCESS_ORDER_KEY) || 'null');
+    if (!Array.isArray(saved)) return [];
+    return [...new Set(saved.filter((value): value is string => typeof value === 'string' && value.length <= 180))].slice(0, 300);
+  } catch {
+    return [];
+  }
+}
 function styleForPath(path: string, style: typeof DEFAULT_FOLDER_STYLE) {
   return { ...style, viewMode: isMediaPreviewPath(path) ? 'icons' as ViewMode : style.viewMode };
 }
@@ -278,6 +301,8 @@ export default function App() {
   const [systemHomeLoading, setSystemHomeLoading] = useState(startsAtSystemHome);
   const [quickAccess, setQuickAccess] = useState<QuickAccessItem[]>([]);
   const [customQuickAccess, setCustomQuickAccess] = useState<QuickAccessItem[]>(readCustomQuickAccess);
+  const [quickAccessSortMode, setQuickAccessSortMode] = useState<QuickAccessSortMode>(readQuickAccessSortMode);
+  const [quickAccessOrder, setQuickAccessOrder] = useState<string[]>(readQuickAccessOrder);
   const nativeRootPath = useRef(startsAtSystemHome ? SYSTEM_HOME_PATH : '');
   const systemHomeWorkspace = useRef(startsAtSystemHome);
   const browserRootPath = useRef('');
@@ -463,6 +488,7 @@ export default function App() {
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
   const [rememberCloseChoice, setRememberCloseChoice] = useState(false);
   const [isCloseActionBusy, setIsCloseActionBusy] = useState(false);
@@ -675,11 +701,29 @@ export default function App() {
   const baseSidebarQuickAccess = systemHomeWorkspace.current || currentTab.history.includes(SYSTEM_HOME_PATH)
     ? systemQuickAccess
     : quickAccess;
-  const baseQuickAccessPaths = new Set(baseSidebarQuickAccess.map(item => getPathKey(item.path)));
-  const sidebarQuickAccess = [
-    ...baseSidebarQuickAccess,
-    ...customQuickAccess.filter(item => !baseQuickAccessPaths.has(getPathKey(item.path))),
-  ];
+  const sidebarQuickAccess = useMemo(() => {
+    const baseQuickAccessPaths = new Set(baseSidebarQuickAccess.map(item => getPathKey(item.path)));
+    const combined = [
+      ...baseSidebarQuickAccess,
+      ...customQuickAccess.filter(item => !baseQuickAccessPaths.has(getPathKey(item.path))),
+    ];
+    if (quickAccessSortMode === 'name') {
+      return combined.sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }) || a.id.localeCompare(b.id),
+      );
+    }
+
+    const orderById = new Map(quickAccessOrder.map((id, index) => [id, index]));
+    return combined
+      .map((item, index) => ({ item, index, order: orderById.get(item.id) }))
+      .sort((a, b) => {
+        if (a.order === undefined && b.order === undefined) return a.index - b.index;
+        if (a.order === undefined) return 1;
+        if (b.order === undefined) return -1;
+        return a.order - b.order || a.index - b.index;
+      })
+      .map(entry => entry.item);
+  }, [baseSidebarQuickAccess, customQuickAccess, quickAccessOrder, quickAccessSortMode]);
   const leftViewMode = leftTabs[activeLeftTabIndex]?.viewMode ?? initialPanelPreferences.leftViewMode;
   const rightViewMode = rightTabs[activeRightTabIndex]?.viewMode ?? initialPanelPreferences.rightViewMode;
   const leftSort = leftTabs[activeLeftTabIndex] ?? leftTabs[0];
@@ -752,6 +796,21 @@ export default function App() {
     }
   }, [imageTooltipThumbnailsEnabled]);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(QUICK_ACCESS_ORDER_KEY, JSON.stringify(quickAccessOrder));
+    } catch {
+      // Keep the current order for this session if storage is unavailable.
+    }
+  }, [quickAccessOrder]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(QUICK_ACCESS_SORT_MODE_KEY, quickAccessSortMode);
+    } catch {
+      // Keep the current sort mode for this session if storage is unavailable.
+    }
+  }, [quickAccessSortMode]);
   useEffect(() => {
     try {
       window.localStorage.setItem(CUSTOM_QUICK_ACCESS_KEY, JSON.stringify(customQuickAccess));
@@ -2255,6 +2314,31 @@ export default function App() {
     void handleNavigate(path, activePane, false, sidebarLocationsOpenInNewTab);
   }, [activePane, handleNavigate, sidebarLocationsOpenInNewTab]);
 
+  const addCustomQuickAccessPath = useCallback((path: string, name: string) => {
+    if (customQuickAccess.length >= MAX_CUSTOM_QUICK_ACCESS_ITEMS) {
+      showToast(t.sidebar.quickAccessLimitReached);
+      return;
+    }
+
+    const normalizedPath = normalizeWindowsPath(path);
+    const pathKey = getPathKey(normalizedPath);
+    if (sidebarQuickAccess.some(item => getPathKey(item.path) === pathKey)) {
+      showToast(t.sidebar.quickAccessAlreadyExists);
+      return;
+    }
+
+    const id = 'custom-quick-' + Date.now() + '-' + Math.random().toString(36).slice(2, 9);
+    const item: QuickAccessItem = {
+      id,
+      name: name.trim().slice(0, 80) || normalizedPath,
+      path: normalizedPath,
+      icon: 'folder',
+      isCustom: true,
+    };
+    setCustomQuickAccess(previous => [...previous, item]);
+    showToast(t.sidebar.quickAccessAdded.replace('{name}', item.name));
+  }, [customQuickAccess.length, showToast, sidebarQuickAccess, t.sidebar.quickAccessAdded, t.sidebar.quickAccessAlreadyExists, t.sidebar.quickAccessLimitReached]);
+
   const handleAddCustomQuickAccess = useCallback(async () => {
     if (addingCustomQuickAccess.current) return;
     if (customQuickAccess.length >= MAX_CUSTOM_QUICK_ACCESS_ITEMS) {
@@ -2279,31 +2363,18 @@ export default function App() {
         path = currentTab.currentPath;
         name = currentTab.title || path.split(/\\|\//).filter(Boolean).pop() || path;
       }
-
-      const normalizedPath = normalizeWindowsPath(path);
-      const pathKey = getPathKey(normalizedPath);
-      if (sidebarQuickAccess.some(item => getPathKey(item.path) === pathKey)) {
-        showToast(t.sidebar.quickAccessAlreadyExists);
-        return;
-      }
-
-      const id = `custom-quick-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-      const item: QuickAccessItem = {
-        id,
-        name: name.trim().slice(0, 80) || normalizedPath,
-        path: normalizedPath,
-        icon: 'folder',
-        isCustom: true,
-      };
-      setCustomQuickAccess(previous => [...previous, item]);
-      showToast(t.sidebar.quickAccessAdded.replace('{name}', item.name));
+      addCustomQuickAccessPath(path, name);
     } catch (error) {
       if ((error as DOMException)?.name === 'AbortError') return;
       showToast(t.sidebar.quickAccessAddFailed);
     } finally {
       addingCustomQuickAccess.current = false;
     }
-  }, [currentTab.currentPath, currentTab.title, customQuickAccess.length, showToast, sidebarQuickAccess, t.sidebar.addQuickAccessDialogTitle, t.sidebar.quickAccessAdded, t.sidebar.quickAccessAddFailed, t.sidebar.quickAccessAlreadyExists, t.sidebar.quickAccessLimitReached, t.sidebar.quickAccessNeedFolder]);
+  }, [addCustomQuickAccessPath, currentTab.currentPath, currentTab.title, customQuickAccess.length, showToast, t.sidebar.addQuickAccessDialogTitle, t.sidebar.quickAccessAddFailed, t.sidebar.quickAccessLimitReached, t.sidebar.quickAccessNeedFolder]);
+
+  const handleAddFolderToQuickAccess = useCallback((item: FileItem) => {
+    if (item.isFolder) addCustomQuickAccessPath(item.path, item.name);
+  }, [addCustomQuickAccessPath]);
   const handleOpenCustomQuickAccess = useCallback((item: QuickAccessItem) => {
     if (isTauriDesktop()) {
       if (!systemHomeWorkspace.current && nativeRootPath.current && !isSameOrDescendantPath(item.path, nativeRootPath.current)) {
@@ -2330,10 +2401,33 @@ export default function App() {
     setCustomQuickAccess(previous => previous.filter(item => item.id !== id));
   }, []);
 
+  const handleReorderQuickAccess = useCallback((draggedId: string, targetId: string) => {
+    if (quickAccessSortMode !== 'manual' || draggedId === targetId) return;
+    const reorderedIds = sidebarQuickAccess.map(item => item.id);
+    const fromIndex = reorderedIds.indexOf(draggedId);
+    const toIndex = reorderedIds.indexOf(targetId);
+    if (fromIndex < 0 || toIndex < 0) return;
+    const [dragged] = reorderedIds.splice(fromIndex, 1);
+    reorderedIds.splice(toIndex, 0, dragged);
+    const visibleIds = new Set(reorderedIds);
+    setQuickAccessOrder(previous => [
+      ...reorderedIds,
+      ...previous.filter(id => !visibleIds.has(id)),
+    ]);
+  }, [quickAccessSortMode, sidebarQuickAccess]);
+
+  const handleMoveQuickAccess = useCallback((itemId: string, direction: -1 | 1) => {
+    if (quickAccessSortMode !== 'manual') return;
+    const items = sidebarQuickAccess.map(item => item.id);
+    const index = items.indexOf(itemId);
+    const targetIndex = index + direction;
+    if (index < 0 || targetIndex < 0 || targetIndex >= items.length) return;
+    handleReorderQuickAccess(itemId, items[targetIndex]);
+  }, [handleReorderQuickAccess, quickAccessSortMode, sidebarQuickAccess]);
   // Keyboard Shortcuts listener
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (isCloseDialogOpen || isSettingsOpen || isSearchOpen || isShortcutsOpen || isBatchRenameOpen || pendingDeleteItems.length > 0 || isFileOperationBusy) return;
+      if (isCloseDialogOpen || isSettingsOpen || isAboutOpen || isSearchOpen || isShortcutsOpen || isBatchRenameOpen || pendingDeleteItems.length > 0 || isFileOperationBusy) return;
 
       // If typing inside an input/textarea, don't hijack keys
       if (
@@ -2486,6 +2580,7 @@ export default function App() {
     updateActiveTab,
     isCloseDialogOpen,
     isSettingsOpen,
+    isAboutOpen,
     isSearchOpen,
     isShortcutsOpen,
     isBatchRenameOpen,
@@ -2577,6 +2672,10 @@ export default function App() {
           drives={drives}
           quickAccess={sidebarQuickAccess}
           onAddQuickAccess={handleAddCustomQuickAccess}
+          quickAccessSortMode={quickAccessSortMode}
+          onQuickAccessSortModeChange={setQuickAccessSortMode}
+          onReorderQuickAccess={handleReorderQuickAccess}
+          onMoveQuickAccess={handleMoveQuickAccess}
           onOpenCustomQuickAccess={handleOpenCustomQuickAccess}
           onRenameQuickAccess={handleRenameCustomQuickAccess}
           onRemoveQuickAccess={handleRemoveCustomQuickAccess}
@@ -2865,6 +2964,7 @@ export default function App() {
         onClose={() => setContextMenuPos(null)}
         onOpenFolder={handleOpenRealFolder}
         onOpenLocation={item => { void handleNavigate(item.path, contextPane); }}
+        onAddToQuickAccess={handleAddFolderToQuickAccess}
         onRefresh={() => void handleNavigate(contextPaneTab.currentPath, contextPane, true)}
         onClearFilter={() => updatePaneTab(contextPane, tab => ({ ...tab, filterQuery: '' }))}
         onViewModeChange={mode => updatePaneTab(contextPane, tab => setTabViewMode(tab, mode))}
@@ -2904,14 +3004,16 @@ export default function App() {
       />
 
       {/* Global file and content search modal (Ctrl+F) */}
-      <FindFilesModal
-        isOpen={isSearchOpen}
-        onClose={() => setIsSearchOpen(false)}
-        allFiles={allFiles}
-        currentPath={currentTab.currentPath}
-        onNavigateToFile={handleNavigateToFile}
-        onPreviewFile={handlePreviewFileFromSearch}
-      />
+      <Suspense fallback={null}>
+        <FindFilesModal
+          isOpen={isSearchOpen}
+          onClose={() => setIsSearchOpen(false)}
+          allFiles={allFiles}
+          currentPath={currentTab.currentPath}
+          onNavigateToFile={handleNavigateToFile}
+          onPreviewFile={handlePreviewFileFromSearch}
+        />
+      </Suspense>
 
       <ConfirmActionModal
         items={pendingDeleteItems}
@@ -2968,11 +3070,17 @@ export default function App() {
         onSidebarLocationsOpenInNewTabChange={setSidebarLocationsOpenInNewTab}
         newTabsNextToCurrent={newTabsNextToCurrent}
         onNewTabsNextToCurrentChange={setNewTabsNextToCurrent}
+        onShowAbout={() => {
+          setIsSettingsOpen(false);
+          setIsAboutOpen(true);
+        }}
         onShowOnboarding={() => {
           setIsSettingsOpen(false);
           setIsOnboardingOpen(true);
         }}
       />
+
+      <Suspense fallback={null}><AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} /></Suspense>
 
       <OnboardingWelcome
         isOpen={isOnboardingOpen}

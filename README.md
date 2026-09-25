@@ -1,28 +1,31 @@
 # CyberFiles
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/CyberGems/CyberFiles/main/public/icon.png" width="100" alt="CyberFiles">
+</p>
+
 **A dual-pane file manager for Windows, built with Tauri, Rust, React, and TypeScript.**
 
-CyberFiles is an early-stage desktop file manager focused on fast, clear folder navigation. Its workspace brings together the familiar Windows locations and drives with a flexible dual-pane layout, per-tab navigation, and a compact, customizable interface.
+CyberFiles is an early Windows-first file manager preview. Its workspace combines familiar Windows locations and drives with flexible panes, independent tabs, and a customizable interface.
+
+## Releases
+
+Windows installers and release notes will be published on the [GitHub Releases page](https://github.com/CyberGems/CyberFiles/releases).
 
 ## Features
 
-- Browse real Windows drives and common user folders from a unified “This PC” view.
-- Work in dual vertical, dual horizontal, or single-pane layouts, with independent tabs and navigation history.
-- Switch between details, compact, and icon-grid views. Resize details columns and optionally lock the current style while navigating.
-- Preview common image formats as thumbnails in grid view.
-- Keep frequently used locations and recent files close at hand in the sidebar.
-- Send confirmed deletions to the Windows Recycle Bin and view its item count and size. Emptying it requires a separate permanent-action confirmation.
+- Browse real Windows drives and common user folders from a unified This PC view.
+- Use dual vertical, dual horizontal, or single-pane layouts, with independent tabs and navigation history.
+- Switch between details, compact, and icon-grid views. Resize details columns and optionally keep the current view style while navigating.
+- Preview common text, Markdown, HTML, and image files.
+- Pin folders to personal Quick Access from the sidebar or folder context menu. Rename or remove shortcuts, sort A–Z, or arrange them manually with drag and drop or Alt+Up and Alt+Down.
+- Recognize files and folders changed in the last 24 hours with a subtle amber accent and tooltip details. This option is enabled by default.
+- Copy, move, rename, and create folders in the Windows desktop app. Confirmed deletions go to the Windows Recycle Bin.
 - Choose CyberFiles, grayscale, or light appearance, and English or Spanish UI language.
-- Use the system tray to show, hide, or quit the app. Window size, position, and maximized state are restored on the next launch.
-- Use a development-only browser preview to browse a user-selected local folder through the File System Access API, where supported.
+- Use the system tray and configurable global shortcut. Window size, position, and maximized state are restored on the next launch.
+- Use a development-only browser preview to browse one folder selected by the user through the File System Access API, where supported.
 
-## Development status
-
-CyberFiles is actively being developed and is not yet a finished file manager. Directory browsing and drive discovery use the real filesystem. In the Windows desktop app, confirmed deletion sends selected items to the Windows Recycle Bin. The sidebar reports its item count and size, and emptying it is a separate, irreversible action with its own confirmation. Native copy, move, rename, and folder creation are still in progress, so do not rely on this development build for those operations.
-
-The project is currently Windows-first. Other desktop platforms and production packaging have not been validated.
-
-## Getting started
+## Development
 
 ### Prerequisites
 
@@ -32,42 +35,34 @@ The project is currently Windows-first. Other desktop platforms and production p
 
 ### Install and run
 
-```powershell
-npm ci
-npm run dev:desktop
-```
+<pre><code>npm ci
+npm run dev:desktop</code></pre>
 
 For a limited browser preview instead of the desktop app:
 
-```powershell
-npm run dev
-```
+<pre><code>npm run dev</code></pre>
 
-Browser preview is a development fallback, not the target CyberFiles experience. It can access only a folder the user explicitly chooses, and only in browsers that support the File System Access API. It cannot use the Windows Shell, inspect arbitrary drives, or manage the Windows Recycle Bin. Those capabilities belong to the Tauri desktop app.
+Browser preview is a development fallback. It can access only a folder the user explicitly chooses and only in browsers that support the File System Access API. It cannot use the Windows Shell, inspect arbitrary drives, or manage the Windows Recycle Bin.
 
 ## Build and checks
 
-```powershell
-npm run test          # Unit tests
-npm run test:native   # Rust/Tauri tests
-npm run check         # TypeScript validation and web production build
-npm run build:desktop # Debug Windows executable, without an installer
-```
+<pre><code>npm run test
+npm run test:native
+npm run check
+npm run build:desktop
+npm run build:installer</code></pre>
 
-The debug executable is produced at `src-tauri/target/debug/cyberfiles.exe`. The first native build may take several minutes while Rust dependencies compile.
+The debug executable is produced at <code>src-tauri/target/debug/cyberfiles.exe</code>. The installer build creates an NSIS package for Windows x64 under <code>src-tauri/target/release/bundle/nsis</code>. The first native build may take several minutes while Rust dependencies compile.
 
 ## Technology
 
 - **Desktop shell:** Tauri 2 and Rust
 - **Interface:** React, TypeScript, Vite, and Tailwind CSS
-- **Native integration:** Windows drive discovery, folder enumeration, tray controls, and persisted window placement
+- **Native integration:** Windows drive discovery, folder enumeration, file operations, Recycle Bin, tray controls, and persisted window placement
 
-## Roadmap
+## Project status
 
-- Complete safe native copy, move, rename, and folder-creation operations.
-- Add broader automated coverage for native filesystem operations and edge cases.
-- Refresh open folders in response to filesystem changes.
-- Continue validating navigation, performance, accessibility, and packaged Windows builds.
+CyberFiles is Windows-first. The first prerelease is intended to validate the packaged installer and early workflow. Other desktop platforms have not been validated.
 
 ## License
 

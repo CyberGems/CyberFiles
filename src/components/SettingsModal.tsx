@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Check, Keyboard, Palette, RotateCcw, X } from 'lucide-react';
+import { Check, Info, Keyboard, Palette, RotateCcw, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { type AppTheme, useTheme } from '../themes/ThemeContext';
 import { Tooltip } from './Tooltip';
@@ -9,6 +9,7 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onShowOnboarding: () => void;
+  onShowAbout: () => void;
   globalShortcut: { enabled: boolean; shortcut: string; registered: boolean };
   globalShortcutLoaded: boolean;
   globalShortcutSupported: boolean;
@@ -54,6 +55,7 @@ export function SettingsModal({
   isOpen,
   onClose,
   onShowOnboarding,
+  onShowAbout,
   globalShortcut,
   globalShortcutLoaded,
   globalShortcutSupported,
@@ -390,9 +392,21 @@ export function SettingsModal({
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-neutral-800 bg-neutral-950/40 px-5 py-3">
-          <button onClick={onShowOnboarding} className="text-xs text-neutral-400 underline-offset-4 transition-colors hover:text-cyan-300 hover:underline">
+          <div className="flex min-w-0 items-center gap-3">
+            <Tooltip label={t.about.title} placement="top">
+              <button
+                type="button"
+                onClick={onShowAbout}
+                className="inline-flex items-center gap-1.5 text-xs text-neutral-300 transition-colors hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+              >
+                <Info className="h-3.5 w-3.5" />
+                {t.about.title}
+              </button>
+            </Tooltip>
+            <button onClick={onShowOnboarding} className="text-xs text-neutral-400 underline-offset-4 transition-colors hover:text-cyan-300 hover:underline">
             {t.settings.showOnboarding}
-          </button>
+            </button>
+          </div>
           <DialogButton size="compact" onClick={onClose}>
             {t.settings.close}
           </DialogButton>

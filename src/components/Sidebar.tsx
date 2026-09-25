@@ -20,6 +20,7 @@ import {
   Eye,
   X,
   Plus,
+  GripVertical,
   Copy,
   MoveRight,
   Pencil,
@@ -29,7 +30,7 @@ import {
   Info,
   RotateCcw,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, QuickAccessItem } from '../types';
+import { DriveInfo, FileItem, FileType, QuickAccessItem, QuickAccessSortMode } from '../types';
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
 import type { RecycleBinStatus } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
@@ -39,6 +40,10 @@ interface SidebarProps {
   drives: DriveInfo[];
   quickAccess: QuickAccessItem[];
   onAddQuickAccess?: () => void;
+  quickAccessSortMode: QuickAccessSortMode;
+  onQuickAccessSortModeChange: (mode: QuickAccessSortMode) => void;
+  onReorderQuickAccess: (draggedId: string, targetId: string) => void;
+  onMoveQuickAccess: (itemId: string, direction: -1 | 1) => void;
   onOpenCustomQuickAccess: (item: QuickAccessItem) => void;
   onRenameQuickAccess: (id: string, name: string) => void;
   onRemoveQuickAccess: (id: string) => void;
@@ -74,6 +79,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   drives,
   quickAccess,
   onAddQuickAccess,
+  quickAccessSortMode,
+  onQuickAccessSortModeChange,
+  onReorderQuickAccess,
+  onMoveQuickAccess,
   onOpenCustomQuickAccess,
   onRenameQuickAccess,
   onRemoveQuickAccess,
@@ -109,6 +118,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [recentCategory, setRecentCategory] = useState<'all' | 'code' | 'image' | 'document' | 'media'>('all');
   const [editingQuickAccessId, setEditingQuickAccessId] = useState<string | null>(null);
   const [editingQuickAccessName, setEditingQuickAccessName] = useState('');
+  const [draggingQuickAccessId, setDraggingQuickAccessId] = useState<string | null>(null);
+  const [dragTargetQuickAccessId, setDragTargetQuickAccessId] = useState<string | null>(null);
   const [collapsedSections, setCollapsedSections] = useState(() => {
     try {
       const saved = JSON.parse(window.localStorage.getItem('cyberfiles_sidebar_collapsed_sections_v1') || 'null');
@@ -465,6 +476,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {collapsedSections.quickAccess ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                   <span>{t.sidebar.quickAccessTitle}</span>
                 </button>
+                <Tooltip label={t.sidebar.quickAccessSort} placement="right">
+                  <select
+                    aria-label={t.sidebar.quickAccessSort}
+                    value={quickAccessSortMode}
+                    onChange={event => onQuickAccessSortModeChange(event.target.value as QuickAccessSortMode)}
+                    className="max-w-[68px] rounded border border-neutral-800 bg-neutral-950 px-1 py-0.5 text-[9px] text-neutral-400 outline-none transition-colors hover:text-neutral-200 focus:border-cyan-500/60"
+                  >
+                    <option value="manual">{t.sidebar.quickAccessSortManual}</option>
+                    <option value="name">{t.sidebar.quickAccessSortName}</option>
+                  </select>
+                </Tooltip>
                 {onAddQuickAccess && (
                   <Tooltip label={t.sidebar.addQuickAccess} placement="right">
                     <button
@@ -536,7 +558,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   }
 
                   return (
-                    <div key={item.id} className="group flex min-w-0 items-center gap-0.5">
+                    <div
+                      key={item.id}
+                      className={"group flex min-w-0 items-center gap-0.5 rounded " + (dragTargetQuickAccessId === item.id ? "ring-1 ring-cyan-500/60 bg-cyan-950/20 " : "") + (draggingQuickAccessId === item.id ? "opacity-50" : "")}
+                      onDragOver={event => {
+                        if (quickAccessSortMode !== 'manual') return;
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = 'move';
+                        setDragTargetQuickAccessId(item.id);
+                      }}
+                      onDrop={event => {
+                        event.preventDefault();
+                        const draggedId = event.dataTransfer.getData('text/plain') || draggingQuickAccessId;
+                        if (draggedId) onReorderQuickAccess(draggedId, item.id);
+                        setDraggingQuickAccessId(null);
+                        setDragTargetQuickAccessId(null);
+                      }}
+                    >
+                      {quickAccessSortMode === 'manual' && (
+                        <Tooltip label={t.sidebar.quickAccessReorderHint} placement="right">
+                          <button
+                            type="button"
+                            draggable
+                            aria-label={t.sidebar.quickAccessReorder + ': ' + item.name}
+                            onDragStart={event => {
+                              setDraggingQuickAccessId(item.id);
+                              event.dataTransfer.effectAllowed = 'move';
+                              event.dataTransfer.setData('text/plain', item.id);
+                            }}
+                            onDragEnd={() => {
+                              setDraggingQuickAccessId(null);
+                              setDragTargetQuickAccessId(null);
+                            }}
+                            onKeyDown={event => {
+                              if (!event.altKey) return;
+                              const direction = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0;
+                              if (direction === 0) return;
+                              event.preventDefault();
+                              onMoveQuickAccess(item.id, direction);
+                            }}
+                            className="flex-shrink-0 cursor-grab rounded p-0.5 text-neutral-600 transition-colors hover:text-neutral-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70 active:cursor-grabbing"
+                          >
+                            <GripVertical className="h-3.5 w-3.5" />
+                          </button>
+                        </Tooltip>
+                      )}
                       <Tooltip label={item.path} placement="right">
                         <button
                           type="button"

@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import {
   Check,
   ClipboardPaste,
+  BookmarkPlus,
   Copy,
   Edit3,
   Eye,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import { ContextMenuPosition, FileItem, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
+import { Tooltip } from './Tooltip';
 
 interface ContextMenuProps {
   position: ContextMenuPosition | null;
@@ -29,6 +31,7 @@ interface ContextMenuProps {
   onClose: () => void;
   onOpenFolder: () => void;
   onOpenLocation: (item: FileItem) => void;
+  onAddToQuickAccess: (item: FileItem) => void;
   onRefresh: () => void;
   onClearFilter: () => void;
   onViewModeChange: (mode: ViewMode) => void;
@@ -55,6 +58,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onClose,
   onOpenFolder,
   onOpenLocation,
+  onAddToQuickAccess,
   onRefresh,
   onClearFilter,
   onViewModeChange,
@@ -96,7 +100,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const item = position.targetItem;
   const isSystemLocation = Boolean(item && (item.id.startsWith('system-drive-') || item.id.startsWith('system-location-')));
   const menuWidth = 264;
-  const menuHeight = isSystemLocation || item?.recycleBinId ? 96 : item ? 330 : 390;
+  const menuHeight = isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? 370 : item ? 330 : 390;
   const adjustedX = Math.max(8, Math.min(position.x, window.innerWidth - menuWidth - 8));
   const adjustedY = Math.max(8, Math.min(position.y, window.innerHeight - menuHeight - 8));
 
@@ -131,6 +135,14 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         ) : (
         <>
           <div className="truncate border-b border-neutral-800 px-3 py-1.5 font-mono text-[10px] text-neutral-400">{item.name}</div>
+          {item.isFolder && (
+            <>
+              <div className="py-0.5">
+                <MenuButton icon={<BookmarkPlus className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.addToQuickAccess} onClick={() => { onAddToQuickAccess(item); onClose(); }} />
+              </div>
+              <MenuDivider />
+            </>
+          )}
           <div className="py-0.5">
             <MenuButton icon={<Eye className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.openPreview} shortcut="Space" onClick={() => { onPreview(item); onClose(); }} />
             <MenuButton icon={<Copy className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.copyToClipboard} shortcut="Ctrl+C" onClick={() => { onCopyToClipboard(item); onClose(); }} />
@@ -182,28 +194,29 @@ const MenuButton: React.FC<{
   disabled?: boolean;
   danger?: boolean;
 }> = ({ icon, label, shortcut, onClick, disabled = false, danger = false }) => (
-  <button
-    type="button"
-    role="menuitem"
-    disabled={disabled}
-    onClick={onClick}
-    className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-      danger ? 'text-rose-300 hover:bg-rose-950/40' : 'text-neutral-200 hover:bg-neutral-800'
-    }`}
-  >
-    <span className="flex min-w-0 items-center gap-2">{icon}<span className="truncate">{label}</span></span>
-    {shortcut && <span className="shrink-0 font-mono text-[10px] text-neutral-500">{shortcut}</span>}
-  </button>
+  <Tooltip label={label} placement="right">
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      onClick={onClick}
+      className={"flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 " + (danger ? "text-rose-300 hover:bg-rose-950/40" : "text-neutral-200 hover:bg-neutral-800")}
+    >
+      <span className="flex min-w-0 items-center gap-2">{icon}<span className="truncate">{label}</span></span>
+      {shortcut && <span className="shrink-0 font-mono text-[10px] text-neutral-500">{shortcut}</span>}
+    </button>
+  </Tooltip>
 );
-
 const ViewMenuButton: React.FC<{
   icon: React.ReactNode;
   label: string;
   selected: boolean;
   onClick: () => void;
 }> = ({ icon, label, selected, onClick }) => (
-  <button type="button" role="menuitemradio" aria-checked={selected} onClick={onClick} className="flex w-full items-center justify-between px-3 py-1.5 text-left text-neutral-200 transition-colors hover:bg-neutral-800">
-    <span className="flex items-center gap-2">{icon}<span>{label}</span></span>
-    {selected && <Check className="h-3.5 w-3.5 text-cyan-300" />}
-  </button>
+  <Tooltip label={label} placement="right">
+    <button type="button" role="menuitemradio" aria-checked={selected} onClick={onClick} className="flex w-full items-center justify-between px-3 py-1.5 text-left text-neutral-200 transition-colors hover:bg-neutral-800">
+      <span className="flex items-center gap-2">{icon}<span>{label}</span></span>
+      {selected && <Check className="h-3.5 w-3.5 text-cyan-300" />}
+    </button>
+  </Tooltip>
 );

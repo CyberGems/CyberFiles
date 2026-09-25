@@ -38,6 +38,7 @@ export interface FileItem {
 
 export type SortField = 'name' | 'size' | 'type' | 'modifiedDate' | 'extension';
 export type SortOrder = 'asc' | 'desc';
+export type QuickAccessSortMode = 'manual' | 'name';
 
 export type ViewLayout = 'dual-vertical' | 'dual-horizontal' | 'single';
 export type ViewMode = 'details' | 'compact' | 'icons';
