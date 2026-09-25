@@ -21,9 +21,21 @@ if (await isPortInUse()) {
   // helper alive until Tauri closes so it can cleanly manage the desktop session.
   setInterval(() => {}, 60_000);
 } else {
-  const vite = spawn(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'dev'], {
+  const npmCliPath = process.env.npm_execpath;
+  const npmCommand = npmCliPath
+    ? process.execPath
+    : process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : 'npm';
+  const npmArgs = npmCliPath
+    ? [npmCliPath, 'run', 'dev']
+    : process.platform === 'win32' ? ['/d', '/c', 'npm.cmd run dev'] : ['run', 'dev'];
+  const vite = spawn(npmCommand, npmArgs, {
     cwd: process.cwd(),
     stdio: 'inherit',
+  });
+
+  vite.once('error', error => {
+    console.error('Unable to start the Vite development server:', error.message);
+    process.exitCode = 1;
   });
 
   const stop = () => vite.kill();
