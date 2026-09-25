@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to scan with VirusTotal
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -15,6 +21,7 @@ concurrency:
 jobs:
   release:
     name: Build and publish Windows installer
+    if: github.event_name == 'push'
     runs-on: windows-latest
     permissions:
       contents: write
@@ -109,10 +116,28 @@ jobs:
           $notes = $template.Replace('{{VERSION}}', $env:RELEASE_TAG).
             Replace('{{RELEASE_SUMMARY}}', $releaseSummary).
             Replace('{{VERSION_NUM}}', $versionNumber).
-            Replace('{{SETUP_SHA256}}', $installerHash)
+            Replace('{{SETUP_SHA256}}', $installerHash).
+            Replace('{{VT_SCAN_STATUS}}', 'Pending automated VirusTotal analysis.')
           [System.IO.File]::WriteAllText('release_notes.md', $notes, [System.Text.UTF8Encoding]::new($false))
           Write-Host "Installer: $($installer.Name)"
           Write-Host "SHA-256: $installerHash"
+
+      - name: Scan installer with VirusTotal
+        id: virustotal
+        shell: pwsh
+        env:
+          VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+        run: |
+          $installer = Get-ChildItem 'src-tauri/target/release/bundle/nsis' -Filter 'CyberFiles_*_x64-setup.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'The built installer could not be found for VirusTotal scanning.' }
+          $result = & .github/scripts/scan-virus-total.ps1 -InstallerPath $installer.FullName | ConvertFrom-Json
+          "status=$($result.status)" >> $env:GITHUB_OUTPUT
+          "sha256=$($result.sha256)" >> $env:GITHUB_OUTPUT
+          "report_url=$($result.reportUrl)" >> $env:GITHUB_OUTPUT
+          $notes = [System.IO.File]::ReadAllText('release_notes.md', [System.Text.Encoding]::UTF8)
+          $notes = $notes.Replace('{{VT_SCAN_STATUS}}', $result.status)
+          [System.IO.File]::WriteAllText('release_notes.md', $notes, [System.Text.UTF8Encoding]::new($false))
+          Write-Host "VirusTotal: $($result.status)"
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
@@ -128,3 +153,103 @@ jobs:
             src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  scan_published_release:
+    name: Scan an existing release
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out scan helper
+        uses: actions/checkout@v4
+
+      - name: Download installer from the selected release
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RELEASE_TAG -notmatch '^v[0-9]') {
+            throw 'Enter a release tag beginning with v followed by its version number.'
+          }
+          $versionNumber = $env:RELEASE_TAG.TrimStart('v')
+          $installerName = 'CyberFiles_' + $versionNumber + '_x64-setup.exe'
+          $releaseJson = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json assets
+          if ($LASTEXITCODE -ne 0) { throw "Could not read release $($env:RELEASE_TAG)." }
+          $release = $releaseJson | ConvertFrom-Json
+          $asset = @($release.assets | Where-Object name -eq $installerName)
+          if ($asset.Count -ne 1) { throw "Expected exactly one $installerName asset in release $($env:RELEASE_TAG)." }
+
+          $scanDirectory = Join-Path $env:RUNNER_TEMP 'virustotal-scan'
+          New-Item -ItemType Directory -Force -Path $scanDirectory | Out-Null
+          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern $installerName --pattern SHA256SUMS.txt --dir $scanDirectory
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download the published installer and checksum.' }
+
+          $installerPath = Join-Path $scanDirectory $installerName
+          $checksumPath = Join-Path $scanDirectory 'SHA256SUMS.txt'
+          if (-not (Test-Path -LiteralPath $installerPath) -or -not (Test-Path -LiteralPath $checksumPath)) {
+            throw 'The release installer or its checksum asset is missing.'
+          }
+          $localHash = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $checksumLine = [System.IO.File]::ReadAllLines($checksumPath) | Where-Object { $_ -match ('^\s*[0-9a-fA-F]{64}\s+\*?' + [regex]::Escape($installerName) + '$') } | Select-Object -First 1
+          $checksumMatch = [regex]::Match([string]$checksumLine, '^\s*([0-9a-fA-F]{64})')
+          if (-not $checksumMatch.Success) {
+            throw 'The checksum file does not contain an entry for the release installer.'
+          }
+          if ($checksumMatch.Groups[1].Value.ToLowerInvariant() -ne $localHash) {
+            throw 'The downloaded installer does not match the published SHA-256 checksum.'
+          }
+          if ($asset[0].digest -and $asset[0].digest -ne "sha256:$localHash") {
+            throw 'The downloaded installer hash does not match GitHub release metadata.'
+          }
+          "path=$installerPath" >> $env:GITHUB_OUTPUT
+          "sha256=$localHash" >> $env:GITHUB_OUTPUT
+
+      - name: Scan installer with VirusTotal
+        id: virustotal
+        shell: pwsh
+        env:
+          VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+          INSTALLER_PATH: ${{ steps.release.outputs.path }}
+        run: |
+          $result = & .github/scripts/scan-virus-total.ps1 -InstallerPath $env:INSTALLER_PATH | ConvertFrom-Json
+          "status=$($result.status)" >> $env:GITHUB_OUTPUT
+          "sha256=$($result.sha256)" >> $env:GITHUB_OUTPUT
+          "report_url=$($result.reportUrl)" >> $env:GITHUB_OUTPUT
+          Write-Host "VirusTotal: $($result.status)"
+
+      - name: Update published release notes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          VIRUSTOTAL_STATUS: ${{ steps.virustotal.outputs.status }}
+          VIRUSTOTAL_SHA256: ${{ steps.virustotal.outputs.sha256 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseJson = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json body
+          if ($LASTEXITCODE -ne 0) { throw "Could not read release notes for $($env:RELEASE_TAG)." }
+          $release = $releaseJson | ConvertFrom-Json
+          $body = [string]$release.body
+          $vtBlock = @"
+          ### VirusTotal
+
+          - **Automated scan:** $($env:VIRUSTOTAL_STATUS)
+          - **Security report:** [View report](https://www.virustotal.com/gui/file/$($env:VIRUSTOTAL_SHA256))
+          "@.Trim()
+          $pattern = '(?s)### VirusTotal\s*\r?\n.*?(?=\r?\n(?:### |\*Made by )|\z)'
+          $section = [regex]::Match($body, $pattern)
+          if ($section.Success) {
+            $body = $body.Remove($section.Index, $section.Length).Insert($section.Index, $vtBlock)
+          } else {
+            $body = $body.TrimEnd() + [Environment]::NewLine + [Environment]::NewLine + $vtBlock + [Environment]::NewLine
+          }
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          [System.IO.File]::WriteAllText($notesPath, $body, [System.Text.UTF8Encoding]::new($false))
+          gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --notes-file $notesPath
+          if ($LASTEXITCODE -ne 0) { throw "Could not update release notes for $($env:RELEASE_TAG)." }

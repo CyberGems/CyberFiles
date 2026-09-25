@@ -33,7 +33,8 @@
 
 ### VirusTotal
 
-[Open the VirusTotal report for this installer](https://www.virustotal.com/gui/file/{{SETUP_SHA256}}). If there is no report yet, use the SHA-256 above to look up the file.
+- **Automated scan:** {{VT_SCAN_STATUS}}
+- **Security report:** [View report](https://www.virustotal.com/gui/file/{{SETUP_SHA256}})
 
 ---
 
