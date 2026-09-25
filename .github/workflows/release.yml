@@ -242,10 +242,10 @@ jobs:
           - **Automated scan:** $($env:VIRUSTOTAL_STATUS)
           - **Security report:** [View report](https://www.virustotal.com/gui/file/$($env:VIRUSTOTAL_SHA256))
           "@.Trim()
-          $pattern = '(?s)### VirusTotal\s*\r?\n.*?(?=\r?\n(?:### |\*Made by )|\z)'
+          $pattern = '(?s)### VirusTotal\s*\r?\n.*?(?=\r?\n(?:### |---|\*Made by )|\z)'
           $section = [regex]::Match($body, $pattern)
           if ($section.Success) {
-            $body = $body.Remove($section.Index, $section.Length).Insert($section.Index, $vtBlock)
+            $body = $body.Remove($section.Index, $section.Length).Insert($section.Index, $vtBlock + [Environment]::NewLine)
           } else {
             $body = $body.TrimEnd() + [Environment]::NewLine + [Environment]::NewLine + $vtBlock + [Environment]::NewLine
           }
