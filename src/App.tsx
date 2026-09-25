@@ -25,6 +25,7 @@ import {
   getItemsInTree,
   getUniqueName,
   isSameOrDescendantPath,
+  isTextPreviewableFile,
   isMediaPreviewPath,
   isWindowsDriveRoot,
   isValidFileName,
@@ -46,7 +47,7 @@ import { CloseWindowModal } from './components/CloseWindowModal';
 import { SettingsModal } from './components/SettingsModal';
 import { OnboardingWelcome } from './components/OnboardingWelcome';
 import { useLanguage } from './locales/LanguageContext';
-import { chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, emptyNativeRecycleBin, getNativeFileClipboard, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeImageWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
+import { chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, emptyNativeRecycleBin, getNativeFileClipboard, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeImageWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
 
 const ONBOARDING_STORAGE_KEY = 'cyberfiles_onboarding_complete';
 const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
@@ -55,6 +56,8 @@ const EMPTY_AREA_DOUBLE_CLICK_KEY = 'cyberfiles_empty_area_double_click_navigate
 const FOLDER_STYLE_LOCKED_KEY = 'cyberfiles_folder_style_locked';
 const SIDEBAR_LOCATIONS_NEW_TAB_KEY = 'cyberfiles_sidebar_locations_open_in_new_tab_v1';
 const NEW_TABS_NEXT_TO_CURRENT_KEY = 'cyberfiles_new_tabs_next_to_current_v1';
+const RECENT_ITEMS_BOLD_KEY = 'cyberfiles_bold_recent_items_v1';
+const MAX_TEXT_PREVIEW_BYTES = 200_000;
 const DEFAULT_GLOBAL_SHORTCUT = 'Alt+Shift+F';
 const DEFAULT_FOLDER_STYLE = { viewMode: 'details' as ViewMode, sortField: 'name' as SortField, sortOrder: 'asc' as SortOrder };
 
@@ -220,6 +223,7 @@ export default function App() {
   const [folderStyleLocked, setFolderStyleLocked] = useState(readFolderStyleLockPreference);
   const [sidebarLocationsOpenInNewTab, setSidebarLocationsOpenInNewTab] = useState(() => readBooleanPreference(SIDEBAR_LOCATIONS_NEW_TAB_KEY, true));
   const [newTabsNextToCurrent, setNewTabsNextToCurrent] = useState(() => readBooleanPreference(NEW_TABS_NEXT_TO_CURRENT_KEY, true));
+  const [recentItemsBold, setRecentItemsBold] = useState(() => readBooleanPreference(RECENT_ITEMS_BOLD_KEY, true));
 
   // Global file system state
   const [allFiles, setAllFiles] = useState<FileItem[]>([]);
@@ -691,6 +695,14 @@ export default function App() {
 
   useEffect(() => {
     try {
+      window.localStorage.setItem(RECENT_ITEMS_BOLD_KEY, String(recentItemsBold));
+    } catch {
+      // Keep the selected behavior for the current session when storage is unavailable.
+    }
+  }, [recentItemsBold]);
+
+  useEffect(() => {
+    try {
       window.localStorage.setItem(EMPTY_AREA_DOUBLE_CLICK_KEY, String(emptyAreaDoubleClickNavigatesUp));
     } catch {
       // Keep the in-memory preference when browser storage is unavailable.
@@ -760,10 +772,12 @@ export default function App() {
       const itemPath = joinWindowsPath(path, entry.name);
       let size = 0;
       let modifiedDate = '';
+      let modifiedAtMs: number | undefined;
       if (!isFolder) {
         try {
           const file = await entry.getFile();
           size = file.size;
+          modifiedAtMs = file.lastModified || undefined;
           modifiedDate = file.lastModified
             ? new Date(file.lastModified).toISOString().replace('T', ' ').slice(0, 16)
             : '';
@@ -779,6 +793,7 @@ export default function App() {
         type: detectFileType(entry.name, isFolder),
         size,
         modifiedDate,
+        modifiedAtMs,
         extension: isFolder ? '' : getFileExtension(entry.name),
         handle: entry as FileSystemHandle,
       };
@@ -849,27 +864,44 @@ export default function App() {
   }, [currentTab.currentPath, currentTab.selectedIds, filesById, activeDisplayFiles]);
 
   useEffect(() => {
-    const fileHandle = previewItem?.handle as (FileSystemFileHandle | undefined);
-    if (!previewItem || previewItem.isFolder || !fileHandle ||
-      (previewItem.type !== 'code' && previewItem.type !== 'text') || previewItem.contentPreview) {
+    if (!previewItem || previewItem.isFolder || previewItem.contentPreview !== undefined || !isTextPreviewableFile(previewItem)) {
       return;
     }
 
     let cancelled = false;
-    void fileHandle.getFile().then(async file => {
-      if (file.size >= 200_000) return;
-      const content = await file.text();
-      if (!cancelled) {
-        setAllFiles(previous => previous.map(item =>
-          item.id === previewItem.id ? { ...item, size: file.size, contentPreview: content } : item
-        ));
-      }
-    }).catch(() => {
-      // The item can disappear or lose access after it was listed.
-    });
+    const loadTextPreview = async () => {
+      try {
+        const fileHandle = previewItem.handle as (FileSystemFileHandle | undefined);
+        if (fileHandle && 'getFile' in fileHandle) {
+          const file = await fileHandle.getFile();
+          if (file.size > MAX_TEXT_PREVIEW_BYTES) return;
+          const content = await file.text();
+          if (!cancelled) {
+            setAllFiles(previous => previous.map(item =>
+              item.id === previewItem.id
+                ? { ...item, size: file.size, modifiedAtMs: file.lastModified || item.modifiedAtMs, contentPreview: content }
+                : item
+            ));
+          }
+          return;
+        }
 
+        if (isTauriDesktop()) {
+          const content = await loadNativeTextPreview(previewItem.path);
+          if (!cancelled) {
+            setAllFiles(previous => previous.map(item =>
+              item.id === previewItem.id ? { ...item, contentPreview: content } : item
+            ));
+          }
+        }
+      } catch {
+        // The item can disappear or lose access after it was listed.
+      }
+    };
+
+    void loadTextPreview();
     return () => { cancelled = true; };
-  }, [previewItem?.id, previewItem?.handle, previewItem?.type, previewItem?.isFolder, previewItem?.contentPreview]);
+  }, [previewItem?.id, previewItem?.path, previewItem?.handle, previewItem?.extension, previewItem?.type, previewItem?.isFolder, previewItem?.contentPreview]);
 
   // Navigation handlers
   const handleNavigate = useCallback(async (newPath: string, targetPane: 'left' | 'right' = activePane, forceRefresh = false, openInNewTab = false, historyIndexOverride?: number) => {
@@ -1854,6 +1886,7 @@ export default function App() {
         const created = await createNativeDirectory(activePath, folderName);
         await refreshChangedDirectories([activePath]);
         const createdId = `native-${encodeURIComponent(created.path.toLowerCase())}`;
+        const createdAtMs = Date.now();
         const createdEntry: FileItem = {
           id: createdId,
           name: created.name,
@@ -1861,7 +1894,9 @@ export default function App() {
           isFolder: true,
           type: 'folder',
           size: 0,
-          modifiedDate: new Date().toISOString().replace('T', ' ').slice(0, 16),
+          modifiedDate: new Date(createdAtMs).toISOString().replace('T', ' ').slice(0, 16),
+          modifiedAtMs: createdAtMs,
+          createdAtMs,
           extension: '',
         };
         setAllFiles(previous => [
@@ -1879,6 +1914,7 @@ export default function App() {
     }
 
     const now = new Date().toISOString();
+    const nowMs = Date.now();
     const newFolderItem: FileItem = {
       id: createOperationId('folder'),
       name: folderName,
@@ -1887,6 +1923,8 @@ export default function App() {
       type: 'folder',
       size: 0,
       modifiedDate: now.replace('T', ' ').slice(0, 16),
+      modifiedAtMs: nowMs,
+      createdAtMs: nowMs,
       lastAccessed: now,
       extension: '',
     };
@@ -2442,6 +2480,7 @@ export default function App() {
                   paneId="left"
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
+                  recentItemsBold={recentItemsBold}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('left')}
                   tab={leftTabs[activeLeftTabIndex]}
@@ -2483,6 +2522,7 @@ export default function App() {
                   paneId="right"
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
+                  recentItemsBold={recentItemsBold}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('right')}
                   tab={rightTabs[activeRightTabIndex]}
@@ -2525,6 +2565,7 @@ export default function App() {
                   paneId="left"
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
+                  recentItemsBold={recentItemsBold}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('left')}
                   tab={leftTabs[activeLeftTabIndex]}
@@ -2562,6 +2603,7 @@ export default function App() {
                   paneId="right"
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
+                  recentItemsBold={recentItemsBold}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('right')}
                   tab={rightTabs[activeRightTabIndex]}
@@ -2604,6 +2646,7 @@ export default function App() {
                 paneId={activePane}
                 isActive={true}
                 styleLocked={folderStyleLocked}
+                  recentItemsBold={recentItemsBold}
                 onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                 onActivate={() => {}}
                 tab={currentTab}
@@ -2774,6 +2817,8 @@ export default function App() {
         onEmptyAreaDoubleClickNavigatesUpChange={setEmptyAreaDoubleClickNavigatesUp}
         folderStyleLocked={folderStyleLocked}
         onFolderStyleLockedChange={setFolderStyleLocked}
+        recentItemsBold={recentItemsBold}
+        onRecentItemsBoldChange={setRecentItemsBold}
         sidebarLocationsOpenInNewTab={sidebarLocationsOpenInNewTab}
         onSidebarLocationsOpenInNewTabChange={setSidebarLocationsOpenInNewTab}
         newTabsNextToCurrent={newTabsNextToCurrent}

@@ -2,7 +2,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    io::{self, Cursor},
+    io::{self, Cursor, Read},
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -389,6 +389,7 @@ struct NativeFolderEntry {
     is_folder: bool,
     size: u64,
     modified_ms: Option<u64>,
+    created_ms: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -1088,6 +1089,11 @@ async fn list_directory(path: String, offset: usize) -> Result<DirectoryListing,
                 .ok()
                 .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
                 .and_then(|duration| duration.as_millis().try_into().ok());
+            let created_ms = metadata
+                .created()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .and_then(|duration| duration.as_millis().try_into().ok());
 
             entries.push(NativeFolderEntry {
                 name: entry.file_name().to_string_lossy().to_string(),
@@ -1095,6 +1101,7 @@ async fn list_directory(path: String, offset: usize) -> Result<DirectoryListing,
                 is_folder,
                 size: if is_folder { 0 } else { metadata.len() },
                 modified_ms,
+                created_ms,
             });
         }
 
@@ -1108,6 +1115,66 @@ async fn list_directory(path: String, offset: usize) -> Result<DirectoryListing,
     })
     .await
     .map_err(|error| format!("Folder scan worker failed: {error}"))?
+}
+
+const MAX_TEXT_PREVIEW_BYTES: u64 = 200_000;
+
+fn is_text_preview_extension_allowed(path: &Path) -> bool {
+    let filename = path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    let is_common_dotfile = matches!(
+        filename.as_str(),
+        ".editorconfig" | ".env" | ".gitattributes" | ".gitignore" | ".npmrc"
+            | "dockerfile" | "license" | "makefile" | "readme"
+    );
+    if filename.starts_with(".env.") || is_common_dotfile {
+        return true;
+    }
+    let extension = path
+        .extension()
+        .map(|value| value.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    matches!(
+        extension.as_str(),
+        "bat" | "c" | "cfg" | "cmd" | "cpp" | "css" | "csv" | "env" | "go" | "h"
+            | "htm" | "html" | "ini" | "java" | "js" | "jsx" | "json" | "jsonl"
+            | "log" | "md" | "markdown" | "php" | "properties" | "ps1" | "py" | "rb"
+            | "rs" | "sh" | "sql" | "toml" | "ts" | "tsx" | "txt" | "xml" | "yaml"
+            | "yml"
+    )
+}
+
+#[tauri::command]
+async fn read_text_preview(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let file_path = Path::new(&path);
+        if !is_text_preview_extension_allowed(file_path) {
+            return Err("This file type is not supported for text preview.".to_string());
+        }
+        let metadata = fs::symlink_metadata(file_path)
+            .map_err(|error| format!("Cannot inspect preview file: {error}"))?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err("Only regular files can be previewed.".to_string());
+        }
+        if metadata.len() > MAX_TEXT_PREVIEW_BYTES {
+            return Err("The file is too large to preview.".to_string());
+        }
+
+        let mut bytes = Vec::with_capacity(metadata.len() as usize);
+        fs::File::open(file_path)
+            .map_err(|error| format!("Cannot open preview file: {error}"))?
+            .take(MAX_TEXT_PREVIEW_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|error| format!("Cannot read preview file: {error}"))?;
+        if bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES {
+            return Err("The file is too large to preview.".to_string());
+        }
+        String::from_utf8(bytes).map_err(|_| "The file is not valid UTF-8 text.".to_string())
+    })
+    .await
+    .map_err(|error| format!("Text preview worker failed: {error}"))?
 }
 
 #[tauri::command]
@@ -2810,6 +2877,7 @@ fn main() {
             hide_main_window,
             quit_app,
             list_directory,
+            read_text_preview,
             create_directory,
             rename_item,
             copy_items_to_directory,

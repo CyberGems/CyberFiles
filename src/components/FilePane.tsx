@@ -40,6 +40,7 @@ interface FilePaneProps {
   paneId: 'left' | 'right';
   isActive: boolean;
   styleLocked: boolean;
+  recentItemsBold: boolean;
   onStyleLockToggle: () => void;
   onActivate: () => void;
   tab: TabState;
@@ -77,6 +78,7 @@ type ResizableColumn = 'extension' | 'name' | 'size' | 'modified';
 
 interface FileColumnWidths {
   extension: number;
+  name: number | null;
   size: number;
   modified: number;
 }
@@ -106,7 +108,9 @@ interface MarqueeDrag {
 
 const COLLAPSED_SYSTEM_HOME_SECTIONS_KEY = 'cyberfiles_system_home_collapsed_sections_v1';
 const FILE_COLUMN_WIDTHS_KEY = 'cyberfiles_file_column_widths_v1';
-const DEFAULT_FILE_COLUMN_WIDTHS: FileColumnWidths = { extension: 58, size: 84, modified: 116 };
+const DEFAULT_FILE_COLUMN_WIDTHS: FileColumnWidths = { extension: 58, name: null, size: 84, modified: 116 };
+const MIN_NAME_COLUMN_WIDTH = 100;
+const RECENT_ITEM_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_COLLAPSED_SYSTEM_HOME_SECTIONS: CollapsedSystemHomeSections = {
   folders: false,
   devices: false,
@@ -119,8 +123,9 @@ function readFileColumnWidths(paneId: 'left' | 'right'): FileColumnWidths {
     if (!saved || typeof saved !== 'object') return DEFAULT_FILE_COLUMN_WIDTHS;
     return {
       extension: typeof saved.extension === 'number' ? Math.min(220, Math.max(42, saved.extension)) : DEFAULT_FILE_COLUMN_WIDTHS.extension,
-      size: typeof saved.size === 'number' ? Math.min(240, Math.max(56, saved.size)) : DEFAULT_FILE_COLUMN_WIDTHS.size,
-      modified: typeof saved.modified === 'number' ? Math.min(320, Math.max(80, saved.modified)) : DEFAULT_FILE_COLUMN_WIDTHS.modified,
+      name: typeof saved.name === 'number' ? Math.min(1600, Math.max(MIN_NAME_COLUMN_WIDTH, saved.name)) : DEFAULT_FILE_COLUMN_WIDTHS.name,
+      size: typeof saved.size === 'number' ? Math.min(320, Math.max(56, saved.size)) : DEFAULT_FILE_COLUMN_WIDTHS.size,
+      modified: typeof saved.modified === 'number' ? Math.min(480, Math.max(80, saved.modified)) : DEFAULT_FILE_COLUMN_WIDTHS.modified,
     };
   } catch {
     return DEFAULT_FILE_COLUMN_WIDTHS;
@@ -133,13 +138,11 @@ function resizeFileColumns(widths: FileColumnWidths, column: ResizableColumn, de
     case 'extension':
       return { ...widths, extension: clampWidth(widths.extension + delta, 42, 220) };
     case 'name':
-      return { ...widths, size: clampWidth(widths.size - delta, 56, 240) };
-    case 'size': {
-      const size = clampWidth(widths.size + delta, 56, 240);
-      return { ...widths, size, modified: clampWidth(widths.modified - (size - widths.size), 80, 320) };
-    }
+      return { ...widths, name: clampWidth((widths.name ?? MIN_NAME_COLUMN_WIDTH) + delta, MIN_NAME_COLUMN_WIDTH, 1600) };
+    case 'size':
+      return { ...widths, size: clampWidth(widths.size + delta, 56, 320) };
     case 'modified':
-      return { ...widths, modified: clampWidth(widths.modified + delta, 80, 320) };
+      return { ...widths, modified: clampWidth(widths.modified + delta, 80, 480) };
   }
 }
 
@@ -225,6 +228,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   paneId,
   isActive,
   styleLocked,
+  recentItemsBold,
   onStyleLockToggle,
   onActivate,
   tab,
@@ -258,6 +262,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const isSystemHome = tab.currentPath === SYSTEM_HOME_PATH;
   const isRecycleBin = tab.currentPath === RECYCLE_BIN_PATH;
   const effectiveViewMode = tab.viewMode;
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [isEditingPath, setIsEditingPath] = useState(false);
   const [pathInput, setPathInput] = useState(tab.currentPath);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
@@ -277,6 +282,31 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const suppressViewportClickRef = useRef(false);
   const [marqueeBounds, setMarqueeBounds] = useState<MarqueeBounds | null>(null);
   const [marqueePreviewIds, setMarqueePreviewIds] = useState<string[] | null>(null);
+  const [viewportScrollbarWidth, setViewportScrollbarWidth] = useState(0);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const isRecentlyChanged = (item: FileItem) => {
+    if (!recentItemsBold) return false;
+    const changedAt = Math.max(item.createdAtMs ?? 0, item.modifiedAtMs ?? 0);
+    return changedAt > 0 && changedAt <= currentTime && currentTime - changedAt < RECENT_ITEM_WINDOW_MS;
+  };
+
+  const fileGridTemplateColumns = `${columnWidths.extension}px ${columnWidths.name === null ? `minmax(${MIN_NAME_COLUMN_WIDTH}px, 1fr)` : `${columnWidths.name}px`} ${columnWidths.size}px ${columnWidths.modified}px`;
+  const detailsTableMinimumWidth = columnWidths.extension + (columnWidths.name ?? MIN_NAME_COLUMN_WIDTH) + columnWidths.size + columnWidths.modified + 24 + 18 + viewportScrollbarWidth;
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const measureScrollbar = () => setViewportScrollbarWidth(Math.max(0, viewport.offsetWidth - viewport.clientWidth));
+    measureScrollbar();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measureScrollbar);
+    observer?.observe(viewport);
+    return () => observer?.disconnect();
+  }, [files.length, effectiveViewMode]);
 
   useEffect(() => {
     setPathInput(tab.currentPath);
@@ -315,11 +345,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const startColumnResize = (column: ResizableColumn, event: React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    const measuredNameWidth = event.currentTarget.parentElement?.clientWidth ?? MIN_NAME_COLUMN_WIDTH;
+    const dragWidths = column === 'name' && columnWidths.name === null
+      ? { ...columnWidths, name: measuredNameWidth }
+      : columnWidths;
     columnResizeDragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
       column,
-      widths: columnWidths,
+      widths: dragWidths,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -351,7 +385,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
           if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
           event.preventDefault();
           event.stopPropagation();
-          setColumnWidths(previous => resizeFileColumns(previous, column, event.key === 'ArrowRight' ? 10 : -10));
+          setColumnWidths(previous => {
+            const measuredNameWidth = event.currentTarget.parentElement?.clientWidth ?? MIN_NAME_COLUMN_WIDTH;
+            const widths = column === 'name' && previous.name === null ? { ...previous, name: measuredNameWidth } : previous;
+            return resizeFileColumns(widths, column, event.key === 'ArrowRight' ? 10 : -10);
+          });
         }}
         className="absolute -right-1.5 top-0 z-10 h-full w-3 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:left-1/2 before:top-1/2 before:h-5 before:w-1 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:bg-transparent before:transition-colors after:pointer-events-none after:absolute after:bottom-1 after:left-1/2 after:top-1 after:w-0.5 after:-translate-x-1/2 after:rounded-full after:bg-neutral-700/80 after:transition-colors group-hover:before:bg-neutral-500/70 group-hover:after:bg-neutral-500 hover:before:bg-cyan-300 hover:after:bg-cyan-300 focus-visible:before:bg-cyan-300 focus-visible:after:bg-cyan-300"
       />
@@ -630,7 +668,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           {icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs font-medium text-neutral-100">{item.name}</span>
+          <span className={`block truncate text-xs text-neutral-100 ${isRecentlyChanged(item) ? 'font-bold' : 'font-medium'}`}>{item.name}</span>
           {category === 'folder' ? (
             <span className="mt-1 block truncate text-[10px] text-neutral-500">{item.path}</span>
           ) : hasCapacity && drive ? (
@@ -842,9 +880,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
         </div>
       </div>
 
+      <div className="flex min-h-0 flex-1 flex-col overflow-x-auto overflow-y-hidden">
+        <div className="flex min-h-0 flex-1 flex-col" style={{ width: effectiveViewMode === 'details' ? `max(100%, ${detailsTableMinimumWidth}px)` : '100%' }}>
       {/* 4. Column Headers (Details View) */}
       {effectiveViewMode === 'details' && (
-        <div className="grid items-center gap-2 bg-neutral-950 border-b border-neutral-800 px-[11px] py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 select-none" style={{ gridTemplateColumns: `${columnWidths.extension}px minmax(100px, 1fr) ${columnWidths.size}px ${columnWidths.modified}px` }}>
+        <div className="grid shrink-0 items-center gap-2 border-x border-b border-neutral-800 bg-neutral-950 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 select-none" style={{ gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}>
           <Tooltip label={t.pane.columns.extension} placement="bottom">
             <div onClick={() => onSortChange('extension')} className="group relative flex min-w-0 items-center gap-1 rounded-sm cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100">
               <span>{t.pane.columns.extension}</span>
@@ -873,7 +913,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
           <div 
             onClick={() => onSortChange('modifiedDate')}
-            className="group relative hidden min-w-0 items-center justify-end gap-1 rounded-sm cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 sm:flex"
+            className="group relative flex min-w-0 items-center justify-end gap-1 rounded-sm cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100"
           >
             <span>{isRecycleBin ? t.pane.columns.deleted : t.pane.columns.modified}</span>
             {tab.sortField === 'modifiedDate' && <ArrowUpDown className="w-2.5 h-2.5 text-cyan-400" />}
@@ -885,7 +925,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* 5. File Items Viewport */}
       <div 
         ref={viewportRef}
-        className={`relative flex-1 overflow-y-auto p-0.5 select-none focus:outline-none ${marqueeBounds ? 'cursor-crosshair' : ''}`}
+        className={`relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto py-0.5 select-none focus:outline-none ${marqueeBounds ? 'cursor-crosshair' : ''}`}
         tabIndex={0}
         onClick={handleViewportClick}
         onContextMenu={handleViewportContextMenu}
@@ -965,8 +1005,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onClick={(e) => handleItemClick(e, item, idx)}
                   onDoubleClick={() => onItemDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
-                  style={{ gridTemplateColumns: `${columnWidths.extension}px minmax(100px, 1fr) ${columnWidths.size}px ${columnWidths.modified}px` }}
-                  className={`grid items-center gap-2 px-2.5 py-1 text-xs cursor-pointer border transition-colors ${
+                  style={{ gridTemplateColumns: fileGridTemplateColumns }}
+                  className={`grid items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-700/60 text-neutral-100 font-medium'
                       : isZebra
@@ -1019,7 +1059,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                         />
                       </form>
                     ) : (
-                      <span className="truncate font-medium text-[11.5px]">{item.name}</span>
+                      <span className={`truncate text-[11.5px] ${isRecentlyChanged(item) ? 'font-bold' : 'font-medium'}`}>{item.name}</span>
                     )}
                   </div>
 
@@ -1029,7 +1069,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   </div>
 
                   {/* Modified */}
-                  <div className="hidden min-w-0 text-right font-mono text-[10px] text-neutral-400 sm:block">
+                  <div className="min-w-0 text-right font-mono text-[10px] text-neutral-400">
                     {item.modifiedDate}
                   </div>
                 </div>
@@ -1063,7 +1103,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   }`}
                 >
                   <span className="flex-shrink-0">{getFileIcon(item.type, item.isFolder)}</span>
-                  <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                  <span className={`min-w-0 flex-1 truncate ${isRecentlyChanged(item) ? 'font-bold' : ''}`}>{item.name}</span>
                   {!item.isFolder && <span className="flex-shrink-0 font-mono text-[10px] text-neutral-500">{formatFileSize(item.size)}</span>}
                 </div>
               );
@@ -1102,7 +1142,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       </div>
                     )}
                   </div>
-                  <span className="w-full truncate px-1 text-[11px] font-medium">{item.name}</span>
+                  <span className={`w-full truncate px-1 text-[11px] ${isRecentlyChanged(item) ? 'font-bold' : 'font-medium'}`}>{item.name}</span>
                   <span className="mt-0.5 text-[9px] font-mono text-neutral-400">
                     {item.isFolder ? 'Carpeta' : formatFileSize(item.size)}
                   </span>
@@ -1123,6 +1163,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
             </button>
           </div>
         )}
+        </div>
+        </div>
       </div>
 
       {/* 6. Footer Status Bar with Mini Storage Distribution Strip */}

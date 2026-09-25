@@ -104,8 +104,8 @@ function getFileNameSuffix(filename: string): string {
 
 const KNOWN_FILE_EXTENSIONS = new Set([
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico',
-  'rs', 'ts', 'tsx', 'js', 'jsx', 'json', 'toml', 'html', 'css', 'py', 'cpp', 'c', 'h', 'cs', 'sql', 'yaml', 'yml',
-  'txt', 'md', 'log', 'ini', 'cfg',
+  'rs', 'ts', 'tsx', 'js', 'jsx', 'json', 'jsonl', 'toml', 'html', 'htm', 'xml', 'css', 'py', 'cpp', 'c', 'h', 'cs', 'sql', 'yaml', 'yml', 'csv',
+  'txt', 'md', 'markdown', 'log', 'ini', 'cfg', 'env', 'properties', 'sh', 'java', 'go', 'rb', 'php',
   'mp3', 'wav', 'flac', 'ogg', 'aac', 'mp4', 'mkv', 'mov', 'avi', 'webm',
   'zip', 'rar', '7z', 'tar', 'gz', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
   'exe', 'msi', 'bat', 'cmd', 'ps1', 'bin', 'dat', 'iso', 'sys', 'dll',
@@ -156,8 +156,11 @@ export function detectFileType(name: string, isFolder: boolean): FileType {
     case 'js':
     case 'jsx':
     case 'json':
+    case 'jsonl':
     case 'toml':
     case 'html':
+    case 'htm':
+    case 'xml':
     case 'css':
     case 'py':
     case 'cpp':
@@ -168,11 +171,20 @@ export function detectFileType(name: string, isFolder: boolean): FileType {
     case 'yaml':
     case 'yml':
       return 'code';
+    case 'csv':
     case 'txt':
     case 'md':
+    case 'markdown':
     case 'log':
     case 'ini':
     case 'cfg':
+    case 'env':
+    case 'properties':
+    case 'sh':
+    case 'java':
+    case 'go':
+    case 'rb':
+    case 'php':
       return 'text';
     case 'mp3':
     case 'wav':
@@ -215,6 +227,23 @@ export function detectFileType(name: string, isFolder: boolean): FileType {
     default:
       return 'unknown';
   }
+}
+
+const TEXT_PREVIEW_EXTENSIONS = new Set([
+  'bat', 'c', 'cfg', 'cmd', 'cpp', 'css', 'csv', 'env', 'go', 'h', 'htm', 'html', 'ini', 'java',
+  'js', 'jsx', 'json', 'jsonl', 'log', 'md', 'markdown', 'php', 'properties', 'ps1', 'py', 'rb',
+  'rs', 'sh', 'sql', 'toml', 'ts', 'tsx', 'txt', 'xml', 'yaml', 'yml',
+]);
+
+const TEXT_PREVIEW_FILENAMES = new Set([
+  '.editorconfig', '.env', '.gitattributes', '.gitignore', '.npmrc', 'dockerfile', 'license',
+  'makefile', 'readme',
+]);
+
+export function isTextPreviewableFile(item: Pick<FileItem, 'name' | 'extension'>): boolean {
+  const extension = (item.extension || getFileExtension(item.name)).toLowerCase();
+  const filename = item.name.toLowerCase();
+  return TEXT_PREVIEW_EXTENSIONS.has(extension) || TEXT_PREVIEW_FILENAMES.has(filename) || filename.startsWith('.env.');
 }
 
 export function getParentPath(currentPath: string): string {

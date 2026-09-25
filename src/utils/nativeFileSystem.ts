@@ -13,6 +13,7 @@ interface NativeFolderEntry {
   isFolder: boolean;
   size: number;
   modifiedMs: number | null;
+  createdMs: number | null;
 }
 
 interface LoadedNativeFolder {
@@ -92,8 +93,15 @@ function mapNativeEntries(entries: NativeFolderEntry[]): FileItem[] {
     type: detectFileType(entry.name, entry.isFolder),
     size: entry.size,
     modifiedDate: formatModifiedDate(entry.modifiedMs),
+    modifiedAtMs: entry.modifiedMs ?? undefined,
+    createdAtMs: entry.createdMs ?? undefined,
     extension: entry.isFolder ? '' : getFileExtension(entry.name),
   }));
+}
+
+export async function loadNativeTextPreview(path: string): Promise<string> {
+  if (!isTauriDesktop()) throw new Error('Native file previews are unavailable.');
+  return invoke<string>('read_text_preview', { path });
 }
 
 export async function chooseNativeFolder(): Promise<string | null> {

@@ -1,10 +1,132 @@
 import React, { useEffect, useState } from 'react';
 import { X, FileText, Image as ImageIcon, Code2, Copy, Check, Info, Music, Video } from 'lucide-react';
 import { FileItem } from '../types';
-import { formatFileSize } from '../utils/fileSystem';
+import { formatFileSize, isTextPreviewableFile } from '../utils/fileSystem';
 import { isTauriDesktop, loadNativeImageThumbnail } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
+
+function renderMarkdownInline(source: string): React.ReactNode[] {
+  const pattern = /(\[([^\]]+)\]\((https?:\/\/[^)\s]+|mailto:[^)\s]+|#[^)\s]*)\)|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*|_([^_]+)_|`([^`]+)`)/g;
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let tokenIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(source)) !== null) {
+    if (match.index > lastIndex) nodes.push(source.slice(lastIndex, match.index));
+    const key = `inline-${tokenIndex++}`;
+    if (match[2] && match[3]) {
+      nodes.push(<a key={key} href={match[3]} target="_blank" rel="noreferrer noopener" className="text-cyan-300 underline underline-offset-2">{match[2]}</a>);
+    } else if (match[4] || match[5]) {
+      nodes.push(<strong key={key} className="font-semibold text-neutral-100">{match[4] || match[5]}</strong>);
+    } else if (match[6] || match[7]) {
+      nodes.push(<em key={key}>{match[6] || match[7]}</em>);
+    } else if (match[8]) {
+      nodes.push(<code key={key} className="rounded bg-neutral-800 px-1 py-0.5 text-cyan-200">{match[8]}</code>);
+    }
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < source.length) nodes.push(source.slice(lastIndex));
+  return nodes;
+}
+
+function renderMarkdown(source: string): React.ReactNode[] {
+  const blocks: React.ReactNode[] = [];
+  const lines = source.replace(/\r\n?/g, '\n').split('\n');
+  let paragraph: string[] = [];
+  let listItems: string[] = [];
+  let listKind: 'ordered' | 'unordered' | null = null;
+  let codeLines: string[] | null = null;
+
+  const flushParagraph = () => {
+    if (paragraph.length === 0) return;
+    blocks.push(<p key={`paragraph-${blocks.length}`} className="my-2 first:mt-0 last:mb-0">{renderMarkdownInline(paragraph.join(' '))}</p>);
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (listItems.length === 0 || !listKind) return;
+    const List = listKind === 'ordered' ? 'ol' : 'ul';
+    blocks.push(<List key={`list-${blocks.length}`} className={`${listKind === 'ordered' ? 'list-decimal' : 'list-disc'} my-2 space-y-0.5 pl-5`}>
+      {listItems.map((item, index) => <li key={index}>{renderMarkdownInline(item)}</li>)}
+    </List>);
+    listItems = [];
+    listKind = null;
+  };
+  const flushText = () => {
+    flushParagraph();
+    flushList();
+  };
+
+  for (const line of lines) {
+    if (line.trim().startsWith('```')) {
+      flushText();
+      if (codeLines) {
+        blocks.push(<pre key={`code-${blocks.length}`} className="my-2 overflow-x-auto rounded bg-neutral-950 p-2 text-cyan-100"><code>{codeLines.join('\n')}</code></pre>);
+        codeLines = null;
+      } else {
+        codeLines = [];
+      }
+      continue;
+    }
+    if (codeLines) {
+      codeLines.push(line);
+      continue;
+    }
+    if (!line.trim()) {
+      flushText();
+      continue;
+    }
+
+    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
+    if (heading) {
+      flushText();
+      const level = heading[1].length;
+      const Heading = `h${level}` as keyof React.JSX.IntrinsicElements;
+      blocks.push(<Heading key={`heading-${blocks.length}`} className="my-2 font-semibold leading-snug text-neutral-100">{renderMarkdownInline(heading[2])}</Heading>);
+      continue;
+    }
+    if (/^\s*(---+|___+|\*\*\*+)\s*$/.test(line)) {
+      flushText();
+      blocks.push(<hr key={`rule-${blocks.length}`} className="my-3 border-neutral-700" />);
+      continue;
+    }
+    const quote = /^\s*>\s?(.*)$/.exec(line);
+    if (quote) {
+      flushText();
+      blocks.push(<blockquote key={`quote-${blocks.length}`} className="my-2 border-l-2 border-cyan-500/60 pl-3 text-neutral-400">{renderMarkdownInline(quote[1])}</blockquote>);
+      continue;
+    }
+    const unordered = /^\s*[-+*]\s+(.+)$/.exec(line);
+    const ordered = /^\s*\d+[.)]\s+(.+)$/.exec(line);
+    if (unordered || ordered) {
+      flushParagraph();
+      const nextKind = unordered ? 'unordered' : 'ordered';
+      if (listKind && listKind !== nextKind) flushList();
+      listKind = nextKind;
+      listItems.push((unordered || ordered)![1]);
+      continue;
+    }
+    flushList();
+    paragraph.push(line);
+  }
+
+  if (codeLines) blocks.push(<pre key={`code-${blocks.length}`} className="my-2 overflow-x-auto rounded bg-neutral-950 p-2 text-cyan-100"><code>{codeLines.join('\n')}</code></pre>);
+  flushText();
+  return blocks;
+}
+
+function createSafeHtmlPreview(content: string): string {
+  const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; media-src data: blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">`;
+  if (/<head(?:\s[^>]*)?>/i.test(content)) {
+    return content.replace(/<head(?:\s[^>]*)?>/i, head => `${head}${policy}`);
+  }
+  if (/<html(?:\s[^>]*)?>/i.test(content)) {
+    return content.replace(/<html(?:\s[^>]*)?>/i, html => `${html}<head>${policy}</head>`);
+  }
+  return `<!doctype html><html><head>${policy}</head><body>${content}</body></html>`;
+}
 
 interface PreviewPaneProps {
   item: FileItem | null;
@@ -97,6 +219,17 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
   };
 
   const renderContent = () => {
+    const extension = item.extension.toLowerCase();
+    if (extension === 'html' || extension === 'htm') {
+      if (item.contentPreview === undefined) return <div className="p-6 text-center text-[11px] text-neutral-400">{t.preview.textUnavailable}</div>;
+      return <iframe title={item.name} srcDoc={createSafeHtmlPreview(item.contentPreview)} sandbox="" referrerPolicy="no-referrer" className="h-64 w-full border-0 bg-white" />;
+    }
+
+    if (extension === 'md' || extension === 'markdown') {
+      if (item.contentPreview === undefined) return <div className="p-6 text-center text-[11px] text-neutral-400">{t.preview.textUnavailable}</div>;
+      return <article className="w-full max-h-64 overflow-y-auto p-3 text-left text-[11px] leading-relaxed text-neutral-300 select-text">{renderMarkdown(item.contentPreview)}</article>;
+    }
+
     if (item.type === 'image') {
       if (imagePreviewSource) {
         return <img src={imagePreviewSource} alt={item.name} className="max-h-52 max-w-full object-contain rounded shadow" referrerPolicy="no-referrer" />;
@@ -111,14 +244,14 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
       );
     }
 
-    if (item.type === 'code' || item.type === 'text' || item.type === 'document') {
+    if (item.type === 'code' || item.type === 'text' || item.type === 'document' || isTextPreviewableFile(item)) {
       return (
         <div className="w-full text-left font-mono text-[11px] leading-relaxed p-3 bg-neutral-950 max-h-60 overflow-y-auto select-text">
           <div className="flex items-center gap-2 pb-1 mb-2 border-b border-neutral-800 text-[10px] text-neutral-400">
             <Code2 className="w-3 h-3 text-cyan-400" />
             <span>{item.extension ? item.extension.toUpperCase() : t.preview.noExtension}</span>
           </div>
-          <pre className="text-neutral-300 whitespace-pre-wrap">{item.contentPreview || t.preview.textUnavailable}</pre>
+          <pre className="text-neutral-300 whitespace-pre-wrap">{item.contentPreview ?? t.preview.textUnavailable}</pre>
         </div>
       );
     }

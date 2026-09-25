@@ -20,6 +20,8 @@ export interface FileItem {
   size: number; // in bytes
   modifiedDate: string;
   createdDate?: string;
+  modifiedAtMs?: number;
+  createdAtMs?: number;
   extension: string;
   attributes?: string; // e.g. "R--A"
   isProtected?: boolean;
