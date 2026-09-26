@@ -32,7 +32,7 @@ import {
   LockKeyhole,
   UnlockKeyhole,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
+import { DriveInfo, FileItem, FileType, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
 import { isTauriDesktop, loadNativeImageThumbnail } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
@@ -42,7 +42,7 @@ interface FilePaneProps {
   paneId: 'left' | 'right';
   isActive: boolean;
   styleLocked: boolean;
-  recentItemsBold: boolean;
+  recentItemStyle: RecentItemStyle;
   emptyAreaDoubleClickNavigatesUp: boolean;
   imageTooltipThumbnailsEnabled: boolean;
   singleClickOpens: boolean;
@@ -81,6 +81,15 @@ type SystemHomeSection = 'folders' | 'devices' | 'network';
 type CollapsedSystemHomeSections = Record<SystemHomeSection, boolean>;
 type FileColumn = 'extension' | 'name' | 'size' | 'created' | 'modified';
 type ResizableColumn = FileColumn;
+
+interface ColumnPointerDrag {
+  pointerId: number;
+  column: FileColumn;
+  startX: number;
+  startY: number;
+  moved: boolean;
+  target: FileColumn | null;
+}
 
 interface FileColumnLayout {
   order: FileColumn[];
@@ -278,7 +287,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   paneId,
   isActive,
   styleLocked,
-  recentItemsBold,
+  recentItemStyle,
   emptyAreaDoubleClickNavigatesUp,
   imageTooltipThumbnailsEnabled,
   singleClickOpens,
@@ -332,7 +341,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const renameInputRef = useRef<HTMLInputElement>(null);
   const columnResizeDragRef = useRef<ColumnResizeDrag | null>(null);
   const columnWidthsSaveTimeoutRef = useRef<number | null>(null);
-  const draggedColumnRef = useRef<FileColumn | null>(null);
+  const columnPointerDragRef = useRef<ColumnPointerDrag | null>(null);
+  const suppressColumnSortRef = useRef(false);
   const previousPathRef = useRef(tab.currentPath);
   const viewportRef = useRef<HTMLDivElement>(null);
   const marqueeDragRef = useRef<MarqueeDrag | null>(null);
@@ -376,7 +386,25 @@ export const FilePane: React.FC<FilePaneProps> = ({
     return changedAt > 0 && changedAt <= currentTime && currentTime - changedAt <= RECENT_ITEM_WINDOW_MS;
   };
 
-  const isRecentlyChanged = (item: FileItem) => recentItemsBold && hasRecentActivity(item);
+  const isRecentlyChanged = (item: FileItem) => recentItemStyle.enabled && hasRecentActivity(item);
+
+  const getRecentNameStyle = (item: FileItem, selected = false): React.CSSProperties | undefined => isRecentlyChanged(item)
+    ? {
+      color: recentItemStyle.textColor,
+      fontWeight: recentItemStyle.bold ? 700 : 400,
+      fontStyle: recentItemStyle.italic ? 'italic' : 'normal',
+      ...(selected && recentItemStyle.backgroundEnabled ? {
+        backgroundColor: `color-mix(in srgb, ${recentItemStyle.backgroundColor} 18%, transparent)`,
+        borderRadius: 3,
+        paddingInline: 3,
+      } : {}),
+    }
+    : undefined;
+
+  const getRecentBackgroundStyle = (item: FileItem, selected: boolean): React.CSSProperties | undefined =>
+    isRecentlyChanged(item) && recentItemStyle.backgroundEnabled && !selected
+      ? { backgroundColor: `color-mix(in srgb, ${recentItemStyle.backgroundColor} 18%, transparent)` }
+      : undefined;
 
   const renderItemTooltip = (item: FileItem, additionalDetails?: React.ReactNode) => (
     <div className="flex max-w-[18rem] flex-col items-center gap-1 text-center">
@@ -563,6 +591,41 @@ export const FilePane: React.FC<FilePaneProps> = ({
       order.splice(targetIndex, 0, source);
       return { ...previous, order };
     });
+  };
+
+  const beginColumnPointerDrag = (column: FileColumn, event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || (event.target instanceof Element && event.target.closest('[role="separator"]'))) return;
+    columnPointerDragRef.current = {
+      pointerId: event.pointerId,
+      column,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+      target: null,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveColumnPointerDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = columnPointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return;
+    drag.moved = true;
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-file-column-id]')?.dataset.fileColumnId as FileColumn | undefined;
+    drag.target = target && FILE_COLUMNS.includes(target) ? target : null;
+    setColumnDropTarget(drag.target);
+  };
+
+  const finishColumnPointerDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = columnPointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.moved) {
+      suppressColumnSortRef.current = true;
+      if (drag.target) reorderFileColumns(drag.column, drag.target);
+      window.setTimeout(() => { suppressColumnSortRef.current = false; }, 100);
+    }
+    columnPointerDragRef.current = null;
+    setColumnDropTarget(null);
   };
 
   useEffect(() => {
@@ -837,7 +900,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         onClick={event => { handleItemClick(event, item, index); handleConfiguredSingleClick(event, item); }}
         onDoubleClick={() => handleConfiguredDoubleClick(item)}
         onContextMenu={event => handleFileItemContextMenu(event, item)}
-        style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default' }}
+        style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, selected) }}
         className={`group flex min-h-[68px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
           selected
             ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
@@ -856,7 +919,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           {icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span className={`block truncate text-xs text-neutral-100 ${isRecentlyChanged(item) && !selected ? 'font-bold text-amber-100' : 'font-medium'}`}>{item.name}</span>
+          <span className="block truncate text-xs text-neutral-100 font-medium" style={getRecentNameStyle(item, selected)}>{item.name}</span>
           {category === 'folder' ? (
             <span className="mt-1 block truncate text-[10px] text-neutral-500">{item.path}</span>
           ) : hasCapacity && drive ? (
@@ -1071,7 +1134,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       <div className="flex min-h-0 flex-1 flex-col overflow-x-auto overflow-y-hidden">
         <div className="flex min-h-0 flex-1 flex-col" style={{ width: effectiveViewMode === 'details' ? `max(100%, ${detailsTableMinimumWidth}px)` : '100%' }}>
       {/* 4. Column Headers (Details View) */}
-      {effectiveViewMode === 'details' && (
+      {effectiveViewMode === 'details' && !isSystemHome && (
         <div
           className="grid shrink-0 items-center gap-2 border-x border-b border-neutral-800 bg-neutral-950 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 select-none"
           style={{ gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
@@ -1084,32 +1147,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
             return (
               <Tooltip key={column} label={column === 'extension' ? `${t.pane.columns.extensionTooltip}. ${t.pane.columns.columnHeaderTooltip}` : t.pane.columns.columnHeaderTooltip} placement="bottom">
                 <div
-                  draggable
-                  onClick={() => onSortChange(sortField)}
-                  onDragStart={event => {
-                    draggedColumnRef.current = column;
-                    event.dataTransfer.effectAllowed = 'move';
-                    event.dataTransfer.setData('text/plain', column);
+                  data-file-column-id={column}
+                  onPointerDown={event => beginColumnPointerDrag(column, event)}
+                  onPointerMove={moveColumnPointerDrag}
+                  onPointerUp={finishColumnPointerDrag}
+                  onPointerCancel={finishColumnPointerDrag}
+                  onClick={() => {
+                    if (suppressColumnSortRef.current) return;
+                    onSortChange(sortField);
                   }}
-                  onDragOver={event => {
-                    if (!draggedColumnRef.current || draggedColumnRef.current === column) return;
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = 'move';
-                    setColumnDropTarget(column);
-                  }}
-                  onDragLeave={() => setColumnDropTarget(current => current === column ? null : current)}
-                  onDrop={event => {
-                    event.preventDefault();
-                    const source = draggedColumnRef.current ?? event.dataTransfer.getData('text/plain') as FileColumn;
-                    if (FILE_COLUMNS.includes(source)) reorderFileColumns(source, column);
-                    draggedColumnRef.current = null;
-                    setColumnDropTarget(null);
-                  }}
-                  onDragEnd={() => {
-                    draggedColumnRef.current = null;
-                    setColumnDropTarget(null);
-                  }}
-                  className={`group relative flex min-w-0 items-center gap-1 rounded-sm px-1 pr-2 cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${column === 'size' || column === 'created' || column === 'modified' ? 'justify-end' : ''}`}
+                  className={`group relative flex min-w-0 items-center gap-1 rounded-sm px-1 pr-2 cursor-grab active:cursor-grabbing transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${column === 'size' || column === 'created' || column === 'modified' ? 'justify-end' : ''}`}
                 >
                   <span className="min-w-0 truncate">{columnLabel(column)}</span>
                   <DirectionIcon aria-hidden="true" className={`h-3 w-3 flex-shrink-0 ${isSorted ? 'text-cyan-400' : 'text-neutral-700'}`} />
@@ -1245,7 +1292,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
-                  style={{ gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default' }}
+                  style={{ gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
                   className={`grid items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-700/60 text-neutral-100 font-medium'
@@ -1283,7 +1330,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             </form>
                           ) : (
                             <Tooltip label={renderItemTooltip(item)} placement="top">
-                              <span className={`truncate text-[11.5px] ${isRecentlyChanged(item) && !isSelected ? 'font-bold text-amber-100' : 'font-medium'}`}>{item.name}</span>
+                              <span className="truncate text-[11.5px] font-medium" style={getRecentNameStyle(item, isSelected)}>{item.name}</span>
                             </Tooltip>
                           )}
                         </div>
@@ -1322,7 +1369,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onClick={event => { handleItemClick(event, item, idx); handleConfiguredSingleClick(event, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
-                  style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default' }}
+                  style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
                   className={`flex min-w-0 items-center gap-2 rounded border px-2 py-1.5 text-xs transition-colors ${
                     isSelected
                       ? 'border-cyan-700/60 bg-cyan-950/70 text-neutral-100'
@@ -1331,7 +1378,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 >
                   <span className="flex-shrink-0">{getFileIcon(item.type, item.isFolder)}</span>
                   <Tooltip label={renderItemTooltip(item)} placement="top">
-                    <span className={`min-w-0 flex-1 truncate ${isRecentlyChanged(item) && !isSelected ? 'font-bold text-amber-100' : ''}`}>{item.name}</span>
+                    <span className="min-w-0 flex-1 truncate" style={getRecentNameStyle(item, isSelected)}>{item.name}</span>
                   </Tooltip>
                   {!item.isFolder && <span className="flex-shrink-0 font-mono text-[10px] text-neutral-500">{formatFileSize(item.size)}</span>}
                 </div>
@@ -1354,7 +1401,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
-                  style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default' }}
+                  style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
                   className={`flex min-w-0 flex-col items-center justify-start gap-1.5 rounded-lg border p-2.5 text-center cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-600/70 text-neutral-100 shadow'
@@ -1373,7 +1420,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     )}
                   </div>
                   <Tooltip label={renderItemTooltip(item)} placement="top">
-                    <span className={`w-full truncate px-1 text-[11px] ${isRecentlyChanged(item) && !isSelected ? 'font-bold text-amber-100' : 'font-medium'}`}>{item.name}</span>
+                    <span className="w-full truncate px-1 text-[11px] font-medium" style={getRecentNameStyle(item, isSelected)}>{item.name}</span>
                   </Tooltip>
                   <span className="mt-0.5 text-[9px] font-mono text-neutral-400">
                     {item.isFolder ? 'Carpeta' : formatFileSize(item.size)}

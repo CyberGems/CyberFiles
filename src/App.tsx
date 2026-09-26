@@ -14,6 +14,7 @@ import {
   DriveInfo, 
   QuickAccessItem,
   QuickAccessSortMode,
+  RecentItemStyle,
 } from './types';
 import {
   getChildItems, 
@@ -63,6 +64,7 @@ const FOLDER_STYLE_LOCKED_KEY = 'cyberfiles_folder_style_locked';
 const SIDEBAR_LOCATIONS_NEW_TAB_KEY = 'cyberfiles_sidebar_locations_open_in_new_tab_v1';
 const NEW_TABS_NEXT_TO_CURRENT_KEY = 'cyberfiles_new_tabs_next_to_current_v1';
 const RECENT_ITEMS_BOLD_KEY = 'cyberfiles_bold_recent_items_v1';
+const RECENT_ITEMS_STYLE_KEY = 'cyberfiles_recent_items_style_v1';
 const IMAGE_TOOLTIP_THUMBNAILS_KEY = 'cyberfiles_image_tooltip_thumbnails_v1';
 const SINGLE_CLICK_OPEN_KEY = 'cyberfiles_single_click_open_v1';
 const CUSTOM_QUICK_ACCESS_KEY = 'cyberfiles_custom_quick_access_v1';
@@ -72,6 +74,14 @@ const MAX_CUSTOM_QUICK_ACCESS_ITEMS = 100;
 const MAX_TEXT_PREVIEW_BYTES = 200_000;
 const DEFAULT_GLOBAL_SHORTCUT = 'Alt+Shift+F';
 const DEFAULT_FOLDER_STYLE = { viewMode: 'details' as ViewMode, sortField: 'name' as SortField, sortOrder: 'asc' as SortOrder };
+const DEFAULT_RECENT_ITEM_STYLE: RecentItemStyle = {
+  enabled: true,
+  textColor: '#fef3c7',
+  backgroundEnabled: false,
+  backgroundColor: '#92400e',
+  bold: true,
+  italic: false,
+};
 
 interface PanelViewPreferences {
   layout: ViewLayout;
@@ -172,6 +182,26 @@ function readBooleanPreference(key: string, defaultValue: boolean): boolean {
     return saved === null ? defaultValue : saved === 'true';
   } catch {
     return defaultValue;
+  }
+}
+
+function readRecentItemStyle(): RecentItemStyle {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(RECENT_ITEMS_STYLE_KEY) || 'null');
+    if (!saved || typeof saved !== 'object') {
+      return { ...DEFAULT_RECENT_ITEM_STYLE, enabled: readBooleanPreference(RECENT_ITEMS_BOLD_KEY, true) };
+    }
+    const isColor = (value: unknown): value is string => typeof value === 'string' && /^#[\da-f]{6}$/i.test(value);
+    return {
+      enabled: typeof saved.enabled === 'boolean' ? saved.enabled : readBooleanPreference(RECENT_ITEMS_BOLD_KEY, true),
+      textColor: isColor(saved.textColor) ? saved.textColor : DEFAULT_RECENT_ITEM_STYLE.textColor,
+      backgroundEnabled: typeof saved.backgroundEnabled === 'boolean' ? saved.backgroundEnabled : DEFAULT_RECENT_ITEM_STYLE.backgroundEnabled,
+      backgroundColor: isColor(saved.backgroundColor) ? saved.backgroundColor : DEFAULT_RECENT_ITEM_STYLE.backgroundColor,
+      bold: typeof saved.bold === 'boolean' ? saved.bold : DEFAULT_RECENT_ITEM_STYLE.bold,
+      italic: typeof saved.italic === 'boolean' ? saved.italic : DEFAULT_RECENT_ITEM_STYLE.italic,
+    };
+  } catch {
+    return { ...DEFAULT_RECENT_ITEM_STYLE, enabled: readBooleanPreference(RECENT_ITEMS_BOLD_KEY, true) };
   }
 }
 
@@ -306,7 +336,7 @@ export default function App() {
   const [folderStyleLocked, setFolderStyleLocked] = useState(readFolderStyleLockPreference);
   const [sidebarLocationsOpenInNewTab, setSidebarLocationsOpenInNewTab] = useState(() => readBooleanPreference(SIDEBAR_LOCATIONS_NEW_TAB_KEY, true));
   const [newTabsNextToCurrent, setNewTabsNextToCurrent] = useState(() => readBooleanPreference(NEW_TABS_NEXT_TO_CURRENT_KEY, true));
-  const [recentItemsBold, setRecentItemsBold] = useState(() => readBooleanPreference(RECENT_ITEMS_BOLD_KEY, true));
+  const [recentItemStyle, setRecentItemStyle] = useState<RecentItemStyle>(readRecentItemStyle);
   const [imageTooltipThumbnailsEnabled, setImageTooltipThumbnailsEnabled] = useState(() => readBooleanPreference(IMAGE_TOOLTIP_THUMBNAILS_KEY, true));
   const [singleClickOpen, setSingleClickOpen] = useState(() => readBooleanPreference(SINGLE_CLICK_OPEN_KEY, false));
 
@@ -824,11 +854,12 @@ export default function App() {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(RECENT_ITEMS_BOLD_KEY, String(recentItemsBold));
+      window.localStorage.setItem(RECENT_ITEMS_STYLE_KEY, JSON.stringify(recentItemStyle));
+      window.localStorage.setItem(RECENT_ITEMS_BOLD_KEY, String(recentItemStyle.enabled));
     } catch {
       // Keep the selected behavior for the current session when storage is unavailable.
     }
-  }, [recentItemsBold]);
+  }, [recentItemStyle]);
 
   useEffect(() => {
     try {
@@ -2775,7 +2806,7 @@ export default function App() {
                   paneId="left"
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
-                  recentItemsBold={recentItemsBold}
+                  recentItemStyle={recentItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
@@ -2820,7 +2851,7 @@ export default function App() {
                   paneId="right"
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
-                  recentItemsBold={recentItemsBold}
+                  recentItemStyle={recentItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
@@ -2866,7 +2897,7 @@ export default function App() {
                   paneId="left"
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
-                  recentItemsBold={recentItemsBold}
+                  recentItemStyle={recentItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
@@ -2907,7 +2938,7 @@ export default function App() {
                   paneId="right"
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
-                  recentItemsBold={recentItemsBold}
+                  recentItemStyle={recentItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
@@ -2953,7 +2984,7 @@ export default function App() {
                 paneId={activePane}
                 isActive={true}
                 styleLocked={folderStyleLocked}
-                  recentItemsBold={recentItemsBold}
+                  recentItemStyle={recentItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
@@ -3155,8 +3186,9 @@ export default function App() {
             onEmptyAreaDoubleClickNavigatesUpChange={setEmptyAreaDoubleClickNavigatesUp}
             folderStyleLocked={folderStyleLocked}
             onFolderStyleLockedChange={setFolderStyleLocked}
-            recentItemsBold={recentItemsBold}
-            onRecentItemsBoldChange={setRecentItemsBold}
+            recentItemStyle={recentItemStyle}
+            onRecentItemStyleChange={setRecentItemStyle}
+            onRecentItemStyleReset={() => setRecentItemStyle({ ...DEFAULT_RECENT_ITEM_STYLE, enabled: recentItemStyle.enabled })}
             imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
             onImageTooltipThumbnailsEnabledChange={setImageTooltipThumbnailsEnabled}
             singleClickOpen={singleClickOpen}

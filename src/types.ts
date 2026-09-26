@@ -36,6 +36,15 @@ export interface FileItem {
   handle?: FileSystemHandle;
 }
 
+export interface RecentItemStyle {
+  enabled: boolean;
+  textColor: string;
+  backgroundEnabled: boolean;
+  backgroundColor: string;
+  bold: boolean;
+  italic: boolean;
+}
+
 export type SortField = 'name' | 'size' | 'type' | 'createdDate' | 'modifiedDate' | 'extension';
 export type SortOrder = 'asc' | 'desc';
 export type QuickAccessSortMode = 'manual' | 'name';
