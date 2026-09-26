@@ -119,7 +119,7 @@ function isViewMode(value: unknown): value is ViewMode {
 }
 
 function isSortField(value: unknown): value is SortField {
-  return value === 'name' || value === 'size' || value === 'type' || value === 'modifiedDate' || value === 'extension';
+  return value === 'name' || value === 'size' || value === 'type' || value === 'createdDate' || value === 'modifiedDate' || value === 'extension';
 }
 
 function readPaneSplitPercent(value: unknown, defaultValue = 50) {
@@ -2063,6 +2063,7 @@ export default function App() {
           type: 'folder',
           size: 0,
           modifiedDate: new Date(createdAtMs).toISOString().replace('T', ' ').slice(0, 16),
+          createdDate: new Date(createdAtMs).toISOString().replace('T', ' ').slice(0, 16),
           modifiedAtMs: createdAtMs,
           createdAtMs,
           extension: '',
@@ -2091,6 +2092,7 @@ export default function App() {
       type: 'folder',
       size: 0,
       modifiedDate: now.replace('T', ' ').slice(0, 16),
+      createdDate: now.replace('T', ' ').slice(0, 16),
       modifiedAtMs: nowMs,
       createdAtMs: nowMs,
       lastAccessed: now,

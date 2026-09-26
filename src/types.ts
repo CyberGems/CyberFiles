@@ -36,7 +36,7 @@ export interface FileItem {
   handle?: FileSystemHandle;
 }
 
-export type SortField = 'name' | 'size' | 'type' | 'modifiedDate' | 'extension';
+export type SortField = 'name' | 'size' | 'type' | 'createdDate' | 'modifiedDate' | 'extension';
 export type SortOrder = 'asc' | 'desc';
 export type QuickAccessSortMode = 'manual' | 'name';
 

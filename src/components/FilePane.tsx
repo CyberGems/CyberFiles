@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Folder, 
   FileText, 
@@ -12,13 +13,13 @@ import {
   ArrowLeft, 
   ArrowRight, 
   ArrowUp, 
+  ArrowDown,
   CornerUpLeft,
   Search, 
   X, 
   Plus, 
   RotateCw, 
   ChevronRight, 
-  ArrowUpDown,
   FileCheck,
   Monitor,
   Download,
@@ -78,12 +79,19 @@ interface FilePaneProps {
 
 type SystemHomeSection = 'folders' | 'devices' | 'network';
 type CollapsedSystemHomeSections = Record<SystemHomeSection, boolean>;
-type ResizableColumn = 'extension' | 'name' | 'size' | 'modified';
+type FileColumn = 'extension' | 'name' | 'size' | 'created' | 'modified';
+type ResizableColumn = FileColumn;
+
+interface FileColumnLayout {
+  order: FileColumn[];
+  visible: FileColumn[];
+}
 
 interface FileColumnWidths {
   extension: number;
   name: number | null;
   size: number;
+  created: number;
   modified: number;
 }
 
@@ -112,7 +120,13 @@ interface MarqueeDrag {
 
 const COLLAPSED_SYSTEM_HOME_SECTIONS_KEY = 'cyberfiles_system_home_collapsed_sections_v1';
 const FILE_COLUMN_WIDTHS_KEY = 'cyberfiles_file_column_widths_v1';
-const DEFAULT_FILE_COLUMN_WIDTHS: FileColumnWidths = { extension: 58, name: null, size: 84, modified: 116 };
+const FILE_COLUMN_LAYOUT_KEY = 'cyberfiles_file_column_layout_v1';
+const FILE_COLUMNS: FileColumn[] = ['extension', 'name', 'size', 'created', 'modified'];
+const DEFAULT_FILE_COLUMN_LAYOUT: FileColumnLayout = {
+  order: FILE_COLUMNS,
+  visible: ['name', 'size', 'created', 'modified'],
+};
+const DEFAULT_FILE_COLUMN_WIDTHS: FileColumnWidths = { extension: 58, name: null, size: 84, created: 116, modified: 116 };
 const MIN_NAME_COLUMN_WIDTH = 100;
 const RECENT_ITEM_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_COLLAPSED_SYSTEM_HOME_SECTIONS: CollapsedSystemHomeSections = {
@@ -129,10 +143,30 @@ function readFileColumnWidths(paneId: 'left' | 'right'): FileColumnWidths {
       extension: typeof saved.extension === 'number' ? Math.min(220, Math.max(42, saved.extension)) : DEFAULT_FILE_COLUMN_WIDTHS.extension,
       name: typeof saved.name === 'number' ? Math.min(1600, Math.max(MIN_NAME_COLUMN_WIDTH, saved.name)) : DEFAULT_FILE_COLUMN_WIDTHS.name,
       size: typeof saved.size === 'number' ? Math.min(320, Math.max(56, saved.size)) : DEFAULT_FILE_COLUMN_WIDTHS.size,
+      created: typeof saved.created === 'number' ? Math.min(480, Math.max(80, saved.created)) : DEFAULT_FILE_COLUMN_WIDTHS.created,
       modified: typeof saved.modified === 'number' ? Math.min(480, Math.max(80, saved.modified)) : DEFAULT_FILE_COLUMN_WIDTHS.modified,
     };
   } catch {
     return DEFAULT_FILE_COLUMN_WIDTHS;
+  }
+}
+
+function readFileColumnLayout(paneId: 'left' | 'right'): FileColumnLayout {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(`${FILE_COLUMN_LAYOUT_KEY}_${paneId}`) || 'null');
+    if (!saved || typeof saved !== 'object') return DEFAULT_FILE_COLUMN_LAYOUT;
+    const order = Array.isArray(saved.order)
+      ? FILE_COLUMNS.filter(column => saved.order.includes(column))
+      : DEFAULT_FILE_COLUMN_LAYOUT.order;
+    FILE_COLUMNS.forEach(column => {
+      if (!order.includes(column)) order.push(column);
+    });
+    const visible = Array.isArray(saved.visible)
+      ? order.filter(column => saved.visible.includes(column))
+      : DEFAULT_FILE_COLUMN_LAYOUT.visible;
+    return { order, visible: visible.length > 0 ? visible : ['name'] };
+  } catch {
+    return DEFAULT_FILE_COLUMN_LAYOUT;
   }
 }
 
@@ -145,6 +179,8 @@ function resizeFileColumns(widths: FileColumnWidths, column: ResizableColumn, de
       return { ...widths, name: clampWidth((widths.name ?? MIN_NAME_COLUMN_WIDTH) + delta, MIN_NAME_COLUMN_WIDTH, 1600) };
     case 'size':
       return { ...widths, size: clampWidth(widths.size + delta, 56, 320) };
+    case 'created':
+      return { ...widths, created: clampWidth(widths.created + delta, 80, 480) };
     case 'modified':
       return { ...widths, modified: clampWidth(widths.modified + delta, 80, 480) };
   }
@@ -287,12 +323,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const [collapsedSystemHomeSections, setCollapsedSystemHomeSections] = useState(() => readCollapsedSystemHomeSections(paneId));
   const [columnWidths, setColumnWidths] = useState(() => readFileColumnWidths(paneId));
+  const [columnLayout, setColumnLayout] = useState(() => readFileColumnLayout(paneId));
+  const [columnMenuPosition, setColumnMenuPosition] = useState<{ left: number; top: number } | null>(null);
+  const [columnDropTarget, setColumnDropTarget] = useState<FileColumn | null>(null);
   const lastSingleClickOpenRef = useRef<{ itemId: string; timestamp: number } | null>(null);
 
   const pathInputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const columnResizeDragRef = useRef<ColumnResizeDrag | null>(null);
   const columnWidthsSaveTimeoutRef = useRef<number | null>(null);
+  const draggedColumnRef = useRef<FileColumn | null>(null);
   const previousPathRef = useRef(tab.currentPath);
   const viewportRef = useRef<HTMLDivElement>(null);
   const marqueeDragRef = useRef<MarqueeDrag | null>(null);
@@ -301,6 +341,30 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [marqueeBounds, setMarqueeBounds] = useState<MarqueeBounds | null>(null);
   const [marqueePreviewIds, setMarqueePreviewIds] = useState<string[] | null>(null);
   const [viewportScrollbarWidth, setViewportScrollbarWidth] = useState(0);
+
+  const visibleFileColumns = columnLayout.order.filter(column => columnLayout.visible.includes(column));
+  const columnSortFields: Record<FileColumn, SortField> = {
+    extension: 'extension',
+    name: 'name',
+    size: 'size',
+    created: 'createdDate',
+    modified: 'modifiedDate',
+  };
+  const columnLabel = (column: FileColumn) => {
+    switch (column) {
+      case 'extension': return t.pane.columns.extension;
+      case 'name': return t.pane.columns.name;
+      case 'size': return t.pane.columns.size;
+      case 'created': return t.pane.columns.created;
+      case 'modified': return isRecycleBin ? t.pane.columns.deleted : t.pane.columns.modified;
+    }
+  };
+  const columnWidth = (column: FileColumn) => {
+    if (column === 'name') return columnWidths.name === null
+      ? `minmax(${MIN_NAME_COLUMN_WIDTH}px, 1fr)`
+      : `${columnWidths.name}px`;
+    return `${columnWidths[column]}px`;
+  };
 
   useEffect(() => {
     const interval = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
@@ -341,8 +405,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
     </div>
   );
 
-  const fileGridTemplateColumns = `${columnWidths.extension}px ${columnWidths.name === null ? `minmax(${MIN_NAME_COLUMN_WIDTH}px, 1fr)` : `${columnWidths.name}px`} ${columnWidths.size}px ${columnWidths.modified}px`;
-  const detailsTableMinimumWidth = columnWidths.extension + (columnWidths.name ?? MIN_NAME_COLUMN_WIDTH) + columnWidths.size + columnWidths.modified + 24 + 18 + viewportScrollbarWidth;
+  const fileGridTemplateColumns = visibleFileColumns.map(columnWidth).join(' ');
+  const detailsTableMinimumWidth = visibleFileColumns.reduce((total, column) => total + (column === 'name' ? columnWidths.name ?? MIN_NAME_COLUMN_WIDTH : columnWidths[column]), 0)
+    + Math.max(0, visibleFileColumns.length - 1) * 8 + 18 + viewportScrollbarWidth;
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -381,6 +446,31 @@ export const FilePane: React.FC<FilePaneProps> = ({
       columnWidthsSaveTimeoutRef.current = null;
     };
   }, [columnWidths, paneId]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(`${FILE_COLUMN_LAYOUT_KEY}_${paneId}`, JSON.stringify(columnLayout));
+    } catch {
+      // Column layout remains available for the current session if storage is unavailable.
+    }
+  }, [columnLayout, paneId]);
+
+  useEffect(() => {
+    if (!columnMenuPosition) return;
+    const dismissMenu = (event: PointerEvent) => {
+      if (event.target instanceof Element && event.target.closest('[data-file-column-menu]')) return;
+      setColumnMenuPosition(null);
+    };
+    const dismissMenuOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setColumnMenuPosition(null);
+    };
+    document.addEventListener('pointerdown', dismissMenu);
+    document.addEventListener('keydown', dismissMenuOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', dismissMenu);
+      document.removeEventListener('keydown', dismissMenuOnEscape);
+    };
+  }, [columnMenuPosition]);
 
   useEffect(() => {
     if (previousPathRef.current === tab.currentPath) return;
@@ -437,10 +527,43 @@ export const FilePane: React.FC<FilePaneProps> = ({
             return resizeFileColumns(widths, column, event.key === 'ArrowRight' ? 10 : -10);
           });
         }}
-        className="absolute -right-1.5 top-0 z-10 h-full w-3 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:left-1/2 before:top-1/2 before:h-5 before:w-1 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:bg-transparent before:transition-colors after:pointer-events-none after:absolute after:bottom-1 after:left-1/2 after:top-1 after:w-0.5 after:-translate-x-1/2 after:rounded-full after:bg-neutral-700/80 after:transition-colors group-hover:before:bg-neutral-500/70 group-hover:after:bg-neutral-500 hover:before:bg-cyan-300 hover:after:bg-cyan-300 focus-visible:before:bg-cyan-300 focus-visible:after:bg-cyan-300"
+        className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:left-1/2 before:top-1/2 before:h-5 before:w-1 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:bg-transparent before:transition-colors after:pointer-events-none after:absolute after:bottom-1 after:left-1/2 after:top-1 after:w-0.5 after:-translate-x-1/2 after:rounded-full after:bg-neutral-700/80 after:transition-colors group-hover:before:bg-neutral-500/70 group-hover:after:bg-neutral-500 hover:before:bg-cyan-300 hover:after:bg-cyan-300 focus-visible:before:bg-cyan-300 focus-visible:after:bg-cyan-300"
       />
     </Tooltip>
   );
+
+  const openColumnMenu = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const menuWidth = 200;
+    const menuHeight = 52 + FILE_COLUMNS.length * 34;
+    setColumnMenuPosition({
+      left: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth - 8)),
+      top: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight - 8)),
+    });
+  };
+
+  const toggleFileColumn = (column: FileColumn) => {
+    setColumnLayout(previous => {
+      const visible = previous.visible.includes(column)
+        ? previous.visible.filter(current => current !== column)
+        : [...previous.visible, column];
+      return { ...previous, visible: visible.length > 0 ? visible : ['name'] };
+    });
+  };
+
+  const reorderFileColumns = (source: FileColumn, target: FileColumn) => {
+    if (source === target) return;
+    setColumnLayout(previous => {
+      const order = [...previous.order];
+      const sourceIndex = order.indexOf(source);
+      const targetIndex = order.indexOf(target);
+      if (sourceIndex < 0 || targetIndex < 0) return previous;
+      order.splice(sourceIndex, 1);
+      order.splice(targetIndex, 0, source);
+      return { ...previous, order };
+    });
+  };
 
   useEffect(() => {
     if (isEditingPath && pathInputRef.current) {
@@ -718,9 +841,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         className={`group flex min-h-[68px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
           selected
             ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
-            : isRecentlyChanged(item)
-              ? 'border-transparent border-l-2 border-l-amber-400/45 bg-amber-950/20 hover:bg-amber-950/30'
-              : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'
+            : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'
         }`}
       >
         <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg ${
@@ -951,42 +1072,88 @@ export const FilePane: React.FC<FilePaneProps> = ({
         <div className="flex min-h-0 flex-1 flex-col" style={{ width: effectiveViewMode === 'details' ? `max(100%, ${detailsTableMinimumWidth}px)` : '100%' }}>
       {/* 4. Column Headers (Details View) */}
       {effectiveViewMode === 'details' && (
-        <div className="grid shrink-0 items-center gap-2 border-x border-b border-neutral-800 bg-neutral-950 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 select-none" style={{ gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}>
-          <Tooltip label={t.pane.columns.extensionTooltip} placement="bottom">
-            <div onClick={() => onSortChange('extension')} className="group relative flex min-w-0 items-center gap-1 rounded-sm cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100">
-              <span>{t.pane.columns.extension}</span>
-              {tab.sortField === 'extension' && <ArrowUpDown className="w-2.5 h-2.5 text-cyan-400" />}
-              {resizeHandle('extension', t.pane.columns.extension)}
-            </div>
-          </Tooltip>
-
-          <div 
-            onClick={() => onSortChange('name')}
-            className="group relative flex min-w-0 items-center gap-1 rounded-sm pl-6 cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100"
-          >
-            <span>{t.pane.columns.name}</span>
-            {tab.sortField === 'name' && <ArrowUpDown className="w-2.5 h-2.5 text-cyan-400" />}
-            {resizeHandle('name', t.pane.columns.name)}
-          </div>
-
-          <div 
-            onClick={() => onSortChange('size')}
-            className="group relative flex min-w-0 items-center justify-end gap-1 rounded-sm cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100"
-          >
-            <span>{t.pane.columns.size}</span>
-            {tab.sortField === 'size' && <ArrowUpDown className="w-2.5 h-2.5 text-cyan-400" />}
-            {resizeHandle('size', t.pane.columns.size)}
-          </div>
-
-          <div 
-            onClick={() => onSortChange('modifiedDate')}
-            className="group relative flex min-w-0 items-center justify-end gap-1 rounded-sm cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100"
-          >
-            <span>{isRecycleBin ? t.pane.columns.deleted : t.pane.columns.modified}</span>
-            {tab.sortField === 'modifiedDate' && <ArrowUpDown className="w-2.5 h-2.5 text-cyan-400" />}
-            {resizeHandle('modified', t.pane.columns.modified)}
-          </div>
+        <div
+          className="grid shrink-0 items-center gap-2 border-x border-b border-neutral-800 bg-neutral-950 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 select-none"
+          style={{ gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
+          onContextMenu={openColumnMenu}
+        >
+          {visibleFileColumns.map(column => {
+            const sortField = columnSortFields[column];
+            const isSorted = tab.sortField === sortField;
+            const DirectionIcon = isSorted && tab.sortOrder === 'desc' ? ArrowDown : ArrowUp;
+            return (
+              <Tooltip key={column} label={column === 'extension' ? `${t.pane.columns.extensionTooltip}. ${t.pane.columns.columnHeaderTooltip}` : t.pane.columns.columnHeaderTooltip} placement="bottom">
+                <div
+                  draggable
+                  onClick={() => onSortChange(sortField)}
+                  onDragStart={event => {
+                    draggedColumnRef.current = column;
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', column);
+                  }}
+                  onDragOver={event => {
+                    if (!draggedColumnRef.current || draggedColumnRef.current === column) return;
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+                    setColumnDropTarget(column);
+                  }}
+                  onDragLeave={() => setColumnDropTarget(current => current === column ? null : current)}
+                  onDrop={event => {
+                    event.preventDefault();
+                    const source = draggedColumnRef.current ?? event.dataTransfer.getData('text/plain') as FileColumn;
+                    if (FILE_COLUMNS.includes(source)) reorderFileColumns(source, column);
+                    draggedColumnRef.current = null;
+                    setColumnDropTarget(null);
+                  }}
+                  onDragEnd={() => {
+                    draggedColumnRef.current = null;
+                    setColumnDropTarget(null);
+                  }}
+                  className={`group relative flex min-w-0 items-center gap-1 rounded-sm px-1 pr-2 cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${column === 'size' || column === 'created' || column === 'modified' ? 'justify-end' : ''}`}
+                >
+                  <span className="min-w-0 truncate">{columnLabel(column)}</span>
+                  <DirectionIcon aria-hidden="true" className={`h-3 w-3 flex-shrink-0 ${isSorted ? 'text-cyan-400' : 'text-neutral-700'}`} />
+                  {resizeHandle(column, columnLabel(column))}
+                </div>
+              </Tooltip>
+            );
+          })}
         </div>
+      )}
+
+      {columnMenuPosition && (
+        createPortal(
+          <div
+            data-file-column-menu
+            role="menu"
+            aria-label={t.pane.columns.columnSettings}
+            className="fixed z-50 min-w-[200px] overflow-hidden rounded-md border border-neutral-700 bg-neutral-950 py-1 shadow-xl shadow-black/50"
+            style={{ left: columnMenuPosition.left, top: columnMenuPosition.top }}
+          >
+            <div className="border-b border-neutral-800 px-3 py-2 text-[11px] font-semibold text-neutral-200">
+              {t.pane.columns.columnSettings}
+              <span className="mt-0.5 block text-[10px] font-normal normal-case tracking-normal text-neutral-500">{t.pane.columns.manageColumns}</span>
+            </div>
+            {columnLayout.order.map(column => {
+              const isVisible = columnLayout.visible.includes(column);
+              return (
+                <Tooltip key={column} label={t.pane.columns.columnHeaderTooltip} placement="right">
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={isVisible}
+                    onClick={() => toggleFileColumn(column)}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+                  >
+                    <span aria-hidden="true" className={`flex h-3.5 w-3.5 items-center justify-center rounded-sm border ${isVisible ? 'border-cyan-500 bg-cyan-950 text-cyan-300' : 'border-neutral-600 text-transparent'}`}>✓</span>
+                    <span>{columnLabel(column)}</span>
+                  </button>
+                </Tooltip>
+              );
+            })}
+          </div>,
+          document.body,
+        )
       )}
 
       {/* 5. File Items Viewport */}
@@ -1082,80 +1249,55 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   className={`grid items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-700/60 text-neutral-100 font-medium'
-                      : isRecentlyChanged(item)
-                      ? 'border-l-2 border-l-amber-400/45 bg-amber-950/20 text-neutral-200 hover:bg-amber-950/30 hover:text-neutral-100'
                       : isZebra
-                      ? 'bg-neutral-900/30 border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
-                      : 'bg-transparent border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
+                        ? 'bg-neutral-900/30 border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
+                        : 'bg-transparent border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
                   }`}
                 >
-                  <div
-                    onClick={event => {
-                      event.stopPropagation();
-                      if (singleClickOpens) {
-                        handleItemClick(event, item, idx);
-                        handleConfiguredSingleClick(event, item);
-                      }
-                    }}
-                    onDoubleClick={event => {
-                      event.stopPropagation();
-                      if (!singleClickOpens) onBackgroundDoubleClick(event, paneId);
-                    }}
-                    style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default' }}
-                    className="min-w-0 cursor-default truncate font-mono text-[10px] uppercase text-neutral-400"
-                  >
-                    {item.isFolder ? '' : (item.extension || '')}
-                  </div>
-
-                  {/* Name & Icon */}
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="flex-shrink-0">
-                      {getFileIcon(item.type, item.isFolder)}
-                    </span>
-
-                    {/* Color Tag Dot if any */}
-                    {item.colorLabel && (
-                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                        item.colorLabel === 'red' ? 'bg-red-400' :
-                        item.colorLabel === 'blue' ? 'bg-blue-400' :
-                        item.colorLabel === 'green' ? 'bg-emerald-400' :
-                        item.colorLabel === 'yellow' ? 'bg-amber-400' : 'bg-purple-400'
-                      }`} />
-                    )}
-
-                    {isEditing ? (
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          handleRenameSubmit(item.id);
-                        }}
-                        className="flex-1"
-                      >
-                        <input
-                          ref={renameInputRef}
-                          type="text"
-                          value={editingItemName}
-                          onChange={(e) => setEditingItemName(e.target.value)}
-                          onBlur={() => handleRenameSubmit(item.id)}
-                          className="w-full bg-neutral-950 text-neutral-100 px-1 py-0.5 rounded border border-cyan-400 outline-none text-xs"
-                        />
-                      </form>
-                    ) : (
-                      <Tooltip label={renderItemTooltip(item)} placement="top">
-                        <span className={`truncate text-[11.5px] ${isRecentlyChanged(item) && !isSelected ? 'font-bold text-amber-100' : 'font-medium'}`}>{item.name}</span>
-                      </Tooltip>
-                    )}
-                  </div>
-
-                  {/* Size */}
-                  <div className="min-w-0 text-right font-mono text-[11px] text-neutral-400">
-                    {item.isFolder ? '--' : formatFileSize(item.size)}
-                  </div>
-
-                  {/* Modified */}
-                  <div className="min-w-0 text-right font-mono text-[10px] text-neutral-400">
-                    {item.modifiedDate}
-                  </div>
+                  {visibleFileColumns.map(column => {
+                    if (column === 'extension') {
+                      return <div key={column} className="min-w-0 truncate font-mono text-[10px] uppercase text-neutral-400">{item.isFolder ? '' : (item.extension || '')}</div>;
+                    }
+                    if (column === 'name') {
+                      return (
+                        <div key={column} className="flex min-w-0 items-center gap-2">
+                          <span className="flex-shrink-0">{getFileIcon(item.type, item.isFolder)}</span>
+                          {item.colorLabel && (
+                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                              item.colorLabel === 'red' ? 'bg-red-400' :
+                              item.colorLabel === 'blue' ? 'bg-blue-400' :
+                              item.colorLabel === 'green' ? 'bg-emerald-400' :
+                              item.colorLabel === 'yellow' ? 'bg-amber-400' : 'bg-purple-400'
+                            }`} />
+                          )}
+                          {isEditing ? (
+                            <form onSubmit={event => { event.preventDefault(); handleRenameSubmit(item.id); }} className="flex-1">
+                              <input
+                                ref={renameInputRef}
+                                type="text"
+                                value={editingItemName}
+                                onChange={event => setEditingItemName(event.target.value)}
+                                onBlur={() => handleRenameSubmit(item.id)}
+                                className="w-full bg-neutral-950 text-neutral-100 px-1 py-0.5 rounded border border-cyan-400 outline-none text-xs"
+                              />
+                            </form>
+                          ) : (
+                            <Tooltip label={renderItemTooltip(item)} placement="top">
+                              <span className={`truncate text-[11.5px] ${isRecentlyChanged(item) && !isSelected ? 'font-bold text-amber-100' : 'font-medium'}`}>{item.name}</span>
+                            </Tooltip>
+                          )}
+                        </div>
+                      );
+                    }
+                    if (column === 'size') {
+                      return <div key={column} className="min-w-0 text-right font-mono text-[11px] text-neutral-400">{item.isFolder ? '--' : formatFileSize(item.size)}</div>;
+                    }
+                    if (column === 'created') {
+                      const createdDate = item.createdDate || (item.createdAtMs ? new Date(item.createdAtMs).toISOString().replace('T', ' ').slice(0, 16) : '');
+                      return <div key={column} className="min-w-0 text-right font-mono text-[10px] text-neutral-400">{createdDate || '--'}</div>;
+                    }
+                    return <div key={column} className="min-w-0 text-right font-mono text-[10px] text-neutral-400">{item.modifiedDate || '--'}</div>;
+                  })}
                 </div>
               );
             })}
@@ -1184,9 +1326,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   className={`flex min-w-0 items-center gap-2 rounded border px-2 py-1.5 text-xs transition-colors ${
                     isSelected
                       ? 'border-cyan-700/60 bg-cyan-950/70 text-neutral-100'
-                      : isRecentlyChanged(item)
-                        ? 'border-transparent border-l-2 border-l-amber-400/45 bg-amber-950/15 text-neutral-200 hover:bg-amber-950/25'
-                        : 'border-transparent text-neutral-300 hover:border-neutral-800 hover:bg-neutral-800/60 hover:text-neutral-100'
+                      : 'border-transparent text-neutral-300 hover:border-neutral-800 hover:bg-neutral-800/60 hover:text-neutral-100'
                   }`}
                 >
                   <span className="flex-shrink-0">{getFileIcon(item.type, item.isFolder)}</span>
@@ -1218,9 +1358,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   className={`flex min-w-0 flex-col items-center justify-start gap-1.5 rounded-lg border p-2.5 text-center cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-600/70 text-neutral-100 shadow'
-                      : isRecentlyChanged(item)
-                        ? 'border-amber-400/25 bg-amber-950/20 text-neutral-200 ring-1 ring-inset ring-amber-400/10 hover:bg-amber-950/30'
-                        : 'border-neutral-800/40 bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60 hover:border-neutral-700'
+                      : 'border-neutral-800/40 bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60 hover:border-neutral-700'
                   }`}
                 >
                   <div className="flex w-full items-center justify-center">

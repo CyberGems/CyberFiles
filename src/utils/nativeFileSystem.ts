@@ -93,6 +93,7 @@ function mapNativeEntries(entries: NativeFolderEntry[]): FileItem[] {
     type: detectFileType(entry.name, entry.isFolder),
     size: entry.size,
     modifiedDate: formatModifiedDate(entry.modifiedMs),
+    createdDate: formatModifiedDate(entry.createdMs),
     modifiedAtMs: entry.modifiedMs ?? undefined,
     createdAtMs: entry.createdMs ?? undefined,
     extension: entry.isFolder ? '' : getFileExtension(entry.name),

@@ -292,6 +292,9 @@ export function sortFiles(items: FileItem[], field: SortField, order: SortOrder)
       case 'modifiedDate':
         compare = a.modifiedDate.localeCompare(b.modifiedDate);
         break;
+      case 'createdDate':
+        compare = ((a.createdAtMs ?? Date.parse(a.createdDate ?? '')) || 0) - ((b.createdAtMs ?? Date.parse(b.createdDate ?? '')) || 0);
+        break;
       case 'extension':
         compare = a.extension.localeCompare(b.extension);
         break;
