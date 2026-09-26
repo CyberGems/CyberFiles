@@ -4,11 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port=3000 --strictPort --host=0.0.0.0",
+    "dev": "tauri dev",
     "dev:desktop": "tauri dev",
+    "dev:vite-internal": "vite --port=3000 --strictPort --host=127.0.0.1",
     "build": "vite build",
     "build:desktop": "tauri build --debug --no-bundle",
-    "preview": "vite preview",
     "clean": "node -e \"for (const path of ['dist','server.js']) { require('fs').rmSync(path, { recursive: true, force: true }); }\"",
     "lint": "tsc --noEmit",
     "check": "npm run lint && npm run build",

@@ -23,7 +23,6 @@ Download the Windows installer and release notes from the [GitHub Releases page]
 - Copy, move, rename, and create folders in the Windows desktop app. Confirmed deletions go to the Windows Recycle Bin.
 - Choose CyberFiles, grayscale, or light appearance, and English or Spanish UI language.
 - Use the system tray and configurable global shortcut. Window size, position, and maximized state are restored on the next launch.
-- Use a development-only browser preview to browse one folder selected by the user through the File System Access API, where supported.
 
 ## Development
 
@@ -36,13 +35,9 @@ Download the Windows installer and release notes from the [GitHub Releases page]
 ### Install and run
 
 <pre><code>npm ci
-npm run dev:desktop</code></pre>
+npm run dev</code></pre>
 
-For a limited browser preview instead of the desktop app:
-
-<pre><code>npm run dev</code></pre>
-
-Browser preview is a development fallback. It can access only a folder the user explicitly chooses and only in browsers that support the File System Access API. It cannot use the Windows Shell, inspect arbitrary drives, or manage the Windows Recycle Bin.
+This starts the Windows desktop app through Tauri. The Vite server is managed internally for the desktop webview; CyberFiles does not provide a browser mode.
 
 ## Build and checks
 

@@ -26,8 +26,8 @@ if (await isPortInUse()) {
     ? process.execPath
     : process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : 'npm';
   const npmArgs = npmCliPath
-    ? [npmCliPath, 'run', 'dev']
-    : process.platform === 'win32' ? ['/d', '/c', 'npm.cmd run dev'] : ['run', 'dev'];
+    ? [npmCliPath, 'run', 'dev:vite-internal']
+    : process.platform === 'win32' ? ['/d', '/c', 'npm.cmd run dev:vite-internal'] : ['run', 'dev:vite-internal'];
   const vite = spawn(npmCommand, npmArgs, {
     cwd: process.cwd(),
     stdio: 'inherit',

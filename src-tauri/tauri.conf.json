@@ -5,7 +5,7 @@
   "identifier": "com.cybergems.cyberfiles",
   "build": {
     "beforeDevCommand": "node scripts/ensure-vite-dev.mjs",
-    "devUrl": "http://localhost:3000",
+    "devUrl": "http://127.0.0.1:3000",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },

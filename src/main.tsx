@@ -5,12 +5,15 @@ import './index.css';
 import { LanguageProvider } from './locales/LanguageContext';
 import { revealDesktopWindow } from './utils/desktopWindow';
 import { ThemeProvider } from './themes/ThemeContext';
+import { DesktopOnlyNotice } from './components/DesktopOnlyNotice';
+
+const isTauriDesktop = '__TAURI_INTERNALS__' in window;
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>
       <LanguageProvider>
-        <App />
+        {isTauriDesktop ? <App /> : <DesktopOnlyNotice />}
       </LanguageProvider>
     </ThemeProvider>
   </StrictMode>,

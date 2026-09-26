@@ -30,7 +30,7 @@ import {
   Info,
   RotateCcw,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, QuickAccessItem, QuickAccessSortMode } from '../types';
+import { DriveInfo, FileItem, FileType, QuickAccessItem, QuickAccessSortMode, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
 import type { RecycleBinStatus } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
@@ -237,6 +237,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             .replace('{count}', new Intl.NumberFormat(language === 'es' ? 'es' : 'en').format(recycleBinStatus.itemCount))
             .replace('{size}', formatFileSize(recycleBinStatus.totalBytes));
 
+  const propertiesButtonDisabled = selectedItems.length === 0 || previewOpen;
+  const propertiesButtonTooltip = previewOpen
+    ? t.sidebar.propertiesPanelOpen
+    : selectedItems.length === 0
+      ? t.sidebar.propertiesSelectItems
+      : t.sidebar.properties;
+
   return (
     <aside className="w-64 bg-neutral-950 border-r border-neutral-800/80 flex flex-col justify-between select-none flex-shrink-0 text-xs">
       
@@ -304,6 +311,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
+      {currentPath !== SYSTEM_HOME_PATH && (
+        <div className="border-b border-neutral-800/80 bg-neutral-950 px-2 py-2">
+          <div className="grid grid-cols-4 gap-1.5">
+            <Tooltip label={t.sidebar.selectAll} placement="right">
+              <button type="button" onClick={onSelectAll} aria-label={t.sidebar.selectAll} className="flex h-9 min-w-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900/70 text-cyan-300 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800">
+                <Check className="h-4 w-4" />
+              </button>
+            </Tooltip>
+            <Tooltip label={t.sidebar.unselectAll} placement="right">
+              <button type="button" onClick={onUnselectAll} aria-label={t.sidebar.unselectAll} className="flex h-9 min-w-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900/70 text-neutral-400 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800 hover:text-neutral-100">
+                <Square className="h-4 w-4" />
+              </button>
+            </Tooltip>
+            <Tooltip label={t.sidebar.invertSelection} placement="right">
+              <button type="button" onClick={onInvertSelection} aria-label={t.sidebar.invertSelection} className="flex h-9 min-w-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900/70 text-amber-300 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800">
+                <ListRestart className="h-4 w-4" />
+              </button>
+            </Tooltip>
+            <Tooltip label={propertiesButtonTooltip} placement="right">
+              <span className="block" tabIndex={propertiesButtonDisabled ? 0 : undefined}>
+                <button type="button" onClick={onShowProperties} disabled={propertiesButtonDisabled} aria-label={t.sidebar.properties} className="flex h-9 w-full min-w-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900/70 text-cyan-300 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40">
+                  <Info className="h-4 w-4" />
+                </button>
+              </span>
+            </Tooltip>
+          </div>
+        </div>
+      )}
+
       {/* 2. Main Tab Body */}
       {selectedItems.length > 0 ? (
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
@@ -323,25 +359,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               >
                 <X className="h-3.5 w-3.5" />
               </button>
-            </Tooltip>
-          </div>
-
-          <div className="grid grid-cols-2 gap-1.5">
-            <button type="button" onClick={onSelectAll} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800">
-              <Check className="h-3.5 w-3.5 flex-shrink-0 text-cyan-300" /><span>{t.sidebar.selectAll}</span>
-            </button>
-            <button type="button" onClick={onUnselectAll} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800">
-              <Square className="h-3.5 w-3.5 flex-shrink-0 text-neutral-400" /><span>{t.sidebar.unselectAll}</span>
-            </button>
-            <button type="button" onClick={onInvertSelection} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800">
-              <ListRestart className="h-3.5 w-3.5 flex-shrink-0 text-amber-300" /><span>{t.sidebar.invertSelection}</span>
-            </button>
-            <Tooltip label={previewOpen ? t.sidebar.propertiesPanelOpen : t.sidebar.properties} placement="right">
-              <span className="block" tabIndex={previewOpen ? 0 : undefined} aria-label={previewOpen ? t.sidebar.propertiesPanelOpen : undefined}>
-                <button type="button" onClick={onShowProperties} disabled={previewOpen} className="flex min-w-0 w-full items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40">
-                  <Info className="h-3.5 w-3.5 flex-shrink-0 text-cyan-300" /><span className="min-w-0 leading-tight">{t.sidebar.properties}</span>
-                </button>
-              </span>
             </Tooltip>
           </div>
 
