@@ -7,8 +7,7 @@ import {
   MoveRight,
   Edit3,
   FolderPlus,
-  Eye,
-  EyeOff,
+  Info,
   LayoutGrid,
   List,
   StretchHorizontal,
@@ -25,8 +24,8 @@ interface HeaderBarProps {
   onLayoutChange: (layout: ViewLayout) => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
-  previewOpen: boolean;
-  onTogglePreview: () => void;
+  propertiesPanelOpen: boolean;
+  onTogglePropertiesPanel: () => void;
   onRenameSelected: () => void;
   onNewFolder: () => void;
   onCopySelected: () => void;
@@ -42,8 +41,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onLayoutChange,
   viewMode,
   onViewModeChange,
-  previewOpen,
-  onTogglePreview,
+  propertiesPanelOpen,
+  onTogglePropertiesPanel,
   onRenameSelected,
   onNewFolder,
   onCopySelected,
@@ -91,7 +90,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           <Tooltip label={t.header.layoutSingle}><button onClick={() => onLayoutChange('single')} className={`p-1.5 rounded ${layout === 'single' ? 'bg-neutral-800 text-cyan-300' : 'text-neutral-400 hover:text-neutral-200'}`}><Square className="w-3.5 h-3.5" /></button></Tooltip>
         </div>
 
-        <Tooltip label={t.toolbar.preview}><button onClick={onTogglePreview} className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors ${previewOpen ? 'bg-cyan-950/70 border-cyan-700/70 text-cyan-300' : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'}`}>{previewOpen ? <Eye className="w-3.5 h-3.5 text-cyan-400" /> : <EyeOff className="w-3.5 h-3.5 text-neutral-500" />}<span className="hidden xl:inline">{language === 'es' ? 'Visor' : 'Viewer'}</span><span className="text-[10px] opacity-60 font-mono">F3</span></button></Tooltip>
+        <Tooltip label={propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel}><button type="button" onClick={onTogglePropertiesPanel} aria-label={`${propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} (F3)`} aria-pressed={propertiesPanelOpen} className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors ${propertiesPanelOpen ? 'bg-cyan-950/70 border-cyan-700/70 text-cyan-300' : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'}`}><Info className={`w-3.5 h-3.5 ${propertiesPanelOpen ? 'text-cyan-300' : 'text-neutral-400'}`} /><span className="hidden xl:inline">{t.toolbar.propertiesPanel}</span><span className="text-[10px] opacity-60 font-mono">F3</span></button></Tooltip>
       </div>
 
       <style>{`

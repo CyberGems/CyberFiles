@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, FileText, Image as ImageIcon, Code2, Copy, Check, Info, Music, Video } from 'lucide-react';
+import { X, FileText, Image as ImageIcon, Code2, Copy, Check, Info, Music, Video, ChevronDown, ChevronUp } from 'lucide-react';
 import { FileItem } from '../types';
 import { formatFileSize, isTextPreviewableFile } from '../utils/fileSystem';
 import { isTauriDesktop, loadNativeImageThumbnail } from '../utils/nativeFileSystem';
@@ -138,6 +138,9 @@ interface PreviewPaneProps {
 
 export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRename, nativePropertiesSupported, onOpenWindowsProperties }) => {
   const [copied, setCopied] = useState(false);
+  const [collapsedSection, setCollapsedSection] = useState<'preview' | 'properties' | null>(null);
+  const previewCollapsed = collapsedSection === 'preview';
+  const propertiesCollapsed = collapsedSection === 'properties';
   const [imagePreviewSource, setImagePreviewSource] = useState<string | null>(null);
   const [imagePreviewState, setImagePreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const { t } = useLanguage();
@@ -222,17 +225,17 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
     const extension = item.extension.toLowerCase();
     if (extension === 'html' || extension === 'htm') {
       if (item.contentPreview === undefined) return <div className="p-6 text-center text-[11px] text-neutral-400">{t.preview.textUnavailable}</div>;
-      return <iframe title={item.name} srcDoc={createSafeHtmlPreview(item.contentPreview)} sandbox="" referrerPolicy="no-referrer" className="h-64 w-full border-0 bg-white" />;
+      return <iframe title={item.name} srcDoc={createSafeHtmlPreview(item.contentPreview)} sandbox="" referrerPolicy="no-referrer" className="h-full min-h-0 w-full border-0 bg-white" />;
     }
 
     if (extension === 'md' || extension === 'markdown') {
       if (item.contentPreview === undefined) return <div className="p-6 text-center text-[11px] text-neutral-400">{t.preview.textUnavailable}</div>;
-      return <article className="w-full max-h-64 overflow-y-auto p-3 text-left text-[11px] leading-relaxed text-neutral-300 select-text">{renderMarkdown(item.contentPreview)}</article>;
+      return <article className="h-full w-full min-h-0 max-h-full overflow-y-auto p-3 text-left text-[11px] leading-relaxed text-neutral-300 select-text">{renderMarkdown(item.contentPreview)}</article>;
     }
 
     if (item.type === 'image') {
       if (imagePreviewSource) {
-        return <img src={imagePreviewSource} alt={item.name} className="max-h-52 max-w-full object-contain rounded shadow" referrerPolicy="no-referrer" />;
+        return <img src={imagePreviewSource} alt={item.name} className="max-h-full max-w-full object-contain rounded shadow" referrerPolicy="no-referrer" />;
       }
       return (
         <div className="flex flex-col items-center justify-center gap-2 p-6 text-neutral-400">
@@ -246,12 +249,12 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
 
     if (item.type === 'code' || item.type === 'text' || item.type === 'document' || isTextPreviewableFile(item)) {
       return (
-        <div className="w-full text-left font-mono text-[11px] leading-relaxed p-3 bg-neutral-950 max-h-60 overflow-y-auto select-text">
+        <div className="flex h-full min-h-0 w-full flex-col overflow-y-auto bg-neutral-950 p-3 text-left font-mono text-[11px] leading-relaxed select-text">
           <div className="flex items-center gap-2 pb-1 mb-2 border-b border-neutral-800 text-[10px] text-neutral-400">
             <Code2 className="w-3 h-3 text-cyan-400" />
             <span>{item.extension ? item.extension.toUpperCase() : t.preview.noExtension}</span>
           </div>
-          <pre className="text-neutral-300 whitespace-pre-wrap">{item.contentPreview ?? t.preview.textUnavailable}</pre>
+          <pre className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap text-neutral-300">{item.contentPreview ?? t.preview.textUnavailable}</pre>
         </div>
       );
     }
@@ -265,38 +268,59 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
   };
 
   return (
-    <aside className="w-full min-w-0 bg-neutral-950 border-l border-neutral-800 flex flex-col justify-between select-none text-xs flex-shrink-0 h-full overflow-hidden">
-      <div className="h-10 px-3 border-b border-neutral-800 flex items-center justify-between bg-neutral-900/60">
-        <span className="font-semibold text-neutral-200 truncate">{item.name}</span>
+    <aside className="flex h-full w-full min-w-0 flex-shrink-0 flex-col overflow-hidden border-l border-neutral-800 bg-neutral-950 text-xs select-none">
+      <div className="flex h-10 flex-shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-900/60 px-3">
+        <span className="truncate font-semibold text-neutral-200">{item.name}</span>
         <div className="flex flex-shrink-0 items-center gap-1">
           {nativePropertiesSupported && <Tooltip label={t.preview.openWindowsProperties} placement="bottom"><button type="button" onClick={onOpenWindowsProperties} aria-label={t.preview.openWindowsProperties} className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300"><Info className="h-4 w-4" /></button></Tooltip>}
-          <Tooltip label={t.preview.close} placement="bottom"><button onClick={onClose} className="p-1 rounded text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"><X className="w-4 h-4" /></button></Tooltip>
+          <Tooltip label={t.preview.close} placement="bottom"><button type="button" onClick={onClose} aria-label={t.preview.close} className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"><X className="h-4 w-4" /></button></Tooltip>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-4">
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900/50 overflow-hidden flex flex-col items-center justify-center min-h-[190px] p-2">{renderContent()}</div>
-
-        <div className="space-y-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.preview.properties}</div>
-          <div className="bg-neutral-900/50 rounded-lg border border-neutral-800/80 p-2.5 space-y-1.5 font-mono text-[11px]">
-            <div className="flex justify-between items-center text-neutral-400"><span>{t.preview.fileSize}:</span><span className="text-neutral-200">{formatFileSize(item.size)} ({item.size.toLocaleString()} bytes)</span></div>
-            <div className="flex justify-between items-center text-neutral-400"><span>{t.preview.modified}:</span><span className="text-neutral-200">{item.modifiedDate}</span></div>
-            <div className="flex justify-between items-center text-neutral-400"><span>{t.preview.attributes}:</span><span className="text-neutral-200">{item.attributes || '----'}</span></div>
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+        <section className={'flex min-h-0 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900/50 ' + (previewCollapsed ? 'flex-none' : 'flex-1')}>
+          <div className="flex h-8 flex-shrink-0 items-center justify-between border-b border-neutral-800/80 px-2.5">
+            <h2 className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.preview.contentPreview}</h2>
+            <Tooltip label={previewCollapsed ? t.preview.expandPreview : t.preview.collapsePreview} placement="left">
+              <button type="button" onClick={() => setCollapsedSection(previewCollapsed ? null : 'preview')} aria-label={previewCollapsed ? t.preview.expandPreview : t.preview.collapsePreview} aria-expanded={!previewCollapsed} className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300">
+                {previewCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+              </button>
+            </Tooltip>
           </div>
-        </div>
+          {!previewCollapsed && <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-2">{renderContent()}</div>}
+        </section>
 
-        <div className="space-y-1">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.preview.path}</div>
-          <div className="flex items-center gap-1 bg-neutral-900/80 p-2 rounded-lg border border-neutral-800 text-[10px] font-mono text-neutral-300">
-            <span className="truncate flex-1">{item.path}</span>
-            <Tooltip label={copied ? t.preview.copied : t.preview.copyContent} placement="top"><button onClick={handleCopyPath} className="p-1 hover:text-cyan-300 rounded hover:bg-neutral-800 transition-colors flex-shrink-0">{copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}</button></Tooltip>
+        <section className={'flex min-h-0 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900/30 ' + (propertiesCollapsed ? 'flex-none' : 'flex-1')}>
+          <div className="flex h-8 flex-shrink-0 items-center justify-between border-b border-neutral-800/80 px-2.5">
+            <h2 className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.preview.properties}</h2>
+            <Tooltip label={propertiesCollapsed ? t.preview.expandProperties : t.preview.collapseProperties} placement="left">
+              <button type="button" onClick={() => setCollapsedSection(propertiesCollapsed ? null : 'properties')} aria-label={propertiesCollapsed ? t.preview.expandProperties : t.preview.collapseProperties} aria-expanded={!propertiesCollapsed} className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300">
+                {propertiesCollapsed ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </button>
+            </Tooltip>
           </div>
-        </div>
+          {!propertiesCollapsed && (
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
+              <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/50 p-2.5 font-mono text-[11px] space-y-1.5">
+                <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.fileSize}:</span><span className="text-right text-neutral-200">{formatFileSize(item.size)} ({item.size.toLocaleString()} bytes)</span></div>
+                <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.modified}:</span><span className="text-right text-neutral-200">{item.modifiedDate}</span></div>
+                <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.attributes}:</span><span className="text-right text-neutral-200">{item.attributes || '----'}</span></div>
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.preview.path}</div>
+                <div className="flex items-center gap-1 rounded-lg border border-neutral-800 bg-neutral-900/80 p-2 font-mono text-[10px] text-neutral-300">
+                  <span className="flex-1 truncate">{item.path}</span>
+                  <Tooltip label={copied ? t.preview.copied : t.preview.copyPath} placement="top"><button type="button" onClick={handleCopyPath} aria-label={copied ? t.preview.copied : t.preview.copyPath} className="flex-shrink-0 rounded p-1 transition-colors hover:bg-neutral-800 hover:text-cyan-300">{copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}</button></Tooltip>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
       </div>
 
-      <div className="p-2.5 border-t border-neutral-800 bg-neutral-900/60 flex items-center gap-2">
-        <button onClick={onRename} className="flex-1 py-1.5 px-2 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-center font-medium transition-colors">{t.contextMenu.rename}</button>
+      <div className="flex flex-shrink-0 items-center gap-2 border-t border-neutral-800 bg-neutral-900/60 p-2.5">
+        <button type="button" onClick={onRename} className="flex-1 rounded bg-neutral-800 px-2 py-1.5 text-center font-medium text-neutral-200 transition-colors hover:bg-neutral-700">{t.contextMenu.rename}</button>
       </div>
     </aside>
   );

@@ -2742,8 +2742,8 @@ export default function App() {
         onLayoutChange={setLayout}
         viewMode={currentTab.viewMode}
         onViewModeChange={handleViewModeChange}
-        previewOpen={previewOpen}
-        onTogglePreview={() => setPreviewOpen(!previewOpen)}
+        propertiesPanelOpen={previewOpen}
+        onTogglePropertiesPanel={() => setPreviewOpen(value => !value)}
         onRenameSelected={handleRenameSelected}
         onNewFolder={handleNewFolder}
         onCopySelected={handleCopySelected}
@@ -2779,8 +2779,8 @@ export default function App() {
           onSelectAll={handleSelectAllVisible}
           onUnselectAll={handleUnselectAll}
           onInvertSelection={handleInvertVisibleSelection}
-          onShowProperties={() => setPreviewOpen(true)}
-          previewOpen={previewOpen}
+          onTogglePropertiesPanel={() => setPreviewOpen(value => !value)}
+          propertiesPanelOpen={previewOpen}
           onCopySelected={handleCopySelected}
           onMoveSelected={handleMoveSelected}
           onRenameSelected={handleRenameSelected}

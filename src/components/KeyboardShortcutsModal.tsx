@@ -25,7 +25,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
     { key: 'Ctrl + V', desc: isSpanish ? 'Pegar en la carpeta del panel activo' : 'Paste into the active pane folder' },
     { key: 'F2', desc: isSpanish ? 'Renombrar el elemento seleccionado' : 'Rename the selected item' },
     { key: 'Ctrl + R', desc: isSpanish ? 'Abrir el renombrado múltiple' : 'Open batch rename' },
-    { key: 'Espacio / F3', desc: isSpanish ? 'Mostrar u ocultar la vista previa' : 'Show or hide the preview' },
+    { key: 'Espacio / F3', desc: isSpanish ? 'Mostrar u ocultar el panel de propiedades' : 'Show or hide the properties panel' },
     { key: 'F7', desc: isSpanish ? 'Crear una carpeta en la ruta actual' : 'Create a folder in the current path' },
     { key: 'Ctrl + F', desc: isSpanish ? 'Buscar por nombre, ruta o contenido disponible' : 'Search by name, path, or available content' },
     { key: 'Ctrl + A', desc: isSpanish ? 'Seleccionar todos los elementos visibles' : 'Select all visible items' },

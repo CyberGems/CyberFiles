@@ -18,6 +18,7 @@ import {
   Search,
   Trash2,
   Eye,
+  Recycle,
   X,
   Plus,
   GripVertical,
@@ -58,8 +59,8 @@ interface SidebarProps {
   onSelectAll: () => void;
   onUnselectAll: () => void;
   onInvertSelection: () => void;
-  onShowProperties: () => void;
-  previewOpen: boolean;
+  onTogglePropertiesPanel: () => void;
+  propertiesPanelOpen: boolean;
   onCopySelected: () => void;
   onMoveSelected: () => void;
   onRenameSelected: () => void;
@@ -97,8 +98,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectAll,
   onUnselectAll,
   onInvertSelection,
-  onShowProperties,
-  previewOpen,
+  onTogglePropertiesPanel,
+  propertiesPanelOpen,
   onCopySelected,
   onMoveSelected,
   onRenameSelected,
@@ -237,13 +238,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             .replace('{count}', new Intl.NumberFormat(language === 'es' ? 'es' : 'en').format(recycleBinStatus.itemCount))
             .replace('{size}', formatFileSize(recycleBinStatus.totalBytes));
 
-  const propertiesButtonDisabled = selectedItems.length === 0 || previewOpen;
-  const propertiesButtonTooltip = previewOpen
-    ? t.sidebar.propertiesPanelOpen
-    : selectedItems.length === 0
-      ? t.sidebar.propertiesSelectItems
-      : t.sidebar.properties;
-
   return (
     <aside className="w-64 bg-neutral-950 border-r border-neutral-800/80 flex flex-col justify-between select-none flex-shrink-0 text-xs">
       
@@ -305,7 +299,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               aria-label={t.sidebar.openRecycleBinAction}
               className="flex w-10 flex-shrink-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900/60 text-neutral-400 transition-colors enabled:hover:border-cyan-800/80 enabled:hover:bg-cyan-950/25 enabled:hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-45"
             >
-              <Eye className="h-4 w-4" />
+              <Recycle className="h-4 w-4" />
             </button>
           </Tooltip>
         </div>
@@ -329,12 +323,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <ListRestart className="h-4 w-4" />
               </button>
             </Tooltip>
-            <Tooltip label={propertiesButtonTooltip} placement="right">
-              <span className="block" tabIndex={propertiesButtonDisabled ? 0 : undefined}>
-                <button type="button" onClick={onShowProperties} disabled={propertiesButtonDisabled} aria-label={t.sidebar.properties} className="flex h-9 w-full min-w-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900/70 text-cyan-300 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40">
-                  <Info className="h-4 w-4" />
-                </button>
-              </span>
+            <Tooltip label={propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} placement="right">
+              <button type="button" onClick={onTogglePropertiesPanel} aria-label={propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} aria-pressed={propertiesPanelOpen} className={`flex h-9 w-full min-w-0 items-center justify-center rounded-md border transition-colors ${propertiesPanelOpen ? "border-cyan-700/70 bg-cyan-950/70 text-cyan-300" : "border-neutral-800 bg-neutral-900/70 text-neutral-400 hover:border-cyan-700/70 hover:bg-neutral-800 hover:text-cyan-200"}`}>
+                <Info className="h-4 w-4" />
+              </button>
             </Tooltip>
           </div>
         </div>
