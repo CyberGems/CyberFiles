@@ -40,21 +40,21 @@ import { Sidebar } from './components/Sidebar';
 import { FilePane } from './components/FilePane';
 import { PaneSplitter } from './components/PaneSplitter';
 import { PreviewPane } from './components/PreviewPane';
-import { BatchRenameModal } from './components/BatchRenameModal';
-import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
 import { BottomStatusBar } from './components/BottomStatusBar';
 import { ContextMenu } from './components/ContextMenu';
 
-import { ConfirmActionModal } from './components/ConfirmActionModal';
-import { CloseWindowModal } from './components/CloseWindowModal';
-import { SettingsModal } from './components/SettingsModal';
 
-import { OnboardingWelcome } from './components/OnboardingWelcome';
 import { useLanguage } from './locales/LanguageContext';
 import { chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, emptyNativeRecycleBin, getNativeFileClipboard, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeImageWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
 const FindFilesModal = lazy(() => import('./components/FindFilesModal').then(module => ({ default: module.FindFilesModal })));
+const BatchRenameModal = lazy(() => import('./components/BatchRenameModal').then(module => ({ default: module.BatchRenameModal })));
+const KeyboardShortcutsModal = lazy(() => import('./components/KeyboardShortcutsModal').then(module => ({ default: module.KeyboardShortcutsModal })));
+const ConfirmActionModal = lazy(() => import('./components/ConfirmActionModal').then(module => ({ default: module.ConfirmActionModal })));
+const CloseWindowModal = lazy(() => import('./components/CloseWindowModal').then(module => ({ default: module.CloseWindowModal })));
+const SettingsModal = lazy(() => import('./components/SettingsModal').then(module => ({ default: module.SettingsModal })));
+const OnboardingWelcome = lazy(() => import('./components/OnboardingWelcome').then(module => ({ default: module.OnboardingWelcome })));
 const ONBOARDING_STORAGE_KEY = 'cyberfiles_onboarding_complete';
 const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
 const PANEL_VIEW_PREFERENCES_KEY = 'cyberfiles_panel_view_preferences_v1';
@@ -173,6 +173,14 @@ function readBooleanPreference(key: string, defaultValue: boolean): boolean {
   } catch {
     return defaultValue;
   }
+}
+
+function useKeepModalMountedAfterFirstOpen(isOpen: boolean) {
+  const [hasOpened, setHasOpened] = useState(isOpen);
+  useEffect(() => {
+    if (isOpen) setHasOpened(true);
+  }, [isOpen]);
+  return hasOpened;
 }
 
 function readCustomQuickAccess(): QuickAccessItem[] {
@@ -539,6 +547,16 @@ export default function App() {
   const [pendingDeleteItems, setPendingDeleteItems] = useState<FileItem[]>([]);
   const [isFileOperationBusy, setIsFileOperationBusy] = useState(false);
   const [isEmptyRecycleBinConfirmOpen, setIsEmptyRecycleBinConfirmOpen] = useState(false);
+  const shouldMountBatchRenameModal = useKeepModalMountedAfterFirstOpen(isBatchRenameOpen);
+  const shouldMountShortcutsModal = useKeepModalMountedAfterFirstOpen(isShortcutsOpen);
+  const shouldMountSearchModal = useKeepModalMountedAfterFirstOpen(isSearchOpen);
+  const shouldMountSettingsModal = useKeepModalMountedAfterFirstOpen(isSettingsOpen);
+  const shouldMountAboutModal = useKeepModalMountedAfterFirstOpen(isAboutOpen);
+  const shouldMountCloseWindowModal = useKeepModalMountedAfterFirstOpen(isCloseDialogOpen);
+  const shouldMountOnboardingModal = useKeepModalMountedAfterFirstOpen(isOnboardingOpen);
+  const shouldMountConfirmActionModal = useKeepModalMountedAfterFirstOpen(
+    pendingDeleteItems.length > 0 || isEmptyRecycleBinConfirmOpen,
+  );
   const [isRecycleBinBusy, setIsRecycleBinBusy] = useState(false);
   const recycleBinRestoreInFlight = useRef(false);
 
@@ -3040,106 +3058,139 @@ export default function App() {
       />
 
       {/* Batch Rename Modal */}
-      <BatchRenameModal
-        isOpen={isBatchRenameOpen}
-        onClose={() => setIsBatchRenameOpen(false)}
-        selectedItems={selectedItemsForRename.length > 0 ? selectedItemsForRename : activeDisplayFiles}
-        onApplyRename={handleApplyBatchRename}
-      />
+      {shouldMountBatchRenameModal && (
+        <Suspense fallback={null}>
+          <BatchRenameModal
+            isOpen={isBatchRenameOpen}
+            onClose={() => setIsBatchRenameOpen(false)}
+            selectedItems={selectedItemsForRename.length > 0 ? selectedItemsForRename : activeDisplayFiles}
+            onApplyRename={handleApplyBatchRename}
+          />
+        </Suspense>
+      )}
 
       {/* Keyboard Shortcuts Cheatsheet Modal */}
-      <KeyboardShortcutsModal
-        isOpen={isShortcutsOpen}
-        onClose={() => setIsShortcutsOpen(false)}
-      />
+      {shouldMountShortcutsModal && (
+        <Suspense fallback={null}>
+          <KeyboardShortcutsModal
+            isOpen={isShortcutsOpen}
+            onClose={() => setIsShortcutsOpen(false)}
+          />
+        </Suspense>
+      )}
 
       {/* Global file and content search modal (Ctrl+F) */}
-      <Suspense fallback={null}>
-        <FindFilesModal
-          isOpen={isSearchOpen}
-          onClose={() => setIsSearchOpen(false)}
-          allFiles={allFiles}
-          currentPath={currentTab.currentPath}
-          onNavigateToFile={handleNavigateToFile}
-          onPreviewFile={handlePreviewFileFromSearch}
-        />
-      </Suspense>
+      {shouldMountSearchModal && (
+        <Suspense fallback={null}>
+          <FindFilesModal
+            isOpen={isSearchOpen}
+            onClose={() => setIsSearchOpen(false)}
+            allFiles={allFiles}
+            currentPath={currentTab.currentPath}
+            onNavigateToFile={handleNavigateToFile}
+            onPreviewFile={handlePreviewFileFromSearch}
+          />
+        </Suspense>
+      )}
 
-      <ConfirmActionModal
-        items={pendingDeleteItems}
-        onCancel={() => setPendingDeleteItems([])}
-        onConfirm={handleConfirmDelete}
-        isBusy={isFileOperationBusy}
-      />
+      {shouldMountConfirmActionModal && (
+        <Suspense fallback={null}>
+          {pendingDeleteItems.length > 0 && (
+            <ConfirmActionModal
+              items={pendingDeleteItems}
+              onCancel={() => setPendingDeleteItems([])}
+              onConfirm={handleConfirmDelete}
+              isBusy={isFileOperationBusy}
+            />
+          )}
+          {isEmptyRecycleBinConfirmOpen && (
+            <ConfirmActionModal
+              items={[]}
+              title={t.core.emptyRecycleBinTitle}
+              description={t.core.emptyRecycleBinMessage
+                .replace('{count}', new Intl.NumberFormat(language === 'es' ? 'es' : 'en').format(recycleBinStatus?.itemCount ?? 0))
+                .replace('{size}', formatFileSize(recycleBinStatus?.totalBytes ?? 0))}
+              confirmLabel={t.core.emptyRecycleBinConfirm}
+              busyLabel={t.core.emptyRecycleBinBusy}
+              isBusy={isRecycleBinBusy}
+              onCancel={() => setIsEmptyRecycleBinConfirmOpen(false)}
+              onConfirm={handleConfirmEmptyRecycleBin}
+            />
+          )}
+        </Suspense>
+      )}
 
-      <ConfirmActionModal
-        items={[]}
-        title={isEmptyRecycleBinConfirmOpen ? t.core.emptyRecycleBinTitle : undefined}
-        description={t.core.emptyRecycleBinMessage
-          .replace('{count}', new Intl.NumberFormat(language === 'es' ? 'es' : 'en').format(recycleBinStatus?.itemCount ?? 0))
-          .replace('{size}', formatFileSize(recycleBinStatus?.totalBytes ?? 0))}
-        confirmLabel={t.core.emptyRecycleBinConfirm}
-        busyLabel={t.core.emptyRecycleBinBusy}
-        isBusy={isRecycleBinBusy}
-        onCancel={() => setIsEmptyRecycleBinConfirmOpen(false)}
-        onConfirm={handleConfirmEmptyRecycleBin}
-      />
+      {shouldMountCloseWindowModal && (
+        <Suspense fallback={null}>
+          <CloseWindowModal
+            isOpen={isCloseDialogOpen}
+            rememberChoice={rememberCloseChoice}
+            isBusy={isCloseActionBusy}
+            onRememberChoiceChange={setRememberCloseChoice}
+            onCancel={cancelCloseDialog}
+            onExit={handleExitFromCloseDialog}
+            onHideToTray={handleHideToTrayFromCloseDialog}
+          />
+        </Suspense>
+      )}
 
-      <CloseWindowModal
-        isOpen={isCloseDialogOpen}
-        rememberChoice={rememberCloseChoice}
-        isBusy={isCloseActionBusy}
-        onRememberChoiceChange={setRememberCloseChoice}
-        onCancel={cancelCloseDialog}
-        onExit={handleExitFromCloseDialog}
-        onHideToTray={handleHideToTrayFromCloseDialog}
-      />
+      {shouldMountSettingsModal && (
+        <Suspense fallback={null}>
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            globalShortcut={globalShortcutSettings}
+            globalShortcutLoaded={globalShortcutLoaded}
+            globalShortcutSupported={globalShortcutSupported}
+            globalShortcutError={globalShortcutError}
+            onGlobalShortcutChange={changeGlobalShortcutSettings}
+            instancePreferences={instancePreferences}
+            instancePreferencesLoaded={instancePreferencesLoaded}
+            instancePreferencesSupported={instancePreferencesSupported}
+            instancePreferencesError={instancePreferencesError}
+            onInstancePreferencesChange={changeInstancePreferences}
+            emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
+            onEmptyAreaDoubleClickNavigatesUpChange={setEmptyAreaDoubleClickNavigatesUp}
+            folderStyleLocked={folderStyleLocked}
+            onFolderStyleLockedChange={setFolderStyleLocked}
+            recentItemsBold={recentItemsBold}
+            onRecentItemsBoldChange={setRecentItemsBold}
+            imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+            onImageTooltipThumbnailsEnabledChange={setImageTooltipThumbnailsEnabled}
+            singleClickOpen={singleClickOpen}
+            onSingleClickOpenChange={setSingleClickOpen}
+            sidebarLocationsOpenInNewTab={sidebarLocationsOpenInNewTab}
+            onSidebarLocationsOpenInNewTabChange={setSidebarLocationsOpenInNewTab}
+            newTabsNextToCurrent={newTabsNextToCurrent}
+            onNewTabsNextToCurrentChange={setNewTabsNextToCurrent}
+            onShowAbout={() => {
+              setIsSettingsOpen(false);
+              setIsAboutOpen(true);
+            }}
+            onShowOnboarding={() => {
+              setIsSettingsOpen(false);
+              setIsOnboardingOpen(true);
+            }}
+          />
+        </Suspense>
+      )}
 
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        globalShortcut={globalShortcutSettings}
-        globalShortcutLoaded={globalShortcutLoaded}
-        globalShortcutSupported={globalShortcutSupported}
-        globalShortcutError={globalShortcutError}
-        onGlobalShortcutChange={changeGlobalShortcutSettings}
-        instancePreferences={instancePreferences}
-        instancePreferencesLoaded={instancePreferencesLoaded}
-        instancePreferencesSupported={instancePreferencesSupported}
-        instancePreferencesError={instancePreferencesError}
-        onInstancePreferencesChange={changeInstancePreferences}
-        emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
-        onEmptyAreaDoubleClickNavigatesUpChange={setEmptyAreaDoubleClickNavigatesUp}
-        folderStyleLocked={folderStyleLocked}
-        onFolderStyleLockedChange={setFolderStyleLocked}
-        recentItemsBold={recentItemsBold}
-        onRecentItemsBoldChange={setRecentItemsBold}
-        imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
-        onImageTooltipThumbnailsEnabledChange={setImageTooltipThumbnailsEnabled}
-        singleClickOpen={singleClickOpen}
-        onSingleClickOpenChange={setSingleClickOpen}
-        sidebarLocationsOpenInNewTab={sidebarLocationsOpenInNewTab}
-        onSidebarLocationsOpenInNewTabChange={setSidebarLocationsOpenInNewTab}
-        newTabsNextToCurrent={newTabsNextToCurrent}
-        onNewTabsNextToCurrentChange={setNewTabsNextToCurrent}
-        onShowAbout={() => {
-          setIsSettingsOpen(false);
-          setIsAboutOpen(true);
-        }}
-        onShowOnboarding={() => {
-          setIsSettingsOpen(false);
-          setIsOnboardingOpen(true);
-        }}
-      />
+      {shouldMountAboutModal && (
+        <Suspense fallback={null}>
+          <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
+        </Suspense>
+      )}
 
-      <Suspense fallback={null}><AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} /></Suspense>
-
-      <OnboardingWelcome
-        isOpen={isOnboardingOpen}
-        onOpenFolder={handleOpenRealFolder}
-        onContinue={activateSystemHome}
-        onSkip={activateSystemHome}
-      />
+      {shouldMountOnboardingModal && (
+        <Suspense fallback={null}>
+          <OnboardingWelcome
+            isOpen={isOnboardingOpen}
+            onOpenFolder={handleOpenRealFolder}
+            onContinue={activateSystemHome}
+            onSkip={activateSystemHome}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
