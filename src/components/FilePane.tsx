@@ -44,6 +44,7 @@ interface FilePaneProps {
   recentItemsBold: boolean;
   emptyAreaDoubleClickNavigatesUp: boolean;
   imageTooltipThumbnailsEnabled: boolean;
+  singleClickOpens: boolean;
   onStyleLockToggle: () => void;
   onActivate: () => void;
   tab: TabState;
@@ -244,6 +245,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   recentItemsBold,
   emptyAreaDoubleClickNavigatesUp,
   imageTooltipThumbnailsEnabled,
+  singleClickOpens,
   onStyleLockToggle,
   onActivate,
   tab,
@@ -285,6 +287,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [isDragOver, setIsDragOver] = useState(false);
   const [collapsedSystemHomeSections, setCollapsedSystemHomeSections] = useState(() => readCollapsedSystemHomeSections(paneId));
   const [columnWidths, setColumnWidths] = useState(() => readFileColumnWidths(paneId));
+  const lastSingleClickOpenRef = useRef<{ itemId: string; timestamp: number } | null>(null);
 
   const pathInputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -554,6 +557,26 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }
   };
 
+  const handleConfiguredSingleClick = (event: React.MouseEvent, item: FileItem) => {
+    if (!singleClickOpens || event.ctrlKey || event.metaKey || event.shiftKey || item.recycleBinId) return;
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+
+    const timestamp = Date.now();
+    const previous = lastSingleClickOpenRef.current;
+    if (previous?.itemId === item.id && timestamp - previous.timestamp < 450) {
+      previous.timestamp = timestamp;
+      return;
+    }
+
+    lastSingleClickOpenRef.current = { itemId: item.id, timestamp };
+    onItemDoubleClick(item);
+  };
+
+  const handleConfiguredDoubleClick = (item: FileItem) => {
+    if (!singleClickOpens || item.recycleBinId) onItemDoubleClick(item);
+  };
+
   const handleViewportContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest('[data-file-item], button, input, select, textarea, a')) return;
     onBackgroundContextMenu(event, paneId);
@@ -688,9 +711,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
         type="button"
         data-file-item="true"
         data-file-id={item.id}
-        onClick={event => handleItemClick(event, item, index)}
-        onDoubleClick={() => onItemDoubleClick(item)}
+        onClick={event => { handleItemClick(event, item, index); handleConfiguredSingleClick(event, item); }}
+        onDoubleClick={() => handleConfiguredDoubleClick(item)}
         onContextMenu={event => handleFileItemContextMenu(event, item)}
+        style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default' }}
         className={`group flex min-h-[68px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
           selected
             ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
@@ -928,7 +952,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* 4. Column Headers (Details View) */}
       {effectiveViewMode === 'details' && (
         <div className="grid shrink-0 items-center gap-2 border-x border-b border-neutral-800 bg-neutral-950 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 select-none" style={{ gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}>
-          <Tooltip label={t.pane.columns.extension} placement="bottom">
+          <Tooltip label={t.pane.columns.extensionTooltip} placement="bottom">
             <div onClick={() => onSortChange('extension')} className="group relative flex min-w-0 items-center gap-1 rounded-sm cursor-pointer transition-colors hover:bg-neutral-800/60 hover:text-neutral-100">
               <span>{t.pane.columns.extension}</span>
               {tab.sortField === 'extension' && <ArrowUpDown className="w-2.5 h-2.5 text-cyan-400" />}
@@ -1051,10 +1075,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       handleDrop(e, item);
                     }
                   }}
-                  onClick={(e) => handleItemClick(e, item, idx)}
-                  onDoubleClick={() => onItemDoubleClick(item)}
+                  onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
+                  onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
-                  style={{ gridTemplateColumns: fileGridTemplateColumns }}
+                  style={{ gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default' }}
                   className={`grid items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-700/60 text-neutral-100 font-medium'
@@ -1066,11 +1090,18 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   }`}
                 >
                   <div
-                    onClick={event => event.stopPropagation()}
+                    onClick={event => {
+                      event.stopPropagation();
+                      if (singleClickOpens) {
+                        handleItemClick(event, item, idx);
+                        handleConfiguredSingleClick(event, item);
+                      }
+                    }}
                     onDoubleClick={event => {
                       event.stopPropagation();
-                      onBackgroundDoubleClick(event, paneId);
+                      if (!singleClickOpens) onBackgroundDoubleClick(event, paneId);
                     }}
+                    style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default' }}
                     className="min-w-0 cursor-default truncate font-mono text-[10px] uppercase text-neutral-400"
                   >
                     {item.isFolder ? '' : (item.extension || '')}
@@ -1146,9 +1177,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       handleDrop(event, item);
                     }
                   }}
-                  onClick={event => handleItemClick(event, item, idx)}
-                  onDoubleClick={() => onItemDoubleClick(item)}
+                  onClick={event => { handleItemClick(event, item, idx); handleConfiguredSingleClick(event, item); }}
+                  onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
+                  style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default' }}
                   className={`flex min-w-0 items-center gap-2 rounded border px-2 py-1.5 text-xs transition-colors ${
                     isSelected
                       ? 'border-cyan-700/60 bg-cyan-950/70 text-neutral-100'
@@ -1179,9 +1211,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   data-file-id={item.id}
                   draggable={!item.recycleBinId}
                   onDragStart={(e) => handleDragStart(e, item)}
-                  onClick={(e) => handleItemClick(e, item, idx)}
-                  onDoubleClick={() => onItemDoubleClick(item)}
+                  onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
+                  onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
+                  style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default' }}
                   className={`flex min-w-0 flex-col items-center justify-start gap-1.5 rounded-lg border p-2.5 text-center cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-600/70 text-neutral-100 shadow'

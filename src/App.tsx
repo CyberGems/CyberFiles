@@ -64,6 +64,7 @@ const SIDEBAR_LOCATIONS_NEW_TAB_KEY = 'cyberfiles_sidebar_locations_open_in_new_
 const NEW_TABS_NEXT_TO_CURRENT_KEY = 'cyberfiles_new_tabs_next_to_current_v1';
 const RECENT_ITEMS_BOLD_KEY = 'cyberfiles_bold_recent_items_v1';
 const IMAGE_TOOLTIP_THUMBNAILS_KEY = 'cyberfiles_image_tooltip_thumbnails_v1';
+const SINGLE_CLICK_OPEN_KEY = 'cyberfiles_single_click_open_v1';
 const CUSTOM_QUICK_ACCESS_KEY = 'cyberfiles_custom_quick_access_v1';
 const QUICK_ACCESS_ORDER_KEY = 'cyberfiles_quick_access_order_v1';
 const QUICK_ACCESS_SORT_MODE_KEY = 'cyberfiles_quick_access_sort_mode_v1';
@@ -84,6 +85,7 @@ interface PanelViewPreferences {
   rightSortOrder: SortOrder;
   verticalSplitPercent: number;
   horizontalSplitPercent: number;
+  previewSplitPercent: number;
 }
 
 interface GlobalShortcutSettingsState {
@@ -109,6 +111,7 @@ const DEFAULT_PANEL_VIEW_PREFERENCES: PanelViewPreferences = {
   rightSortOrder: 'asc',
   verticalSplitPercent: 50,
   horizontalSplitPercent: 50,
+  previewSplitPercent: 72,
 };
 
 function isViewMode(value: unknown): value is ViewMode {
@@ -119,8 +122,8 @@ function isSortField(value: unknown): value is SortField {
   return value === 'name' || value === 'size' || value === 'type' || value === 'modifiedDate' || value === 'extension';
 }
 
-function readPaneSplitPercent(value: unknown) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return 50;
+function readPaneSplitPercent(value: unknown, defaultValue = 50) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return defaultValue;
   return Math.max(20, Math.min(80, value));
 }
 
@@ -140,6 +143,7 @@ function readPanelViewPreferences(): PanelViewPreferences {
       rightSortOrder: saved.rightSortOrder === 'desc' ? 'desc' : 'asc',
       verticalSplitPercent: readPaneSplitPercent(saved.verticalSplitPercent),
       horizontalSplitPercent: readPaneSplitPercent(saved.horizontalSplitPercent),
+      previewSplitPercent: readPaneSplitPercent(saved.previewSplitPercent, 72),
     };
   } catch {
     return DEFAULT_PANEL_VIEW_PREFERENCES;
@@ -296,6 +300,7 @@ export default function App() {
   const [newTabsNextToCurrent, setNewTabsNextToCurrent] = useState(() => readBooleanPreference(NEW_TABS_NEXT_TO_CURRENT_KEY, true));
   const [recentItemsBold, setRecentItemsBold] = useState(() => readBooleanPreference(RECENT_ITEMS_BOLD_KEY, true));
   const [imageTooltipThumbnailsEnabled, setImageTooltipThumbnailsEnabled] = useState(() => readBooleanPreference(IMAGE_TOOLTIP_THUMBNAILS_KEY, true));
+  const [singleClickOpen, setSingleClickOpen] = useState(() => readBooleanPreference(SINGLE_CLICK_OPEN_KEY, false));
 
   // Global file system state
   const [allFiles, setAllFiles] = useState<FileItem[]>([]);
@@ -374,6 +379,7 @@ export default function App() {
   const [layout, setLayout] = useState<ViewLayout>(initialPanelPreferences.layout);
   const [verticalSplitPercent, setVerticalSplitPercent] = useState(initialPanelPreferences.verticalSplitPercent);
   const [horizontalSplitPercent, setHorizontalSplitPercent] = useState(initialPanelPreferences.horizontalSplitPercent);
+  const [previewSplitPercent, setPreviewSplitPercent] = useState(initialPanelPreferences.previewSplitPercent);
   const [previewOpen, setPreviewOpen] = useState<boolean>(initialPanelPreferences.previewOpen);
   const [activePane, setActivePane] = useState<'left' | 'right'>(initialPanelPreferences.activePane);
   const [emptyAreaDoubleClickNavigatesUp, setEmptyAreaDoubleClickNavigatesUp] = useState(readEmptyAreaDoubleClickPreference);
@@ -767,11 +773,12 @@ export default function App() {
         rightSortOrder: rightSort.sortOrder,
         verticalSplitPercent,
         horizontalSplitPercent,
+        previewSplitPercent,
       } satisfies PanelViewPreferences));
     } catch {
       // Preference persistence is optional if browser storage is unavailable.
     }
-  }, [layout, previewOpen, activePane, leftViewMode, rightViewMode, leftSort.sortField, leftSort.sortOrder, rightSort.sortField, rightSort.sortOrder, verticalSplitPercent, horizontalSplitPercent]);
+  }, [layout, previewOpen, activePane, leftViewMode, rightViewMode, leftSort.sortField, leftSort.sortOrder, rightSort.sortField, rightSort.sortOrder, verticalSplitPercent, horizontalSplitPercent, previewSplitPercent]);
 
   useEffect(() => {
     try {
@@ -812,6 +819,14 @@ export default function App() {
       // Keep the selected behavior for the current session when storage is unavailable.
     }
   }, [imageTooltipThumbnailsEnabled]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SINGLE_CLICK_OPEN_KEY, String(singleClickOpen));
+    } catch {
+      // Keep the selected behavior for the current session if browser storage is unavailable.
+    }
+  }, [singleClickOpen]);
 
   useEffect(() => {
     try {
@@ -2730,7 +2745,7 @@ export default function App() {
         />
 
         {/* File Panes Canvas */}
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 grid min-h-0 min-w-0 overflow-hidden" style={{ gridTemplateColumns: previewOpen ? 'minmax(0, ' + previewSplitPercent + 'fr) 8px minmax(0, ' + (100 - previewSplitPercent) + 'fr)' : 'minmax(0, 1fr)' }}>
           {/* Dual Vertical Layout */}
           {layout === 'dual-vertical' && (
             <div className="flex-1 grid h-full min-h-0 min-w-0 overflow-hidden" style={{ gridTemplateColumns: 'minmax(0, ' + verticalSplitPercent + 'fr) 8px minmax(0, ' + (100 - verticalSplitPercent) + 'fr)' }}>
@@ -2742,6 +2757,7 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemsBold={recentItemsBold}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('left')}
@@ -2786,6 +2802,7 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemsBold={recentItemsBold}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('right')}
@@ -2831,6 +2848,7 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemsBold={recentItemsBold}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('left')}
@@ -2871,6 +2889,7 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemsBold={recentItemsBold}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                   onActivate={() => setActivePane('right')}
@@ -2916,6 +2935,7 @@ export default function App() {
                 styleLocked={folderStyleLocked}
                   recentItemsBold={recentItemsBold}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                 onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
                 onActivate={() => {}}
@@ -2949,6 +2969,8 @@ export default function App() {
               />
             </div>
           )}
+
+          {previewOpen && <PaneSplitter orientation="vertical" value={previewSplitPercent} onChange={setPreviewSplitPercent} label={t.header.resizePreview} />}
 
           {/* 3. Docked Quick Preview Pane */}
           {previewOpen && (
@@ -3094,6 +3116,8 @@ export default function App() {
         onRecentItemsBoldChange={setRecentItemsBold}
         imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
         onImageTooltipThumbnailsEnabledChange={setImageTooltipThumbnailsEnabled}
+        singleClickOpen={singleClickOpen}
+        onSingleClickOpenChange={setSingleClickOpen}
         sidebarLocationsOpenInNewTab={sidebarLocationsOpenInNewTab}
         onSidebarLocationsOpenInNewTabChange={setSidebarLocationsOpenInNewTab}
         newTabsNextToCurrent={newTabsNextToCurrent}

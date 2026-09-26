@@ -28,6 +28,8 @@ interface SettingsModalProps {
   onRecentItemsBoldChange: (enabled: boolean) => void;
   imageTooltipThumbnailsEnabled: boolean;
   onImageTooltipThumbnailsEnabledChange: (enabled: boolean) => void;
+  singleClickOpen: boolean;
+  onSingleClickOpenChange: (enabled: boolean) => void;
   sidebarLocationsOpenInNewTab: boolean;
   onSidebarLocationsOpenInNewTabChange: (enabled: boolean) => void;
   newTabsNextToCurrent: boolean;
@@ -74,6 +76,8 @@ export function SettingsModal({
   onRecentItemsBoldChange,
   imageTooltipThumbnailsEnabled,
   onImageTooltipThumbnailsEnabledChange,
+  singleClickOpen,
+  onSingleClickOpenChange,
   sidebarLocationsOpenInNewTab,
   onSidebarLocationsOpenInNewTabChange,
   newTabsNextToCurrent,
@@ -320,6 +324,23 @@ export function SettingsModal({
                 </label>
               </div>
             </div>
+          </div>
+
+          <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+            <Tooltip label={t.settings.singleClickOpenDescription} placement="top">
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={singleClickOpen}
+                  onChange={event => onSingleClickOpenChange(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                />
+                <span>
+                  <span className="block font-medium text-neutral-200">{t.settings.singleClickOpen}</span>
+                  <span className="mt-1 block">{t.settings.singleClickOpenDescription}</span>
+                </span>
+              </label>
+            </Tooltip>
           </div>
 
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
