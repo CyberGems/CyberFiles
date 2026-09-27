@@ -38,7 +38,6 @@ import {
 import { HeaderBar } from './components/HeaderBar';
 import { WindowTitleBar } from './components/WindowTitleBar';
 import { Sidebar } from './components/Sidebar';
-import { FilePane, readPaneColumnPreferences, writePaneColumnPreferences } from './components/FilePane';
 import { PaneSplitter } from './components/PaneSplitter';
 import { PreviewPane } from './components/PreviewPane';
 import { BottomStatusBar } from './components/BottomStatusBar';
@@ -48,6 +47,7 @@ import { UnsavedWorkspaceChangesModal, type WorkspaceChangesSaveNames } from './
 
 
 import { useLanguage } from './locales/LanguageContext';
+import { readPaneColumnPreferences, writePaneColumnPreferences } from './utils/fileColumnPreferences';
 import {
   createProfileId,
   DEFAULT_LAYOUT_PROFILE_ID,
@@ -78,6 +78,7 @@ const ConfirmActionModal = lazy(() => import('./components/ConfirmActionModal').
 const CloseWindowModal = lazy(() => import('./components/CloseWindowModal').then(module => ({ default: module.CloseWindowModal })));
 const SettingsModal = lazy(() => import('./components/SettingsModal').then(module => ({ default: module.SettingsModal })));
 const OnboardingWelcome = lazy(() => import('./components/OnboardingWelcome').then(module => ({ default: module.OnboardingWelcome })));
+const FilePane = lazy(() => import('./components/FilePane').then(module => ({ default: module.FilePane })));
 const ONBOARDING_STORAGE_KEY = 'cyberfiles_onboarding_complete';
 const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
 const PANEL_VIEW_PREFERENCES_KEY = 'cyberfiles_panel_view_preferences_v1';
@@ -3231,6 +3232,7 @@ export default function App() {
 
         {/* File Panes Canvas */}
         <div className="flex-1 grid min-h-0 min-w-0 overflow-hidden" style={{ gridTemplateColumns: previewOpen ? 'minmax(0, ' + previewSplitPercent + 'fr) 8px minmax(0, ' + (100 - previewSplitPercent) + 'fr)' : 'minmax(0, 1fr)' }}>
+          <Suspense fallback={<div className="flex min-h-0 min-w-0 items-center justify-center text-xs text-neutral-500">{t.pane.loadingFolder}</div>}>
           {/* Dual Vertical Layout */}
           {layout === 'dual-vertical' && (
             <div className="flex-1 grid h-full min-h-0 min-w-0 overflow-hidden" style={{ gridTemplateColumns: 'minmax(0, ' + verticalSplitPercent + 'fr) 8px minmax(0, ' + (100 - verticalSplitPercent) + 'fr)' }}>
@@ -3469,6 +3471,7 @@ export default function App() {
               />
             </div>
           )}
+          </Suspense>
 
           {previewOpen && <PaneSplitter orientation="vertical" value={previewSplitPercent} onChange={setPreviewSplitPercent} label={t.header.resizePreview} />}
 

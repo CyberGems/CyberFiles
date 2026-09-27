@@ -37,6 +37,11 @@ import { formatFileSize, getParentPath } from '../utils/fileSystem';
 import { isTauriDesktop, loadNativeImageThumbnail } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
+import {
+  DEFAULT_FILE_COLUMN_WIDTHS,
+  FILE_COLUMN_LAYOUT_STORAGE_KEY,
+  FILE_COLUMN_WIDTHS_STORAGE_KEY,
+} from '../utils/fileColumnPreferences';
 import type { PaneColumnsSnapshot } from '../utils/workspaceProfiles';
 
 interface FilePaneProps {
@@ -95,11 +100,6 @@ interface ColumnPointerDrag {
   target: FileColumn | null;
 }
 
-interface FileColumnLayout {
-  order: FileColumn[];
-  visible: FileColumn[];
-}
-
 interface FileColumnWidths {
   extension: number;
   name: number | null;
@@ -132,14 +132,7 @@ interface MarqueeDrag {
 }
 
 const COLLAPSED_SYSTEM_HOME_SECTIONS_KEY = 'cyberfiles_system_home_collapsed_sections_v1';
-const FILE_COLUMN_WIDTHS_KEY = 'cyberfiles_file_column_widths_v1';
-const FILE_COLUMN_LAYOUT_KEY = 'cyberfiles_file_column_layout_v1';
 const FILE_COLUMNS: FileColumn[] = ['extension', 'name', 'size', 'created', 'modified'];
-const DEFAULT_FILE_COLUMN_LAYOUT: FileColumnLayout = {
-  order: FILE_COLUMNS,
-  visible: ['name', 'size', 'created', 'modified'],
-};
-const DEFAULT_FILE_COLUMN_WIDTHS: FileColumnWidths = { extension: 58, name: null, size: 84, created: 116, modified: 116 };
 const MIN_NAME_COLUMN_WIDTH = 100;
 const RECENT_ITEM_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_COLLAPSED_SYSTEM_HOME_SECTIONS: CollapsedSystemHomeSections = {
@@ -147,57 +140,6 @@ const DEFAULT_COLLAPSED_SYSTEM_HOME_SECTIONS: CollapsedSystemHomeSections = {
   devices: false,
   network: false,
 };
-
-function readFileColumnWidths(paneId: 'left' | 'right'): FileColumnWidths {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(`${FILE_COLUMN_WIDTHS_KEY}_${paneId}`) || 'null');
-    if (!saved || typeof saved !== 'object') return DEFAULT_FILE_COLUMN_WIDTHS;
-    return {
-      extension: typeof saved.extension === 'number' ? Math.min(220, Math.max(42, saved.extension)) : DEFAULT_FILE_COLUMN_WIDTHS.extension,
-      name: typeof saved.name === 'number' ? Math.min(1600, Math.max(MIN_NAME_COLUMN_WIDTH, saved.name)) : DEFAULT_FILE_COLUMN_WIDTHS.name,
-      size: typeof saved.size === 'number' ? Math.min(320, Math.max(56, saved.size)) : DEFAULT_FILE_COLUMN_WIDTHS.size,
-      created: typeof saved.created === 'number' ? Math.min(480, Math.max(80, saved.created)) : DEFAULT_FILE_COLUMN_WIDTHS.created,
-      modified: typeof saved.modified === 'number' ? Math.min(480, Math.max(80, saved.modified)) : DEFAULT_FILE_COLUMN_WIDTHS.modified,
-    };
-  } catch {
-    return DEFAULT_FILE_COLUMN_WIDTHS;
-  }
-}
-
-export function readPaneColumnPreferences(paneId: 'left' | 'right'): PaneColumnsSnapshot {
-  return {
-    layout: readFileColumnLayout(paneId),
-    widths: readFileColumnWidths(paneId),
-  };
-}
-
-export function writePaneColumnPreferences(paneId: 'left' | 'right', preferences: PaneColumnsSnapshot) {
-  try {
-    window.localStorage.setItem(`${FILE_COLUMN_LAYOUT_KEY}_${paneId}`, JSON.stringify(preferences.layout));
-    window.localStorage.setItem(`${FILE_COLUMN_WIDTHS_KEY}_${paneId}`, JSON.stringify(preferences.widths));
-  } catch {
-    // Preferences remain in component state for this session if storage is unavailable.
-  }
-}
-
-function readFileColumnLayout(paneId: 'left' | 'right'): FileColumnLayout {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(`${FILE_COLUMN_LAYOUT_KEY}_${paneId}`) || 'null');
-    if (!saved || typeof saved !== 'object') return DEFAULT_FILE_COLUMN_LAYOUT;
-    const order = Array.isArray(saved.order)
-      ? FILE_COLUMNS.filter(column => saved.order.includes(column))
-      : DEFAULT_FILE_COLUMN_LAYOUT.order;
-    FILE_COLUMNS.forEach(column => {
-      if (!order.includes(column)) order.push(column);
-    });
-    const visible = Array.isArray(saved.visible)
-      ? order.filter(column => saved.visible.includes(column))
-      : DEFAULT_FILE_COLUMN_LAYOUT.visible;
-    return { order, visible: visible.length > 0 ? visible : ['name'] };
-  } catch {
-    return DEFAULT_FILE_COLUMN_LAYOUT;
-  }
-}
 
 function resizeFileColumns(widths: FileColumnWidths, column: ResizableColumn, delta: number): FileColumnWidths {
   const clampWidth = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -495,7 +437,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (columnWidthsSaveTimeoutRef.current !== null) window.clearTimeout(columnWidthsSaveTimeoutRef.current);
     columnWidthsSaveTimeoutRef.current = window.setTimeout(() => {
       try {
-        window.localStorage.setItem(`${FILE_COLUMN_WIDTHS_KEY}_${paneId}`, JSON.stringify(columnWidths));
+        window.localStorage.setItem(`${FILE_COLUMN_WIDTHS_STORAGE_KEY}_${paneId}`, JSON.stringify(columnWidths));
       } catch {
         // Column widths remain available for the current session if storage is unavailable.
       }
@@ -510,7 +452,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(`${FILE_COLUMN_LAYOUT_KEY}_${paneId}`, JSON.stringify(columnLayout));
+      window.localStorage.setItem(`${FILE_COLUMN_LAYOUT_STORAGE_KEY}_${paneId}`, JSON.stringify(columnLayout));
     } catch {
       // Column layout remains available for the current session if storage is unavailable.
     }
