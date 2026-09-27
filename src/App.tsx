@@ -96,6 +96,7 @@ interface PanelViewPreferences {
   verticalSplitPercent: number;
   horizontalSplitPercent: number;
   previewSplitPercent: number;
+  sidebarSplitPercent: number;
 }
 
 interface GlobalShortcutSettingsState {
@@ -122,6 +123,7 @@ const DEFAULT_PANEL_VIEW_PREFERENCES: PanelViewPreferences = {
   verticalSplitPercent: 50,
   horizontalSplitPercent: 50,
   previewSplitPercent: 72,
+  sidebarSplitPercent: 22,
 };
 
 function isViewMode(value: unknown): value is ViewMode {
@@ -132,9 +134,9 @@ function isSortField(value: unknown): value is SortField {
   return value === 'name' || value === 'size' || value === 'type' || value === 'createdDate' || value === 'modifiedDate' || value === 'extension';
 }
 
-function readPaneSplitPercent(value: unknown, defaultValue = 50) {
+function readPaneSplitPercent(value: unknown, defaultValue = 50, minPercent = 20, maxPercent = 80) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return defaultValue;
-  return Math.max(20, Math.min(80, value));
+  return Math.max(minPercent, Math.min(maxPercent, value));
 }
 
 function readPanelViewPreferences(): PanelViewPreferences {
@@ -154,6 +156,7 @@ function readPanelViewPreferences(): PanelViewPreferences {
       verticalSplitPercent: readPaneSplitPercent(saved.verticalSplitPercent),
       horizontalSplitPercent: readPaneSplitPercent(saved.horizontalSplitPercent),
       previewSplitPercent: readPaneSplitPercent(saved.previewSplitPercent, 72),
+      sidebarSplitPercent: readPaneSplitPercent(saved.sidebarSplitPercent, 22, 20, 42),
     };
   } catch {
     return DEFAULT_PANEL_VIEW_PREFERENCES;
@@ -418,6 +421,7 @@ export default function App() {
   const [verticalSplitPercent, setVerticalSplitPercent] = useState(initialPanelPreferences.verticalSplitPercent);
   const [horizontalSplitPercent, setHorizontalSplitPercent] = useState(initialPanelPreferences.horizontalSplitPercent);
   const [previewSplitPercent, setPreviewSplitPercent] = useState(initialPanelPreferences.previewSplitPercent);
+  const [sidebarSplitPercent, setSidebarSplitPercent] = useState(initialPanelPreferences.sidebarSplitPercent);
   const [previewOpen, setPreviewOpen] = useState<boolean>(initialPanelPreferences.previewOpen);
   const [activePane, setActivePane] = useState<'left' | 'right'>(initialPanelPreferences.activePane);
   const [emptyAreaDoubleClickNavigatesUp, setEmptyAreaDoubleClickNavigatesUp] = useState(readEmptyAreaDoubleClickPreference);
@@ -822,11 +826,12 @@ export default function App() {
         verticalSplitPercent,
         horizontalSplitPercent,
         previewSplitPercent,
+        sidebarSplitPercent,
       } satisfies PanelViewPreferences));
     } catch {
       // Preference persistence is optional if browser storage is unavailable.
     }
-  }, [layout, previewOpen, activePane, leftViewMode, rightViewMode, leftSort.sortField, leftSort.sortOrder, rightSort.sortField, rightSort.sortOrder, verticalSplitPercent, horizontalSplitPercent, previewSplitPercent]);
+  }, [layout, previewOpen, activePane, leftViewMode, rightViewMode, leftSort.sortField, leftSort.sortOrder, rightSort.sortField, rightSort.sortOrder, verticalSplitPercent, horizontalSplitPercent, previewSplitPercent, sidebarSplitPercent]);
 
   useEffect(() => {
     try {
@@ -2286,100 +2291,48 @@ export default function App() {
     await handleNavigate(RECYCLE_BIN_PATH, activePane);
   }, [activePane, handleNavigate]);
 
-  // Opens only a user-selected folder. Native builds scan it without following links.
+  // Opens a user-selected folder through the native Windows picker.
   const handleOpenRealFolder = async () => {
+    if (!isTauriDesktop()) return;
+
     try {
-      if (isTauriDesktop()) {
-        const selectedPath = await chooseNativeFolder(t.sidebar.openFolderDialogTitle);
-        if (!selectedPath) return;
+      const selectedPath = await chooseNativeFolder(t.sidebar.openFolderDialogTitle);
+      if (!selectedPath) return;
 
-        nativeOpeningWorkspace.current = true;
-        const generation = ++nativeWorkspaceGeneration.current;
-        const loaded = await loadNativeFolder(selectedPath);
-        if (generation !== nativeWorkspaceGeneration.current) return;
-        const rootKey = getPathKey(loaded.rootPath);
-        browserRootPath.current = '';
-        browserDirectoryCursors.current.clear();
-        nativeLoadedDirectories.current.clear();
-        nativeLoadedDirectories.current.add(rootKey);
-        nativeInFlightDirectories.current.clear();
-        nativeRootPath.current = loaded.rootPath;
-        systemHomeWorkspace.current = false;
-        setNativeDirectories({
-          [rootKey]: { nextOffset: loaded.nextOffset, hasMore: loaded.hasMore, loading: false },
-        });
-        setAllFiles(loaded.files);
-        setQuickAccess([{
-          id: `qa-${encodeURIComponent(loaded.rootPath.toLowerCase())}`,
-          name: loaded.rootName,
-          path: loaded.rootPath,
-          icon: 'folder',
-          count: loaded.files.length - 1,
-        }]);
-        nativeOpeningWorkspace.current = false;
-        openWorkspaceRoot(loaded.rootPath, loaded.rootName);
-        completeOnboarding();
-        const count = loaded.files.length - 1;
-        const suffix = loaded.hasMore
-          ? (language === 'es' ? ', primeros 400. Usa “Cargar más” para continuar.' : ', first 400. Use “Load more” to continue.')
-          : '';
-        showToast(`${language === 'es' ? 'Carpeta cargada' : 'Folder loaded'}: "${loaded.rootName}" (${count} ${language === 'es' ? 'elementos' : 'items'})${suffix}`);
-        return;
-      }
-
-      if (typeof (window as any).showDirectoryPicker === 'function') {
-        const dirHandle = await (window as any).showDirectoryPicker();
-        const rootPath = joinWindowsPath('Local folders', dirHandle.name);
-        const rootItem: FileItem = {
-          id: `real-root-${encodeURIComponent(rootPath.toLowerCase())}`,
-          name: dirHandle.name,
-          path: rootPath,
-          isFolder: true,
-          type: 'folder',
-          size: 0,
-          modifiedDate: new Date().toISOString().replace('T', ' ').slice(0, 16),
-          extension: '',
-          handle: dirHandle,
-        };
-
-        nativeOpeningWorkspace.current = true;
-        const generation = ++nativeWorkspaceGeneration.current;
-        const firstPage = await listBrowserDirectoryPage(rootPath, true, dirHandle);
-        if (generation !== nativeWorkspaceGeneration.current) return;
-        const rootKey = getPathKey(rootPath);
-        const rootCursor = browserDirectoryCursors.current.get(rootKey);
-        browserDirectoryCursors.current.clear();
-        if (rootCursor) browserDirectoryCursors.current.set(rootKey, rootCursor);
-        nativeRootPath.current = '';
-        browserRootPath.current = rootPath;
-        systemHomeWorkspace.current = false;
-        nativeLoadedDirectories.current.clear();
-        nativeLoadedDirectories.current.add(rootKey);
-        nativeInFlightDirectories.current.clear();
-        setNativeDirectories({
-          [rootKey]: { nextOffset: firstPage.entries.length, hasMore: firstPage.hasMore, loading: false },
-        });
-        setAllFiles([rootItem, ...firstPage.entries]);
-        setQuickAccess([{
-          id: `qa-${encodeURIComponent(rootPath.toLowerCase())}`,
-          name: dirHandle.name,
-          path: rootPath,
-          icon: 'folder',
-          count: firstPage.entries.length,
-        }]);
-        nativeOpeningWorkspace.current = false;
-        openWorkspaceRoot(rootPath, dirHandle.name);
-        completeOnboarding();
-        const suffix = firstPage.hasMore
-          ? (language === 'es' ? ', primeros 400. Usa “Cargar más” para continuar.' : ', first 400. Use “Load more” to continue.')
-          : '';
-        showToast(`${language === 'es' ? 'Carpeta cargada' : 'Folder loaded'}: "${dirHandle.name}" (${firstPage.entries.length} ${language === 'es' ? 'elementos' : 'items'})${suffix}`);
-      } else {
-        showToast(language === 'es' ? 'File System Access API no disponible en este navegador.' : 'File System Access API is not available in this browser.');
-      }
-    } catch (err: any) {
+      nativeOpeningWorkspace.current = true;
+      const generation = ++nativeWorkspaceGeneration.current;
+      const loaded = await loadNativeFolder(selectedPath);
+      if (generation !== nativeWorkspaceGeneration.current) return;
+      const rootKey = getPathKey(loaded.rootPath);
+      browserRootPath.current = '';
+      browserDirectoryCursors.current.clear();
+      nativeLoadedDirectories.current.clear();
+      nativeLoadedDirectories.current.add(rootKey);
+      nativeInFlightDirectories.current.clear();
+      nativeRootPath.current = loaded.rootPath;
+      systemHomeWorkspace.current = false;
+      setNativeDirectories({
+        [rootKey]: { nextOffset: loaded.nextOffset, hasMore: loaded.hasMore, loading: false },
+      });
+      setAllFiles(loaded.files);
+      setQuickAccess([{
+        id: `qa-${encodeURIComponent(loaded.rootPath.toLowerCase())}`,
+        name: loaded.rootName,
+        path: loaded.rootPath,
+        icon: 'folder',
+        count: loaded.files.length - 1,
+      }]);
       nativeOpeningWorkspace.current = false;
-      if (err.name !== 'AbortError') {
+      openWorkspaceRoot(loaded.rootPath, loaded.rootName);
+      completeOnboarding();
+      const count = loaded.files.length - 1;
+      const suffix = loaded.hasMore
+        ? (language === 'es' ? ', primeros 400. Usa “Cargar más” para continuar.' : ', first 400. Use “Load more” to continue.')
+        : '';
+      showToast(`${language === 'es' ? 'Carpeta cargada' : 'Folder loaded'}: "${loaded.rootName}" (${count} ${language === 'es' ? 'elementos' : 'items'})${suffix}`);
+    } catch (error: any) {
+      nativeOpeningWorkspace.current = false;
+      if (error.name !== 'AbortError') {
         showToast(language === 'es' ? 'No se pudo acceder a la carpeta seleccionada.' : 'The selected folder could not be opened.');
       }
     }
@@ -2750,12 +2703,11 @@ export default function App() {
         onMoveSelected={handleMoveSelected}
         onDeleteSelected={() => handleDeleteSelected(selectedItemsForDelete)}
         selectedCount={selectedCount}
-        onOpenRealFolder={handleOpenRealFolder}
         onOpenSearch={() => setIsSearchOpen(true)}
       />
 
       {/* 2. Main Workstation Area */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="relative grid min-h-0 min-w-0 flex-1 overflow-hidden" style={{ gridTemplateColumns: 'minmax(0, ' + sidebarSplitPercent + 'fr) 8px minmax(0, ' + (100 - sidebarSplitPercent) + 'fr)' }}>
         {/* Left Sidebar (Drives, Quick Access & Recent Files) */}
         <Sidebar
           drives={drives}
@@ -2794,6 +2746,8 @@ export default function App() {
           onRestoreRecycleBinItems={() => { void handleRestoreRecycleBinItems(selectedItemsForDelete); }}
           onRequestEmptyRecycleBin={handleRequestEmptyRecycleBin}
         />
+
+        <PaneSplitter orientation="vertical" value={sidebarSplitPercent} onChange={setSidebarSplitPercent} minPercent={20} maxPercent={42} label={t.header.resizeSidebar} />
 
         {/* File Panes Canvas */}
         <div className="flex-1 grid min-h-0 min-w-0 overflow-hidden" style={{ gridTemplateColumns: previewOpen ? 'minmax(0, ' + previewSplitPercent + 'fr) 8px minmax(0, ' + (100 - previewSplitPercent) + 'fr)' : 'minmax(0, 1fr)' }}>

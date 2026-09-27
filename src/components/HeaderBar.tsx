@@ -11,7 +11,6 @@ import {
   LayoutGrid,
   List,
   StretchHorizontal,
-  FolderOpen,
   Search,
   Trash2,
 } from 'lucide-react';
@@ -32,7 +31,6 @@ interface HeaderBarProps {
   onMoveSelected: () => void;
   onDeleteSelected: () => void;
   selectedCount: number;
-  onOpenRealFolder: () => void;
   onOpenSearch: () => void;
 }
 
@@ -49,7 +47,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onMoveSelected,
   onDeleteSelected,
   selectedCount,
-  onOpenRealFolder,
   onOpenSearch,
 }) => {
   const { t, language } = useLanguage();
@@ -73,7 +70,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           <Tooltip label={t.toolbar.rename} disabled={disabled}><button onClick={onRenameSelected} disabled={disabled} className="header-action"><Edit3 className="w-3.5 h-3.5 text-amber-400" /><span className="core-action-label">{language === 'es' ? 'Renombrar' : 'Rename'}</span><span className="shortcut">F2</span></button></Tooltip>
           <Tooltip label={t.toolbar.delete} disabled={disabled}><button onClick={onDeleteSelected} disabled={disabled} className="header-action text-rose-200"><Trash2 className="w-3.5 h-3.5 text-rose-400" /><span className="core-action-label">{language === 'es' ? 'Eliminar' : 'Delete'}</span><span className="shortcut">Del</span></button></Tooltip>
           <Tooltip label={t.toolbar.newFolder}><button onClick={onNewFolder} className="header-action"><FolderPlus className="w-3.5 h-3.5 text-emerald-400" /><span className="action-label">{language === 'es' ? 'Nueva carpeta' : 'New folder'}</span><span className="shortcut">F7</span></button></Tooltip>
-          <Tooltip label={t.sidebar.openLocalFolder}><button onClick={onOpenRealFolder} className="header-action accent"><FolderOpen className="w-3.5 h-3.5 text-cyan-400" /><span className="action-label">{language === 'es' ? 'Elegir carpeta' : 'Choose folder'}</span></button></Tooltip>
         </div>
       </div>
 

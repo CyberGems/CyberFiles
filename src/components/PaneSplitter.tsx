@@ -8,6 +8,8 @@ interface PaneSplitterProps {
   value: number;
   label: string;
   onChange: (value: number) => void;
+  minPercent?: number;
+  maxPercent?: number;
 }
 
 interface ActiveDrag {
@@ -20,18 +22,18 @@ const MIN_SPLIT_PERCENT = 20;
 const MAX_SPLIT_PERCENT = 80;
 const SPLITTER_SIZE_PX = 8;
 
-function clampSplitPercent(value: number) {
-  return Math.max(MIN_SPLIT_PERCENT, Math.min(MAX_SPLIT_PERCENT, value));
+function clampSplitPercent(value: number, minPercent = MIN_SPLIT_PERCENT, maxPercent = MAX_SPLIT_PERCENT) {
+  return Math.max(minPercent, Math.min(maxPercent, value));
 }
 
-function updateGridSplit(parent: HTMLDivElement, orientation: SplitOrientation, value: number) {
-  const firstTrack = clampSplitPercent(value);
+function updateGridSplit(parent: HTMLDivElement, orientation: SplitOrientation, value: number, minPercent: number, maxPercent: number) {
+  const firstTrack = clampSplitPercent(value, minPercent, maxPercent);
   const secondTrack = 100 - firstTrack;
   const template = 'minmax(0, ' + firstTrack + 'fr) ' + SPLITTER_SIZE_PX + 'px minmax(0, ' + secondTrack + 'fr)';
   parent.style.setProperty(orientation === 'vertical' ? 'grid-template-columns' : 'grid-template-rows', template);
 }
 
-export function PaneSplitter({ orientation, value, label, onChange }: PaneSplitterProps) {
+export function PaneSplitter({ orientation, value, label, onChange, minPercent = MIN_SPLIT_PERCENT, maxPercent = MAX_SPLIT_PERCENT }: PaneSplitterProps) {
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<ActiveDrag | null>(null);
   const pendingPercentRef = useRef(value);
@@ -47,7 +49,7 @@ export function PaneSplitter({ orientation, value, label, onChange }: PaneSplitt
     const splitterSize = isVertical ? splitterRect.width : splitterRect.height;
     const available = Math.max(1, total - splitterSize);
     const firstPaneSize = coordinate - start - splitterSize / 2;
-    return clampSplitPercent((firstPaneSize / available) * 100);
+    return clampSplitPercent((firstPaneSize / available) * 100, minPercent, maxPercent);
   };
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -73,7 +75,7 @@ export function PaneSplitter({ orientation, value, label, onChange }: PaneSplitt
     frameRef.current = window.requestAnimationFrame(() => {
       frameRef.current = null;
       const currentDrag = dragRef.current;
-      if (currentDrag) updateGridSplit(currentDrag.parent, orientation, pendingPercentRef.current);
+      if (currentDrag) updateGridSplit(currentDrag.parent, orientation, pendingPercentRef.current, minPercent, maxPercent);
     });
   };
 
@@ -87,7 +89,7 @@ export function PaneSplitter({ orientation, value, label, onChange }: PaneSplitt
     }
 
     const finalValue = commit ? pendingPercentRef.current : drag.initialValue;
-    updateGridSplit(drag.parent, orientation, finalValue);
+    updateGridSplit(drag.parent, orientation, finalValue, minPercent, maxPercent);
     dragRef.current = null;
     setDragging(false);
 
@@ -107,8 +109,8 @@ export function PaneSplitter({ orientation, value, label, onChange }: PaneSplitt
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     let nextValue = value;
-    if (event.key === 'Home') nextValue = MIN_SPLIT_PERCENT;
-    else if (event.key === 'End') nextValue = MAX_SPLIT_PERCENT;
+    if (event.key === 'Home') nextValue = minPercent;
+    else if (event.key === 'End') nextValue = maxPercent;
     else if (orientation === 'vertical' && event.key === 'ArrowLeft') nextValue -= 2;
     else if (orientation === 'vertical' && event.key === 'ArrowRight') nextValue += 2;
     else if (orientation === 'horizontal' && event.key === 'ArrowUp') nextValue -= 2;
@@ -117,9 +119,9 @@ export function PaneSplitter({ orientation, value, label, onChange }: PaneSplitt
 
     event.preventDefault();
     event.stopPropagation();
-    nextValue = clampSplitPercent(nextValue);
+    nextValue = clampSplitPercent(nextValue, minPercent, maxPercent);
     const parent = event.currentTarget.parentElement;
-    if (parent instanceof HTMLDivElement) updateGridSplit(parent, orientation, nextValue);
+    if (parent instanceof HTMLDivElement) updateGridSplit(parent, orientation, nextValue, minPercent, maxPercent);
     onChange(nextValue);
   };
 
@@ -131,8 +133,8 @@ export function PaneSplitter({ orientation, value, label, onChange }: PaneSplitt
         role="separator"
         aria-label={label}
         aria-orientation={orientation}
-        aria-valuemin={MIN_SPLIT_PERCENT}
-        aria-valuemax={MAX_SPLIT_PERCENT}
+        aria-valuemin={minPercent}
+        aria-valuemax={maxPercent}
         aria-valuenow={Math.round(value)}
         tabIndex={0}
         className={

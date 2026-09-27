@@ -239,7 +239,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             .replace('{size}', formatFileSize(recycleBinStatus.totalBytes));
 
   return (
-    <aside className="w-64 bg-neutral-950 border-r border-neutral-800/80 flex flex-col justify-between select-none flex-shrink-0 text-xs">
+    <aside className="h-full w-full min-w-0 overflow-hidden bg-neutral-950 border-r border-neutral-800/80 flex flex-col justify-between select-none flex-shrink-0 text-xs">
       
       {/* 1. Header Tabs: Explorador vs Archivos Recientes */}
       <div className="p-2 border-b border-neutral-800/80 bg-neutral-900/60 flex items-center gap-1">
