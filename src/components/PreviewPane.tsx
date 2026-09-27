@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { X, FileText, Image as ImageIcon, Code2, Copy, Check, Info, Music, Video, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, FileText, Image as ImageIcon, Code2, Copy, Check, Info, Music, Video, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { FileItem } from '../types';
 import { formatFileSize, isTextPreviewableFile } from '../utils/fileSystem';
-import { isTauriDesktop, loadNativeImageThumbnail } from '../utils/nativeFileSystem';
+import { isTauriDesktop, loadNativeImageThumbnail, loadNativePdfPreviewUrl } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 
@@ -134,15 +134,18 @@ interface PreviewPaneProps {
   onRename: () => void;
   nativePropertiesSupported: boolean;
   onOpenWindowsProperties: () => void;
+  onOpenWithDefaultApp: () => void;
 }
 
-export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRename, nativePropertiesSupported, onOpenWindowsProperties }) => {
+export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRename, nativePropertiesSupported, onOpenWindowsProperties, onOpenWithDefaultApp }) => {
   const [copied, setCopied] = useState(false);
   const [collapsedSection, setCollapsedSection] = useState<'preview' | 'properties' | null>(null);
   const previewCollapsed = collapsedSection === 'preview';
   const propertiesCollapsed = collapsedSection === 'properties';
   const [imagePreviewSource, setImagePreviewSource] = useState<string | null>(null);
   const [imagePreviewState, setImagePreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
+  const [pdfPreviewSource, setPdfPreviewSource] = useState<string | null>(null);
+  const [pdfPreviewState, setPdfPreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const { t } = useLanguage();
 
   useEffect(() => {
@@ -201,6 +204,27 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
     };
   }, [item?.id, item?.path, item?.handle, item?.contentPreview, item?.type, item?.isFolder]);
 
+  useEffect(() => {
+    if (!item || item.isFolder || item.extension.toLowerCase() !== 'pdf') {
+      setPdfPreviewSource(null);
+      setPdfPreviewState('idle');
+      return;
+    }
+
+    let cancelled = false;
+    setPdfPreviewSource(null);
+    setPdfPreviewState('loading');
+
+    void loadNativePdfPreviewUrl(item.path).then(source => {
+      if (cancelled) return;
+      setPdfPreviewSource(source);
+    }).catch(() => {
+      if (!cancelled) setPdfPreviewState('unavailable');
+    });
+
+    return () => { cancelled = true; };
+  }, [item?.id, item?.path, item?.extension, item?.isFolder]);
+
   if (!item) {
     return (
       <aside className="w-full min-w-0 bg-neutral-950 border-l border-neutral-800 flex flex-col justify-center items-center text-neutral-500 p-6 text-center select-none text-xs flex-shrink-0">
@@ -223,6 +247,23 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
 
   const renderContent = () => {
     const extension = item.extension.toLowerCase();
+    if (extension === 'pdf') {
+      if (pdfPreviewState !== 'unavailable' && pdfPreviewSource) {
+        return <iframe aria-label={`${t.preview.contentPreview}: ${item.name}`} src={pdfPreviewSource} onLoad={() => setPdfPreviewState('ready')} onError={() => setPdfPreviewState('unavailable')} className="h-full min-h-[320px] w-full border-0 bg-neutral-900" />;
+      }
+
+      const status = pdfPreviewState === 'loading'
+        ? t.preview.pdfPreviewLoading
+        : isTauriDesktop() ? t.preview.pdfPreviewUnavailable : t.preview.pdfPreviewDesktopOnly;
+      return (
+        <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400">
+          <FileText className="h-10 w-10 text-cyan-400" />
+          <span className="text-[11px]">{status}</span>
+          {nativePropertiesSupported && <Tooltip label={t.preview.openWithDefaultApp} placement="top"><button type="button" onClick={onOpenWithDefaultApp} className="rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-[11px] text-neutral-200 transition-colors hover:border-cyan-600 hover:text-cyan-200">{t.preview.openWithDefaultApp}</button></Tooltip>}
+        </div>
+      );
+    }
+
     if (extension === 'html' || extension === 'htm') {
       if (item.contentPreview === undefined) return <div className="p-6 text-center text-[11px] text-neutral-400">{t.preview.textUnavailable}</div>;
       return <iframe title={item.name} srcDoc={createSafeHtmlPreview(item.contentPreview)} sandbox="" referrerPolicy="no-referrer" className="h-full min-h-0 w-full border-0 bg-white" />;
@@ -272,6 +313,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
       <div className="flex h-10 flex-shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-900/60 px-3">
         <span className="truncate font-semibold text-neutral-200">{item.name}</span>
         <div className="flex flex-shrink-0 items-center gap-1">
+          {item.extension.toLowerCase() === 'pdf' && nativePropertiesSupported && <Tooltip label={t.preview.openWithDefaultApp} placement="bottom"><button type="button" onClick={onOpenWithDefaultApp} aria-label={t.preview.openWithDefaultApp} className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300"><ExternalLink className="h-4 w-4" /></button></Tooltip>}
           {nativePropertiesSupported && <Tooltip label={t.preview.openWindowsProperties} placement="bottom"><button type="button" onClick={onOpenWindowsProperties} aria-label={t.preview.openWindowsProperties} className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300"><Info className="h-4 w-4" /></button></Tooltip>}
           <Tooltip label={t.preview.close} placement="bottom"><button type="button" onClick={onClose} aria-label={t.preview.close} className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"><X className="h-4 w-4" /></button></Tooltip>
         </div>

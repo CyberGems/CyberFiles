@@ -301,6 +301,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [columnMenuPosition, setColumnMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [columnDropTarget, setColumnDropTarget] = useState<FileColumn | null>(null);
   const lastSingleClickOpenRef = useRef<{ itemId: string; timestamp: number } | null>(null);
+  const pendingDeselectionRef = useRef<number | null>(null);
+  const latestTabRef = useRef(tab);
+  latestTabRef.current = tab;
+
+  const clearPendingDeselection = () => {
+    if (pendingDeselectionRef.current !== null) window.clearTimeout(pendingDeselectionRef.current);
+    pendingDeselectionRef.current = null;
+  };
 
   const pathInputRef = useRef<HTMLInputElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -347,6 +355,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const interval = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => () => clearPendingDeselection(), []);
 
   const hasRecentActivity = (item: FileItem) => {
     const changedAt = Math.max(item.createdAtMs ?? 0, item.modifiedAtMs ?? 0);
@@ -715,6 +725,28 @@ export const FilePane: React.FC<FilePaneProps> = ({
   // Selection logic
   const handleItemClick = (e: React.MouseEvent, item: FileItem, index: number) => {
     onActivate();
+    clearPendingDeselection();
+
+    // A second click completes the open gesture; keep the selection from its first click.
+    if (e.detail > 1) return;
+
+    if (e.detail === 1 && !e.ctrlKey && !e.metaKey && !e.shiftKey && tab.selectedIds.includes(item.id)) {
+      const selectedIds = [...tab.selectedIds];
+      const currentPath = tab.currentPath;
+      const tabId = tab.id;
+      const timer = window.setTimeout(() => {
+        pendingDeselectionRef.current = null;
+        const currentTab = latestTabRef.current;
+        const selectionUnchanged = currentTab.selectedIds.length === selectedIds.length
+          && currentTab.selectedIds.every((id, selectedIndex) => id === selectedIds[selectedIndex]);
+        if (currentTab.id === tabId && currentTab.currentPath === currentPath && selectionUnchanged) {
+          onSelectItems([item.id], false, false);
+        }
+      }, 500);
+      pendingDeselectionRef.current = timer;
+      return;
+    }
+
     if (e.ctrlKey || e.metaKey) {
       onSelectItems([item.id], true, false);
     } else if (e.shiftKey) {
@@ -750,6 +782,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   const handleViewportClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    clearPendingDeselection();
     if (suppressViewportClickRef.current) {
       suppressViewportClickRef.current = false;
       return;

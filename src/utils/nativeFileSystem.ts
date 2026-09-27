@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { DriveInfo, FileItem } from '../types';
 import { detectFileType, getFileExtension } from './fileSystem';
@@ -103,6 +103,12 @@ function mapNativeEntries(entries: NativeFolderEntry[]): FileItem[] {
 export async function loadNativeTextPreview(path: string): Promise<string> {
   if (!isTauriDesktop()) throw new Error('Native file previews are unavailable.');
   return invoke<string>('read_text_preview', { path });
+}
+
+export async function loadNativePdfPreviewUrl(path: string): Promise<string> {
+  if (!isTauriDesktop()) throw new Error('Native PDF previews are unavailable.');
+  const authorizedPath = await invoke<string>('prepare_pdf_preview', { path });
+  return convertFileSrc(authorizedPath);
 }
 
 export async function chooseNativeFolder(title = 'Open a folder in CyberFiles'): Promise<string | null> {
@@ -216,8 +222,8 @@ export async function openNativeRecycleBinInExplorer(): Promise<void> {
   await invoke('open_recycle_bin_in_explorer');
 }
 
-export async function openNativeImageWithDefaultApp(path: string): Promise<void> {
-  await invoke('open_image_with_default_app', { path });
+export async function openNativeFileWithDefaultApp(path: string): Promise<void> {
+  await invoke('open_file_with_default_app', { path });
 }
 
 export async function showNativeFileProperties(path: string): Promise<void> {

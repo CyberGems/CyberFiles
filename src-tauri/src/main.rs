@@ -1118,6 +1118,7 @@ async fn list_directory(path: String, offset: usize) -> Result<DirectoryListing,
 }
 
 const MAX_TEXT_PREVIEW_BYTES: u64 = 200_000;
+const MAX_PDF_PREVIEW_BYTES: u64 = 100 * 1024 * 1024;
 
 fn is_text_preview_extension_allowed(path: &Path) -> bool {
     let filename = path
@@ -1177,6 +1178,40 @@ async fn read_text_preview(path: String) -> Result<String, String> {
     .map_err(|error| format!("Text preview worker failed: {error}"))?
 }
 
+#[tauri::command]
+async fn prepare_pdf_preview(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let source = Path::new(&path);
+        if !source.is_absolute() {
+            return Err("Only fully qualified PDF paths can be previewed.".to_string());
+        }
+        let metadata = fs::symlink_metadata(source)
+            .map_err(|error| format!("Cannot inspect PDF preview file: {error}"))?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err("Only regular PDF files can be previewed.".to_string());
+        }
+        if metadata.len() > MAX_PDF_PREVIEW_BYTES {
+            return Err("The PDF is too large to preview.".to_string());
+        }
+        if source
+            .extension()
+            .and_then(|value| value.to_str())
+            .map_or(true, |extension| !extension.eq_ignore_ascii_case("pdf"))
+        {
+            return Err("Only PDF files can be previewed here.".to_string());
+        }
+
+        let resolved = source
+            .canonicalize()
+            .map_err(|error| format!("Could not resolve PDF preview file: {error}"))?;
+        app.asset_protocol_scope()
+            .allow_file(&resolved)
+            .map_err(|error| format!("Could not authorize PDF preview file: {error}"))?;
+        Ok(resolved.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|error| format!("PDF preview worker failed: {error}"))?
+}
 #[tauri::command]
 async fn image_thumbnail(path: String) -> Option<String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -2607,7 +2642,7 @@ async fn open_windows_file_properties(path: String) -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
-fn open_image_using_windows_default_app(path: &str) -> Result<(), String> {
+fn open_file_using_windows_default_app(path: &str) -> Result<(), String> {
     use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
     use windows::Win32::System::Com::{
@@ -2618,26 +2653,14 @@ fn open_image_using_windows_default_app(path: &str) -> Result<(), String> {
 
     let source = Path::new(path);
     if !source.is_absolute() {
-        return Err("Only fully qualified image paths can be opened.".to_string());
+        return Err("Only fully qualified file paths can be opened.".to_string());
     }
     let resolved = source
         .canonicalize()
-        .map_err(|error| format!("Could not resolve the selected image: {error}"))?;
+        .map_err(|error| format!("Could not resolve the selected file: {error}"))?;
     if !resolved.is_file() {
-        return Err("The selected image is no longer available.".to_string());
+        return Err("The selected file is no longer available.".to_string());
     }
-    let extension = resolved
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    if !matches!(
-        extension.as_str(),
-        "bmp" | "gif" | "ico" | "jpeg" | "jpg" | "png" | "svg" | "webp"
-    ) {
-        return Err("The selected file is not a supported image type.".to_string());
-    }
-
     let initialized =
         unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) };
     if initialized.is_err() {
@@ -2671,24 +2694,24 @@ fn open_image_using_windows_default_app(path: &str) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "Windows could not open the image with its default app (ShellExecute error {result_code})."
+            "Windows could not open the file with its default app (ShellExecute error {result_code})."
         ))
     }
 }
 
 #[cfg(not(target_os = "windows"))]
-fn open_image_using_windows_default_app(_path: &str) -> Result<(), String> {
+fn open_file_using_windows_default_app(_path: &str) -> Result<(), String> {
     Err(
-        "Opening images with a Windows default app is available only in the Windows desktop app."
+        "Opening files with a Windows default app is available only in the Windows desktop app."
             .to_string(),
     )
 }
 
 #[tauri::command]
-async fn open_image_with_default_app(path: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || open_image_using_windows_default_app(&path))
+async fn open_file_with_default_app(path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || open_file_using_windows_default_app(&path))
         .await
-        .map_err(|error| format!("Windows image-open worker failed: {error}"))?
+        .map_err(|error| format!("Windows file-open worker failed: {error}"))?
 }
 
 #[cfg(target_os = "windows")]
@@ -2879,6 +2902,7 @@ fn main() {
             quit_app,
             list_directory,
             read_text_preview,
+            prepare_pdf_preview,
             create_directory,
             rename_item,
             copy_items_to_directory,
@@ -2895,7 +2919,7 @@ fn main() {
             move_to_recycle_bin,
             empty_recycle_bin,
             open_windows_file_properties,
-            open_image_with_default_app,
+            open_file_with_default_app,
             open_recycle_bin_in_explorer,
             set_tray_language,
             get_global_shortcut_settings,

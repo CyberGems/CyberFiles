@@ -13,7 +13,7 @@ base64 = "0.22.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_Security", "Win32_System_Threading", "Win32_System_WindowsProgramming", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

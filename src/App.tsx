@@ -68,7 +68,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, emptyNativeRecycleBin, getNativeFileClipboard, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeImageWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
+import { chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, emptyNativeRecycleBin, getNativeFileClipboard, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
 const FindFilesModal = lazy(() => import('./components/FindFilesModal').then(module => ({ default: module.FindFilesModal })));
@@ -2156,8 +2156,8 @@ export default function App() {
     } else {
       touchFileAccessed(item.id);
       setPreviewOpen(true);
-      if (item.type === 'image' && isTauriDesktop()) {
-        void openNativeImageWithDefaultApp(item.path).catch(() => showToast(t.core.imageOpenFailed));
+      if (isTauriDesktop()) {
+        void openNativeFileWithDefaultApp(item.path).catch(() => showToast(t.core.fileOpenFailed));
         return;
       }
       showToast(`Visualizando "${item.name}"`);
@@ -3483,6 +3483,10 @@ export default function App() {
               onRename={handleRenameSelected}
               nativePropertiesSupported={isTauriDesktop()}
               onOpenWindowsProperties={() => void handleOpenWindowsProperties(previewItem)}
+              onOpenWithDefaultApp={() => {
+                if (!previewItem) return;
+                void openNativeFileWithDefaultApp(previewItem.path).catch(() => showToast(t.core.fileOpenFailed));
+              }}
             />
           )}
         </div>
