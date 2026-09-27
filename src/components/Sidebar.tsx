@@ -30,6 +30,8 @@ import {
   ListRestart,
   Info,
   RotateCcw,
+  Home,
+  ListChecks,
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, QuickAccessItem, QuickAccessSortMode, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
@@ -115,6 +117,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { t, language } = useLanguage();
   const [activeTab, setActiveTab] = useState<'tree' | 'recent'>('tree');
+  const [showLauncherWithSelection, setShowLauncherWithSelection] = useState(false);
+  const showSelectionContext = selectedItems.length > 0 && !showLauncherWithSelection;
   const [recentSearch, setRecentSearch] = useState('');
   const [recentCategory, setRecentCategory] = useState<'all' | 'code' | 'image' | 'document' | 'media'>('all');
   const [editingQuickAccessId, setEditingQuickAccessId] = useState<string | null>(null);
@@ -140,6 +144,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       // Sidebar section preferences remain available for the current session.
     }
   }, [collapsedSections]);
+
+  useEffect(() => {
+    if (selectedItems.length === 0) setShowLauncherWithSelection(false);
+  }, [selectedItems.length]);
 
   const toggleSection = (section: 'drives' | 'quickAccess') => {
     setCollapsedSections(previous => ({ ...previous, [section]: !previous[section] }));
@@ -333,7 +341,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       {/* 2. Main Tab Body */}
-      {selectedItems.length > 0 ? (
+      {!showSelectionContext && selectedItems.length > 0 && (
+        <div className="flex items-center justify-between gap-2 border-b border-neutral-800/80 bg-cyan-950/15 px-3 py-2">
+          <span className="truncate text-[10px] font-medium text-cyan-100">
+            {selectedItems.length === 1 ? t.sidebar.oneItemSelected : t.sidebar.manyItemsSelected.replace('{count}', String(selectedItems.length))}
+          </span>
+          <Tooltip label={t.sidebar.showSelectionActions} placement="right">
+            <button type="button" onClick={() => setShowLauncherWithSelection(false)} aria-label={t.sidebar.showSelectionActions} className="rounded p-1 text-cyan-300 transition-colors hover:bg-cyan-900/40">
+              <ListChecks className="h-4 w-4" />
+            </button>
+          </Tooltip>
+        </div>
+      )}
+      {showSelectionContext ? (
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -342,16 +362,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {selectedItems.length === 1 ? t.sidebar.oneItemSelected : t.sidebar.manyItemsSelected.replace('{count}', String(selectedItems.length))}
               </p>
             </div>
-            <Tooltip label={t.sidebar.clearSelection}>
-              <button
-                type="button"
-                onClick={onClearSelection}
-                aria-label={t.sidebar.clearSelection}
-                className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </Tooltip>
+            <div className="flex items-center gap-1">
+              <Tooltip label={t.sidebar.showLauncher}>
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('tree'); setShowLauncherWithSelection(true); }}
+                  aria-label={t.sidebar.showLauncher}
+                  className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
+                >
+                  <Home className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+              <Tooltip label={t.sidebar.clearSelection}>
+                <button
+                  type="button"
+                  onClick={onClearSelection}
+                  aria-label={t.sidebar.clearSelection}
+                  className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+            </div>
           </div>
 
           <div className="space-y-1 rounded-lg border border-neutral-800 bg-neutral-900/60 p-2">

@@ -42,6 +42,7 @@ import { PaneSplitter } from './components/PaneSplitter';
 import { PreviewPane } from './components/PreviewPane';
 import { BottomStatusBar } from './components/BottomStatusBar';
 import { ContextMenu } from './components/ContextMenu';
+import { TextInputContextMenu } from './components/TextInputContextMenu';
 import { WorkspaceManagerModal } from './components/WorkspaceManagerModal';
 import { UnsavedWorkspaceChangesModal, type WorkspaceChangesSaveNames } from './components/UnsavedWorkspaceChangesModal';
 
@@ -740,7 +741,6 @@ export default function App() {
 
   useEffect(() => {
     const suppressNativeContextMenu = (event: Event) => {
-      if (event.target instanceof Element && event.target.closest('[data-allow-native-context-menu="text-edit"]')) return;
       event.preventDefault();
     };
     document.addEventListener('contextmenu', suppressNativeContextMenu, true);
@@ -3134,7 +3134,6 @@ export default function App() {
   };
 
   const handleApplicationContextMenuCapture = (event: React.MouseEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest('[data-allow-native-context-menu="text-edit"]')) return;
     event.preventDefault();
   };
 
@@ -3545,6 +3544,7 @@ export default function App() {
         onDelete={(item) => handleDeleteSelected([item])}
         onRestore={(item) => { void handleRestoreRecycleBinItems([item]); }}
       />
+      <TextInputContextMenu />
 
       <WorkspaceManagerModal
         isOpen={isWorkspaceManagerOpen}

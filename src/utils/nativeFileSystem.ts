@@ -3,6 +3,8 @@ import { open } from '@tauri-apps/plugin-dialog';
 import type { DriveInfo, FileItem } from '../types';
 import { detectFileType, getFileExtension } from './fileSystem';
 
+export const MAX_PDF_PREVIEW_BYTES = 100 * 1024 * 1024;
+
 export function isTauriDesktop() {
   return '__TAURI_INTERNALS__' in window;
 }

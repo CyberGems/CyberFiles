@@ -136,6 +136,40 @@ html[data-theme='light'] .cyberfiles-tooltip-card {
 .theme-preview-cyberfiles span:first-child { background: #05080e; }
 .theme-preview-cyberfiles span:nth-child(2) { background: linear-gradient(135deg, #101b2d, #0b1220); }
 .theme-preview-cyberfiles span:last-child { background: #0b1220; border-top: 2px solid #22d3ee; }
+.workspace-manager-backdrop { animation: workspace-manager-backdrop-in 150ms ease-out both; }
+.workspace-manager-dialog { animation: workspace-manager-dialog-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.workspace-manager-content { animation: workspace-manager-content-in 150ms ease-out both; }
+.workspace-manager-create-form { animation: workspace-manager-content-in 140ms ease-out both; }
+.workspace-manager-row {
+  transition: transform 140ms ease, border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+.workspace-manager-row:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+.workspace-manager-modal button {
+  transition: transform 110ms ease, background-color 130ms ease, border-color 130ms ease, color 130ms ease, box-shadow 130ms ease;
+}
+.workspace-manager-modal button:not(:disabled):active { transform: scale(0.97); }
+.workspace-manager-modal button:focus-visible,
+.workspace-manager-modal input:focus-visible {
+  outline: 2px solid rgba(34, 211, 238, 0.65);
+  outline-offset: 2px;
+}
+
+@keyframes workspace-manager-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes workspace-manager-dialog-in {
+  from { opacity: 0; transform: translateY(9px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes workspace-manager-content-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .theme-preview-gray { background: #171717; }
 .theme-preview-gray span:first-child { background: #0c0c0c; }
 .theme-preview-gray span:nth-child(2) { background: linear-gradient(135deg, #303030, #1c1c1c); }
@@ -159,5 +193,26 @@ html[data-theme='light'] .cyberfiles-tooltip-card {
 @media (prefers-reduced-motion: reduce) {
   #root {
     transition: none;
+  }
+
+  .workspace-manager-backdrop,
+  .workspace-manager-dialog,
+  .workspace-manager-content,
+  .workspace-manager-create-form {
+    animation: none;
+  }
+
+  .workspace-manager-row,
+  .workspace-manager-modal button {
+    transition: none;
+  }
+
+  .workspace-manager-row:hover {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .workspace-manager-modal button:not(:disabled):active {
+    transform: none;
   }
 }

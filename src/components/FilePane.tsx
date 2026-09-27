@@ -1075,7 +1075,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <form onSubmit={handlePathSubmit} className="w-full">
               <input
                 ref={pathInputRef}
-                data-allow-native-context-menu="text-edit"
                 type="text"
                 value={pathInput}
                 onChange={(e) => setPathInput(e.target.value)}

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { X, FileText, Image as ImageIcon, Code2, Copy, Check, Info, Music, Video, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { FileItem } from '../types';
 import { formatFileSize, isTextPreviewableFile } from '../utils/fileSystem';
-import { isTauriDesktop, loadNativeImageThumbnail, loadNativePdfPreviewUrl } from '../utils/nativeFileSystem';
+import { isTauriDesktop, loadNativeImageThumbnail, loadNativePdfPreviewUrl, MAX_PDF_PREVIEW_BYTES } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 
@@ -144,8 +144,8 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
   const propertiesCollapsed = collapsedSection === 'properties';
   const [imagePreviewSource, setImagePreviewSource] = useState<string | null>(null);
   const [imagePreviewState, setImagePreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
-  const [pdfPreviewSource, setPdfPreviewSource] = useState<string | null>(null);
-  const [pdfPreviewState, setPdfPreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
+  const [pdfPreviewSource, setPdfPreviewSource] = useState<{ itemId: string; url: string } | null>(null);
+  const [pdfPreviewState, setPdfPreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable' | 'too-large'>('idle');
   const { t } = useLanguage();
 
   useEffect(() => {
@@ -213,17 +213,21 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
 
     let cancelled = false;
     setPdfPreviewSource(null);
+    if (item.size > MAX_PDF_PREVIEW_BYTES) {
+      setPdfPreviewState('too-large');
+      return;
+    }
     setPdfPreviewState('loading');
 
     void loadNativePdfPreviewUrl(item.path).then(source => {
       if (cancelled) return;
-      setPdfPreviewSource(source);
+      setPdfPreviewSource({ itemId: item.id, url: source });
     }).catch(() => {
       if (!cancelled) setPdfPreviewState('unavailable');
     });
 
     return () => { cancelled = true; };
-  }, [item?.id, item?.path, item?.extension, item?.isFolder]);
+  }, [item?.id, item?.path, item?.extension, item?.isFolder, item?.size]);
 
   if (!item) {
     return (
@@ -248,13 +252,15 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
   const renderContent = () => {
     const extension = item.extension.toLowerCase();
     if (extension === 'pdf') {
-      if (pdfPreviewState !== 'unavailable' && pdfPreviewSource) {
-        return <iframe aria-label={`${t.preview.contentPreview}: ${item.name}`} src={pdfPreviewSource} onLoad={() => setPdfPreviewState('ready')} onError={() => setPdfPreviewState('unavailable')} className="h-full min-h-[320px] w-full border-0 bg-neutral-900" />;
+      if (pdfPreviewState !== 'unavailable' && pdfPreviewState !== 'too-large' && pdfPreviewSource?.itemId === item.id) {
+        return <iframe aria-label={`${t.preview.contentPreview}: ${item.name}`} src={pdfPreviewSource.url} onLoad={() => setPdfPreviewState('ready')} onError={() => setPdfPreviewState('unavailable')} className="h-full min-h-0 w-full border-0 bg-neutral-900" />;
       }
 
       const status = pdfPreviewState === 'loading'
         ? t.preview.pdfPreviewLoading
-        : isTauriDesktop() ? t.preview.pdfPreviewUnavailable : t.preview.pdfPreviewDesktopOnly;
+        : pdfPreviewState === 'too-large'
+          ? t.preview.pdfPreviewTooLarge.replace('{limit}', formatFileSize(MAX_PDF_PREVIEW_BYTES))
+          : isTauriDesktop() ? t.preview.pdfPreviewUnavailable : t.preview.pdfPreviewDesktopOnly;
       return (
         <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400">
           <FileText className="h-10 w-10 text-cyan-400" />
@@ -319,7 +325,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3">
         <section className={'flex min-h-0 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900/50 ' + (previewCollapsed ? 'flex-none' : 'flex-1')}>
           <div className="flex h-8 flex-shrink-0 items-center justify-between border-b border-neutral-800/80 px-2.5">
             <h2 className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.preview.contentPreview}</h2>
@@ -329,7 +335,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
               </button>
             </Tooltip>
           </div>
-          {!previewCollapsed && <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-2">{renderContent()}</div>}
+          {!previewCollapsed && <div className={'flex min-h-0 flex-1 justify-center ' + (item.extension.toLowerCase() === 'pdf' ? 'items-stretch overflow-hidden p-0' : 'items-center overflow-y-auto p-2')}>{renderContent()}</div>}
         </section>
 
         <section className={'flex min-h-0 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900/30 ' + (propertiesCollapsed ? 'flex-none' : 'flex-1')}>

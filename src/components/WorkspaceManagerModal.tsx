@@ -192,7 +192,7 @@ export function WorkspaceManagerModal(props: WorkspaceManagerModalProps) {
     const isEditing = editing?.kind === kind && editing.id === profileId;
     const isDeleting = deleting?.kind === kind && deleting.id === profileId;
     return (
-      <div key={profileId} className={`rounded-lg border px-3 py-2.5 ${active ? 'border-cyan-800/70 bg-cyan-950/15' : 'border-neutral-800 bg-neutral-950/50'}`}>
+      <div key={profileId} className={`workspace-manager-row rounded-lg border px-3 py-2.5 ${active ? 'border-cyan-800/70 bg-cyan-950/15' : 'border-neutral-800 bg-neutral-950/50'}`}>
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 flex-1">
             {isEditing ? (
@@ -228,8 +228,8 @@ export function WorkspaceManagerModal(props: WorkspaceManagerModalProps) {
   const emptyMessage = tab === 'layouts' ? copy.noLayouts : tab === 'sessions' ? copy.noSessions : copy.noWorkspaces;
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget) props.onClose(); }}>
-      <section role="dialog" aria-modal="true" aria-labelledby="workspace-manager-title" className="flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
+    <div className="workspace-manager-modal workspace-manager-backdrop fixed inset-0 z-[90] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget) props.onClose(); }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="workspace-manager-title" className="workspace-manager-dialog flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl" onMouseDown={event => event.stopPropagation()}>
         <header className="flex items-center justify-between border-b border-neutral-800 px-5 py-4">
           <div>
             <h2 id="workspace-manager-title" className="text-sm font-semibold text-neutral-100">{copy.title}</h2>
@@ -242,10 +242,10 @@ export function WorkspaceManagerModal(props: WorkspaceManagerModalProps) {
           {tabs.map(option => <Tooltip key={option.id} label={option.label} placement="bottom"><button type="button" role="tab" aria-selected={tab === option.id} onClick={() => { setTab(option.id); setCreating(null); setError(''); }} className={`inline-flex items-center gap-1.5 rounded-t-md border border-b-0 px-3 py-2 text-[11px] transition-colors ${tab === option.id ? 'border-neutral-700 bg-neutral-950 text-cyan-200' : 'border-transparent text-neutral-500 hover:text-neutral-200'}`}>{option.icon}{option.label}</button></Tooltip>)}
         </div>
 
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-neutral-950/40 p-4">
+        <div key={tab} className="workspace-manager-content min-h-0 flex-1 space-y-3 overflow-y-auto bg-neutral-950/40 p-4">
           <div className="flex justify-end">{createButton}</div>
           {creating === tab && (
-            <form onSubmit={submitCreate} className="rounded-lg border border-cyan-900/70 bg-cyan-950/15 p-3">
+            <form onSubmit={submitCreate} className="workspace-manager-create-form rounded-lg border border-cyan-900/70 bg-cyan-950/15 p-3">
               <div className="flex items-center gap-2">
                 <Tooltip label={copy.namePlaceholder} placement="top">
                   <input autoFocus aria-label={copy.namePlaceholder} placeholder={copy.namePlaceholder} value={name} onChange={event => setName(event.target.value)} className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-2.5 py-2 text-xs text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-cyan-600" />

@@ -2,6 +2,15 @@ export type Language = 'es' | 'en';
 
 export const translations = {
   es: {
+    textFieldContextMenu: {
+      label: 'Edición de texto',
+      undo: 'Deshacer',
+      redo: 'Rehacer',
+      copy: 'Copiar',
+      paste: 'Pegar',
+      selectAll: 'Seleccionar todo',
+      delete: 'Eliminar',
+    },
     app: {
       title: 'CyberFiles',
       subtitle: 'Explorador Dual de Alto Rendimiento para Windows',
@@ -291,6 +300,8 @@ export const translations = {
       manyItemsSelected: '{count} elementos seleccionados',
       moreSelected: '+{count} más',
       clearSelection: 'Limpiar selección',
+      showLauncher: 'Volver al launcher',
+      showSelectionActions: 'Mostrar acciones de selección',
       selectAll: 'Seleccionar todo',
       unselectAll: 'Deseleccionar todo',
       invertSelection: 'Invertir selección',
@@ -429,6 +440,7 @@ export const translations = {
       imagePreviewUnavailable: 'No hay vista previa disponible para este formato de imagen.',
       pdfPreviewLoading: 'Cargando documento PDF…',
       pdfPreviewUnavailable: 'No se pudo cargar la vista previa de este PDF.',
+      pdfPreviewTooLarge: 'La vista previa está limitada a {limit}. Abre este PDF con la aplicación del sistema.',
       pdfPreviewDesktopOnly: 'La vista previa de PDF está disponible en la aplicación de escritorio.',
       openWithDefaultApp: 'Abrir con la aplicación predeterminada',
       mediaUnavailable: 'La reproducción multimedia estará disponible con el adaptador nativo.',
@@ -568,6 +580,15 @@ export const translations = {
     }
   },
   en: {
+    textFieldContextMenu: {
+      label: 'Text editing',
+      undo: 'Undo',
+      redo: 'Redo',
+      copy: 'Copy',
+      paste: 'Paste',
+      selectAll: 'Select all',
+      delete: 'Delete',
+    },
     app: {
       title: 'CyberFiles',
       subtitle: 'High-Performance Dual-Pane Windows File Explorer',
@@ -856,6 +877,8 @@ export const translations = {
       manyItemsSelected: '{count} items selected',
       moreSelected: '+{count} more',
       clearSelection: 'Clear selection',
+      showLauncher: 'Return to launcher',
+      showSelectionActions: 'Show selection actions',
       selectAll: 'Select all',
       unselectAll: 'Unselect all',
       invertSelection: 'Invert selection',
@@ -994,6 +1017,7 @@ export const translations = {
       imagePreviewUnavailable: 'No preview is available for this image format.',
       pdfPreviewLoading: 'Loading PDF document…',
       pdfPreviewUnavailable: 'Could not load a preview of this PDF.',
+      pdfPreviewTooLarge: 'PDF preview is limited to {limit}. Open this file with the system app.',
       pdfPreviewDesktopOnly: 'PDF preview is available in the desktop app.',
       openWithDefaultApp: 'Open with default app',
       mediaUnavailable: 'Media playback will be available through the native adapter.',
