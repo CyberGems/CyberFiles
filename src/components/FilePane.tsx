@@ -37,6 +37,7 @@ import { formatFileSize, getParentPath } from '../utils/fileSystem';
 import { isTauriDesktop, loadNativeImageThumbnail } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
+import type { PaneColumnsSnapshot } from '../utils/workspaceProfiles';
 
 interface FilePaneProps {
   paneId: 'left' | 'right';
@@ -75,6 +76,9 @@ interface FilePaneProps {
   onBackgroundDoubleClick: (e: React.MouseEvent, pane: 'left' | 'right') => void;
   onDropFilesFromOtherPane: (droppedIds: string[], targetFolder?: string, sourcePane?: 'left' | 'right') => void;
   onInlineRename: (itemId: string, newName: string) => void;
+  columnPreferencesRevision: number;
+  columnPreferences: PaneColumnsSnapshot;
+  onColumnPreferencesChange: (pane: 'left' | 'right', preferences: PaneColumnsSnapshot) => void;
 }
 
 type SystemHomeSection = 'folders' | 'devices' | 'network';
@@ -157,6 +161,22 @@ function readFileColumnWidths(paneId: 'left' | 'right'): FileColumnWidths {
     };
   } catch {
     return DEFAULT_FILE_COLUMN_WIDTHS;
+  }
+}
+
+export function readPaneColumnPreferences(paneId: 'left' | 'right'): PaneColumnsSnapshot {
+  return {
+    layout: readFileColumnLayout(paneId),
+    widths: readFileColumnWidths(paneId),
+  };
+}
+
+export function writePaneColumnPreferences(paneId: 'left' | 'right', preferences: PaneColumnsSnapshot) {
+  try {
+    window.localStorage.setItem(`${FILE_COLUMN_LAYOUT_KEY}_${paneId}`, JSON.stringify(preferences.layout));
+    window.localStorage.setItem(`${FILE_COLUMN_WIDTHS_KEY}_${paneId}`, JSON.stringify(preferences.widths));
+  } catch {
+    // Preferences remain in component state for this session if storage is unavailable.
   }
 }
 
@@ -319,6 +339,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onBackgroundDoubleClick,
   onDropFilesFromOtherPane,
   onInlineRename,
+  columnPreferencesRevision,
+  columnPreferences,
+  onColumnPreferencesChange,
 }) => {
   const { t, language } = useLanguage();
   const isSystemHome = tab.currentPath === SYSTEM_HOME_PATH;
@@ -331,8 +354,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [editingItemName, setEditingItemName] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
   const [collapsedSystemHomeSections, setCollapsedSystemHomeSections] = useState(() => readCollapsedSystemHomeSections(paneId));
-  const [columnWidths, setColumnWidths] = useState(() => readFileColumnWidths(paneId));
-  const [columnLayout, setColumnLayout] = useState(() => readFileColumnLayout(paneId));
+  const [columnWidths, setColumnWidths] = useState(() => columnPreferences.widths);
+  const [columnLayout, setColumnLayout] = useState(() => columnPreferences.layout);
   const [columnMenuPosition, setColumnMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [columnDropTarget, setColumnDropTarget] = useState<FileColumn | null>(null);
   const lastSingleClickOpenRef = useRef<{ itemId: string; timestamp: number } | null>(null);
@@ -342,6 +365,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const columnResizeDragRef = useRef<ColumnResizeDrag | null>(null);
   const columnWidthsSaveTimeoutRef = useRef<number | null>(null);
   const columnPointerDragRef = useRef<ColumnPointerDrag | null>(null);
+  const lastColumnPreferencesRevision = useRef(columnPreferencesRevision);
+  const lastReportedColumnPreferences = useRef(JSON.stringify(columnPreferences));
   const suppressColumnSortRef = useRef(false);
   const previousPathRef = useRef(tab.currentPath);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -460,6 +485,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, [collapsedSystemHomeSections, paneId]);
 
   useEffect(() => {
+    if (lastColumnPreferencesRevision.current === columnPreferencesRevision) return;
+    lastColumnPreferencesRevision.current = columnPreferencesRevision;
+    setColumnLayout(columnPreferences.layout);
+    setColumnWidths(columnPreferences.widths);
+  }, [columnPreferencesRevision, paneId, columnPreferences]);
+
+  useEffect(() => {
     if (columnWidthsSaveTimeoutRef.current !== null) window.clearTimeout(columnWidthsSaveTimeoutRef.current);
     columnWidthsSaveTimeoutRef.current = window.setTimeout(() => {
       try {
@@ -467,13 +499,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
       } catch {
         // Column widths remain available for the current session if storage is unavailable.
       }
+      onColumnPreferencesChange(paneId, { layout: columnLayout, widths: columnWidths });
       columnWidthsSaveTimeoutRef.current = null;
     }, 180);
     return () => {
       if (columnWidthsSaveTimeoutRef.current !== null) window.clearTimeout(columnWidthsSaveTimeoutRef.current);
       columnWidthsSaveTimeoutRef.current = null;
     };
-  }, [columnWidths, paneId]);
+  }, [columnWidths, columnLayout, onColumnPreferencesChange, paneId]);
 
   useEffect(() => {
     try {
@@ -481,7 +514,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
     } catch {
       // Column layout remains available for the current session if storage is unavailable.
     }
-  }, [columnLayout, paneId]);
+    const preferences = { layout: columnLayout, widths: columnWidths };
+    const serialized = JSON.stringify(preferences);
+    if (lastReportedColumnPreferences.current !== serialized) {
+      lastReportedColumnPreferences.current = serialized;
+      onColumnPreferencesChange(paneId, preferences);
+    }
+  }, [columnLayout, columnWidths, onColumnPreferencesChange, paneId]);
 
   useEffect(() => {
     if (!columnMenuPosition) return;

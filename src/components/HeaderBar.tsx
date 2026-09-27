@@ -13,6 +13,7 @@ import {
   StretchHorizontal,
   Search,
   Trash2,
+  PanelsTopLeft,
 } from 'lucide-react';
 import { ViewLayout, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
@@ -32,6 +33,8 @@ interface HeaderBarProps {
   onDeleteSelected: () => void;
   selectedCount: number;
   onOpenSearch: () => void;
+  onOpenWorkspaceManager: () => void;
+  workspaceChangesPending: boolean;
 }
 
 export const HeaderBar: React.FC<HeaderBarProps> = ({
@@ -48,6 +51,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onDeleteSelected,
   selectedCount,
   onOpenSearch,
+  onOpenWorkspaceManager,
+  workspaceChangesPending,
 }) => {
   const { t, language } = useLanguage();
   const disabled = selectedCount === 0;
@@ -86,6 +91,13 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           <Tooltip label={t.header.layoutSingle}><button onClick={() => onLayoutChange('single')} className={`p-1.5 rounded ${layout === 'single' ? 'bg-neutral-800 text-cyan-300' : 'text-neutral-400 hover:text-neutral-200'}`}><Square className="w-3.5 h-3.5" /></button></Tooltip>
         </div>
 
+        <Tooltip label={`${t.workspaceProfiles.open}${workspaceChangesPending ? ` · ${t.workspaceProfiles.modified}` : ''}`} placement="bottom">
+          <button type="button" onClick={onOpenWorkspaceManager} aria-label={`${t.workspaceProfiles.open}${workspaceChangesPending ? `, ${t.workspaceProfiles.modified}` : ''}`} className="relative flex items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-xs text-neutral-300 transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-200">
+            <PanelsTopLeft className="h-3.5 w-3.5 text-cyan-400" />
+            <span className="hidden sm:inline">{t.workspaceProfiles.title}</span>
+            {workspaceChangesPending && <span aria-hidden="true" className="absolute -right-1 -top-1 h-2 w-2 rounded-full border border-neutral-950 bg-amber-300" />}
+          </button>
+        </Tooltip>
         <Tooltip label={propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel}><button type="button" onClick={onTogglePropertiesPanel} aria-label={`${propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} (F3)`} aria-pressed={propertiesPanelOpen} className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors ${propertiesPanelOpen ? 'bg-cyan-950/70 border-cyan-700/70 text-cyan-300' : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'}`}><Info className={`w-3.5 h-3.5 ${propertiesPanelOpen ? 'text-cyan-300' : 'text-neutral-400'}`} /><span className="hidden xl:inline">{t.toolbar.propertiesPanel}</span><span className="text-[10px] opacity-60 font-mono">F3</span></button></Tooltip>
       </div>
 

@@ -38,14 +38,36 @@ import {
 import { HeaderBar } from './components/HeaderBar';
 import { WindowTitleBar } from './components/WindowTitleBar';
 import { Sidebar } from './components/Sidebar';
-import { FilePane } from './components/FilePane';
+import { FilePane, readPaneColumnPreferences, writePaneColumnPreferences } from './components/FilePane';
 import { PaneSplitter } from './components/PaneSplitter';
 import { PreviewPane } from './components/PreviewPane';
 import { BottomStatusBar } from './components/BottomStatusBar';
 import { ContextMenu } from './components/ContextMenu';
+import { WorkspaceManagerModal } from './components/WorkspaceManagerModal';
+import { UnsavedWorkspaceChangesModal, type WorkspaceChangesSaveNames } from './components/UnsavedWorkspaceChangesModal';
 
 
 import { useLanguage } from './locales/LanguageContext';
+import {
+  createProfileId,
+  DEFAULT_LAYOUT_PROFILE_ID,
+  DEFAULT_LAYOUT_SNAPSHOT,
+  DEFAULT_SESSION_PROFILE_ID,
+  defaultSessionSnapshot,
+  normalizeLayoutSnapshot,
+  normalizeSessionSnapshot,
+  readWorkspaceProfileStore,
+  WORKSPACE_PROFILES_STORAGE_KEY,
+  writeWorkspaceProfileStore,
+  type LayoutProfile,
+  type LayoutSnapshot,
+  type PaneColumnsSnapshot,
+  type TabSessionProfile,
+  type TabSessionSnapshot,
+  type WorkspacePaneId,
+  type WorkspaceProfile,
+  type WorkspaceProfileStore,
+} from './utils/workspaceProfiles';
 import { chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, emptyNativeRecycleBin, getNativeFileClipboard, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeImageWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
@@ -110,6 +132,12 @@ interface InstancePreferencesState {
   supported: boolean;
 }
 
+type PendingWorkspaceAction =
+  | { type: 'quit'; remember: boolean }
+  | { type: 'layout'; id: string }
+  | { type: 'session'; id: string }
+  | { type: 'workspace'; id: string };
+
 const DEFAULT_PANEL_VIEW_PREFERENCES: PanelViewPreferences = {
   layout: 'dual-vertical',
   previewOpen: true,
@@ -125,6 +153,65 @@ const DEFAULT_PANEL_VIEW_PREFERENCES: PanelViewPreferences = {
   previewSplitPercent: 72,
   sidebarSplitPercent: 22,
 };
+
+function initialWorkspaceProfileStore(): WorkspaceProfileStore {
+  const store = readWorkspaceProfileStore();
+  try {
+    if (window.localStorage.getItem(WORKSPACE_PROFILES_STORAGE_KEY) !== null) return store;
+    const legacy = readPanelViewPreferences();
+    let needsWrite = false;
+    const snapshot: LayoutSnapshot = {
+      layout: legacy.layout,
+      previewOpen: legacy.previewOpen,
+      verticalSplitPercent: legacy.verticalSplitPercent,
+      horizontalSplitPercent: legacy.horizontalSplitPercent,
+      previewSplitPercent: legacy.previewSplitPercent,
+      sidebarSplitPercent: legacy.sidebarSplitPercent,
+      columns: { left: readPaneColumnPreferences('left'), right: readPaneColumnPreferences('right') },
+    };
+    if (JSON.stringify(snapshot) !== JSON.stringify(DEFAULT_LAYOUT_SNAPSHOT)) {
+      const migrated: LayoutProfile = {
+        id: createProfileId('layout'),
+        name: 'Diseño anterior',
+        snapshot,
+        updatedAt: Date.now(),
+      };
+      store.layouts = [...store.layouts, migrated];
+      store.lastLayoutId = migrated.id;
+      needsWrite = true;
+    }
+    const priorSession = defaultSessionSnapshot(SYSTEM_HOME_PATH, SYSTEM_HOME_PATH);
+    priorSession.activePane = legacy.activePane;
+    if (readFolderStyleLockPreference()) {
+      const leftTab = priorSession.leftTabs[0];
+      leftTab.viewMode = legacy.leftViewMode;
+      leftTab.sortField = legacy.leftSortField;
+      leftTab.sortOrder = legacy.leftSortOrder;
+      leftTab.folderStyle = { viewMode: legacy.leftViewMode, sortField: legacy.leftSortField, sortOrder: legacy.leftSortOrder };
+      const rightTab = priorSession.rightTabs[0];
+      rightTab.viewMode = legacy.rightViewMode;
+      rightTab.sortField = legacy.rightSortField;
+      rightTab.sortOrder = legacy.rightSortOrder;
+      rightTab.folderStyle = { viewMode: legacy.rightViewMode, sortField: legacy.rightSortField, sortOrder: legacy.rightSortOrder };
+    }
+    const defaultSession = defaultSessionSnapshot(SYSTEM_HOME_PATH, SYSTEM_HOME_PATH);
+    if (JSON.stringify(priorSession) !== JSON.stringify(defaultSession)) {
+      const migrated: TabSessionProfile = {
+        id: createProfileId('session'),
+        name: 'Sesión anterior',
+        snapshot: priorSession,
+        updatedAt: Date.now(),
+      };
+      store.sessions = [...store.sessions, migrated];
+      store.lastSessionId = migrated.id;
+      needsWrite = true;
+    }
+    if (needsWrite) writeWorkspaceProfileStore(store);
+    return store;
+  } catch {
+    return store;
+  }
+}
 
 function isViewMode(value: unknown): value is ViewMode {
   return value === 'details' || value === 'compact' || value === 'icons';
@@ -318,24 +405,72 @@ const createEmptyTab = (
   folderStyle: { sortField, sortOrder, viewMode },
 });
 
-const createInitialTab = (
-  id: string,
-  viewMode: ViewMode,
-  sortField: SortField,
-  sortOrder: SortOrder,
-  startsAtSystemHome: boolean,
-  systemHomeTitle: string,
-): TabState => {
-  const tab = createEmptyTab(id, viewMode, sortField, sortOrder);
-  return startsAtSystemHome
-    ? { ...tab, title: systemHomeTitle, currentPath: SYSTEM_HOME_PATH, history: [SYSTEM_HOME_PATH], historyIndex: 0 }
-    : tab;
-};
+function restoreSessionTabs(snapshot: TabSessionSnapshot, pane: WorkspacePaneId, systemHomeTitle: string, recycleBinTitle: string): TabState[] {
+  const savedTabs = pane === 'left' ? snapshot.leftTabs : snapshot.rightTabs;
+  return savedTabs.map((saved, index) => ({
+    ...saved,
+    id: saved.id || `${pane}-restored-${index + 1}`,
+    title: saved.currentPath === SYSTEM_HOME_PATH ? systemHomeTitle : saved.currentPath === RECYCLE_BIN_PATH ? recycleBinTitle : saved.title,
+    filterQuery: '',
+    selectedIds: [],
+    focusedId: null,
+  }));
+}
+
+function createSessionSnapshot(
+  leftTabs: TabState[],
+  rightTabs: TabState[],
+  activeLeftTabIndex: number,
+  activeRightTabIndex: number,
+  activePane: WorkspacePaneId,
+): TabSessionSnapshot {
+  const saveTabs = (tabs: TabState[]) => tabs.map(({ id, title, currentPath, history, historyIndex, sortField, sortOrder, viewMode, folderStyle }) => {
+    const historyOffset = Math.max(0, history.length - 80);
+    const savedHistory = history.slice(historyOffset);
+    return {
+      id,
+      title: currentPath === SYSTEM_HOME_PATH || currentPath === RECYCLE_BIN_PATH ? currentPath : title,
+      currentPath,
+      history: savedHistory,
+      historyIndex: Math.max(-1, Math.min(historyIndex - historyOffset, savedHistory.length - 1)),
+      sortField,
+      sortOrder,
+      viewMode,
+      folderStyle,
+    };
+  });
+  return normalizeSessionSnapshot({
+    leftTabs: saveTabs(leftTabs),
+    rightTabs: saveTabs(rightTabs),
+    activeLeftTabIndex,
+    activeRightTabIndex,
+    activePane,
+  });
+}
 
 export default function App() {
   const { t, language } = useLanguage();
   const startsAtSystemHome = isTauriDesktop();
-  const [initialPanelPreferences] = useState(readPanelViewPreferences);
+  const [initialWorkspaceStore] = useState(initialWorkspaceProfileStore);
+  const initialWorkspace = initialWorkspaceStore.workspaces.find(profile => profile.id === initialWorkspaceStore.lastWorkspaceId);
+  const initialActiveLayoutId = initialWorkspace?.layoutId ?? initialWorkspaceStore.lastLayoutId;
+  const initialActiveSessionId = initialWorkspace?.sessionId ?? initialWorkspaceStore.lastSessionId;
+  const initialLayoutProfile = initialWorkspaceStore.layouts.find(profile => profile.id === initialActiveLayoutId);
+  const initialSessionProfile = initialWorkspaceStore.sessions.find(profile => profile.id === initialActiveSessionId);
+  const [activeLayoutId, setActiveLayoutId] = useState(initialActiveLayoutId);
+  const [activeSessionId, setActiveSessionId] = useState(initialActiveSessionId);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(initialWorkspace?.id ?? null);
+  const [workspaceStore, setWorkspaceStore] = useState(initialWorkspaceStore);
+  const [initialPanelPreferences] = useState<PanelViewPreferences>(() => initialLayoutProfile
+    ? { ...readPanelViewPreferences(), ...initialLayoutProfile.snapshot }
+    : readPanelViewPreferences());
+  const initialSessionSnapshot = initialSessionProfile?.snapshot ?? defaultSessionSnapshot(startsAtSystemHome ? SYSTEM_HOME_PATH : '', t.sidebar.thisPc);
+  const [paneColumnPreferences, setPaneColumnPreferences] = useState<Record<WorkspacePaneId, PaneColumnsSnapshot>>(() => initialLayoutProfile?.snapshot.columns ?? {
+    left: readPaneColumnPreferences('left'),
+    right: readPaneColumnPreferences('right'),
+  });
+  const [columnPreferencesRevision, setColumnPreferencesRevision] = useState(0);
+  const [sessionReloadToken, setSessionReloadToken] = useState(initialSessionProfile ? 1 : 0);
   const [folderStyleLocked, setFolderStyleLocked] = useState(readFolderStyleLockPreference);
   const [sidebarLocationsOpenInNewTab, setSidebarLocationsOpenInNewTab] = useState(() => readBooleanPreference(SIDEBAR_LOCATIONS_NEW_TAB_KEY, true));
   const [newTabsNextToCurrent, setNewTabsNextToCurrent] = useState(() => readBooleanPreference(NEW_TABS_NEXT_TO_CURRENT_KEY, true));
@@ -423,7 +558,7 @@ export default function App() {
   const [previewSplitPercent, setPreviewSplitPercent] = useState(initialPanelPreferences.previewSplitPercent);
   const [sidebarSplitPercent, setSidebarSplitPercent] = useState(initialPanelPreferences.sidebarSplitPercent);
   const [previewOpen, setPreviewOpen] = useState<boolean>(initialPanelPreferences.previewOpen);
-  const [activePane, setActivePane] = useState<'left' | 'right'>(initialPanelPreferences.activePane);
+  const [activePane, setActivePane] = useState<WorkspacePaneId>(initialSessionSnapshot?.activePane ?? initialPanelPreferences.activePane);
   const [emptyAreaDoubleClickNavigatesUp, setEmptyAreaDoubleClickNavigatesUp] = useState(readEmptyAreaDoubleClickPreference);
 
   // Notifications / Toast
@@ -531,15 +666,15 @@ export default function App() {
 
   // Left Pane State & Tabs
   const [leftTabs, setLeftTabs] = useState<TabState[]>([
-    createInitialTab('tab-left-1', folderStyleLocked ? initialPanelPreferences.leftViewMode : DEFAULT_FOLDER_STYLE.viewMode, folderStyleLocked ? initialPanelPreferences.leftSortField : DEFAULT_FOLDER_STYLE.sortField, folderStyleLocked ? initialPanelPreferences.leftSortOrder : DEFAULT_FOLDER_STYLE.sortOrder, startsAtSystemHome, t.sidebar.thisPc),
+    ...restoreSessionTabs(initialSessionSnapshot, 'left', t.sidebar.thisPc, t.sidebar.recycleBinTitle),
   ]);
-  const [activeLeftTabIndex, setActiveLeftTabIndex] = useState(0);
+  const [activeLeftTabIndex, setActiveLeftTabIndex] = useState(initialSessionSnapshot?.activeLeftTabIndex ?? 0);
 
   // Right Pane State & Tabs
   const [rightTabs, setRightTabs] = useState<TabState[]>([
-    createInitialTab('tab-right-1', folderStyleLocked ? initialPanelPreferences.rightViewMode : DEFAULT_FOLDER_STYLE.viewMode, folderStyleLocked ? initialPanelPreferences.rightSortField : DEFAULT_FOLDER_STYLE.sortField, folderStyleLocked ? initialPanelPreferences.rightSortOrder : DEFAULT_FOLDER_STYLE.sortOrder, startsAtSystemHome, t.sidebar.thisPc),
+    ...restoreSessionTabs(initialSessionSnapshot, 'right', t.sidebar.thisPc, t.sidebar.recycleBinTitle),
   ]);
-  const [activeRightTabIndex, setActiveRightTabIndex] = useState(0);
+  const [activeRightTabIndex, setActiveRightTabIndex] = useState(initialSessionSnapshot?.activeRightTabIndex ?? 0);
 
   useEffect(() => {
     const recycleBinOpen = [...leftTabs, ...rightTabs].some(tab => tab.currentPath === RECYCLE_BIN_PATH);
@@ -555,6 +690,9 @@ export default function App() {
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
   const [rememberCloseChoice, setRememberCloseChoice] = useState(false);
   const [isCloseActionBusy, setIsCloseActionBusy] = useState(false);
+  const [isWorkspaceManagerOpen, setIsWorkspaceManagerOpen] = useState(false);
+  const [isUnsavedWorkspaceChangesOpen, setIsUnsavedWorkspaceChangesOpen] = useState(false);
+  const [pendingWorkspaceAction, setPendingWorkspaceAction] = useState<PendingWorkspaceAction | null>(null);
   const [globalShortcutSettings, setGlobalShortcutSettings] = useState<GlobalShortcutSettingsState>({
     enabled: true,
     shortcut: DEFAULT_GLOBAL_SHORTCUT,
@@ -571,6 +709,7 @@ export default function App() {
   const [instancePreferencesSupported, setInstancePreferencesSupported] = useState(false);
   const [instancePreferencesError, setInstancePreferencesError] = useState<string | null>(null);
   const closeActionInProgress = useRef(false);
+  const requestQuitWithUnsavedChangesRef = useRef<(remember: boolean) => void>(() => {});
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(() => {
     try {
       return window.localStorage.getItem(ONBOARDING_STORAGE_KEY) !== 'true';
@@ -597,6 +736,12 @@ export default function App() {
   useEffect(() => {
     void refreshSystemHome();
   }, [refreshSystemHome]);
+
+  useEffect(() => {
+    const suppressNativeContextMenu = (event: Event) => event.preventDefault();
+    document.addEventListener('contextmenu', suppressNativeContextMenu, true);
+    return () => document.removeEventListener('contextmenu', suppressNativeContextMenu, true);
+  }, []);
 
   useEffect(() => {
     if (isTauriDesktop()) void setNativeTrayLanguage(language).catch(() => {});
@@ -704,8 +849,8 @@ export default function App() {
   }, []);
 
   const handleExitFromCloseDialog = useCallback(() => {
-    void runCloseAction('quit');
-  }, [runCloseAction]);
+    requestQuitWithUnsavedChangesRef.current(rememberCloseChoice);
+  }, [rememberCloseChoice]);
 
   const handleHideToTrayFromCloseDialog = useCallback(() => {
     void runCloseAction('hide');
@@ -727,8 +872,10 @@ export default function App() {
         // If storage is unavailable, ask the user on every close.
       }
 
-      if (rememberedChoice === 'hide' || rememberedChoice === 'quit') {
-        void runCloseAction(rememberedChoice, true);
+      if (rememberedChoice === 'hide') {
+        void runCloseAction('hide', true);
+      } else if (rememberedChoice === 'quit') {
+        requestQuitWithUnsavedChangesRef.current(true);
       } else {
         setIsCloseActionBusy(false);
         setRememberCloseChoice(false);
@@ -801,6 +948,315 @@ export default function App() {
   const rightViewMode = rightTabs[activeRightTabIndex]?.viewMode ?? initialPanelPreferences.rightViewMode;
   const leftSort = leftTabs[activeLeftTabIndex] ?? leftTabs[0];
   const rightSort = rightTabs[activeRightTabIndex] ?? rightTabs[0];
+  const currentLayoutSnapshot = useMemo<LayoutSnapshot>(() => ({
+    layout,
+    previewOpen,
+    verticalSplitPercent,
+    horizontalSplitPercent,
+    previewSplitPercent,
+    sidebarSplitPercent,
+    columns: paneColumnPreferences,
+  }), [layout, previewOpen, verticalSplitPercent, horizontalSplitPercent, previewSplitPercent, sidebarSplitPercent, paneColumnPreferences]);
+  const currentSessionSnapshot = useMemo(() => createSessionSnapshot(leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, activePane), [leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, activePane]);
+  const activeLayoutProfile = workspaceStore.layouts.find(profile => profile.id === activeLayoutId);
+  const activeSessionProfile = workspaceStore.sessions.find(profile => profile.id === activeSessionId);
+  const baselineLayoutSnapshot = activeLayoutProfile?.snapshot ?? DEFAULT_LAYOUT_SNAPSHOT;
+  const baselineSessionSnapshot = activeSessionProfile?.snapshot ?? defaultSessionSnapshot(startsAtSystemHome ? SYSTEM_HOME_PATH : '', t.sidebar.thisPc);
+  const layoutDirty = JSON.stringify(currentLayoutSnapshot) !== JSON.stringify(baselineLayoutSnapshot);
+  const sessionDirty = JSON.stringify(currentSessionSnapshot) !== JSON.stringify(baselineSessionSnapshot);
+  const persistWorkspaceStore = useCallback((next: WorkspaceProfileStore) => {
+    setWorkspaceStore(next);
+    try {
+      writeWorkspaceProfileStore(next);
+    } catch {
+      showToast(language === 'es' ? 'No se pudieron guardar los perfiles en este dispositivo.' : 'Could not save profiles on this device.');
+    }
+  }, [language, showToast]);
+
+  const onColumnPreferencesChange = useCallback((pane: WorkspacePaneId, preferences: PaneColumnsSnapshot) => {
+    setPaneColumnPreferences(previous => {
+      if (JSON.stringify(previous[pane]) === JSON.stringify(preferences)) return previous;
+      return { ...previous, [pane]: preferences };
+    });
+  }, []);
+
+  const applyLayoutSnapshot = useCallback((rawSnapshot: LayoutSnapshot) => {
+    const snapshot = normalizeLayoutSnapshot(rawSnapshot);
+    setLayout(snapshot.layout);
+    setPreviewOpen(snapshot.previewOpen);
+    setVerticalSplitPercent(snapshot.verticalSplitPercent);
+    setHorizontalSplitPercent(snapshot.horizontalSplitPercent);
+    setPreviewSplitPercent(snapshot.previewSplitPercent);
+    setSidebarSplitPercent(snapshot.sidebarSplitPercent);
+    setPaneColumnPreferences(snapshot.columns);
+    writePaneColumnPreferences('left', snapshot.columns.left);
+    writePaneColumnPreferences('right', snapshot.columns.right);
+    try {
+      const current = JSON.parse(window.localStorage.getItem(PANEL_VIEW_PREFERENCES_KEY) || '{}');
+      window.localStorage.setItem(PANEL_VIEW_PREFERENCES_KEY, JSON.stringify({ ...current, ...snapshot }));
+    } catch {
+      // Keep the applied layout in memory when local storage is unavailable.
+    }
+    setColumnPreferencesRevision(revision => revision + 1);
+  }, []);
+
+  const applySessionSnapshot = useCallback((snapshot: TabSessionSnapshot) => {
+    const normalized = normalizeSessionSnapshot(snapshot);
+    setLeftTabs(restoreSessionTabs(normalized, 'left', t.sidebar.thisPc, t.sidebar.recycleBinTitle));
+    setRightTabs(restoreSessionTabs(normalized, 'right', t.sidebar.thisPc, t.sidebar.recycleBinTitle));
+    setActiveLeftTabIndex(normalized.activeLeftTabIndex);
+    setActiveRightTabIndex(normalized.activeRightTabIndex);
+    setActivePane(normalized.activePane);
+    setSessionReloadToken(token => token + 1);
+  }, [t.sidebar.thisPc, t.sidebar.recycleBinTitle]);
+
+  const persistProfileStoreForActive = useCallback((next: WorkspaceProfileStore, nextLayoutId: string, nextSessionId: string, nextWorkspaceId: string | null) => {
+    persistWorkspaceStore({
+      ...next,
+      lastLayoutId: nextLayoutId,
+      lastSessionId: nextSessionId,
+      lastWorkspaceId: nextWorkspaceId,
+    });
+  }, [persistWorkspaceStore]);
+
+  const createLayoutProfile = useCallback((name: string) => {
+    if (workspaceStore.layouts.some(profile => profile.name.toLocaleLowerCase() === name.toLocaleLowerCase())) return false;
+    const profile: LayoutProfile = { id: createProfileId('layout'), name, snapshot: currentLayoutSnapshot, updatedAt: Date.now() };
+    const next = { ...workspaceStore, layouts: [...workspaceStore.layouts, profile] };
+    setActiveLayoutId(profile.id);
+    setActiveWorkspaceId(null);
+    persistProfileStoreForActive(next, profile.id, activeSessionId, null);
+    return true;
+  }, [workspaceStore, currentLayoutSnapshot, activeSessionId, persistProfileStoreForActive]);
+
+  const updateLayoutProfile = useCallback((id: string) => {
+    if (id !== activeLayoutId || id === DEFAULT_LAYOUT_PROFILE_ID) return;
+    const next = {
+      ...workspaceStore,
+      layouts: workspaceStore.layouts.map(profile => profile.id === id ? { ...profile, snapshot: currentLayoutSnapshot, updatedAt: Date.now() } : profile),
+    };
+    persistProfileStoreForActive(next, id, activeSessionId, activeWorkspaceId);
+  }, [workspaceStore, activeLayoutId, currentLayoutSnapshot, activeSessionId, activeWorkspaceId, persistProfileStoreForActive]);
+
+  const renameLayoutProfile = useCallback((id: string, name: string) => {
+    if (workspaceStore.layouts.some(profile => profile.id !== id && profile.name.toLocaleLowerCase() === name.toLocaleLowerCase())) return false;
+    persistWorkspaceStore({ ...workspaceStore, layouts: workspaceStore.layouts.map(profile => profile.id === id ? { ...profile, name, updatedAt: Date.now() } : profile) });
+    return true;
+  }, [workspaceStore, persistWorkspaceStore]);
+
+  const deleteLayoutProfile = useCallback((id: string) => {
+    const currentWorkspace = workspaceStore.workspaces.find(profile => profile.id === activeWorkspaceId);
+    const next = {
+      ...workspaceStore,
+      layouts: workspaceStore.layouts.filter(profile => profile.id !== id),
+      workspaces: workspaceStore.workspaces.filter(profile => profile.layoutId !== id),
+    };
+    if (activeLayoutId === id) {
+      applyLayoutSnapshot(DEFAULT_LAYOUT_SNAPSHOT);
+      setActiveLayoutId(DEFAULT_LAYOUT_PROFILE_ID);
+    }
+    const nextWorkspaceId = currentWorkspace?.layoutId === id || !next.workspaces.some(profile => profile.id === activeWorkspaceId) ? null : activeWorkspaceId;
+    if (nextWorkspaceId !== activeWorkspaceId) setActiveWorkspaceId(null);
+    persistProfileStoreForActive(next, activeLayoutId === id ? DEFAULT_LAYOUT_PROFILE_ID : activeLayoutId, activeSessionId, nextWorkspaceId);
+  }, [workspaceStore, activeLayoutId, activeSessionId, activeWorkspaceId, applyLayoutSnapshot, persistProfileStoreForActive]);
+
+  const createSessionProfile = useCallback((name: string) => {
+    if (workspaceStore.sessions.some(profile => profile.name.toLocaleLowerCase() === name.toLocaleLowerCase())) return false;
+    const profile: TabSessionProfile = { id: createProfileId('session'), name, snapshot: currentSessionSnapshot, updatedAt: Date.now() };
+    const next = { ...workspaceStore, sessions: [...workspaceStore.sessions, profile] };
+    setActiveSessionId(profile.id);
+    setActiveWorkspaceId(null);
+    persistProfileStoreForActive(next, activeLayoutId, profile.id, null);
+    return true;
+  }, [workspaceStore, currentSessionSnapshot, activeLayoutId, persistProfileStoreForActive]);
+
+  const updateSessionProfile = useCallback((id: string) => {
+    if (id !== activeSessionId || id === DEFAULT_SESSION_PROFILE_ID) return;
+    const next = {
+      ...workspaceStore,
+      sessions: workspaceStore.sessions.map(profile => profile.id === id ? { ...profile, snapshot: currentSessionSnapshot, updatedAt: Date.now() } : profile),
+    };
+    persistProfileStoreForActive(next, activeLayoutId, id, activeWorkspaceId);
+  }, [workspaceStore, activeSessionId, currentSessionSnapshot, activeLayoutId, activeWorkspaceId, persistProfileStoreForActive]);
+
+  const renameSessionProfile = useCallback((id: string, name: string) => {
+    if (workspaceStore.sessions.some(profile => profile.id !== id && profile.name.toLocaleLowerCase() === name.toLocaleLowerCase())) return false;
+    persistWorkspaceStore({ ...workspaceStore, sessions: workspaceStore.sessions.map(profile => profile.id === id ? { ...profile, name, updatedAt: Date.now() } : profile) });
+    return true;
+  }, [workspaceStore, persistWorkspaceStore]);
+
+  const deleteSessionProfile = useCallback((id: string) => {
+    const currentWorkspace = workspaceStore.workspaces.find(profile => profile.id === activeWorkspaceId);
+    const next = {
+      ...workspaceStore,
+      sessions: workspaceStore.sessions.filter(profile => profile.id !== id),
+      workspaces: workspaceStore.workspaces.filter(profile => profile.sessionId !== id),
+    };
+    if (activeSessionId === id) {
+      applySessionSnapshot(defaultSessionSnapshot(startsAtSystemHome ? SYSTEM_HOME_PATH : '', t.sidebar.thisPc));
+      setActiveSessionId(DEFAULT_SESSION_PROFILE_ID);
+    }
+    const nextWorkspaceId = currentWorkspace?.sessionId === id || !next.workspaces.some(profile => profile.id === activeWorkspaceId) ? null : activeWorkspaceId;
+    if (nextWorkspaceId !== activeWorkspaceId) setActiveWorkspaceId(null);
+    persistProfileStoreForActive(next, activeLayoutId, activeSessionId === id ? DEFAULT_SESSION_PROFILE_ID : activeSessionId, nextWorkspaceId);
+  }, [workspaceStore, activeSessionId, activeLayoutId, activeWorkspaceId, applySessionSnapshot, startsAtSystemHome, t.sidebar.thisPc, persistProfileStoreForActive]);
+
+  const createWorkspaceProfile = useCallback((name: string) => {
+    if (layoutDirty || sessionDirty) return false;
+    if (workspaceStore.workspaces.some(profile => profile.name.toLocaleLowerCase() === name.toLocaleLowerCase())) return false;
+    const profile: WorkspaceProfile = {
+      id: createProfileId('workspace'),
+      name,
+      layoutId: activeLayoutId,
+      sessionId: activeSessionId,
+      updatedAt: Date.now(),
+    };
+    const next = { ...workspaceStore, workspaces: [...workspaceStore.workspaces, profile] };
+    setActiveWorkspaceId(profile.id);
+    persistProfileStoreForActive(next, activeLayoutId, activeSessionId, profile.id);
+    return true;
+  }, [workspaceStore, layoutDirty, sessionDirty, activeLayoutId, activeSessionId, persistProfileStoreForActive]);
+
+  const renameWorkspaceProfile = useCallback((id: string, name: string) => {
+    if (workspaceStore.workspaces.some(profile => profile.id !== id && profile.name.toLocaleLowerCase() === name.toLocaleLowerCase())) return false;
+    persistWorkspaceStore({ ...workspaceStore, workspaces: workspaceStore.workspaces.map(profile => profile.id === id ? { ...profile, name, updatedAt: Date.now() } : profile) });
+    return true;
+  }, [workspaceStore, persistWorkspaceStore]);
+
+  const deleteWorkspaceProfile = useCallback((id: string) => {
+    const next = { ...workspaceStore, workspaces: workspaceStore.workspaces.filter(profile => profile.id !== id) };
+    persistProfileStoreForActive(next, activeLayoutId, activeSessionId, activeWorkspaceId === id ? null : activeWorkspaceId);
+  }, [workspaceStore, activeLayoutId, activeSessionId, activeWorkspaceId, persistProfileStoreForActive]);
+
+  const executeWorkspaceAction = useCallback((action: PendingWorkspaceAction, sourceStore: WorkspaceProfileStore = workspaceStore) => {
+    if (action.type === 'quit') {
+      setIsUnsavedWorkspaceChangesOpen(false);
+      setPendingWorkspaceAction(null);
+      setIsCloseDialogOpen(false);
+      void runCloseAction('quit', action.remember);
+      return;
+    }
+
+    if (action.type === 'layout') {
+      const profile = sourceStore.layouts.find(candidate => candidate.id === action.id);
+      applyLayoutSnapshot(profile?.snapshot ?? DEFAULT_LAYOUT_SNAPSHOT);
+      setActiveLayoutId(profile?.id ?? DEFAULT_LAYOUT_PROFILE_ID);
+      setActiveWorkspaceId(null);
+    } else if (action.type === 'session') {
+      const profile = sourceStore.sessions.find(candidate => candidate.id === action.id);
+      const snapshot = profile?.snapshot ?? defaultSessionSnapshot(startsAtSystemHome ? SYSTEM_HOME_PATH : '', t.sidebar.thisPc);
+      applySessionSnapshot(snapshot);
+      setActiveSessionId(profile?.id ?? DEFAULT_SESSION_PROFILE_ID);
+      setActiveWorkspaceId(null);
+    } else {
+      const workspace = sourceStore.workspaces.find(candidate => candidate.id === action.id);
+      if (!workspace) return;
+      const layoutProfile = sourceStore.layouts.find(profile => profile.id === workspace.layoutId);
+      const sessionProfile = sourceStore.sessions.find(profile => profile.id === workspace.sessionId);
+      applyLayoutSnapshot(layoutProfile?.snapshot ?? DEFAULT_LAYOUT_SNAPSHOT);
+      applySessionSnapshot(sessionProfile?.snapshot ?? defaultSessionSnapshot(startsAtSystemHome ? SYSTEM_HOME_PATH : '', t.sidebar.thisPc));
+      setActiveLayoutId(layoutProfile?.id ?? DEFAULT_LAYOUT_PROFILE_ID);
+      setActiveSessionId(sessionProfile?.id ?? DEFAULT_SESSION_PROFILE_ID);
+      setActiveWorkspaceId(workspace.id);
+    }
+    setPendingWorkspaceAction(null);
+    setIsUnsavedWorkspaceChangesOpen(false);
+  }, [workspaceStore, applyLayoutSnapshot, applySessionSnapshot, startsAtSystemHome, t.sidebar.thisPc, runCloseAction]);
+
+  const requestWorkspaceAction = useCallback((action: PendingWorkspaceAction) => {
+    const checkLayout = action.type === 'quit' || action.type === 'workspace' || action.type === 'layout';
+    const checkSession = action.type === 'quit' || action.type === 'workspace' || action.type === 'session';
+    if ((checkLayout && layoutDirty) || (checkSession && sessionDirty)) {
+      setPendingWorkspaceAction(action);
+      setIsUnsavedWorkspaceChangesOpen(true);
+      if (action.type === 'quit') setIsCloseDialogOpen(false);
+      return;
+    }
+    executeWorkspaceAction(action);
+  }, [layoutDirty, sessionDirty, executeWorkspaceAction]);
+
+  const savePendingWorkspaceChanges = useCallback((names: WorkspaceChangesSaveNames) => {
+    const action = pendingWorkspaceAction;
+    if (!action) return;
+    const saveLayout = action.type === 'quit' || action.type === 'workspace' || action.type === 'layout';
+    const saveSession = action.type === 'quit' || action.type === 'workspace' || action.type === 'session';
+    let nextStore = workspaceStore;
+    let nextLayoutId = activeLayoutId;
+    let nextSessionId = activeSessionId;
+
+    if (saveLayout && layoutDirty) {
+      if (activeLayoutId === DEFAULT_LAYOUT_PROFILE_ID) {
+        const name = names.layoutName.trim();
+        if (!name || nextStore.layouts.some(profile => profile.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+          showToast(name ? t.workspaceProfiles.duplicateName : t.workspaceProfiles.invalidName);
+          return;
+        }
+        const profile: LayoutProfile = { id: createProfileId('layout'), name, snapshot: currentLayoutSnapshot, updatedAt: Date.now() };
+        nextStore = { ...nextStore, layouts: [...nextStore.layouts, profile] };
+        nextLayoutId = profile.id;
+      } else {
+        nextStore = { ...nextStore, layouts: nextStore.layouts.map(profile => profile.id === activeLayoutId ? { ...profile, snapshot: currentLayoutSnapshot, updatedAt: Date.now() } : profile) };
+      }
+    }
+
+    if (saveSession && sessionDirty) {
+      if (activeSessionId === DEFAULT_SESSION_PROFILE_ID) {
+        const name = names.sessionName.trim();
+        if (!name || nextStore.sessions.some(profile => profile.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+          showToast(name ? t.workspaceProfiles.duplicateName : t.workspaceProfiles.invalidName);
+          return;
+        }
+        const profile: TabSessionProfile = { id: createProfileId('session'), name, snapshot: currentSessionSnapshot, updatedAt: Date.now() };
+        nextStore = { ...nextStore, sessions: [...nextStore.sessions, profile] };
+        nextSessionId = profile.id;
+      } else {
+        nextStore = { ...nextStore, sessions: nextStore.sessions.map(profile => profile.id === activeSessionId ? { ...profile, snapshot: currentSessionSnapshot, updatedAt: Date.now() } : profile) };
+      }
+    }
+
+    const activeWorkspace = nextStore.workspaces.find(profile => profile.id === activeWorkspaceId);
+    if (activeWorkspace) {
+      const updatedWorkspace = {
+        ...activeWorkspace,
+        layoutId: activeWorkspace.layoutId === activeLayoutId && saveLayout && layoutDirty ? nextLayoutId : activeWorkspace.layoutId,
+        sessionId: activeWorkspace.sessionId === activeSessionId && saveSession && sessionDirty ? nextSessionId : activeWorkspace.sessionId,
+        updatedAt: Date.now(),
+      };
+      if (updatedWorkspace.layoutId !== activeWorkspace.layoutId || updatedWorkspace.sessionId !== activeWorkspace.sessionId) {
+        nextStore = { ...nextStore, workspaces: nextStore.workspaces.map(profile => profile.id === activeWorkspaceId ? updatedWorkspace : profile) };
+      }
+    }
+
+    persistProfileStoreForActive(nextStore, nextLayoutId, nextSessionId, activeWorkspaceId);
+    executeWorkspaceAction(action, nextStore);
+  }, [pendingWorkspaceAction, workspaceStore, activeLayoutId, activeSessionId, layoutDirty, sessionDirty, currentLayoutSnapshot, currentSessionSnapshot, showToast, t.workspaceProfiles.duplicateName, t.workspaceProfiles.invalidName, activeWorkspaceId, persistProfileStoreForActive, executeWorkspaceAction]);
+
+  const discardPendingWorkspaceChanges = useCallback(() => {
+    const action = pendingWorkspaceAction;
+    if (!action) return;
+    const discardLayout = action.type === 'quit' || action.type === 'workspace' || action.type === 'layout';
+    const discardSession = action.type === 'quit' || action.type === 'workspace' || action.type === 'session';
+    if (discardLayout) applyLayoutSnapshot(activeLayoutProfile?.snapshot ?? DEFAULT_LAYOUT_SNAPSHOT);
+    if (discardSession) applySessionSnapshot(activeSessionProfile?.snapshot ?? defaultSessionSnapshot(startsAtSystemHome ? SYSTEM_HOME_PATH : '', t.sidebar.thisPc));
+    executeWorkspaceAction(action);
+  }, [pendingWorkspaceAction, activeLayoutProfile, activeSessionProfile, applyLayoutSnapshot, applySessionSnapshot, startsAtSystemHome, t.sidebar.thisPc, executeWorkspaceAction]);
+
+  requestQuitWithUnsavedChangesRef.current = remember => requestWorkspaceAction({ type: 'quit', remember });
+
+  const pendingLayoutChanged = Boolean(pendingWorkspaceAction && (pendingWorkspaceAction.type === 'quit' || pendingWorkspaceAction.type === 'workspace' || pendingWorkspaceAction.type === 'layout') && layoutDirty);
+  const pendingSessionChanged = Boolean(pendingWorkspaceAction && (pendingWorkspaceAction.type === 'quit' || pendingWorkspaceAction.type === 'workspace' || pendingWorkspaceAction.type === 'session') && sessionDirty);
+
+  useEffect(() => {
+    if (workspaceStore.lastLayoutId === activeLayoutId
+      && workspaceStore.lastSessionId === activeSessionId
+      && workspaceStore.lastWorkspaceId === activeWorkspaceId) return;
+    persistWorkspaceStore({
+      ...workspaceStore,
+      lastLayoutId: activeLayoutId,
+      lastSessionId: activeSessionId,
+      lastWorkspaceId: activeWorkspaceId,
+    });
+  }, [activeLayoutId, activeSessionId, activeWorkspaceId, persistWorkspaceStore, workspaceStore]);
 
   useEffect(() => {
     const updateSystemHomeTitle = (tabs: TabState[]) => {
@@ -1256,6 +1712,28 @@ export default function App() {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
   }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectoryPage, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, newTabsNextToCurrent]);
+
+  const lastSessionReloadHandled = useRef(0);
+  useEffect(() => {
+    const explicitReload = sessionReloadToken !== lastSessionReloadHandled.current;
+    if (explicitReload) lastSessionReloadHandled.current = sessionReloadToken;
+    const restoreActiveFolder = (pane: WorkspacePaneId, tab: TabState | undefined) => {
+      if (!tab?.currentPath) return;
+      if (tab.currentPath === SYSTEM_HOME_PATH) {
+        if (explicitReload) void refreshSystemHome();
+        return;
+      }
+      if (tab.currentPath === RECYCLE_BIN_PATH) {
+        if (explicitReload) void refreshRecycleBinContents();
+        return;
+      }
+      const pathKey = getPathKey(tab.currentPath);
+      if (nativeLoadedDirectories.current.has(pathKey) || nativeInFlightDirectories.current.has(pathKey)) return;
+      void handleNavigate(tab.currentPath, pane, true);
+    };
+    restoreActiveFolder('left', leftTabs[activeLeftTabIndex]);
+    restoreActiveFolder('right', rightTabs[activeRightTabIndex]);
+  }, [sessionReloadToken, activeLeftTabIndex, activeRightTabIndex, leftTabs, rightTabs, handleNavigate, refreshSystemHome, refreshRecycleBinContents]);
 
   const refreshChangedDirectories = useCallback(async (paths: string[]) => {
     const affectedKeys = new Set(paths.filter(Boolean).map(getPathKey));
@@ -2652,11 +3130,7 @@ export default function App() {
   };
 
   const handleApplicationContextMenuCapture = (event: React.MouseEvent<HTMLDivElement>) => {
-    const target = event.target as HTMLElement;
-    const preserveNativeMenu = target.closest(
-      'textarea, select, [role="textbox"], [contenteditable]:not([contenteditable="false"]), input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"])',
-    );
-    if (!preserveNativeMenu) event.preventDefault();
+    event.preventDefault();
   };
 
   const currentAtRecycleBin = currentTab.currentPath === RECYCLE_BIN_PATH;
@@ -2693,6 +3167,8 @@ export default function App() {
       <HeaderBar
         layout={layout}
         onLayoutChange={setLayout}
+        onOpenWorkspaceManager={() => setIsWorkspaceManagerOpen(true)}
+        workspaceChangesPending={layoutDirty || sessionDirty}
         viewMode={currentTab.viewMode}
         onViewModeChange={handleViewModeChange}
         propertiesPanelOpen={previewOpen}
@@ -2758,6 +3234,7 @@ export default function App() {
               <div className="min-w-0 min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="left"
+                  columnPreferences={paneColumnPreferences.left}
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
@@ -2793,6 +3270,8 @@ export default function App() {
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFilesFromOtherPane={handleDropFiles}
                   onInlineRename={handleInlineRename}
+                  columnPreferencesRevision={columnPreferencesRevision}
+                  onColumnPreferencesChange={onColumnPreferencesChange}
                 />
               </div>
 
@@ -2803,6 +3282,7 @@ export default function App() {
               <div className="min-w-0 min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="right"
+                  columnPreferences={paneColumnPreferences.right}
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
@@ -2838,6 +3318,8 @@ export default function App() {
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFilesFromOtherPane={handleDropFiles}
                   onInlineRename={handleInlineRename}
+                  columnPreferencesRevision={columnPreferencesRevision}
+                  onColumnPreferencesChange={onColumnPreferencesChange}
                 />
               </div>
             </div>
@@ -2849,6 +3331,7 @@ export default function App() {
               <div className="min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="left"
+                  columnPreferences={paneColumnPreferences.left}
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
@@ -2884,12 +3367,15 @@ export default function App() {
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFilesFromOtherPane={handleDropFiles}
                   onInlineRename={handleInlineRename}
+                  columnPreferencesRevision={columnPreferencesRevision}
+                  onColumnPreferencesChange={onColumnPreferencesChange}
                 />
               </div>
               <PaneSplitter orientation="horizontal" value={horizontalSplitPercent} onChange={setHorizontalSplitPercent} label={t.header.resizePanels} />
               <div className="min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="right"
+                  columnPreferences={paneColumnPreferences.right}
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
@@ -2925,6 +3411,8 @@ export default function App() {
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFilesFromOtherPane={handleDropFiles}
                   onInlineRename={handleInlineRename}
+                  columnPreferencesRevision={columnPreferencesRevision}
+                  onColumnPreferencesChange={onColumnPreferencesChange}
                 />
               </div>
             </div>
@@ -2936,6 +3424,7 @@ export default function App() {
               <FilePane
                 key={activePane}
                 paneId={activePane}
+                columnPreferences={paneColumnPreferences[activePane]}
                 isActive={true}
                 styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
@@ -2971,6 +3460,8 @@ export default function App() {
                 onBackgroundDoubleClick={handleBackgroundDoubleClick}
                 onDropFilesFromOtherPane={handleDropFiles}
                 onInlineRename={handleInlineRename}
+                  columnPreferencesRevision={columnPreferencesRevision}
+                  onColumnPreferencesChange={onColumnPreferencesChange}
               />
             </div>
           )}
@@ -3042,6 +3533,48 @@ export default function App() {
         onBatchRename={() => setIsBatchRenameOpen(true)}
         onDelete={(item) => handleDeleteSelected([item])}
         onRestore={(item) => { void handleRestoreRecycleBinItems([item]); }}
+      />
+
+      <WorkspaceManagerModal
+        isOpen={isWorkspaceManagerOpen}
+        layouts={workspaceStore.layouts}
+        sessions={workspaceStore.sessions}
+        workspaces={workspaceStore.workspaces}
+        activeLayoutId={activeLayoutId}
+        activeSessionId={activeSessionId}
+        activeWorkspaceId={activeWorkspaceId}
+        layoutDirty={layoutDirty}
+        sessionDirty={sessionDirty}
+        canCreateWorkspace={!layoutDirty && !sessionDirty}
+        onClose={() => setIsWorkspaceManagerOpen(false)}
+        onCreateLayout={createLayoutProfile}
+        onUpdateLayout={updateLayoutProfile}
+        onApplyLayout={id => requestWorkspaceAction({ type: 'layout', id })}
+        onRenameLayout={renameLayoutProfile}
+        onDeleteLayout={deleteLayoutProfile}
+        onCreateSession={createSessionProfile}
+        onUpdateSession={updateSessionProfile}
+        onApplySession={id => requestWorkspaceAction({ type: 'session', id })}
+        onRenameSession={renameSessionProfile}
+        onDeleteSession={deleteSessionProfile}
+        onCreateWorkspace={createWorkspaceProfile}
+        onApplyWorkspace={id => requestWorkspaceAction({ type: 'workspace', id })}
+        onRenameWorkspace={renameWorkspaceProfile}
+        onDeleteWorkspace={deleteWorkspaceProfile}
+      />
+
+      <UnsavedWorkspaceChangesModal
+        isOpen={isUnsavedWorkspaceChangesOpen}
+        layoutChanged={pendingLayoutChanged}
+        sessionChanged={pendingSessionChanged}
+        layoutNeedsName={pendingLayoutChanged && activeLayoutId === DEFAULT_LAYOUT_PROFILE_ID}
+        sessionNeedsName={pendingSessionChanged && activeSessionId === DEFAULT_SESSION_PROFILE_ID}
+        onSaveAndContinue={savePendingWorkspaceChanges}
+        onDiscardAndContinue={discardPendingWorkspaceChanges}
+        onCancel={() => {
+          setIsUnsavedWorkspaceChangesOpen(false);
+          setPendingWorkspaceAction(null);
+        }}
       />
 
       {/* Batch Rename Modal */}
