@@ -460,7 +460,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   const fileGridTemplateColumns = visibleFileColumns.map(columnWidth).join(' ');
   const detailsTableMinimumWidth = visibleFileColumns.reduce((total, column) => total + (column === 'name' ? columnWidths.name ?? MIN_NAME_COLUMN_WIDTH : columnWidths[column]), 0)
-    + Math.max(0, visibleFileColumns.length - 1) * 8 + 18 + viewportScrollbarWidth;
+    + Math.max(0, visibleFileColumns.length - 1) * 8 + 18 + viewportScrollbarWidth + 32;
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -1100,6 +1100,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <form onSubmit={handlePathSubmit} className="w-full">
               <input
                 ref={pathInputRef}
+                data-allow-native-context-menu="text-edit"
                 type="text"
                 value={pathInput}
                 onChange={(e) => setPathInput(e.target.value)}
@@ -1175,7 +1176,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* 4. Column Headers (Details View) */}
       {effectiveViewMode === 'details' && !isSystemHome && (
         <div
-          className="grid shrink-0 items-center gap-2 border-x border-b border-neutral-800 bg-neutral-950 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 select-none"
+          className="mx-4 grid shrink-0 items-center gap-2 border-x border-b border-neutral-800 bg-neutral-950 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 select-none"
           style={{ gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
           onContextMenu={openColumnMenu}
         >
@@ -1309,7 +1310,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             )}
           </div>
         ) : effectiveViewMode === 'details' ? (
-          <div className="divide-y divide-neutral-900/40">
+          <div className="divide-y divide-neutral-900/40 px-4">
             {files.map((item, idx) => {
               const isSelected = visibleSelectedIds.includes(item.id);
               const isEditing = editingItemId === item.id;

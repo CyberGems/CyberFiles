@@ -738,7 +738,10 @@ export default function App() {
   }, [refreshSystemHome]);
 
   useEffect(() => {
-    const suppressNativeContextMenu = (event: Event) => event.preventDefault();
+    const suppressNativeContextMenu = (event: Event) => {
+      if (event.target instanceof Element && event.target.closest('[data-allow-native-context-menu="text-edit"]')) return;
+      event.preventDefault();
+    };
     document.addEventListener('contextmenu', suppressNativeContextMenu, true);
     return () => document.removeEventListener('contextmenu', suppressNativeContextMenu, true);
   }, []);
@@ -3130,6 +3133,7 @@ export default function App() {
   };
 
   const handleApplicationContextMenuCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('[data-allow-native-context-menu="text-edit"]')) return;
     event.preventDefault();
   };
 
