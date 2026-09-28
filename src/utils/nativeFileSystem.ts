@@ -82,6 +82,12 @@ export interface NativeFileClipboard {
   sequenceNumber: number;
 }
 
+export interface NativeCreatedImage {
+  path: string;
+  name: string;
+  size: number;
+}
+
 const formatModifiedDate = (timestamp: number | null) => timestamp
   ? new Date(timestamp).toISOString().replace('T', ' ').slice(0, 16)
   : '';
@@ -166,6 +172,10 @@ export async function setNativeFileClipboard(paths: string[], isCut: boolean): P
 
 export async function getNativeFileClipboard(): Promise<NativeFileClipboard> {
   return invoke<NativeFileClipboard>('get_file_clipboard');
+}
+
+export async function pasteNativeClipboardImage(targetPath: string, baseName: string): Promise<NativeCreatedImage | null> {
+  return invoke<NativeCreatedImage | null>('paste_clipboard_image', { targetPath, baseName });
 }
 
 export async function clearNativeFileClipboard(sequenceNumber: number): Promise<boolean> {

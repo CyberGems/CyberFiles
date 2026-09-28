@@ -2,7 +2,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
-    io::{self, Cursor, Read},
+    io::{self, Cursor, Read, Write},
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -431,6 +431,14 @@ struct NativeFileClipboard {
     paths: Vec<String>,
     is_cut: bool,
     sequence_number: u32,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeCreatedImage {
+    path: String,
+    name: String,
+    size: u64,
 }
 
 fn validate_child_name(name: &str) -> Result<(), String> {
@@ -1146,6 +1154,254 @@ async fn clear_file_clipboard(sequence_number: u32) -> Result<bool, String> {
         .map_err(|e| format!("Clipboard worker failed: {e}"))?
 }
 
+const MAX_CLIPBOARD_IMAGE_BYTES: usize = 256 * 1024 * 1024;
+
+fn dib_to_bmp_bytes(dib: &[u8]) -> Result<Vec<u8>, String> {
+    if dib.len() < 40 {
+        return Err("The clipboard bitmap header is incomplete.".to_string());
+    }
+    let read_u32 = |offset: usize| -> Result<u32, String> {
+        let bytes = dib
+            .get(offset..offset + 4)
+            .ok_or_else(|| "The clipboard bitmap header is incomplete.".to_string())?;
+        Ok(u32::from_le_bytes(
+            bytes.try_into().expect("four byte slice"),
+        ))
+    };
+    let header_size = read_u32(0)? as usize;
+    if header_size < 40 || header_size > dib.len() {
+        return Err("The clipboard bitmap header is not supported.".to_string());
+    }
+    let bits_per_pixel = u16::from_le_bytes([dib[14], dib[15]]) as u32;
+    let compression = read_u32(16)?;
+    let colors_used = read_u32(32)? as usize;
+    let external_masks = if header_size == 40 {
+        match compression {
+            3 => 12,
+            6 => 16,
+            _ => 0,
+        }
+    } else {
+        0
+    };
+    let palette_entries = if colors_used > 0 {
+        colors_used
+    } else if bits_per_pixel <= 8 {
+        1usize << bits_per_pixel
+    } else {
+        0
+    };
+    let pixel_data_offset = 14usize
+        .checked_add(header_size)
+        .and_then(|offset| offset.checked_add(external_masks))
+        .and_then(|offset| offset.checked_add(palette_entries.checked_mul(4)?))
+        .ok_or_else(|| "The clipboard bitmap is too large.".to_string())?;
+    if pixel_data_offset > 14 + dib.len() || 14 + dib.len() > u32::MAX as usize {
+        return Err("The clipboard bitmap data is incomplete or too large.".to_string());
+    }
+
+    let file_size = (14 + dib.len()) as u32;
+    let mut bmp = Vec::with_capacity(file_size as usize);
+    bmp.extend_from_slice(b"BM");
+    bmp.extend_from_slice(&file_size.to_le_bytes());
+    bmp.extend_from_slice(&[0; 4]);
+    bmp.extend_from_slice(&(pixel_data_offset as u32).to_le_bytes());
+    bmp.extend_from_slice(dib);
+    Ok(bmp)
+}
+
+fn apply_clipboard_image_limits(reader: &mut image::ImageReader<impl io::BufRead + io::Seek>) {
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(16_384);
+    limits.max_image_height = Some(16_384);
+    limits.max_alloc = Some(256 * 1024 * 1024);
+    reader.limits(limits);
+}
+
+fn validate_clipboard_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    if bytes.len() > MAX_CLIPBOARD_IMAGE_BYTES || !bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Err("The clipboard PNG data is invalid or exceeds the 256 MB limit.".to_string());
+    }
+    let mut reader = image::ImageReader::with_format(Cursor::new(bytes), image::ImageFormat::Png);
+    apply_clipboard_image_limits(&mut reader);
+    reader
+        .decode()
+        .map_err(|error| format!("Windows clipboard PNG could not be decoded: {error}"))?;
+    Ok(bytes.to_vec())
+}
+
+fn clipboard_bitmap_to_png(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    if bytes.len() > MAX_CLIPBOARD_IMAGE_BYTES {
+        return Err("The clipboard image exceeds the 256 MB limit.".to_string());
+    }
+    let bmp = dib_to_bmp_bytes(bytes)?;
+    let mut reader = image::ImageReader::with_format(Cursor::new(bmp), image::ImageFormat::Bmp);
+    apply_clipboard_image_limits(&mut reader);
+    let bitmap = reader
+        .decode()
+        .map_err(|error| format!("Windows clipboard image could not be decoded: {error}"))?;
+    let mut output = Cursor::new(Vec::new());
+    bitmap
+        .write_to(&mut output, image::ImageFormat::Png)
+        .map_err(|error| format!("Could not encode clipboard image as PNG: {error}"))?;
+    let png = output.into_inner();
+    if png.len() > MAX_CLIPBOARD_IMAGE_BYTES {
+        return Err("The converted clipboard image exceeds the 256 MB limit.".to_string());
+    }
+    Ok(png)
+}
+
+#[cfg(target_os = "windows")]
+fn copy_windows_clipboard_format(format: u32) -> Result<Option<Vec<u8>>, String> {
+    use windows_sys::Win32::System::{
+        DataExchange::{
+            CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+        },
+        Memory::{GlobalLock, GlobalSize, GlobalUnlock},
+    };
+
+    if format == 0 || unsafe { OpenClipboard(std::ptr::null_mut()) } == 0 {
+        return if format == 0 {
+            Ok(None)
+        } else {
+            Err("Windows could not open the clipboard. Try again shortly.".to_string())
+        };
+    }
+    struct ClipboardGuard;
+    impl Drop for ClipboardGuard {
+        fn drop(&mut self) {
+            unsafe { CloseClipboard() };
+        }
+    }
+    let _guard = ClipboardGuard;
+    if unsafe { IsClipboardFormatAvailable(format) } == 0 {
+        return Ok(None);
+    }
+    let handle = unsafe { GetClipboardData(format) };
+    if handle.is_null() {
+        return Ok(None);
+    }
+    let size = unsafe { GlobalSize(handle) };
+    if size == 0 {
+        return Ok(None);
+    }
+    if size > MAX_CLIPBOARD_IMAGE_BYTES {
+        return Err("The clipboard image exceeds the 256 MB limit.".to_string());
+    }
+    let locked = unsafe { GlobalLock(handle) }.cast::<u8>();
+    if locked.is_null() {
+        return Err("Windows could not read the clipboard image data.".to_string());
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(locked, size) }.to_vec();
+    unsafe { GlobalUnlock(handle) };
+    Ok(Some(bytes))
+}
+
+#[cfg(target_os = "windows")]
+fn read_windows_clipboard_image_png() -> Result<Option<Vec<u8>>, String> {
+    use windows_sys::Win32::System::DataExchange::RegisterClipboardFormatW;
+
+    const CF_DIB: u32 = 8;
+    const CF_DIBV5: u32 = 17;
+    let png_name: Vec<u16> = "PNG".encode_utf16().chain(Some(0)).collect();
+    let png_mime_name: Vec<u16> = "image/png".encode_utf16().chain(Some(0)).collect();
+    let formats = [
+        (unsafe { RegisterClipboardFormatW(png_name.as_ptr()) }, true),
+        (
+            unsafe { RegisterClipboardFormatW(png_mime_name.as_ptr()) },
+            true,
+        ),
+        (CF_DIBV5, false),
+        (CF_DIB, false),
+    ];
+    let mut decode_error = None;
+    for (format, is_png) in formats {
+        let Some(bytes) = copy_windows_clipboard_format(format)? else {
+            continue;
+        };
+        let png = if is_png {
+            validate_clipboard_png(&bytes)
+        } else {
+            clipboard_bitmap_to_png(&bytes)
+        };
+        match png {
+            Ok(data) => return Ok(Some(data)),
+            Err(error) => decode_error = Some(error),
+        }
+    }
+    if let Some(error) = decode_error {
+        Err(error)
+    } else {
+        Ok(None)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn read_windows_clipboard_image_png() -> Result<Option<Vec<u8>>, String> {
+    Err("Clipboard image paste is available only in the Windows desktop app.".to_string())
+}
+
+fn create_native_clipboard_image(
+    target_path: &str,
+    base_name: &str,
+) -> Result<Option<NativeCreatedImage>, String> {
+    let Some(png_bytes) = read_windows_clipboard_image_png()? else {
+        return Ok(None);
+    };
+    let parent = canonical_directory(target_path)?;
+    let base = base_name.trim();
+    validate_child_name(base)?;
+
+    for index in 0..=1_000_000u32 {
+        let name = if index == 0 {
+            format!("{base}.png")
+        } else {
+            format!("{base} ({index}).png")
+        };
+        let candidate = parent.join(&name);
+        let mut file = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("Could not create the pasted image: {error}")),
+        };
+        if let Err(error) = file.write_all(&png_bytes) {
+            drop(file);
+            let _ = fs::remove_file(&candidate);
+            return Err(format!("Could not write the pasted image: {error}"));
+        }
+        drop(file);
+        let created = match fs::canonicalize(&candidate) {
+            Ok(path) => path,
+            Err(error) => {
+                let _ = fs::remove_file(&candidate);
+                return Err(format!("Could not resolve the pasted image path: {error}"));
+            }
+        };
+        return Ok(Some(NativeCreatedImage {
+            path: display_path(&created),
+            name,
+            size: png_bytes.len() as u64,
+        }));
+    }
+    Err("Could not find an available name for the pasted image.".to_string())
+}
+
+#[tauri::command]
+async fn paste_clipboard_image(
+    target_path: String,
+    base_name: String,
+) -> Result<Option<NativeCreatedImage>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        create_native_clipboard_image(&target_path, &base_name)
+    })
+    .await
+    .map_err(|error| format!("Clipboard image worker failed: {error}"))?
+}
+
 fn display_path(path: &Path) -> String {
     let value = path.to_string_lossy();
     #[cfg(target_os = "windows")]
@@ -1240,8 +1496,15 @@ fn is_text_preview_extension_allowed(path: &Path) -> bool {
         .unwrap_or_default();
     let is_common_dotfile = matches!(
         filename.as_str(),
-        ".editorconfig" | ".env" | ".gitattributes" | ".gitignore" | ".npmrc"
-            | "dockerfile" | "license" | "makefile" | "readme"
+        ".editorconfig"
+            | ".env"
+            | ".gitattributes"
+            | ".gitignore"
+            | ".npmrc"
+            | "dockerfile"
+            | "license"
+            | "makefile"
+            | "readme"
     );
     if filename.starts_with(".env.") || is_common_dotfile {
         return true;
@@ -1252,10 +1515,41 @@ fn is_text_preview_extension_allowed(path: &Path) -> bool {
         .unwrap_or_default();
     matches!(
         extension.as_str(),
-        "bat" | "c" | "cfg" | "cmd" | "cpp" | "css" | "csv" | "env" | "go" | "h"
-            | "htm" | "html" | "ini" | "java" | "js" | "jsx" | "json" | "jsonl"
-            | "log" | "md" | "markdown" | "php" | "properties" | "ps1" | "py" | "rb"
-            | "rs" | "sh" | "sql" | "toml" | "ts" | "tsx" | "txt" | "xml" | "yaml"
+        "bat"
+            | "c"
+            | "cfg"
+            | "cmd"
+            | "cpp"
+            | "css"
+            | "csv"
+            | "env"
+            | "go"
+            | "h"
+            | "htm"
+            | "html"
+            | "ini"
+            | "java"
+            | "js"
+            | "jsx"
+            | "json"
+            | "jsonl"
+            | "log"
+            | "md"
+            | "markdown"
+            | "php"
+            | "properties"
+            | "ps1"
+            | "py"
+            | "rb"
+            | "rs"
+            | "sh"
+            | "sql"
+            | "toml"
+            | "ts"
+            | "tsx"
+            | "txt"
+            | "xml"
+            | "yaml"
             | "yml"
     )
 }
@@ -3025,6 +3319,7 @@ fn main() {
             set_file_clipboard,
             get_file_clipboard,
             clear_file_clipboard,
+            paste_clipboard_image,
             image_thumbnail,
             list_drives,
             list_system_locations,

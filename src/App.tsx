@@ -70,7 +70,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, createNativeTextFile, createNativeShortcut, emptyNativeRecycleBin, getNativeFileClipboard, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
+import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, createNativeTextFile, createNativeShortcut, emptyNativeRecycleBin, getNativeFileClipboard, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
 const FindFilesModal = lazy(() => import('./components/FindFilesModal').then(module => ({ default: module.FindFilesModal })));
@@ -2337,7 +2337,33 @@ export default function App() {
     try {
       const clipboard = await getNativeFileClipboard();
       if (clipboard.paths.length === 0) {
-        showToast(t.core.fileClipboardEmpty);
+        const pastedImage = await pasteNativeClipboardImage(targetPath, t.core.screenshotFileBaseName);
+        if (!pastedImage) {
+          showToast(t.core.fileClipboardEmpty);
+          return;
+        }
+        await refreshChangedDirectories([targetPath]);
+        const createdAtMs = Date.now();
+        const imageId = `native-${encodeURIComponent(pastedImage.path.toLowerCase())}`;
+        const imageItem: FileItem = {
+          id: imageId,
+          name: pastedImage.name,
+          path: pastedImage.path,
+          isFolder: false,
+          type: 'image',
+          size: pastedImage.size,
+          modifiedDate: new Date(createdAtMs).toISOString().replace('T', ' ').slice(0, 16),
+          createdDate: new Date(createdAtMs).toISOString().replace('T', ' ').slice(0, 16),
+          modifiedAtMs: createdAtMs,
+          createdAtMs,
+          extension: 'png',
+        };
+        setAllFiles(previous => [
+          ...previous.filter(item => getPathKey(item.path) !== getPathKey(pastedImage.path)),
+          imageItem,
+        ]);
+        updatePaneTab(pane, tab => ({ ...tab, selectedIds: [imageId], focusedId: imageId }));
+        showToast(t.core.pastedImage.replace('{name}', pastedImage.name));
         return;
       }
       const result = clipboard.isCut
@@ -2363,7 +2389,7 @@ export default function App() {
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, refreshChangedDirectories, rightTabs, showToast, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.operationPartial, t.core.pasted, t.pane.chooseRealFolderFirst]);
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, refreshChangedDirectories, rightTabs, showToast, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.operationPartial, t.core.pasted, t.core.pastedImage, t.core.screenshotFileBaseName, t.pane.chooseRealFolderFirst, updatePaneTab]);
 
   const handleDropFiles = useCallback((droppedIds: string[], targetFolderPath?: string, sourcePane?: 'left' | 'right') => {
     moveItemsToPath(droppedIds, targetFolderPath || currentTab.currentPath, sourcePane);
