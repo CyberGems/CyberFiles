@@ -249,7 +249,7 @@ export function Tooltip({ label, placement = 'bottom', children, disabled = fals
     }
 
     setPosition(getPosition(anchorElement.getBoundingClientRect(), cardRef.current.getBoundingClientRect(), placement));
-  }, [anchorElement, placement]);
+  }, [anchorElement, label, placement]);
 
   useEffect(() => {
     if (!anchorElement) return;

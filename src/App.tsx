@@ -2426,7 +2426,7 @@ export default function App() {
 
   const moveItemsToPath = useCallback(async (selectedIds: string[], targetPath: string, sourcePane: 'left' | 'right' = activePane) => {
     if (targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH) {
-      showToast(t.pane.chooseRealFolderFirst);
+      showToast(t.pane.chooseRealDestinationFolder);
       return;
     }
     const roots = getRootItems(allFiles, selectedIds);
@@ -2490,14 +2490,14 @@ export default function App() {
 
     updatePaneTab(sourcePane, tab => ({ ...tab, selectedIds: [], focusedId: null }));
     showToast(t.core.moved.replace('{count}', String(roots.length)).replace('{target}', targetPath));
-  }, [activePane, allFiles, isFileOperationBusy, refreshChangedDirectories, t.core.cannotMoveIntoSelf, t.core.moved, t.core.operationFailedWithReason, t.core.operationPartial, t.pane.chooseRealFolderFirst, showToast, updatePaneTab]);
+  }, [activePane, allFiles, isFileOperationBusy, refreshChangedDirectories, t.core.cannotMoveIntoSelf, t.core.moved, t.core.operationFailedWithReason, t.core.operationPartial, t.pane.chooseRealDestinationFolder, showToast, updatePaneTab]);
 
   const handleCopySelected = useCallback(() => {
     const roots = getRootItems(allFiles, currentTab.selectedIds);
     if (roots.length === 0) return;
     const targetPath = inactiveTab.currentPath;
     if (targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH) {
-      showToast(t.pane.chooseRealFolderFirst);
+      showToast(t.pane.chooseRealDestinationFolder);
       return;
     }
     if (roots.some(root => root.isFolder && isSameOrDescendantPath(targetPath, root.path))) {
@@ -2543,7 +2543,7 @@ export default function App() {
 
     setAllFiles(prev => [...prev, ...newCopies]);
     showToast(t.core.copied.replace('{count}', String(roots.length)).replace('{target}', inactiveTab.title));
-  }, [allFiles, currentTab.selectedIds, inactiveTab.currentPath, inactiveTab.title, isFileOperationBusy, refreshChangedDirectories, t.core.cannotCopyIntoSelf, t.core.copied, t.core.operationFailedWithReason, t.core.operationPartial, t.pane.chooseRealFolderFirst, showToast]);
+  }, [allFiles, currentTab.selectedIds, inactiveTab.currentPath, inactiveTab.title, isFileOperationBusy, refreshChangedDirectories, t.core.cannotCopyIntoSelf, t.core.copied, t.core.operationFailedWithReason, t.core.operationPartial, t.pane.chooseRealDestinationFolder, showToast]);
 
   const handleMoveSelected = useCallback(() => {
     moveItemsToPath(currentTab.selectedIds, inactiveTab.currentPath);
@@ -3532,6 +3532,7 @@ export default function App() {
         showFileExtensions={showFileExtensions}
         onToggleShowFileExtensions={() => setShowFileExtensions(enabled => !enabled)}
         currentFolderPath={currentTab.currentPath}
+        oppositeFolderPath={inactiveTab.currentPath}
         windowsActionsAvailable={isTauriDesktop()}
         windowsSpecialFolders={windowsSpecialFolders}
         lastTerminalOption={lastTerminalOption}

@@ -288,8 +288,7 @@ export function SettingsModal({
                 { id: 'home', label: t.settings.startupHome, description: t.settings.startupHomeDescription },
                 { id: 'session', label: t.settings.startupSession, description: t.settings.startupSessionDescription },
               ] as const).map(option => (
-                <Tooltip key={option.id} label={option.description} placement="top">
-                  <label className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-xs transition-colors ${startupBehavior === option.id ? 'border-cyan-700/70 bg-cyan-950/20 text-neutral-200' : 'border-neutral-800 bg-neutral-950/60 text-neutral-400 hover:border-neutral-700'}`}>
+                <label key={option.id} className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-xs transition-colors ${startupBehavior === option.id ? 'border-cyan-700/70 bg-cyan-950/20 text-neutral-200' : 'border-neutral-800 bg-neutral-950/60 text-neutral-400 hover:border-neutral-700'}`}>
                     <input
                       type="radio"
                       name="startup-behavior"
@@ -303,14 +302,12 @@ export function SettingsModal({
                       <span className="mt-1 block leading-relaxed">{option.description}</span>
                     </span>
                   </label>
-                </Tooltip>
               ))}
             </div>
             {startupBehavior === 'session' && (
               <div className="mt-3 rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-3">
                 <label className="block text-xs font-medium text-neutral-200" htmlFor="startup-session-select">{t.settings.startupChooseSession}</label>
-                <Tooltip label={t.settings.startupChooseSession} placement="top">
-                  <select
+                <select
                     id="startup-session-select"
                     value={startupSessionId}
                     onChange={event => onStartupSessionIdChange(event.target.value)}
@@ -319,7 +316,6 @@ export function SettingsModal({
                     <option value={DEFAULT_SESSION_PROFILE_ID}>{t.workspaceProfiles.defaultSession}</option>
                     {sessions.map(session => <option key={session.id} value={session.id}>{session.name}</option>)}
                   </select>
-                </Tooltip>
                 <p className="mt-2 text-[11px] leading-relaxed text-neutral-500">{t.settings.startupSessionHelp}</p>
               </div>
             )}
@@ -329,8 +325,7 @@ export function SettingsModal({
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.interfaceSection}</div>
             <div className="space-y-2">
               <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
-                <Tooltip label={t.settings.showNotificationBannersDescription} placement="top">
-                  <label className="flex cursor-pointer items-start gap-2.5">
+                <label className="flex cursor-pointer items-start gap-2.5">
                     <input
                       type="checkbox"
                       checked={notificationBannersEnabled}
@@ -342,11 +337,9 @@ export function SettingsModal({
                       <span className="mt-1 block">{t.settings.showNotificationBannersDescription}</span>
                     </span>
                   </label>
-                </Tooltip>
               </div>
               <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
-                <Tooltip label={t.settings.autoFolderSizeDescription} placement="top">
-                  <label className="flex cursor-pointer items-start gap-2.5">
+                <label className="flex cursor-pointer items-start gap-2.5">
                     <input
                       type="checkbox"
                       checked={autoFolderSizeEnabled}
@@ -358,7 +351,6 @@ export function SettingsModal({
                       <span className="mt-1 block">{t.settings.autoFolderSizeDescription}</span>
                     </span>
                   </label>
-                </Tooltip>
                 {autoFolderSizeEnabled && (
                   <div className="mt-3 flex items-center justify-between gap-3 border-t border-neutral-800 pt-3">
                     <span>{t.settings.autoFolderSizeLimit}</span>
@@ -376,8 +368,7 @@ export function SettingsModal({
                 )}
               </div>
               <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
-                <Tooltip label={t.settings.showTooltipsDescription} placement="top">
-                  <label className="flex cursor-pointer items-start gap-2.5">
+                <label className="flex cursor-pointer items-start gap-2.5">
                     <input
                       type="checkbox"
                       checked={tooltipsEnabled}
@@ -389,7 +380,6 @@ export function SettingsModal({
                       <span className="mt-1 block">{t.settings.showTooltipsDescription}</span>
                     </span>
                   </label>
-                </Tooltip>
               </div>
             </div>
           </div>
@@ -456,8 +446,7 @@ export function SettingsModal({
           <div className="border-t border-neutral-800 pt-4">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.instancesSection}</div>
             <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
-              <Tooltip label={t.settings.multipleInstancesTooltip} placement="top">
-                <label className={`flex items-center gap-2 ${instancePreferencesSupported ? 'cursor-pointer text-neutral-200' : 'text-neutral-500'}`}>
+              <label className={`flex items-center gap-2 ${instancePreferencesSupported ? 'cursor-pointer text-neutral-200' : 'text-neutral-500'}`}>
                   <input
                     type="checkbox"
                     checked={instancePreferences.allowMultipleInstances}
@@ -467,7 +456,6 @@ export function SettingsModal({
                   />
                   {t.settings.multipleInstancesAllowed}
                 </label>
-              </Tooltip>
               <p className="mt-1 pl-6">{t.settings.multipleInstancesDescription}</p>
               {instancePreferencesError && (
                 <p className="mt-1 pl-6 text-rose-300">{instancePreferencesError}</p>
@@ -547,8 +535,7 @@ export function SettingsModal({
 
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <Tooltip label={t.settings.recentItemsDescription} placement="top">
-                <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5">
                   <input
                     type="checkbox"
                     checked={recentItemStyle.enabled}
@@ -560,9 +547,7 @@ export function SettingsModal({
                     <span className="mt-1 block">{t.settings.recentItemsDescription}</span>
                   </span>
                 </label>
-              </Tooltip>
-              <Tooltip label={t.settings.recentItemsReset} placement="top">
-                <button
+              <button
                   type="button"
                   onClick={onRecentItemStyleReset}
                   className="inline-flex items-center gap-1.5 rounded border border-neutral-700 px-2 py-1 text-[10px] text-neutral-300 transition-colors hover:border-cyan-500/60 hover:text-cyan-200"
@@ -570,7 +555,6 @@ export function SettingsModal({
                   <RotateCcw className="h-3 w-3" />
                   {t.settings.recentItemsReset}
                 </button>
-              </Tooltip>
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-2 border-t border-neutral-800 pt-3 sm:grid-cols-2">
@@ -580,8 +564,7 @@ export function SettingsModal({
                 onChange={textColor => onRecentItemStyleChange({ ...recentItemStyle, textColor })}
               />
 
-              <Tooltip label={t.settings.recentItemsBold} placement="top">
-                <label className="flex cursor-pointer items-center gap-2 rounded border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-neutral-300">
+              <label className="flex cursor-pointer items-center gap-2 rounded border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-neutral-300">
                   <input
                     type="checkbox"
                     checked={recentItemStyle.bold}
@@ -590,10 +573,8 @@ export function SettingsModal({
                   />
                   {t.settings.recentItemsBold}
                 </label>
-              </Tooltip>
 
-              <Tooltip label={t.settings.recentItemsItalic} placement="top">
-                <label className="flex cursor-pointer items-center gap-2 rounded border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-neutral-300">
+              <label className="flex cursor-pointer items-center gap-2 rounded border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-neutral-300">
                   <input
                     type="checkbox"
                     checked={recentItemStyle.italic}
@@ -602,10 +583,8 @@ export function SettingsModal({
                   />
                   {t.settings.recentItemsItalic}
                 </label>
-              </Tooltip>
 
-              <Tooltip label={t.settings.recentItemsBackgroundEnabled} placement="top">
-                <label className="flex cursor-pointer items-center gap-2 rounded border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-neutral-300">
+              <label className="flex cursor-pointer items-center gap-2 rounded border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-neutral-300">
                   <input
                     type="checkbox"
                     checked={recentItemStyle.backgroundEnabled}
@@ -614,7 +593,6 @@ export function SettingsModal({
                   />
                   {t.settings.recentItemsBackgroundEnabled}
                 </label>
-              </Tooltip>
 
               <ColorValueEditor
                 label={t.settings.recentItemsBackgroundColor}
@@ -641,8 +619,7 @@ export function SettingsModal({
           </div>
 
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
-            <Tooltip label={t.settings.imageTooltipThumbnailsDescription} placement="top">
-              <label className="flex cursor-pointer items-start gap-2.5">
+            <label className="flex cursor-pointer items-start gap-2.5">
                 <input
                   type="checkbox"
                   checked={imageTooltipThumbnailsEnabled}
@@ -654,7 +631,6 @@ export function SettingsModal({
                   <span className="mt-1 block">{t.settings.imageTooltipThumbnailsDescription}</span>
                 </span>
               </label>
-            </Tooltip>
           </div>
 
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
@@ -679,8 +655,7 @@ export function SettingsModal({
 
         <div className="flex items-center justify-between gap-3 border-t border-neutral-800 bg-neutral-950/40 px-5 py-3">
           <div className="flex min-w-0 items-center gap-3">
-            <Tooltip label={t.about.title} placement="top">
-              <button
+            <button
                 type="button"
                 onClick={onShowAbout}
                 className="inline-flex items-center gap-1.5 text-xs text-neutral-300 transition-colors hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
@@ -688,7 +663,6 @@ export function SettingsModal({
                 <Info className="h-3.5 w-3.5" />
                 {t.about.title}
               </button>
-            </Tooltip>
             <button onClick={onShowOnboarding} className="text-xs text-neutral-400 underline-offset-4 transition-colors hover:text-cyan-300 hover:underline">
             {t.settings.showOnboarding}
             </button>
