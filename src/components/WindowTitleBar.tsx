@@ -125,7 +125,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenShort
         >
           <img src="/icon.png" alt="" aria-hidden="true" className="h-7 w-7 shrink-0 rounded-md" />
           <span className="truncate text-[13px] font-semibold tracking-wide">{t.app.title}</span>
-          <span className="hidden rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-[9px] font-mono text-neutral-500 sm:inline">{t.app.stageBadge}</span>
+          <span className="hidden rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-[9px] font-sans text-neutral-500 sm:inline">{t.app.stageBadge}</span>
         </button>
       </Tooltip>
 
@@ -174,7 +174,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenShort
                 >
                   <Keyboard className="h-4 w-4 text-cyan-400" />
                   <span className="flex-1">{tTitlebar('Atajos de teclado', 'Keyboard shortcuts')}</span>
-                  <kbd className="rounded border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">F1</kbd>
+                  <kbd className="rounded border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 font-sans text-[10px] text-neutral-400">F1</kbd>
                 </button>
               </Tooltip>
               <div className="mx-2 my-1 border-t border-neutral-800" />
@@ -187,7 +187,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenShort
                 >
                   <Globe className="h-4 w-4 text-cyan-400" />
                   <span className="flex-1">{t.header.switchLanguage}</span>
-                  <span className="font-mono text-[10px] text-neutral-500">{language === 'es' ? 'EN' : 'ES'}</span>
+                  <span className="font-sans text-[10px] text-neutral-500">{language === 'es' ? 'EN' : 'ES'}</span>
                 </button>
               </Tooltip>
               <Tooltip label={tTitlebar('Acerca de CyberFiles', 'About CyberFiles')} placement="left">

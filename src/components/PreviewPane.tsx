@@ -319,7 +319,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, nativeP
       return <div className="p-6 flex flex-col items-center justify-center text-neutral-400 gap-3"><Icon className="w-10 h-10 text-cyan-400" /><span className="text-[11px] text-center">{t.preview.mediaUnavailable}</span></div>;
     }
 
-    return <div className="p-6 flex flex-col items-center justify-center text-neutral-500 gap-2"><FileText className="w-10 h-10 text-neutral-600 stroke-[1.5]" /><span className="text-[11px] font-mono uppercase">{item.extension || t.preview.noExtension}</span><span className="text-[10px] text-neutral-400">{formatFileSize(item.size)}</span></div>;
+    return <div className="p-6 flex flex-col items-center justify-center text-neutral-500 gap-2"><FileText className="w-10 h-10 text-neutral-600 stroke-[1.5]" /><span className="text-[11px] font-sans uppercase">{item.extension || t.preview.noExtension}</span><span className="text-[10px] text-neutral-400">{formatFileSize(item.size)}</span></div>;
   };
 
   return (
@@ -361,7 +361,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, nativeP
           </div>
           {!propertiesCollapsed && (
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
-              <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/50 p-2.5 font-mono text-[11px] space-y-1.5">
+              <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/50 p-2.5 font-sans text-[11px] space-y-1.5">
                 {item.isFolder ? (
                   <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.type}:</span><span className="text-right text-neutral-200">{t.preview.folder}</span></div>
                 ) : (
@@ -373,7 +373,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, nativeP
 
               <div className="space-y-1">
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.preview.path}</div>
-                <div className="flex items-center gap-1 rounded-lg border border-neutral-800 bg-neutral-900/80 p-2 font-mono text-[10px] text-neutral-300">
+                <div className="flex items-center gap-1 rounded-lg border border-neutral-800 bg-neutral-900/80 p-2 font-sans text-[10px] text-neutral-300">
                   <span className="flex-1 truncate">{item.path}</span>
                   <Tooltip label={copied ? t.preview.copied : t.preview.copyPath} placement="top"><button type="button" onClick={handleCopyPath} aria-label={copied ? t.preview.copied : t.preview.copyPath} className="flex-shrink-0 rounded p-1 transition-colors hover:bg-neutral-800 hover:text-cyan-300">{copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}</button></Tooltip>
                 </div>

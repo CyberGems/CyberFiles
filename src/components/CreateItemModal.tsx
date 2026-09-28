@@ -74,7 +74,7 @@ export function CreateItemModal({ kind, defaultName, isBusy, onClose, onSubmit, 
               value={name}
               onChange={event => setName(event.target.value)}
               disabled={isBusy}
-              className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100 outline-none transition-colors focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/15 disabled:opacity-50"
+              className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 font-sans text-sm text-neutral-100 outline-none transition-colors focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/15 disabled:opacity-50"
             />
           </label>
           {kind === 'shortcut' && (
@@ -86,7 +86,7 @@ export function CreateItemModal({ kind, defaultName, isBusy, onClose, onSubmit, 
                 onChange={event => setTargetPath(event.target.value)}
                 disabled={isBusy}
                 placeholder={t.contextMenu.shortcutTargetPlaceholder}
-                className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100 outline-none transition-colors placeholder:text-neutral-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/15 disabled:opacity-50"
+                className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 font-sans text-sm text-neutral-100 outline-none transition-colors placeholder:text-neutral-600 focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/15 disabled:opacity-50"
               />
               <div className="flex gap-2">
                 <Tooltip label={t.contextMenu.chooseTargetFile} placement="top">

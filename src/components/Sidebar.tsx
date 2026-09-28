@@ -274,7 +274,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <Clock className="w-3.5 h-3.5 text-amber-400" />
           <span>{t.sidebar.tabRecent}</span>
           {recentFiles.length > 0 && (
-            <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] font-mono bg-neutral-950 text-cyan-400 border border-neutral-700">
+            <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] font-sans bg-neutral-950 text-cyan-400 border border-neutral-700">
               {recentFiles.length}
             </span>
           )}
@@ -392,7 +392,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span className="flex-shrink-0">{item.isFolder ? <FolderOpen className="h-3.5 w-3.5 text-amber-300" /> : getFileTypeIcon(item.type)}</span>
                 <div className="min-w-0 flex-1">
                   <Tooltip label={item.name} placement="top"><p className="truncate text-[11px] font-medium text-neutral-200">{item.name}</p></Tooltip>
-                  <Tooltip label={item.path} placement="top"><p className="truncate font-mono text-[9px] text-neutral-500">{item.path}</p></Tooltip>
+                  <Tooltip label={item.path} placement="top"><p className="truncate font-sans text-[9px] text-neutral-500">{item.path}</p></Tooltip>
                 </div>
               </div>
             ))}
@@ -477,10 +477,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center gap-1.5">
                         <HardDrive className={`w-3.5 h-3.5 ${isSelected ? 'text-cyan-400' : 'text-neutral-400'}`} />
-                        <span className="font-mono font-bold text-xs">{drive.letter}</span>
+                        <span className="font-sans font-bold text-xs">{drive.letter}</span>
                         <span className="text-[11px] text-neutral-400 truncate max-w-[100px]">{drive.label}</span>
                       </div>
-                      <span className="text-[10px] text-neutral-400 font-mono">{hasCapacity ? `${usedPercentage}%` : '—'}</span>
+                      <span className="text-[10px] text-neutral-400 font-sans">{hasCapacity ? `${usedPercentage}%` : '—'}</span>
                     </div>
 
                     {/* Usage Meter Bar */}
@@ -493,7 +493,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       />
                     </div>
 
-                    <div className="flex justify-between text-[9px] text-neutral-400 mt-1 font-mono">
+                    <div className="flex justify-between text-[9px] text-neutral-400 mt-1 font-sans">
                       <span>{language === 'es' ? 'Libre' : 'Free'}: {hasCapacity ? formatFileSize(drive.totalBytes - drive.usedBytes) : '—'}</span>
                       <span>Total: {hasCapacity ? formatFileSize(drive.totalBytes) : '—'}</span>
                     </div>
@@ -662,7 +662,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           </span>
 
                           {item.count !== undefined && (
-                            <span className="ml-1 flex-shrink-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-[9px] font-mono text-neutral-400">
+                            <span className="ml-1 flex-shrink-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-[9px] font-sans text-neutral-400">
                               {item.count}
                             </span>
                           )}
@@ -713,7 +713,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 value={recentSearch}
                 onChange={(e) => setRecentSearch(e.target.value)}
                 placeholder="Filtrar recientes..."
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-md pl-8 pr-7 py-1 text-xs text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-cyan-500/60 font-mono"
+                className="w-full bg-neutral-950 border border-neutral-800 rounded-md pl-8 pr-7 py-1 text-xs text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-cyan-500/60 font-sans"
               />
               {recentSearch && (
                 <button
@@ -740,7 +740,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <button
                     key={cat}
                     onClick={() => setRecentCategory(cat)}
-                    className={`px-2 py-0.5 rounded-full font-mono transition-all ${
+                    className={`px-2 py-0.5 rounded-full font-sans transition-all ${
                       isSelected
                         ? 'bg-cyan-950 text-cyan-300 border border-cyan-700/60 font-semibold'
                         : 'bg-neutral-900 text-neutral-400 hover:text-neutral-200 border border-neutral-800'
@@ -805,13 +805,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         </div>
 
                         {/* Location folder & Size */}
-                        <div className="flex items-center justify-between text-[10px] font-mono text-neutral-500 mt-0.5">
+                        <div className="flex items-center justify-between text-[10px] font-sans text-neutral-500 mt-0.5">
                           <Tooltip label={file.path} placement="top"><span className="truncate max-w-[110px]">📁 {parentName}</span></Tooltip>
                           <span className="text-neutral-400 font-semibold">{formatFileSize(file.size)}</span>
                         </div>
 
                         {/* Relative Timestamp */}
-                        <div className="flex items-center justify-between text-[9px] font-mono text-neutral-400 mt-1">
+                        <div className="flex items-center justify-between text-[9px] font-sans text-neutral-400 mt-1">
                           <span className="flex items-center gap-1 text-amber-400/90">
                             <Clock className="w-2.5 h-2.5" />
                             {file.lastAccessed ? formatRelativeTime(file.lastAccessed) : 'Reciente'}

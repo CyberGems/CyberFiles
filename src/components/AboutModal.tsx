@@ -67,7 +67,7 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
             <img src="/icon.png" alt="" className="h-14 w-14 rounded-xl border border-neutral-700 bg-neutral-900 object-contain p-1" />
             <div>
               <h2 id="about-title" className="text-base font-semibold tracking-tight text-neutral-100">{t.about.title}</h2>
-              <p className="mt-1 text-[11px] font-mono text-cyan-300">{t.about.version.replace('{version}', __APP_VERSION__)}</p>
+              <p className="mt-1 text-[11px] font-sans text-cyan-300">{t.about.version.replace('{version}', __APP_VERSION__)}</p>
             </div>
           </div>
           <Tooltip label={t.about.close} placement="bottom">

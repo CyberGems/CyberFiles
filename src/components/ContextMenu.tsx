@@ -124,7 +124,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       {item ? (
         item.recycleBinId ? (
           <>
-            <div className="truncate border-b border-neutral-800 px-3 py-1.5 font-mono text-[10px] text-neutral-400">{item.name}</div>
+            <div className="truncate border-b border-neutral-800 px-3 py-1.5 font-sans text-[10px] text-neutral-400">{item.name}</div>
             <div className="py-0.5">
               <MenuButton
                 icon={<RotateCcw className="h-3.5 w-3.5 text-cyan-400" />}
@@ -136,14 +136,14 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           </>
         ) : isSystemLocation ? (
           <>
-            <div className="truncate border-b border-neutral-800 px-3 py-1.5 font-mono text-[10px] text-neutral-400">{item.name}</div>
+            <div className="truncate border-b border-neutral-800 px-3 py-1.5 font-sans text-[10px] text-neutral-400">{item.name}</div>
             <div className="py-0.5">
               <MenuButton icon={<FolderOpen className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.openLocation} onClick={() => { onOpenLocation(item); onClose(); }} />
             </div>
           </>
         ) : (
         <>
-          <div className="truncate border-b border-neutral-800 px-3 py-1.5 font-mono text-[10px] text-neutral-400">{item.name}</div>
+          <div className="truncate border-b border-neutral-800 px-3 py-1.5 font-sans text-[10px] text-neutral-400">{item.name}</div>
           {item.isFolder && (
             <>
               <div className="py-0.5">
@@ -230,7 +230,7 @@ const MenuButton: React.FC<{
       className={"flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 " + (danger ? "text-rose-300 hover:bg-rose-950/40" : "text-neutral-200 hover:bg-neutral-800")}
     >
       <span className="flex min-w-0 items-center gap-2">{icon}<span className="truncate">{label}</span></span>
-      {shortcut && <span className="shrink-0 font-mono text-[10px] text-neutral-500">{shortcut}</span>}
+      {shortcut && <span className="shrink-0 font-sans text-[10px] text-neutral-500">{shortcut}</span>}
       {trailing}
     </button>
   </Tooltip>

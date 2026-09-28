@@ -403,7 +403,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         />
       )}
       <span className="font-semibold">{item.name}</span>
-      {item.path && <span className="break-all font-mono text-[10px] text-cyan-200">{item.path}</span>}
+      {item.path && <span className="break-all font-sans text-[10px] text-cyan-200">{item.path}</span>}
       {!item.isFolder && <span>{formatFileSize(item.size)}</span>}
       {item.modifiedDate && (
         <span className="text-[10px] text-neutral-300">
@@ -1132,7 +1132,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </Tooltip>
         </div>
 
-        <div className="flex items-center gap-1 text-[10px] text-neutral-400 font-mono px-2">
+        <div className="flex items-center gap-1 text-[10px] text-neutral-400 font-sans px-2">
           <span>{paneId === 'left' ? t.statusBar.leftPane : t.statusBar.rightPane}</span>
         </div>
       </div>
@@ -1149,12 +1149,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
           className={`flex-1 flex items-center bg-neutral-950 px-2 py-1 rounded border border-neutral-800 min-h-[28px] overflow-hidden ${tab.currentPath && !isSystemHome && !isRecycleBin ? 'cursor-text hover:border-neutral-700' : 'cursor-default'}`}
         >
           {isSystemHome ? (
-            <div className="flex items-center gap-1.5 px-1 text-neutral-200 text-xs font-mono">
+            <div className="flex items-center gap-1.5 px-1 text-neutral-200 text-xs font-sans">
               <Monitor className="h-3.5 w-3.5 text-cyan-400" />
               <span>{t.sidebar.thisPc}</span>
             </div>
           ) : isRecycleBin ? (
-            <div className="flex items-center gap-1.5 px-1 text-neutral-200 text-xs font-mono">
+            <div className="flex items-center gap-1.5 px-1 text-neutral-200 text-xs font-sans">
               <Trash2 className="h-3.5 w-3.5 text-rose-300" />
               <span>{t.sidebar.recycleBinTitle}</span>
             </div>
@@ -1166,11 +1166,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 value={pathInput}
                 onChange={(e) => setPathInput(e.target.value)}
                 onBlur={() => setIsEditingPath(false)}
-                className="w-full bg-transparent text-neutral-100 text-xs outline-none font-mono"
+                className="w-full bg-transparent text-neutral-100 text-xs outline-none font-sans"
               />
             </form>
           ) : (
-            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar font-mono text-xs">
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar font-sans text-xs">
               {breadcrumbSegments.length === 0 && <span className="px-1 text-neutral-500">{t.pane.noFolderOpen}</span>}
               {breadcrumbSegments.map((seg, i) => (
                 <React.Fragment key={seg.fullPath}>
@@ -1215,7 +1215,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             placeholder={t.pane.filterPlaceholder}
             value={tab.filterQuery}
             onChange={(e) => onFilterChange(e.target.value)}
-            className="w-full bg-neutral-900 pl-7 pr-7 py-1 rounded text-xs text-neutral-200 placeholder:text-neutral-500 border border-neutral-800 focus:border-cyan-500/60 focus:outline-none font-mono"
+            className="w-full bg-neutral-900 pl-7 pr-7 py-1 rounded text-xs text-neutral-200 placeholder:text-neutral-500 border border-neutral-800 focus:border-cyan-500/60 focus:outline-none font-sans"
           />
           {tab.filterQuery && (
             <button
@@ -1227,7 +1227,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           )}
         </div>
 
-        <div className="text-[10px] text-neutral-400 font-mono whitespace-nowrap">
+        <div className="text-[10px] text-neutral-400 font-sans whitespace-nowrap">
           {files.length} elem.
         </div>
       </div>
@@ -1405,7 +1405,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 >
                   {visibleFileColumns.map(column => {
                     if (column === 'extension') {
-                      return <div key={column} className="min-w-0 truncate font-mono text-[10px] uppercase text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder ? '' : (item.extension || '')}</span></div>;
+                      return <div key={column} className="min-w-0 truncate font-sans text-[10px] uppercase text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder ? '' : (item.extension || '')}</span></div>;
                     }
                     if (column === 'name') {
                       return (
@@ -1430,13 +1430,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       );
                     }
                     if (column === 'size') {
-                      return <div key={column} className="min-w-0 text-right font-mono text-[11px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder ? '--' : formatFileSize(item.size)}</span></div>;
+                      return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder ? '--' : formatFileSize(item.size)}</span></div>;
                     }
                     if (column === 'created') {
                       const createdDate = item.createdDate || (item.createdAtMs ? new Date(item.createdAtMs).toISOString().replace('T', ' ').slice(0, 16) : '');
-                      return <div key={column} className="min-w-0 text-right font-mono text-[10px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{createdDate || '--'}</span></div>;
+                      return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{createdDate || '--'}</span></div>;
                     }
-                    return <div key={column} className="min-w-0 text-right font-mono text-[10px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.modifiedDate || '--'}</span></div>;
+                    return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.modifiedDate || '--'}</span></div>;
                   })}
                 </div>
               );
@@ -1477,7 +1477,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       <span className="min-w-0 flex-1 truncate" style={getRecentNameStyle(item, isSelected)}>{item.name}</span>
                     </Tooltip>
                   )}
-                  {!item.isFolder && <span className="flex-shrink-0 font-mono text-[10px] text-neutral-500">{formatFileSize(item.size)}</span>}
+                  {!item.isFolder && <span className="flex-shrink-0 font-sans text-[10px] text-neutral-500">{formatFileSize(item.size)}</span>}
                 </div>
               );
             })}
@@ -1523,7 +1523,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       <span className="w-full truncate px-1 text-[11px] font-medium" style={getRecentNameStyle(item, isSelected)}>{item.name}</span>
                     </Tooltip>
                   )}
-                  <span className="mt-0.5 text-[9px] font-mono text-neutral-400">
+                  <span className="mt-0.5 text-[9px] font-sans text-neutral-400">
                     {item.isFolder ? 'Carpeta' : formatFileSize(item.size)}
                   </span>
                 </div>
@@ -1548,7 +1548,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       </div>
 
       {/* 6. Footer Status Bar with Mini Storage Distribution Strip */}
-      <div className="px-2.5 py-1 bg-neutral-950 border-t border-neutral-800 text-[10px] font-mono text-neutral-400 flex items-center justify-between select-none gap-2">
+      <div className="px-2.5 py-1 bg-neutral-950 border-t border-neutral-800 text-[10px] font-sans text-neutral-400 flex items-center justify-between select-none gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
           <span>{files.length} objetos</span>
           {selectedFiles.length > 0 ? (

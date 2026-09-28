@@ -133,7 +133,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
                     placeholder="ej: copia, 2026, _raw"
                     value={rule.findText}
                     onChange={(e) => setRule({ ...rule, findText: e.target.value })}
-                    className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-mono focus:border-cyan-400 focus:outline-none"
+                    className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-sans focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
                 <div className="space-y-1">
@@ -143,7 +143,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
                     placeholder="ej: final, v2, o dejar vacío para borrar"
                     value={rule.replaceText}
                     onChange={(e) => setRule({ ...rule, replaceText: e.target.value })}
-                    className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-mono focus:border-cyan-400 focus:outline-none"
+                    className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-sans focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
                 <div className="col-span-full flex items-center gap-2 pt-1">
@@ -170,7 +170,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
                     placeholder="ej: [BACKUP]_"
                     value={rule.prefix}
                     onChange={(e) => setRule({ ...rule, prefix: e.target.value })}
-                    className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-mono focus:border-cyan-400 focus:outline-none"
+                    className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-sans focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
                 <div className="space-y-1">
@@ -180,7 +180,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
                     placeholder="ej: _2026"
                     value={rule.suffix}
                     onChange={(e) => setRule({ ...rule, suffix: e.target.value })}
-                    className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-mono focus:border-cyan-400 focus:outline-none"
+                    className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-sans focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
               </div>
@@ -194,7 +194,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
                     type="number"
                     value={rule.startNumber}
                     onChange={(e) => setRule({ ...rule, startNumber: parseInt(e.target.value) || 0 })}
-                    className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-mono focus:border-cyan-400 focus:outline-none"
+                    className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-sans focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
                 <div className="space-y-1">
@@ -203,7 +203,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
                     type="number"
                     value={rule.numberStep}
                     onChange={(e) => setRule({ ...rule, numberStep: parseInt(e.target.value) || 1 })}
-                    className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-mono focus:border-cyan-400 focus:outline-none"
+                    className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-sans focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
                 <div className="space-y-1">
@@ -211,7 +211,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
                   <select
                     value={rule.paddingDigits}
                     onChange={(e) => setRule({ ...rule, paddingDigits: parseInt(e.target.value) || 1 })}
-                    className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-mono focus:border-cyan-400 focus:outline-none"
+                    className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-sans focus:border-cyan-400 focus:outline-none"
                   >
                     <option value={1}>Sin ceros (1, 2, 3)</option>
                     <option value={2}>2 dígitos (01, 02, 03)</option>
@@ -229,7 +229,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
                     <button
                       key={ct}
                       onClick={() => setRule({ ...rule, caseType: ct })}
-                      className={`p-2 rounded border text-center font-mono capitalize transition-colors ${
+                      className={`p-2 rounded border text-center font-sans capitalize transition-colors ${
                         rule.caseType === ct
                           ? 'bg-neutral-800 border-cyan-500 text-cyan-300'
                           : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'
@@ -259,10 +259,10 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-400 px-1">
               <span>Comparación en tiempo real ({selectedItems.length} archivos seleccionados)</span>
-              <span className="text-cyan-400 font-mono">{changedCount} con modificaciones</span>
+              <span className="text-cyan-400 font-sans">{changedCount} con modificaciones</span>
             </div>
 
-            <div className="border border-neutral-800 rounded-lg overflow-hidden max-h-56 overflow-y-auto bg-neutral-950 font-mono text-[11px]">
+            <div className="border border-neutral-800 rounded-lg overflow-hidden max-h-56 overflow-y-auto bg-neutral-950 font-sans text-[11px]">
               <table className="w-full border-collapse">
                 <thead className="bg-neutral-900/90 text-neutral-400 text-[10px] uppercase tracking-wider sticky top-0 border-b border-neutral-800">
                   <tr>

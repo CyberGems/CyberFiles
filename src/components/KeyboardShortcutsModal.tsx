@@ -65,7 +65,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
               className="flex items-center justify-between p-2 rounded-lg bg-neutral-950/50 border border-neutral-800/80 text-xs"
             >
               <span className="text-neutral-300 text-[11.5px]">{s.desc}</span>
-              <kbd className="px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-cyan-300 font-mono text-[11px] font-semibold whitespace-nowrap shadow-sm">
+              <kbd className="px-2 py-1 rounded bg-neutral-800 border border-neutral-700 text-cyan-300 font-sans text-[11px] font-semibold whitespace-nowrap shadow-sm">
                 {s.key}
               </kbd>
             </div>

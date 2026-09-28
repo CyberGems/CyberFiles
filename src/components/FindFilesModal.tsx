@@ -173,7 +173,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
             <div>
               <h2 className="text-sm font-bold text-neutral-100 flex items-center gap-2">
                 <span>{isSpanish ? 'Buscar archivos' : 'Search files'}</span>
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400 border border-neutral-700">
+                <span className="text-[10px] font-sans px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400 border border-neutral-700">
                   Ctrl+F
                 </span>
               </h2>
@@ -217,7 +217,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
               <Tooltip label={t.findFiles.caseSensitive} placement="top">
                 <button
                   onClick={() => setCaseSensitive(!caseSensitive)}
-                  className={`px-1.5 py-0.5 rounded text-[11px] font-mono font-bold transition-colors ${
+                  className={`px-1.5 py-0.5 rounded text-[11px] font-sans font-bold transition-colors ${
                     caseSensitive 
                       ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50' 
                       : 'text-neutral-500 hover:text-neutral-300'
@@ -229,7 +229,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
               <Tooltip label={t.findFiles.useRegex} placement="top">
                 <button
                   onClick={() => setUseRegex(!useRegex)}
-                  className={`px-1.5 py-0.5 rounded text-[11px] font-mono font-bold transition-colors ${
+                  className={`px-1.5 py-0.5 rounded text-[11px] font-sans font-bold transition-colors ${
                     useRegex 
                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50' 
                       : 'text-neutral-500 hover:text-neutral-300'
@@ -322,7 +322,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
         </div>
 
         {/* Search Statistics Status Line */}
-        <div className="px-4 py-1.5 bg-neutral-950 border-b border-neutral-800 flex items-center justify-between text-[11px] font-mono text-neutral-400">
+        <div className="px-4 py-1.5 bg-neutral-950 border-b border-neutral-800 flex items-center justify-between text-[11px] font-sans text-neutral-400">
           <div className="flex items-center gap-3">
             <span>
               Resultados: <strong className="text-cyan-400">{searchResults.matches.length}</strong> elementos
@@ -380,12 +380,12 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
                           {renderHighlightedText(file.name, query)}
                         </span>
                         {ext && (
-                          <span className="text-[9px] font-mono px-1 py-0.2 bg-neutral-800 text-neutral-400 rounded uppercase">
+                          <span className="text-[9px] font-sans px-1 py-0.2 bg-neutral-800 text-neutral-400 rounded uppercase">
                             {ext}
                           </span>
                         )}
                         {match.matchType === 'content' && (
-                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-950/70 text-amber-300 border border-amber-800/60 flex items-center gap-1">
+                          <span className="text-[10px] font-sans px-1.5 py-0.2 rounded bg-amber-950/70 text-amber-300 border border-amber-800/60 flex items-center gap-1">
                             <Sparkles className="w-2.5 h-2.5" />
                             <span>Encontrado en contenido (línea {match.matchedLineNumber || 1})</span>
                           </span>
@@ -394,14 +394,14 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
 
                       {/* Content match snippet preview */}
                       {match.matchType === 'content' && match.contentSnippet && (
-                        <div className="mt-1 px-2 py-1 rounded bg-black/60 border border-neutral-800 font-mono text-[11px] text-neutral-300 overflow-hidden text-ellipsis whitespace-nowrap max-w-xl">
+                        <div className="mt-1 px-2 py-1 rounded bg-black/60 border border-neutral-800 font-sans text-[11px] text-neutral-300 overflow-hidden text-ellipsis whitespace-nowrap max-w-xl">
                           <span className="text-neutral-500 mr-2">Línea {match.matchedLineNumber}:</span>
                           {renderHighlightedText(match.contentSnippet, query)}
                         </div>
                       )}
 
                       {/* Directory Breadcrumb */}
-                      <p className="text-[11px] text-neutral-500 font-mono truncate mt-0.5">
+                      <p className="text-[11px] text-neutral-500 font-sans truncate mt-0.5">
                         {renderHighlightedText(file.path, query)}
                       </p>
                     </div>
@@ -409,10 +409,10 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
 
                   {/* Metadata & Actions */}
                   <div className="flex items-center gap-3 flex-shrink-0 text-right">
-                    <div className="font-mono text-[11px] text-neutral-400 min-w-[70px]">
+                    <div className="font-sans text-[11px] text-neutral-400 min-w-[70px]">
                       {file.isFolder ? '<DIR>' : formatFileSize(file.size)}
                     </div>
-                    <div className="font-mono text-[10px] text-neutral-500 hidden md:block min-w-[110px]">
+                    <div className="font-sans text-[10px] text-neutral-500 hidden md:block min-w-[110px]">
                       {file.modifiedDate}
                     </div>
 
@@ -469,13 +469,13 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
         <div className="px-4 py-2 bg-neutral-950 border-t border-neutral-800 flex items-center justify-between text-[11px] text-neutral-400">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 font-mono text-[10px]">↑/↓</kbd> Navegar
+              <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 font-sans text-[10px]">↑/↓</kbd> Navegar
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 font-mono text-[10px]">Enter</kbd> Localizar en panel
+              <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 font-sans text-[10px]">Enter</kbd> Localizar en panel
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 font-mono text-[10px]">Esc</kbd> Cerrar
+              <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 font-sans text-[10px]">Esc</kbd> Cerrar
             </span>
           </div>
           <div className="text-neutral-500">
