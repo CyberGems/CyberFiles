@@ -23,6 +23,7 @@ interface OpenMenu {
   target: TextTarget;
   left: number;
   top: number;
+  pasteAndGoPath: string | null;
 }
 
 const histories = new WeakMap<TextTarget, EditHistory>();
@@ -189,6 +190,32 @@ function selectAllText(target: TextTarget) {
   selection?.addRange(range);
 }
 
+function getUsableExplorerAddress(value: string): string | null {
+  let address = value.trim();
+  if (!address || /[\r\n]/.test(address)) return null;
+  if ((address.startsWith('"') && address.endsWith('"')) || (address.startsWith("'") && address.endsWith("'"))) {
+    address = address.slice(1, -1).trim();
+  }
+  if (/^file:\/\//i.test(address)) {
+    try {
+      const url = new URL(address);
+      let path = decodeURIComponent(url.pathname);
+      if (url.hostname && url.hostname.toLowerCase() !== 'localhost') {
+        path = `\\\\${url.hostname}${path.replace(/\//g, '\\')}`;
+      } else {
+        path = path.replace(/^\/([a-z]:)/i, '$1').replace(/\//g, '\\');
+      }
+      address = path;
+    } catch {
+      return null;
+    }
+  }
+  const drivePath = /^[a-z]:[\\/]/i.test(address);
+  const extendedDrivePath = /^\\\\\?\\[a-z]:[\\/]/i.test(address);
+  const networkPath = /^\\\\[^\\]+\\[^\\]+/.test(address);
+  return drivePath || extendedDrivePath || networkPath ? address : null;
+}
+
 export function TextInputContextMenu() {
   const { t } = useLanguage();
   const [menu, setMenu] = useState<OpenMenu | null>(null);
@@ -201,11 +228,21 @@ export function TextInputContextMenu() {
       event.preventDefault();
       target.focus();
       getHistory(target);
+      const canPasteAndGo = target.dataset.pasteAndGo === 'true';
       setMenu({
         target,
         left: Math.max(8, Math.min(event.clientX, window.innerWidth - 224)),
-        top: Math.max(8, Math.min(event.clientY, window.innerHeight - 260)),
+        top: Math.max(8, Math.min(event.clientY, window.innerHeight - (canPasteAndGo ? 292 : 260))),
+        pasteAndGoPath: null,
       });
+      if (canPasteAndGo && navigator.clipboard?.readText) {
+        void navigator.clipboard.readText().then(value => {
+          const path = getUsableExplorerAddress(value);
+          setMenu(previous => previous?.target === target ? { ...previous, pasteAndGoPath: path } : previous);
+        }).catch(() => {
+          setMenu(previous => previous?.target === target ? { ...previous, pasteAndGoPath: null } : previous);
+        });
+      }
     };
     const onBeforeInput = (event: Event) => {
       const target = getTextTarget(event.target);
@@ -277,11 +314,22 @@ export function TextInputContextMenu() {
   const history = getHistory(menu.target);
   const readOnly = isReadOnly(menu.target);
   const selected = hasSelection(menu.target);
+  const selectAllSeparatorIndex = menu.target.dataset.pasteAndGo === 'true' ? 5 : 4;
   const actions = [
     { label: t.textFieldContextMenu.undo, icon: <Undo2 className="h-3.5 w-3.5" />, disabled: history.undo.length === 0, run: () => applyHistory(menu.target, 'undo') },
     { label: t.textFieldContextMenu.redo, icon: <Redo2 className="h-3.5 w-3.5" />, disabled: history.redo.length === 0, run: () => applyHistory(menu.target, 'redo') },
     { label: t.textFieldContextMenu.copy, icon: <Copy className="h-3.5 w-3.5" />, disabled: !selected, run: () => { void copySelectedText(menu.target).catch(() => {}); } },
     { label: t.textFieldContextMenu.paste, icon: <ClipboardPaste className="h-3.5 w-3.5" />, disabled: readOnly, run: () => { void pasteText(menu.target).catch(() => {}); } },
+    ...(menu.target.dataset.pasteAndGo === 'true' ? [{
+      label: t.textFieldContextMenu.pasteAndGo,
+      icon: <ClipboardPaste className="h-3.5 w-3.5" />,
+      disabled: !menu.pasteAndGoPath,
+      run: () => {
+        if (menu.pasteAndGoPath) {
+          menu.target.dispatchEvent(new CustomEvent('cyberfiles-paste-and-go', { bubbles: true, detail: menu.pasteAndGoPath }));
+        }
+      },
+    }] : []),
     { label: t.textFieldContextMenu.selectAll, icon: <ListChecks className="h-3.5 w-3.5" />, disabled: false, run: () => selectAllText(menu.target) },
     { label: t.textFieldContextMenu.delete, icon: <Delete className="h-3.5 w-3.5" />, disabled: readOnly || !selected, run: () => deleteSelectedText(menu.target) },
   ];
@@ -302,7 +350,7 @@ export function TextInputContextMenu() {
             disabled={action.disabled}
             onMouseDown={event => event.preventDefault()}
             onClick={() => { action.run(); setMenu(null); }}
-            className={'flex w-full items-center gap-2 rounded px-2.5 py-2 text-left transition-colors ' + (index === 2 || index === 4 ? 'mt-1 border-t border-neutral-800 pt-2 ' : '') + (action.disabled ? 'cursor-not-allowed text-neutral-600' : 'text-neutral-200 hover:bg-neutral-800 hover:text-cyan-200 active:bg-cyan-950/60')}
+            className={'flex w-full items-center gap-2 rounded px-2.5 py-2 text-left transition-colors ' + (index === 2 || index === selectAllSeparatorIndex ? 'mt-1 border-t border-neutral-800 pt-2 ' : '') + (action.disabled ? 'cursor-not-allowed text-neutral-600' : 'text-neutral-200 hover:bg-neutral-800 hover:text-cyan-200 active:bg-cyan-950/60')}
           >
             {action.icon}<span>{action.label}</span>
           </button>

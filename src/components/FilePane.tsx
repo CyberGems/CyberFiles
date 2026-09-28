@@ -33,6 +33,7 @@ import {
   Trash2,
   LockKeyhole,
   UnlockKeyhole,
+  History,
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, GroupByField, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
 import { formatLocalDateTime } from '../utils/dateTime';
@@ -64,6 +65,8 @@ interface FilePaneProps {
   onAddTab: () => void;
   onCloseTab: (index: number) => void;
   files: FileItem[];
+  recentFolderPaths: string[];
+  onClearRecentFolders: () => void;
   drives: DriveInfo[];
   hasMore?: boolean;
   isLoadingDirectory?: boolean;
@@ -270,6 +273,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onAddTab,
   onCloseTab,
   files,
+  recentFolderPaths,
+  onClearRecentFolders,
   drives,
   hasMore = false,
   isLoadingDirectory = false,
@@ -301,6 +306,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const effectiveViewMode = tab.viewMode;
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [isEditingPath, setIsEditingPath] = useState(false);
+  const [recentFoldersMenuPosition, setRecentFoldersMenuPosition] = useState<{ left: number; top: number; width: number } | null>(null);
   const [pathInput, setPathInput] = useState(tab.currentPath);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingItemName, setEditingItemName] = useState('');
@@ -324,6 +330,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   const pathInputRef = useRef<HTMLInputElement>(null);
+  const recentFoldersMenuRef = useRef<HTMLDivElement>(null);
+  const recentFoldersButtonRef = useRef<HTMLButtonElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const columnResizeDragRef = useRef<ColumnResizeDrag | null>(null);
   const columnWidthsSaveTimeoutRef = useRef<number | null>(null);
@@ -532,6 +540,43 @@ export const FilePane: React.FC<FilePaneProps> = ({
   useEffect(() => {
     setPathInput(tab.currentPath);
   }, [tab.currentPath]);
+
+  useEffect(() => {
+    if (!recentFoldersMenuPosition) return;
+    const dismiss = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Node && (
+        recentFoldersMenuRef.current?.contains(target)
+        || recentFoldersButtonRef.current?.contains(target)
+      )) return;
+      setRecentFoldersMenuPosition(null);
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setRecentFoldersMenuPosition(null);
+    };
+    document.addEventListener('pointerdown', dismiss, true);
+    document.addEventListener('keydown', dismissOnEscape, true);
+    window.addEventListener('resize', dismiss);
+    return () => {
+      document.removeEventListener('pointerdown', dismiss, true);
+      document.removeEventListener('keydown', dismissOnEscape, true);
+      window.removeEventListener('resize', dismiss);
+    };
+  }, [recentFoldersMenuPosition]);
+
+  useEffect(() => {
+    const input = pathInputRef.current;
+    if (!input) return;
+    const navigateToClipboardAddress = (event: Event) => {
+      const path = (event as CustomEvent<string>).detail?.trim();
+      if (!path) return;
+      setPathInput(path);
+      setIsEditingPath(false);
+      onNavigate(path);
+    };
+    input.addEventListener('cyberfiles-paste-and-go', navigateToClipboardAddress);
+    return () => input.removeEventListener('cyberfiles-paste-and-go', navigateToClipboardAddress);
+  }, [onNavigate, isEditingPath]);
 
   useEffect(() => {
     try {
@@ -781,6 +826,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (pathInput.trim() && pathInput !== tab.currentPath) {
       onNavigate(pathInput.trim());
     }
+  };
+
+  const toggleRecentFoldersMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (recentFoldersMenuPosition) {
+      setRecentFoldersMenuPosition(null);
+      return;
+    }
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const width = Math.min(360, window.innerWidth - 16);
+    setRecentFoldersMenuPosition({
+      left: Math.max(8, Math.min(bounds.right - width, window.innerWidth - width - 8)),
+      top: Math.max(8, Math.min(bounds.bottom + 4, window.innerHeight - 400)),
+      width,
+    });
   };
 
   const handleRenameSubmit = (itemId: string, originalName: string) => {
@@ -1228,7 +1288,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         {/* Breadcrumb Path Box */}
         <div 
           onClick={() => tab.currentPath && !isSystemHome && !isRecycleBin && setIsEditingPath(true)}
-          className={`flex-1 flex items-center bg-neutral-950 px-2 py-1 rounded border border-neutral-800 min-h-[28px] overflow-hidden ${tab.currentPath && !isSystemHome && !isRecycleBin ? 'cursor-text hover:border-neutral-700' : 'cursor-default'}`}
+          className={`flex-1 min-w-0 flex items-center bg-neutral-950 px-2 py-1 rounded border border-neutral-800 min-h-[28px] overflow-hidden ${tab.currentPath && !isSystemHome && !isRecycleBin ? 'cursor-text hover:border-neutral-700' : 'cursor-default'}`}
         >
           {isSystemHome ? (
             <div className="flex items-center gap-1.5 px-1 text-neutral-200 text-xs font-sans">
@@ -1245,6 +1305,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               <input
                 ref={pathInputRef}
                 type="text"
+                data-paste-and-go="true"
                 value={pathInput}
                 onChange={(e) => setPathInput(e.target.value)}
                 onBlur={() => setIsEditingPath(false)}
@@ -1252,7 +1313,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               />
             </form>
           ) : (
-            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar font-sans text-xs">
+            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto no-scrollbar font-sans text-xs">
               {breadcrumbSegments.length === 0 && <span className="px-1 text-neutral-500">{t.pane.noFolderOpen}</span>}
               {breadcrumbSegments.map((seg, i) => (
                 <React.Fragment key={seg.fullPath}>
@@ -1272,7 +1333,68 @@ export const FilePane: React.FC<FilePaneProps> = ({
               ))}
             </div>
           )}
+          {!isEditingPath && (
+            <Tooltip label={t.pane.recentFolders} placement="bottom">
+              <button
+                ref={recentFoldersButtonRef}
+                type="button"
+                aria-label={t.pane.recentFolders}
+                aria-haspopup="menu"
+                aria-expanded={Boolean(recentFoldersMenuPosition)}
+                onClick={toggleRecentFoldersMenu}
+                className={`ml-auto flex-shrink-0 rounded p-1 transition-colors ${recentFoldersMenuPosition ? 'bg-neutral-800 text-cyan-200' : 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200'}`}
+              >
+                <History className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+          )}
         </div>
+
+        {recentFoldersMenuPosition && createPortal(
+          <div
+            ref={recentFoldersMenuRef}
+            role="menu"
+            aria-label={t.pane.recentFolders}
+            style={{ left: recentFoldersMenuPosition.left, top: recentFoldersMenuPosition.top, width: recentFoldersMenuPosition.width }}
+            className="fixed z-[110] max-h-[min(24rem,calc(100vh-1rem))] overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-950/95 p-1.5 text-xs shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
+          >
+            <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.pane.recentFolders}</div>
+            {recentFolderPaths.length > 0 ? recentFolderPaths.map(path => (
+              <Tooltip key={path} label={path} placement="right">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setPathInput(path);
+                    setIsEditingPath(false);
+                    setRecentFoldersMenuPosition(null);
+                    onNavigate(path);
+                  }}
+                  className="flex w-full min-w-0 items-center gap-2 rounded px-2.5 py-2 text-left text-neutral-200 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
+                >
+                  <Folder className="h-3.5 w-3.5 flex-shrink-0 text-cyan-400" />
+                  <span className="min-w-0 flex-1 truncate font-sans">{path}</span>
+                </button>
+              </Tooltip>
+            )) : (
+              <div className="px-2.5 py-3 text-center text-neutral-500">{t.pane.noRecentFolders}</div>
+            )}
+            <div className="my-1 h-px bg-neutral-800" />
+            <Tooltip label={t.pane.clearRecentFolders} placement="right">
+              <button
+                type="button"
+                role="menuitem"
+                disabled={recentFolderPaths.length === 0}
+                onClick={onClearRecentFolders}
+                className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-rose-300 transition-colors hover:bg-rose-950/40 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>{t.pane.clearRecentFolders}</span>
+              </button>
+            </Tooltip>
+          </div>,
+          document.body,
+        )}
 
         <Tooltip label={`${t.toolbar.refresh} (F5)`} disabled={!tab.currentPath}><button onClick={() => onRefresh ? onRefresh() : onNavigate(tab.currentPath)} disabled={!tab.currentPath} className="p-1 rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-30"><RotateCw className="w-3.5 h-3.5" /></button></Tooltip>
         <Tooltip label={styleLocked ? t.pane.folderStyleLocked : t.pane.folderStyleUnlocked} placement="bottom">
@@ -1526,7 +1648,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder ? (
                         isTauriDesktop() ? (
                           !isRecycleBin && !item.recycleBinId ? <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip} placement="top">
-                            <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-cyan-300 transition-colors hover:bg-cyan-950/60 hover:text-cyan-100 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
+                            <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
                               {folderSize?.status === 'loading' ? <LoaderCircle className="h-3 w-3 animate-spin" /> : folderSize?.status === 'done' ? <>{formatFileSize(folderSize.size ?? 0)}<Calculator className="h-3 w-3 opacity-60" /></> : folderSize?.status === 'error' ? <span aria-hidden="true">!</span> : <><Calculator className="h-3 w-3" />{t.pane.folderSizeCalculate}</>}
                             </button>
                           </Tooltip> : '--'

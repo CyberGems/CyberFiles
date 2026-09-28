@@ -100,6 +100,7 @@ const SINGLE_CLICK_OPEN_KEY = 'cyberfiles_single_click_open_v1';
 const CUSTOM_QUICK_ACCESS_KEY = 'cyberfiles_custom_quick_access_v1';
 const QUICK_ACCESS_ORDER_KEY = 'cyberfiles_quick_access_order_v1';
 const QUICK_ACCESS_SORT_MODE_KEY = 'cyberfiles_quick_access_sort_mode_v1';
+const RECENT_FOLDER_PATHS_KEY = 'cyberfiles_recent_folder_paths_v1';
 const MAX_CUSTOM_QUICK_ACCESS_ITEMS = 100;
 const MAX_TEXT_PREVIEW_BYTES = 200_000;
 const TOAST_DURATION_MS = 3200;
@@ -367,6 +368,28 @@ function styleForPath(path: string, style: FolderStyle) {
   return { ...style, viewMode: isMediaPreviewPath(path) ? 'icons' as ViewMode : style.viewMode };
 }
 
+function readRecentFolderPaths(): string[] {
+  try {
+    const saved: unknown = JSON.parse(window.localStorage.getItem(RECENT_FOLDER_PATHS_KEY) || 'null');
+    if (!Array.isArray(saved)) return [];
+    const seen = new Set<string>();
+    const paths: string[] = [];
+    for (const value of saved) {
+      if (typeof value !== 'string') continue;
+      const path = normalizeWindowsPath(value.trim());
+      if (!path || path.length > 32767 || path === SYSTEM_HOME_PATH || path === RECYCLE_BIN_PATH || path.startsWith('::')) continue;
+      const key = getPathKey(path);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      paths.push(path);
+      if (paths.length === 10) break;
+    }
+    return paths;
+  } catch {
+    return [];
+  }
+}
+
 function getTabFolderStyle(tab: TabState): FolderStyle {
   return {
     viewMode: tab.folderStyle?.viewMode ?? tab.viewMode,
@@ -514,9 +537,27 @@ export default function App() {
   const [systemLocations, setSystemLocations] = useState<NativeLocation[]>([]);
   const [systemHomeLoading, setSystemHomeLoading] = useState(startsAtSystemHome);
   const [quickAccess, setQuickAccess] = useState<QuickAccessItem[]>([]);
+  const [recentFolderPaths, setRecentFolderPaths] = useState<string[]>(readRecentFolderPaths);
   const [customQuickAccess, setCustomQuickAccess] = useState<QuickAccessItem[]>(readCustomQuickAccess);
   const [quickAccessSortMode, setQuickAccessSortMode] = useState<QuickAccessSortMode>(readQuickAccessSortMode);
   const [quickAccessOrder, setQuickAccessOrder] = useState<string[]>(readQuickAccessOrder);
+  const rememberRecentFolder = useCallback((value: string) => {
+    const path = normalizeWindowsPath(value.trim());
+    if (!path || path.length > 32767 || path === SYSTEM_HOME_PATH || path === RECYCLE_BIN_PATH || path.startsWith('::')) return;
+    setRecentFolderPaths(previous => {
+      return [path, ...previous.filter(existing => getPathKey(existing) !== getPathKey(path))].slice(0, 10);
+    });
+  }, []);
+  const clearRecentFolderHistory = useCallback(() => {
+    setRecentFolderPaths([]);
+  }, []);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(RECENT_FOLDER_PATHS_KEY, JSON.stringify(recentFolderPaths));
+    } catch {
+      // Recent folders remain available for the current session.
+    }
+  }, [recentFolderPaths]);
   const nativeRootPath = useRef(startsAtSystemHome ? SYSTEM_HOME_PATH : '');
   const systemHomeWorkspace = useRef(startsAtSystemHome);
   const browserRootPath = useRef('');
@@ -1716,7 +1757,10 @@ export default function App() {
       return;
     }
     if (!workspaceRoot || (!systemWorkspace && !isSameOrDescendantPath(targetPath, workspaceRoot))) return;
-    if (!forceRefresh && nativeLoadedDirectories.current.has(pathKey)) return;
+    if (!forceRefresh && nativeLoadedDirectories.current.has(pathKey)) {
+      rememberRecentFolder(targetPath);
+      return;
+    }
     if (nativeInFlightDirectories.current.has(pathKey)) return;
 
     const generation = nativeWorkspaceGeneration.current;
@@ -1757,6 +1801,7 @@ export default function App() {
         });
       }
       nativeLoadedDirectories.current.add(pathKey);
+      rememberRecentFolder(targetPath);
       setNativeDirectories(previous => ({
         ...previous,
         [pathKey]: {
@@ -1778,7 +1823,7 @@ export default function App() {
     } finally {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
-  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectoryPage, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, newTabsNextToCurrent]);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectoryPage, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, newTabsNextToCurrent, rememberRecentFolder]);
 
   const lastSessionReloadHandled = useRef(0);
   useEffect(() => {
@@ -2918,6 +2963,7 @@ export default function App() {
       nativeInFlightDirectories.current.clear();
       nativeRootPath.current = loaded.rootPath;
       systemHomeWorkspace.current = false;
+      rememberRecentFolder(loaded.rootPath);
       setNativeDirectories({
         [rootKey]: { nextOffset: loaded.nextOffset, hasMore: loaded.hasMore, loading: false },
       });
@@ -3381,6 +3427,8 @@ export default function App() {
                   onAddTab={() => handleAddTab('left')}
                   onCloseTab={(idx) => handleCloseTab('left', idx)}
                   files={leftDisplayFiles}
+                  recentFolderPaths={recentFolderPaths}
+                  onClearRecentFolders={clearRecentFolderHistory}
                   drives={drives}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
                   isLoadingDirectory={leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
@@ -3431,6 +3479,8 @@ export default function App() {
                   onAddTab={() => handleAddTab('right')}
                   onCloseTab={(idx) => handleCloseTab('right', idx)}
                   files={rightDisplayFiles}
+                  recentFolderPaths={recentFolderPaths}
+                  onClearRecentFolders={clearRecentFolderHistory}
                   drives={drives}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
                   isLoadingDirectory={rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
@@ -3482,6 +3532,8 @@ export default function App() {
                   onAddTab={() => handleAddTab('left')}
                   onCloseTab={(idx) => handleCloseTab('left', idx)}
                   files={leftDisplayFiles}
+                  recentFolderPaths={recentFolderPaths}
+                  onClearRecentFolders={clearRecentFolderHistory}
                   drives={drives}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
                   isLoadingDirectory={leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
@@ -3528,6 +3580,8 @@ export default function App() {
                   onAddTab={() => handleAddTab('right')}
                   onCloseTab={(idx) => handleCloseTab('right', idx)}
                   files={rightDisplayFiles}
+                  recentFolderPaths={recentFolderPaths}
+                  onClearRecentFolders={clearRecentFolderHistory}
                   drives={drives}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
                   isLoadingDirectory={rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
@@ -3579,6 +3633,8 @@ export default function App() {
                 onAddTab={() => handleAddTab(activePane)}
                 onCloseTab={(idx) => handleCloseTab(activePane, idx)}
                   files={activeDisplayFiles}
+                  recentFolderPaths={recentFolderPaths}
+                  onClearRecentFolders={clearRecentFolderHistory}
                   drives={drives}
                   hasMore={currentAtRecycleBin ? recycleBinPage.hasMore : (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.hasMore}
                   isLoadingDirectory={(activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.loading || (currentTab.currentPath === SYSTEM_HOME_PATH && systemHomeLoading) || (currentAtRecycleBin && recycleBinPage.loading)}
@@ -3666,7 +3722,6 @@ export default function App() {
         fileClipboardSupported={isTauriDesktop()}
         hasFilter={Boolean(contextPaneTab.filterQuery)}
         onClose={() => setContextMenuPos(null)}
-        onOpenFolder={handleOpenRealFolder}
         onOpenLocation={item => { void handleNavigate(item.path, contextPane); }}
         onAddToQuickAccess={handleAddFolderToQuickAccess}
         onRefresh={() => void handleNavigate(contextPaneTab.currentPath, contextPane, true)}

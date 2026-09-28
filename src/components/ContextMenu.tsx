@@ -42,7 +42,6 @@ interface ContextMenuProps {
   hasFolder: boolean;
   hasFilter: boolean;
   onClose: () => void;
-  onOpenFolder: () => void;
   onOpenLocation: (item: FileItem) => void;
   onAddToQuickAccess: (item: FileItem) => void;
   onRefresh: () => void;
@@ -76,7 +75,6 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   hasFolder,
   hasFilter,
   onClose,
-  onOpenFolder,
   onOpenLocation,
   onAddToQuickAccess,
   onRefresh,
@@ -129,7 +127,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const item = position.targetItem;
   const isSystemLocation = Boolean(item && (item.id.startsWith('system-drive-') || item.id.startsWith('system-location-')));
   const menuWidth = 264;
-  const menuHeight = isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? 370 : item ? 330 : sortMenuOpen ? 640 : groupMenuOpen ? 620 : newMenuOpen ? 500 : 480;
+  const menuHeight = isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? 370 : item ? 330 : sortMenuOpen ? 600 : groupMenuOpen ? 580 : newMenuOpen ? 460 : 440;
   const adjustedX = Math.max(8, Math.min(position.x, window.innerWidth - menuWidth - 8));
   const adjustedY = Math.max(8, Math.min(position.y, window.innerHeight - menuHeight - 8));
 
@@ -194,7 +192,6 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         <>
           <div className="border-b border-neutral-800 px-3 py-1.5 font-medium text-neutral-300">{t.contextMenu.workspace}</div>
           <div className="py-0.5">
-            <MenuButton icon={<FolderOpen className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.openFolder} onClick={() => { onOpenFolder(); onClose(); }} />
             <MenuButton
               icon={<FolderPlus className="h-3.5 w-3.5 text-emerald-400" />}
               label={t.contextMenu.new}
