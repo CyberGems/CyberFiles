@@ -326,25 +326,29 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, nativeP
 
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3">
         <section className={'flex min-h-0 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900/50 ' + (previewCollapsed ? 'flex-none' : 'flex-1')}>
-          <div className="flex h-8 flex-shrink-0 items-center justify-between border-b border-neutral-800/80 px-2.5">
-            <h2 className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.preview.contentPreview}</h2>
-            <Tooltip label={previewCollapsed ? t.preview.expandPreview : t.preview.collapsePreview} placement="left">
-              <button type="button" onClick={() => setCollapsedSection(previewCollapsed ? null : 'preview')} aria-label={previewCollapsed ? t.preview.expandPreview : t.preview.collapsePreview} aria-expanded={!previewCollapsed} className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300">
-                {previewCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
-              </button>
-            </Tooltip>
+          <div className="flex h-9 flex-shrink-0 items-center border-b border-neutral-800/80 px-1.5">
+            <h2 className="flex h-full min-w-0 flex-1 items-center">
+              <Tooltip label={previewCollapsed ? t.preview.expandPreview : t.preview.collapsePreview} placement="left">
+                <button type="button" onClick={() => setCollapsedSection(previewCollapsed ? null : 'preview')} aria-label={previewCollapsed ? t.preview.expandPreview : t.preview.collapsePreview} aria-expanded={!previewCollapsed} className="collapse-toggle group flex h-full w-full items-center justify-between rounded-lg px-2.5 text-left">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.preview.contentPreview}</span>
+                  {previewCollapsed ? <ChevronDown data-collapse-chevron="true" className="h-3.5 w-3.5 text-neutral-500" /> : <ChevronUp data-collapse-chevron="true" className="h-3.5 w-3.5 text-neutral-500" />}
+                </button>
+              </Tooltip>
+            </h2>
           </div>
           {!previewCollapsed && <div className={'flex min-h-0 flex-1 justify-center ' + (item.extension.toLowerCase() === 'pdf' ? 'items-stretch overflow-hidden p-0' : 'items-center overflow-y-auto p-2')}>{renderContent()}</div>}
         </section>
 
         <section className={'flex min-h-0 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900/30 ' + (propertiesCollapsed ? 'flex-none' : 'flex-1')}>
-          <div className="flex h-8 flex-shrink-0 items-center justify-between border-b border-neutral-800/80 px-2.5">
-            <h2 className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.preview.properties}</h2>
-            <Tooltip label={propertiesCollapsed ? t.preview.expandProperties : t.preview.collapseProperties} placement="left">
-              <button type="button" onClick={() => setCollapsedSection(propertiesCollapsed ? null : 'properties')} aria-label={propertiesCollapsed ? t.preview.expandProperties : t.preview.collapseProperties} aria-expanded={!propertiesCollapsed} className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300">
-                {propertiesCollapsed ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-              </button>
-            </Tooltip>
+          <div className="flex h-9 flex-shrink-0 items-center border-b border-neutral-800/80 px-1.5">
+            <h2 className="flex h-full min-w-0 flex-1 items-center">
+              <Tooltip label={propertiesCollapsed ? t.preview.expandProperties : t.preview.collapseProperties} placement="left">
+                <button type="button" onClick={() => setCollapsedSection(propertiesCollapsed ? null : 'properties')} aria-label={propertiesCollapsed ? t.preview.expandProperties : t.preview.collapseProperties} aria-expanded={!propertiesCollapsed} className="collapse-toggle group flex h-full w-full items-center justify-between rounded-lg px-2.5 text-left">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.preview.properties}</span>
+                  {propertiesCollapsed ? <ChevronUp data-collapse-chevron="true" className="h-3.5 w-3.5 text-neutral-500" /> : <ChevronDown data-collapse-chevron="true" className="h-3.5 w-3.5 text-neutral-500" />}
+                </button>
+              </Tooltip>
+            </h2>
           </div>
           {!propertiesCollapsed && (
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">

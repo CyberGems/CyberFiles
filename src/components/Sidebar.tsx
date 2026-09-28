@@ -452,9 +452,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => toggleSection('drives')}
               aria-expanded={!collapsedSections.drives}
               aria-label={`${t.sidebar.drivesTitle}: ${collapsedSections.drives ? t.sidebar.expandSection : t.sidebar.collapseSection}`}
-              className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left text-[10px] font-semibold uppercase tracking-wider text-neutral-400 transition-colors hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+              className="collapse-toggle flex w-full items-center gap-1 rounded-lg px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-neutral-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
             >
-              {collapsedSections.drives ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              {collapsedSections.drives ? <ChevronRight data-collapse-chevron="true" className="h-3 w-3" /> : <ChevronDown data-collapse-chevron="true" className="h-3 w-3" />}
               <span>{t.sidebar.drivesTitle}</span>
             </button>
 
@@ -512,9 +512,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onClick={() => toggleSection('quickAccess')}
                   aria-expanded={!collapsedSections.quickAccess}
                   aria-label={`${t.sidebar.quickAccessTitle}: ${collapsedSections.quickAccess ? t.sidebar.expandSection : t.sidebar.collapseSection}`}
-                  className="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-left text-[10px] font-semibold uppercase tracking-wider text-neutral-400 transition-colors hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+                  className="collapse-toggle flex min-w-0 flex-1 items-center gap-1 rounded-lg px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-neutral-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
                 >
-                  {collapsedSections.quickAccess ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  {collapsedSections.quickAccess ? <ChevronRight data-collapse-chevron="true" className="h-3 w-3" /> : <ChevronDown data-collapse-chevron="true" className="h-3 w-3" />}
                   <span>{t.sidebar.quickAccessTitle}</span>
                 </button>
                 <Tooltip label={t.sidebar.quickAccessSort} placement="right">

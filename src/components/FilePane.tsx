@@ -852,12 +852,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   const handleViewportClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    clearPendingDeselection();
     if (suppressViewportClickRef.current) {
       suppressViewportClickRef.current = false;
       return;
     }
-    if ((event.target as HTMLElement).closest('[data-file-item], button, input, select, textarea, a, [contenteditable="true"]')) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('[data-file-item]')) return;
+    clearPendingDeselection();
+    if (target.closest('button, input, select, textarea, a, [contenteditable="true"]')) return;
     onBackgroundClick(event, paneId);
   };
 
@@ -1042,11 +1044,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
         aria-expanded={!isCollapsed}
         aria-controls={contentId}
         onClick={() => setCollapsedSystemHomeSections(previous => ({ ...previous, [section]: !previous[section] }))}
-        className="mb-2 flex w-full cursor-pointer items-center gap-2 rounded text-left text-[11px] font-semibold text-neutral-300 outline-none hover:text-neutral-100 focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+        className="collapse-toggle mb-2 flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-[11px] font-semibold text-neutral-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
       >
-        <ChevronDown className={`h-3.5 w-3.5 flex-shrink-0 text-neutral-500 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
+        <ChevronDown data-collapse-chevron="true" className={`h-3.5 w-3.5 flex-shrink-0 text-neutral-500 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
         <span className="whitespace-nowrap">{label}</span>
-        <span className="h-px flex-1 bg-neutral-800" />
+        <span data-collapse-rule="true" className="h-px flex-1 bg-neutral-800" />
       </button>
     );
   };
