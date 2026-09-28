@@ -15,6 +15,7 @@ import {
   QuickAccessItem,
   QuickAccessSortMode,
   RecentItemStyle,
+  GroupByField,
 } from './types';
 import {
   getChildItems, 
@@ -103,7 +104,7 @@ const MAX_CUSTOM_QUICK_ACCESS_ITEMS = 100;
 const MAX_TEXT_PREVIEW_BYTES = 200_000;
 const TOAST_DURATION_MS = 3200;
 const DEFAULT_GLOBAL_SHORTCUT = 'Alt+Shift+F';
-const DEFAULT_FOLDER_STYLE = { viewMode: 'details' as ViewMode, sortField: 'name' as SortField, sortOrder: 'asc' as SortOrder };
+const DEFAULT_FOLDER_STYLE = { viewMode: 'details' as ViewMode, sortField: 'name' as SortField, sortOrder: 'asc' as SortOrder, groupBy: 'none' as GroupByField };
 const DEFAULT_RECENT_ITEM_STYLE: RecentItemStyle = {
   enabled: true,
   textColor: '#fef3c7',
@@ -360,12 +361,19 @@ function readQuickAccessOrder(): string[] {
     return [];
   }
 }
-function styleForPath(path: string, style: typeof DEFAULT_FOLDER_STYLE) {
+type FolderStyle = { viewMode: ViewMode; sortField: SortField; sortOrder: SortOrder; groupBy: GroupByField };
+
+function styleForPath(path: string, style: FolderStyle) {
   return { ...style, viewMode: isMediaPreviewPath(path) ? 'icons' as ViewMode : style.viewMode };
 }
 
-function getTabFolderStyle(tab: TabState) {
-  return tab.folderStyle ?? { viewMode: tab.viewMode, sortField: tab.sortField, sortOrder: tab.sortOrder };
+function getTabFolderStyle(tab: TabState): FolderStyle {
+  return {
+    viewMode: tab.folderStyle?.viewMode ?? tab.viewMode,
+    sortField: tab.folderStyle?.sortField ?? tab.sortField,
+    sortOrder: tab.folderStyle?.sortOrder ?? tab.sortOrder,
+    groupBy: tab.folderStyle?.groupBy ?? tab.groupBy ?? 'none',
+  };
 }
 
 function setTabViewMode(tab: TabState, viewMode: ViewMode): TabState {
@@ -409,8 +417,9 @@ const createEmptyTab = (
   focusedId: null,
   sortField,
   sortOrder,
+  groupBy: 'none',
   viewMode,
-  folderStyle: { sortField, sortOrder, viewMode },
+  folderStyle: { sortField, sortOrder, groupBy: 'none', viewMode },
 });
 
 function restoreSessionTabs(snapshot: TabSessionSnapshot, pane: WorkspacePaneId, systemHomeTitle: string, recycleBinTitle: string): TabState[] {
@@ -432,7 +441,7 @@ function createSessionSnapshot(
   activeRightTabIndex: number,
   activePane: WorkspacePaneId,
 ): TabSessionSnapshot {
-  const saveTabs = (tabs: TabState[]) => tabs.map(({ id, title, currentPath, history, historyIndex, sortField, sortOrder, viewMode, folderStyle }) => {
+  const saveTabs = (tabs: TabState[]) => tabs.map(({ id, title, currentPath, history, historyIndex, sortField, sortOrder, groupBy, viewMode, folderStyle }) => {
     const historyOffset = Math.max(0, history.length - 80);
     const savedHistory = history.slice(historyOffset);
     return {
@@ -443,6 +452,7 @@ function createSessionSnapshot(
       historyIndex: Math.max(-1, Math.min(historyIndex - historyOffset, savedHistory.length - 1)),
       sortField,
       sortOrder,
+      groupBy,
       viewMode,
       folderStyle,
     };
@@ -3641,6 +3651,16 @@ export default function App() {
       <ContextMenu
         position={contextMenuPos}
         viewMode={contextPaneTab.viewMode}
+        sortField={contextPaneTab.sortField}
+        sortOrder={contextPaneTab.sortOrder}
+        groupBy={contextPaneTab.groupBy ?? 'none'}
+        supportsGrouping={contextPaneTab.currentPath !== SYSTEM_HOME_PATH && contextPaneTab.currentPath !== RECYCLE_BIN_PATH}
+        onSortFieldChange={field => updatePaneTab(contextPane, tab => {
+          const sortOrder = tab.sortField === field ? tab.sortOrder : 'asc';
+          return { ...tab, sortField: field, sortOrder, folderStyle: { ...getTabFolderStyle(tab), sortField: field, sortOrder } };
+        })}
+        onSortOrderChange={order => updatePaneTab(contextPane, tab => ({ ...tab, sortOrder: order, folderStyle: { ...getTabFolderStyle(tab), sortOrder: order } }))}
+        onGroupByChange={groupBy => updatePaneTab(contextPane, tab => ({ ...tab, groupBy, folderStyle: { ...getTabFolderStyle(tab), groupBy } }))}
         hasFolder={Boolean(contextPaneTab.currentPath)}
         canModifyFolder={Boolean(contextPaneTab.currentPath) && contextPaneTab.currentPath !== SYSTEM_HOME_PATH && contextPaneTab.currentPath !== RECYCLE_BIN_PATH}
         fileClipboardSupported={isTauriDesktop()}

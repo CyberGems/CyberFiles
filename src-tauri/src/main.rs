@@ -1505,6 +1505,45 @@ async fn list_directory(path: String, offset: usize) -> Result<DirectoryListing,
     .map_err(|error| format!("Folder scan worker failed: {error}"))?
 }
 
+fn calculate_directory_size(root: &Path) -> Result<u64, String> {
+    let mut pending = vec![root.to_path_buf()];
+    let mut total = 0u64;
+    while let Some(directory) = pending.pop() {
+        let entries = fs::read_dir(&directory)
+            .map_err(|error| format!("Cannot read {}: {error}", display_path(&directory)))?;
+        for entry in entries {
+            let entry = entry.map_err(|error| format!("Cannot read an entry in {}: {error}", display_path(&directory)))?;
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path)
+                .map_err(|error| format!("Cannot inspect {}: {error}", display_path(&path)))?;
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            if metadata.is_dir() {
+                pending.push(path);
+            } else if metadata.is_file() {
+                total = total.checked_add(metadata.len())
+                    .ok_or_else(|| "The folder size exceeds the supported range.".to_string())?;
+            }
+        }
+    }
+    Ok(total)
+}
+
+#[tauri::command]
+async fn calculate_folder_size(path: String) -> Result<u64, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = fs::canonicalize(&path)
+            .map_err(|error| format!("Cannot access folder: {error}"))?;
+        if !root.is_dir() {
+            return Err("The selected location is not a folder.".to_string());
+        }
+        calculate_directory_size(&root)
+    })
+    .await
+    .map_err(|error| format!("Folder size worker failed: {error}"))?
+}
+
 const MAX_TEXT_PREVIEW_BYTES: u64 = 200_000;
 const MAX_PDF_PREVIEW_BYTES: u64 = 100 * 1024 * 1024;
 
@@ -3327,6 +3366,7 @@ fn main() {
             hide_main_window,
             quit_app,
             list_directory,
+            calculate_folder_size,
             read_text_preview,
             prepare_pdf_preview,
             create_directory,

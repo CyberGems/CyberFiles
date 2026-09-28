@@ -18,7 +18,9 @@ import {
   Search, 
   X, 
   Plus, 
-  RotateCw, 
+  RotateCw,
+  Calculator,
+  LoaderCircle,
   ChevronRight, 
   FileCheck,
   Monitor,
@@ -32,10 +34,10 @@ import {
   LockKeyhole,
   UnlockKeyhole,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
+import { DriveInfo, FileItem, FileType, GroupByField, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
 import { formatLocalDateTime } from '../utils/dateTime';
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
-import { isTauriDesktop, loadNativeImageThumbnail } from '../utils/nativeFileSystem';
+import { calculateNativeFolderSize, isTauriDesktop, loadNativeImageThumbnail } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 import {
@@ -91,7 +93,7 @@ interface FilePaneProps {
 
 type SystemHomeSection = 'folders' | 'devices' | 'network';
 type CollapsedSystemHomeSections = Record<SystemHomeSection, boolean>;
-type FileColumn = 'extension' | 'name' | 'size' | 'created' | 'modified';
+type FileColumn = 'extension' | 'name' | 'type' | 'size' | 'created' | 'modified';
 type ResizableColumn = FileColumn;
 
 interface ColumnPointerDrag {
@@ -106,6 +108,7 @@ interface ColumnPointerDrag {
 interface FileColumnWidths {
   extension: number;
   name: number | null;
+  type: number;
   size: number;
   created: number;
   modified: number;
@@ -135,7 +138,7 @@ interface MarqueeDrag {
 }
 
 const COLLAPSED_SYSTEM_HOME_SECTIONS_KEY = 'cyberfiles_system_home_collapsed_sections_v1';
-const FILE_COLUMNS: FileColumn[] = ['extension', 'name', 'size', 'created', 'modified'];
+const FILE_COLUMNS: FileColumn[] = ['extension', 'name', 'type', 'size', 'created', 'modified'];
 const MIN_NAME_COLUMN_WIDTH = 100;
 const RECENT_ITEM_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_COLLAPSED_SYSTEM_HOME_SECTIONS: CollapsedSystemHomeSections = {
@@ -151,6 +154,8 @@ function resizeFileColumns(widths: FileColumnWidths, column: ResizableColumn, de
       return { ...widths, extension: clampWidth(widths.extension + delta, 42, 220) };
     case 'name':
       return { ...widths, name: clampWidth((widths.name ?? MIN_NAME_COLUMN_WIDTH) + delta, MIN_NAME_COLUMN_WIDTH, 1600) };
+    case 'type':
+      return { ...widths, type: clampWidth(widths.type + delta, 80, 500) };
     case 'size':
       return { ...widths, size: clampWidth(widths.size + delta, 56, 320) };
     case 'created':
@@ -302,6 +307,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const renameCommitItemRef = useRef<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [collapsedSystemHomeSections, setCollapsedSystemHomeSections] = useState(() => readCollapsedSystemHomeSections(paneId));
+  const [folderSizeStates, setFolderSizeStates] = useState<Record<string, { status: 'loading' | 'done' | 'error'; size?: number }>>({});
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [columnWidths, setColumnWidths] = useState(() => columnPreferences.widths);
   const [columnLayout, setColumnLayout] = useState(() => columnPreferences.layout);
   const [columnMenuPosition, setColumnMenuPosition] = useState<{ left: number; top: number } | null>(null);
@@ -341,6 +348,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const columnSortFields: Record<FileColumn, SortField> = {
     extension: 'extension',
     name: 'name',
+    type: 'type',
     size: 'size',
     created: 'createdDate',
     modified: 'modifiedDate',
@@ -349,6 +357,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     switch (column) {
       case 'extension': return t.pane.columns.extension;
       case 'name': return t.pane.columns.name;
+      case 'type': return t.pane.columns.type;
       case 'size': return t.pane.columns.size;
       case 'created': return t.pane.columns.created;
       case 'modified': return isRecycleBin ? t.pane.columns.deleted : t.pane.columns.modified;
@@ -422,6 +431,77 @@ export const FilePane: React.FC<FilePaneProps> = ({
   );
 
   const fileGridTemplateColumns = visibleFileColumns.map(columnWidth).join(' ');
+  const detailsRowWidth = visibleFileColumns.reduce((total, column) => total + (column === 'name' ? columnWidths.name ?? MIN_NAME_COLUMN_WIDTH : columnWidths[column]), 0)
+    + Math.max(0, visibleFileColumns.length - 1) * 8 + 18;
+  const getFileTypeLabel = (item: FileItem) => t.pane.folderTypeLabels[item.type]
+    .replace('{extension}', item.extension.toUpperCase()).trim();
+  const getGroupForItem = (item: FileItem): { id: string; label: string } => {
+    if (tab.groupBy === 'name') {
+      const initial = item.name.trim().charAt(0).toLocaleUpperCase() || '#';
+      return { id: initial, label: initial };
+    }
+    if (tab.groupBy === 'type') return { id: item.type, label: getFileTypeLabel(item) };
+    if (tab.groupBy === 'size') {
+      if (item.isFolder) return { id: 'folders', label: t.pane.groups.folders };
+      const sizeGroup = item.size === 0 ? 'emptyFiles'
+        : item.size < 1024 * 1024 ? 'smallFiles'
+          : item.size < 100 * 1024 * 1024 ? 'mediumFiles'
+            : item.size < 1024 * 1024 * 1024 ? 'largeFiles' : 'hugeFiles';
+      return { id: sizeGroup, label: t.pane.groups[sizeGroup] };
+    }
+    if (tab.groupBy === 'modifiedDate') {
+      const modifiedAt = item.modifiedAtMs ?? Date.parse(item.modifiedDate);
+      if (!Number.isFinite(modifiedAt)) return { id: 'unknownDate', label: t.pane.groups.unknownDate };
+      const age = Math.max(0, Date.now() - modifiedAt);
+      const day = 24 * 60 * 60 * 1000;
+      const dateGroup = age < day ? 'today' : age < 2 * day ? 'yesterday' : age < 7 * day ? 'earlierWeek' : age < 30 * day ? 'earlierMonth' : 'older';
+      return { id: dateGroup, label: t.pane.groups[dateGroup] };
+    }
+    return { id: 'all', label: '' };
+  };
+  const fileGroups = (() => {
+    if (!tab.groupBy || tab.groupBy === 'none') return [{ id: 'all', label: '', items: files }];
+    const groups = new Map<string, { id: string; label: string; items: FileItem[] }>();
+    files.forEach(item => {
+      const group = getGroupForItem(item);
+      const existing = groups.get(group.id);
+      if (existing) existing.items.push(item);
+      else groups.set(group.id, { ...group, items: [item] });
+    });
+    return [...groups.values()];
+  })();
+  const renderFileGroupHeading = (group: { id: string; label: string }) => {
+    if (!group.label) return null;
+    const key = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
+    const isCollapsed = collapsedGroups[key] === true;
+    return (
+      <Tooltip label={group.label} placement="top">
+        <button
+          key={`group-${key}`}
+          type="button"
+          aria-expanded={!isCollapsed}
+          onClick={() => setCollapsedGroups(previous => ({ ...previous, [key]: !previous[key] }))}
+          className="collapse-toggle sticky top-0 z-[1] col-span-full flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] font-semibold text-neutral-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+        >
+          <ChevronDown className={`h-3.5 w-3.5 flex-shrink-0 text-neutral-500 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
+          <span>{group.label} ({fileGroups.find(candidate => candidate.id === group.id)?.items.length ?? 0})</span>
+          <span className="h-px flex-1 bg-neutral-800" />
+        </button>
+      </Tooltip>
+    );
+  };
+  const calculateFolderSize = async (item: FileItem, event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!isTauriDesktop()) return;
+    setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'loading' } }));
+    try {
+      const size = await calculateNativeFolderSize(item.path);
+      setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'done', size } }));
+    } catch {
+      setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'error' } }));
+    }
+  };
   const detailsTableMinimumWidth = visibleFileColumns.reduce((total, column) => total + (column === 'name' ? columnWidths.name ?? MIN_NAME_COLUMN_WIDTH : columnWidths[column]), 0)
     + Math.max(0, visibleFileColumns.length - 1) * 8 + 18 + viewportScrollbarWidth + 32;
 
@@ -1241,7 +1321,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         <div
           ref={columnHeadersRef}
           className="mx-4 grid shrink-0 items-center gap-2 border-x border-b border-neutral-800 bg-neutral-950 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 select-none"
-          style={{ gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
+          style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth + viewportScrollbarWidth}px`, gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
           onContextMenu={openColumnMenu}
         >
           {visibleFileColumns.map(column => {
@@ -1374,8 +1454,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
             )}
           </div>
         ) : effectiveViewMode === 'details' ? (
-          <div className="divide-y divide-neutral-900/40 px-4">
-            {files.map((item, idx) => {
+          <div className="space-y-0.5 px-4">
+            {fileGroups.map(group => {
+              const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
+              const groupCollapsed = collapsedGroups[groupCollapseKey] === true;
+              return (
+              <React.Fragment key={`file-group-${groupCollapseKey}`}>
+              {renderFileGroupHeading(group)}
+              {!groupCollapsed && group.items.map(item => {
+              const idx = files.indexOf(item);
               const isSelected = visibleSelectedIds.includes(item.id);
               const isEditing = editingItemId === item.id;
               const isZebra = idx % 2 === 1;
@@ -1396,7 +1483,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
-                  style={{ gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
+                  style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth}px`, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
                   className={`grid items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-700/60 text-neutral-100 font-medium'
@@ -1431,8 +1518,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
                         </div>
                       );
                     }
+                    if (column === 'type') {
+                      return <div key={column} className="min-w-0 truncate font-sans text-[10px] text-neutral-400"><span data-file-column-content={column}>{getFileTypeLabel(item)}</span></div>;
+                    }
                     if (column === 'size') {
-                      return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder ? '--' : formatFileSize(item.size)}</span></div>;
+                      const folderSize = folderSizeStates[item.id];
+                      return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder ? (
+                        isTauriDesktop() ? (
+                          !isRecycleBin && !item.recycleBinId ? <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip} placement="top">
+                            <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-cyan-300 transition-colors hover:bg-cyan-950/60 hover:text-cyan-100 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
+                              {folderSize?.status === 'loading' ? <LoaderCircle className="h-3 w-3 animate-spin" /> : folderSize?.status === 'done' ? <>{formatFileSize(folderSize.size ?? 0)}<Calculator className="h-3 w-3 opacity-60" /></> : folderSize?.status === 'error' ? <span aria-hidden="true">!</span> : <><Calculator className="h-3 w-3" />{t.pane.folderSizeCalculate}</>}
+                            </button>
+                          </Tooltip> : '--'
+                        ) : '--'
+                      ) : formatFileSize(item.size)}</span></div>;
                     }
                     if (column === 'created') {
                       const createdDate = item.createdDate || (item.createdAtMs ? formatLocalDateTime(item.createdAtMs) : '');
@@ -1442,11 +1541,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   })}
                 </div>
               );
+              })}
+              </React.Fragment>
+              );
             })}
           </div>
         ) : effectiveViewMode === 'compact' ? (
           <div className="grid grid-cols-1 gap-x-2 gap-y-1 p-1.5 sm:grid-cols-2 lg:grid-cols-3">
-            {files.map((item, idx) => {
+            {fileGroups.map(group => {
+              const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
+              const groupCollapsed = collapsedGroups[groupCollapseKey] === true;
+              return <React.Fragment key={`compact-group-${groupCollapseKey}`}>
+              {renderFileGroupHeading(group)}
+              {!groupCollapsed && group.items.map(item => {
+              const idx = files.indexOf(item);
               const isSelected = visibleSelectedIds.includes(item.id);
               return (
                 <div
@@ -1482,12 +1590,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   {!item.isFolder && <span className="flex-shrink-0 font-sans text-[10px] text-neutral-500">{formatFileSize(item.size)}</span>}
                 </div>
               );
+              })}
+              </React.Fragment>;
             })}
           </div>
         ) : (
           /* Icons / Grid View */
           <div className="grid grid-cols-2 gap-3 p-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
-            {files.map((item, idx) => {
+            {fileGroups.map(group => {
+              const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
+              const groupCollapsed = collapsedGroups[groupCollapseKey] === true;
+              return <React.Fragment key={`icons-group-${groupCollapseKey}`}>
+              {renderFileGroupHeading(group)}
+              {!groupCollapsed && group.items.map(item => {
+              const idx = files.indexOf(item);
               const isSelected = visibleSelectedIds.includes(item.id);
 
               return (
@@ -1530,6 +1646,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   </span>
                 </div>
               );
+              })}
+              </React.Fragment>;
             })}
           </div>
         )}

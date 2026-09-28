@@ -21,8 +21,10 @@ import {
   Layers,
   RotateCcw,
   Scissors,
+  ArrowDown,
+  ArrowUp,
 } from 'lucide-react';
-import { ContextMenuPosition, FileItem, ViewMode } from '../types';
+import { ContextMenuPosition, FileItem, GroupByField, SortField, SortOrder, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 import type { NewItemKind } from './CreateItemModal';
@@ -30,6 +32,13 @@ import type { NewItemKind } from './CreateItemModal';
 interface ContextMenuProps {
   position: ContextMenuPosition | null;
   viewMode: ViewMode;
+  sortField: SortField;
+  sortOrder: SortOrder;
+  groupBy: GroupByField;
+  supportsGrouping: boolean;
+  onSortFieldChange: (field: SortField) => void;
+  onSortOrderChange: (order: SortOrder) => void;
+  onGroupByChange: (field: GroupByField) => void;
   hasFolder: boolean;
   hasFilter: boolean;
   onClose: () => void;
@@ -57,6 +66,13 @@ interface ContextMenuProps {
 export const ContextMenu: React.FC<ContextMenuProps> = ({
   position,
   viewMode,
+  sortField,
+  sortOrder,
+  groupBy,
+  supportsGrouping,
+  onSortFieldChange,
+  onSortOrderChange,
+  onGroupByChange,
   hasFolder,
   hasFilter,
   onClose,
@@ -82,10 +98,14 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const [groupMenuOpen, setGroupMenuOpen] = useState(false);
   const { t } = useLanguage();
 
   useEffect(() => {
     setNewMenuOpen(false);
+    setSortMenuOpen(false);
+    setGroupMenuOpen(false);
   }, [position]);
 
   useEffect(() => {
@@ -109,7 +129,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const item = position.targetItem;
   const isSystemLocation = Boolean(item && (item.id.startsWith('system-drive-') || item.id.startsWith('system-location-')));
   const menuWidth = 264;
-  const menuHeight = isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? 370 : item ? 330 : newMenuOpen ? 480 : 420;
+  const menuHeight = isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? 370 : item ? 330 : sortMenuOpen ? 640 : groupMenuOpen ? 620 : newMenuOpen ? 500 : 480;
   const adjustedX = Math.max(8, Math.min(position.x, window.innerWidth - menuWidth - 8));
   const adjustedY = Math.max(8, Math.min(position.y, window.innerHeight - menuHeight - 8));
 
@@ -181,7 +201,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               disabled={!canModifyFolder}
               expanded={newMenuOpen}
               trailing={<ChevronRight className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${newMenuOpen ? 'rotate-90' : ''}`} />}
-              onClick={() => setNewMenuOpen(open => !open)}
+              onClick={() => { setSortMenuOpen(false); setGroupMenuOpen(false); setNewMenuOpen(open => !open); }}
             />
             {newMenuOpen && (
               <div role="menu" aria-label={t.contextMenu.new} className="ml-5 border-l border-neutral-700/80 py-0.5 pl-1">
@@ -193,6 +213,45 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             <MenuButton icon={<ClipboardPaste className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.paste} shortcut="Ctrl+V" disabled={!canModifyFolder || !fileClipboardSupported} onClick={() => { onPaste(); onClose(); }} />
             <MenuButton icon={<RotateCw className="h-3.5 w-3.5 text-neutral-400" />} label={t.toolbar.refresh} disabled={!hasFolder} onClick={() => { onRefresh(); onClose(); }} />
             {hasFilter && <MenuButton icon={<FilterX className="h-3.5 w-3.5 text-amber-400" />} label={t.contextMenu.clearFilter} onClick={() => { onClearFilter(); onClose(); }} />}
+          </div>
+          <MenuDivider />
+          <div className="py-0.5">
+            <MenuButton
+              icon={<List className="h-3.5 w-3.5 text-cyan-300" />}
+              label={t.contextMenu.sortBy}
+              expanded={sortMenuOpen}
+              trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-500" />}
+              onClick={() => { setNewMenuOpen(false); setGroupMenuOpen(false); setSortMenuOpen(open => !open); }}
+            />
+            {sortMenuOpen && (
+              <div role="menu" aria-label={t.contextMenu.sortBy} className="ml-5 border-l border-neutral-700/80 py-0.5 pl-1">
+                <ViewMenuButton icon={<span />} label={t.pane.columns.name} selected={sortField === 'name'} onClick={() => { onSortFieldChange('name'); onClose(); }} />
+                <ViewMenuButton icon={<span />} label={t.pane.columns.modified} selected={sortField === 'modifiedDate'} onClick={() => { onSortFieldChange('modifiedDate'); onClose(); }} />
+                <ViewMenuButton icon={<span />} label={t.pane.columns.created} selected={sortField === 'createdDate'} onClick={() => { onSortFieldChange('createdDate'); onClose(); }} />
+                <ViewMenuButton icon={<span />} label={t.pane.columns.type} selected={sortField === 'type'} onClick={() => { onSortFieldChange('type'); onClose(); }} />
+                <ViewMenuButton icon={<span />} label={t.pane.columns.size} selected={sortField === 'size'} onClick={() => { onSortFieldChange('size'); onClose(); }} />
+                <MenuDivider />
+                <ViewMenuButton icon={<ArrowUp className="h-3.5 w-3.5" />} label={t.contextMenu.ascending} selected={sortOrder === 'asc'} onClick={() => { onSortOrderChange('asc'); onClose(); }} />
+                <ViewMenuButton icon={<ArrowDown className="h-3.5 w-3.5" />} label={t.contextMenu.descending} selected={sortOrder === 'desc'} onClick={() => { onSortOrderChange('desc'); onClose(); }} />
+              </div>
+            )}
+            <MenuButton
+              icon={<Layers className="h-3.5 w-3.5 text-violet-300" />}
+              label={t.contextMenu.groupBy}
+              disabled={!supportsGrouping}
+              expanded={groupMenuOpen}
+              trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-500" />}
+              onClick={() => { setNewMenuOpen(false); setSortMenuOpen(false); setGroupMenuOpen(open => !open); }}
+            />
+            {groupMenuOpen && (
+              <div role="menu" aria-label={t.contextMenu.groupBy} className="ml-5 border-l border-neutral-700/80 py-0.5 pl-1">
+                <ViewMenuButton icon={<span />} label={t.contextMenu.groupNone} selected={groupBy === 'none'} onClick={() => { onGroupByChange('none'); onClose(); }} />
+                <ViewMenuButton icon={<span />} label={t.pane.columns.name} selected={groupBy === 'name'} onClick={() => { onGroupByChange('name'); onClose(); }} />
+                <ViewMenuButton icon={<span />} label={t.pane.columns.modified} selected={groupBy === 'modifiedDate'} onClick={() => { onGroupByChange('modifiedDate'); onClose(); }} />
+                <ViewMenuButton icon={<span />} label={t.pane.columns.type} selected={groupBy === 'type'} onClick={() => { onGroupByChange('type'); onClose(); }} />
+                <ViewMenuButton icon={<span />} label={t.pane.columns.size} selected={groupBy === 'size'} onClick={() => { onGroupByChange('size'); onClose(); }} />
+              </div>
+            )}
           </div>
           <MenuDivider />
           <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.toolbar.viewModes}</div>

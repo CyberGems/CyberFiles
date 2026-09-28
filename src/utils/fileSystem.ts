@@ -287,7 +287,9 @@ export function sortFiles(items: FileItem[], field: SortField, order: SortOrder)
         compare = a.size - b.size;
         break;
       case 'type':
-        compare = a.type.localeCompare(b.type);
+        compare = a.type.localeCompare(b.type)
+          || a.extension.localeCompare(b.extension, undefined, { numeric: true, sensitivity: 'base' })
+          || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
         break;
       case 'modifiedDate':
         compare = a.modifiedDate.localeCompare(b.modifiedDate);

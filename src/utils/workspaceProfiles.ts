@@ -1,11 +1,11 @@
-import type { SortField, SortOrder, TabState, ViewLayout, ViewMode } from '../types';
+import type { GroupByField, SortField, SortOrder, TabState, ViewLayout, ViewMode } from '../types';
 
 export const WORKSPACE_PROFILES_STORAGE_KEY = 'cyberfiles_workspace_profiles_v1';
 export const DEFAULT_LAYOUT_PROFILE_ID = 'builtin-default-layout';
 export const DEFAULT_SESSION_PROFILE_ID = 'builtin-default-session';
 
 export type WorkspacePaneId = 'left' | 'right';
-export type FileColumnId = 'extension' | 'name' | 'size' | 'created' | 'modified';
+export type FileColumnId = 'extension' | 'name' | 'type' | 'size' | 'created' | 'modified';
 
 export interface FileColumnLayoutSnapshot {
   order: FileColumnId[];
@@ -15,6 +15,7 @@ export interface FileColumnLayoutSnapshot {
 export interface FileColumnWidthsSnapshot {
   extension: number;
   name: number | null;
+  type: number;
   size: number;
   created: number;
   modified: number;
@@ -37,7 +38,7 @@ export interface LayoutSnapshot {
 
 export type SavedTabState = Pick<
   TabState,
-  'currentPath' | 'history' | 'historyIndex' | 'sortField' | 'sortOrder' | 'viewMode' | 'folderStyle'
+  'currentPath' | 'history' | 'historyIndex' | 'sortField' | 'sortOrder' | 'groupBy' | 'viewMode' | 'folderStyle'
 > & { id: string; title: string };
 
 export interface TabSessionSnapshot {
@@ -88,17 +89,17 @@ export const DEFAULT_LAYOUT_SNAPSHOT: LayoutSnapshot = {
   sidebarSplitPercent: 22,
   columns: {
     left: {
-      layout: { order: ['extension', 'name', 'size', 'created', 'modified'], visible: ['name', 'size', 'created', 'modified'] },
-      widths: { extension: 58, name: null, size: 84, created: 116, modified: 116 },
+      layout: { order: ['extension', 'name', 'type', 'size', 'created', 'modified'], visible: ['name', 'type', 'size', 'created', 'modified'] },
+      widths: { extension: 58, name: null, type: 148, size: 84, created: 116, modified: 116 },
     },
     right: {
-      layout: { order: ['extension', 'name', 'size', 'created', 'modified'], visible: ['name', 'size', 'created', 'modified'] },
-      widths: { extension: 58, name: null, size: 84, created: 116, modified: 116 },
+      layout: { order: ['extension', 'name', 'type', 'size', 'created', 'modified'], visible: ['name', 'type', 'size', 'created', 'modified'] },
+      widths: { extension: 58, name: null, type: 148, size: 84, created: 116, modified: 116 },
     },
   },
 };
 
-const VALID_COLUMNS: FileColumnId[] = ['extension', 'name', 'size', 'created', 'modified'];
+const VALID_COLUMNS: FileColumnId[] = ['extension', 'name', 'type', 'size', 'created', 'modified'];
 
 function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
@@ -108,7 +109,10 @@ function normalizeColumnLayout(value: unknown): FileColumnLayoutSnapshot {
   const raw = value && typeof value === 'object' ? value as Partial<FileColumnLayoutSnapshot> : {};
   const order = Array.isArray(raw.order) ? VALID_COLUMNS.filter(column => raw.order!.includes(column)) : [...VALID_COLUMNS];
   VALID_COLUMNS.forEach(column => { if (!order.includes(column)) order.push(column); });
-  const visible: FileColumnId[] = Array.isArray(raw.visible) ? order.filter(column => raw.visible!.includes(column)) : ['name', 'size', 'created', 'modified'];
+  const savedHadTypeColumn = Array.isArray(raw.order) && raw.order.includes('type');
+  const visible: FileColumnId[] = Array.isArray(raw.visible)
+    ? order.filter(column => raw.visible!.includes(column) || (column === 'type' && !savedHadTypeColumn))
+    : ['name', 'type', 'size', 'created', 'modified'];
   return { order, visible: visible.length > 0 ? visible : ['name'] };
 }
 
@@ -117,6 +121,7 @@ function normalizeColumnWidths(value: unknown): FileColumnWidthsSnapshot {
   return {
     extension: clampNumber(raw.extension, 58, 42, 220),
     name: raw.name === null ? null : clampNumber(raw.name, 160, 100, 1600),
+    type: clampNumber(raw.type, 148, 80, 500),
     size: clampNumber(raw.size, 84, 56, 320),
     created: clampNumber(raw.created, 116, 80, 480),
     modified: clampNumber(raw.modified, 116, 80, 480),
@@ -150,6 +155,10 @@ function normalizeSortField(value: unknown): SortField {
     : 'name';
 }
 
+function normalizeGroupBy(value: unknown): GroupByField {
+  return value === 'name' || value === 'modifiedDate' || value === 'type' || value === 'size' ? value : 'none';
+}
+
 function normalizeViewMode(value: unknown): ViewMode {
   return value === 'compact' || value === 'icons' ? value : 'details';
 }
@@ -160,12 +169,14 @@ function normalizeSavedTab(value: unknown, pane: WorkspacePaneId, index: number)
   const sortField = normalizeSortField(raw.sortField);
   const sortOrder: SortOrder = raw.sortOrder === 'desc' ? 'desc' : 'asc';
   const viewMode = normalizeViewMode(raw.viewMode);
+  const groupBy = normalizeGroupBy(raw.groupBy);
   const rawFolderStyle = raw.folderStyle && typeof raw.folderStyle === 'object' ? raw.folderStyle : undefined;
   const folderStyle = rawFolderStyle ? {
     sortField: normalizeSortField(rawFolderStyle.sortField),
     sortOrder: rawFolderStyle.sortOrder === 'desc' ? 'desc' as const : 'asc' as const,
+    groupBy: normalizeGroupBy(rawFolderStyle.groupBy ?? raw.groupBy),
     viewMode: normalizeViewMode(rawFolderStyle.viewMode),
-  } : { sortField, sortOrder, viewMode };
+  } : { sortField, sortOrder, groupBy, viewMode };
   const currentPath = typeof raw.currentPath === 'string' ? raw.currentPath : '';
   const historyIndex = clampNumber(raw.historyIndex, history.length - 1, -1, Math.max(-1, history.length - 1));
   return {
@@ -176,6 +187,7 @@ function normalizeSavedTab(value: unknown, pane: WorkspacePaneId, index: number)
     historyIndex,
     sortField,
     sortOrder,
+    groupBy,
     viewMode,
     folderStyle,
   };
@@ -260,8 +272,9 @@ export function defaultSessionSnapshot(systemHomePath: string, _systemHomeTitle:
     historyIndex: 0,
     sortField: 'name',
     sortOrder: 'asc',
+    groupBy: 'none',
     viewMode: 'details',
-    folderStyle: { sortField: 'name', sortOrder: 'asc', viewMode: 'details' },
+    folderStyle: { sortField: 'name', sortOrder: 'asc', groupBy: 'none', viewMode: 'details' },
   });
   return {
     leftTabs: [makeTab('left')],

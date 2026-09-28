@@ -46,6 +46,7 @@ export interface RecentItemStyle {
 }
 
 export type SortField = 'name' | 'size' | 'type' | 'createdDate' | 'modifiedDate' | 'extension';
+export type GroupByField = 'none' | 'name' | 'modifiedDate' | 'type' | 'size';
 export type SortOrder = 'asc' | 'desc';
 export type QuickAccessSortMode = 'manual' | 'name';
 
@@ -66,10 +67,12 @@ export interface TabState {
   focusedId: string | null;
   sortField: SortField;
   sortOrder: SortOrder;
+  groupBy?: GroupByField;
   viewMode: ViewMode;
   folderStyle?: {
     sortField: SortField;
     sortOrder: SortOrder;
+    groupBy?: GroupByField;
     viewMode: ViewMode;
   };
 }
