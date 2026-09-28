@@ -1111,6 +1111,67 @@ fn get_windows_file_clipboard() -> Result<NativeFileClipboard, String> {
     })
 }
 
+#[cfg(target_os = "windows")]
+fn read_windows_clipboard_text() -> Result<String, String> {
+    use windows_sys::Win32::System::{
+        DataExchange::{
+            CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
+        },
+        Memory::{GlobalLock, GlobalSize, GlobalUnlock},
+    };
+    const CF_UNICODETEXT: u32 = 13;
+
+    if unsafe { OpenClipboard(std::ptr::null_mut()) } == 0 {
+        return Err("Windows could not open the clipboard. Try again shortly.".to_string());
+    }
+    struct ClipboardGuard;
+    impl Drop for ClipboardGuard {
+        fn drop(&mut self) {
+            unsafe {
+                CloseClipboard();
+            }
+        }
+    }
+    let _guard = ClipboardGuard;
+    if unsafe { IsClipboardFormatAvailable(CF_UNICODETEXT) } == 0 {
+        return Ok(String::new());
+    }
+    let handle = unsafe { GetClipboardData(CF_UNICODETEXT) };
+    if handle.is_null() {
+        return Err("Windows could not read text from the clipboard.".to_string());
+    }
+    let size = unsafe { GlobalSize(handle) } / std::mem::size_of::<u16>();
+    if size == 0 {
+        return Ok(String::new());
+    }
+    let text = unsafe { GlobalLock(handle) }.cast::<u16>();
+    if text.is_null() {
+        return Err("Windows could not read text from the clipboard.".to_string());
+    }
+    let wide = unsafe { std::slice::from_raw_parts(text, size) };
+    let length = wide
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(wide.len());
+    let value = String::from_utf16_lossy(&wide[..length]);
+    unsafe {
+        GlobalUnlock(handle);
+    }
+    Ok(value)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn read_windows_clipboard_text() -> Result<String, String> {
+    Err("Clipboard text integration is available only in the Windows desktop app.".to_string())
+}
+
+#[tauri::command]
+async fn read_clipboard_text() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(read_windows_clipboard_text)
+        .await
+        .map_err(|error| format!("Clipboard worker failed: {error}"))?
+}
+
 #[cfg(not(target_os = "windows"))]
 fn get_windows_file_clipboard() -> Result<NativeFileClipboard, String> {
     Err("File clipboard integration is available only in the Windows desktop app.".to_string())
@@ -3426,6 +3487,7 @@ fn main() {
             set_file_clipboard,
             get_file_clipboard,
             clear_file_clipboard,
+            read_clipboard_text,
             paste_clipboard_image,
             image_thumbnail,
             list_drives,

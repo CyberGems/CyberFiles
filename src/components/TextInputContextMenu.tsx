@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ClipboardPaste, Copy, Delete, ListChecks, Redo2, Undo2 } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
+import { isTauriDesktop, readNativeClipboardText } from '../utils/nativeFileSystem';
 import { Tooltip } from './Tooltip';
 
 type TextTarget = HTMLInputElement | HTMLTextAreaElement | HTMLElement;
@@ -235,8 +236,8 @@ export function TextInputContextMenu() {
         top: Math.max(8, Math.min(event.clientY, window.innerHeight - (canPasteAndGo ? 292 : 260))),
         pasteAndGoPath: null,
       });
-      if (canPasteAndGo && navigator.clipboard?.readText) {
-        void navigator.clipboard.readText().then(value => {
+      if (canPasteAndGo && isTauriDesktop()) {
+        void readNativeClipboardText().then(value => {
           const path = getUsableExplorerAddress(value);
           setMenu(previous => previous?.target === target ? { ...previous, pasteAndGoPath: path } : previous);
         }).catch(() => {

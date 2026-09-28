@@ -1742,7 +1742,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                         isTauriDesktop() ? (
                           !isRecycleBin && !item.recycleBinId ? <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip} placement="top">
                             <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip}>
-                              {folderSize?.status === 'loading' ? <LoaderCircle className="h-3 w-3 animate-spin" /> : folderSize?.status === 'done' ? <>{formatFileSize(folderSize.size ?? 0)}<Calculator className="h-3 w-3 opacity-60" /></> : folderSize?.status === 'error' ? <span aria-hidden="true">!</span> : <><Calculator className="h-3 w-3" />{t.pane.folderSizeCalculate}</>}
+                              {folderSize?.status === 'loading' ? <LoaderCircle className="h-3 w-3 animate-spin" /> : folderSize?.status === 'done' ? <><Calculator className="h-3 w-3 opacity-60" /><span>{formatFileSize(folderSize.size ?? 0)}</span></> : folderSize?.status === 'error' ? <span aria-hidden="true">!</span> : <><Calculator className="h-3 w-3" />{t.pane.folderSizeCalculate}</>}
                             </button>
                           </Tooltip> : '--'
                         ) : '--'

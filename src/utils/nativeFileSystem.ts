@@ -10,6 +10,11 @@ export function isTauriDesktop() {
   return '__TAURI_INTERNALS__' in window;
 }
 
+export async function readNativeClipboardText(): Promise<string> {
+  if (!isTauriDesktop()) return '';
+  return invoke<string>('read_clipboard_text');
+}
+
 interface NativeFolderEntry {
   name: string;
   path: string;
