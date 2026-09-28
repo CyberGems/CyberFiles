@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { 
   FileItem, 
@@ -48,6 +49,7 @@ import { TextInputContextMenu } from './components/TextInputContextMenu';
 import { TooltipPreferenceContext } from './components/Tooltip';
 import { WorkspaceManagerModal } from './components/WorkspaceManagerModal';
 import { UnsavedWorkspaceChangesModal, type WorkspaceChangesSaveNames } from './components/UnsavedWorkspaceChangesModal';
+import { FileOperationModal, type CopyOperationView } from './components/FileOperationModal';
 
 
 import { useLanguage } from './locales/LanguageContext';
@@ -73,7 +75,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeCopyOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeCopyOperation, pauseNativeCopyOperation, resumeNativeCopyOperation, type NativeCopyProgress, type NativeCopyFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
@@ -588,8 +590,6 @@ export default function App() {
   const [windowsSpecialFolders, setWindowsSpecialFolders] = useState<WindowsSpecialFolder[]>([]);
   const [dateFormat, setDateFormat] = useState<DateFormatMode>(readDateFormatPreference);
   const [autoFolderSizeEnabled, setAutoFolderSizeEnabled] = useState(() => readBooleanPreference(AUTO_FOLDER_SIZE_ENABLED_KEY, true));
-  const [isAdminMode, setIsAdminMode] = useState(false);
-  const [adminLaunchPending, setAdminLaunchPending] = useState(false);
   const [singleClickOpen, setSingleClickOpen] = useState(() => readBooleanPreference(SINGLE_CLICK_OPEN_KEY, false));
 
   // Global file system state
@@ -871,6 +871,9 @@ export default function App() {
   });
   const [pendingDeleteItems, setPendingDeleteItems] = useState<FileItem[]>([]);
   const [isFileOperationBusy, setIsFileOperationBusy] = useState(false);
+  const [copyOperation, setCopyOperation] = useState<CopyOperationView | null>(null);
+  const copyOperationRef = useRef<CopyOperationView | null>(null);
+  copyOperationRef.current = copyOperation;
   const [renameRequest, setRenameRequest] = useState<{ requestId: number; itemId: string; paneId: 'left' | 'right' } | null>(null);
   const renameRequestSequence = useRef(0);
   const [isEmptyRecycleBinConfirmOpen, setIsEmptyRecycleBinConfirmOpen] = useState(false);
@@ -2042,26 +2045,12 @@ export default function App() {
     activeLeftTabIndex,
     activeRightTabIndex,
   };
-  const handleNavigateRef = useRef(handleNavigate);
-  handleNavigateRef.current = handleNavigate;
-  useEffect(() => {
-    if (!isTauriDesktop()) return;
-    let active = true;
-    void invoke<{ isAdminMode: boolean; startupPath?: string | null; startupPane?: string | null }>('admin_mode_context')
-      .then(context => {
-        if (!active) return;
-        setIsAdminMode(context.isAdminMode);
-        if (context.isAdminMode && context.startupPath) {
-          const pane = context.startupPane === 'right' ? 'right' : 'left';
-          setActivePane(pane);
-          void handleNavigateRef.current(context.startupPath, pane);
-        }
-      })
-      .catch(() => {});
-    return () => { active = false; };
-  }, []);
   const refreshSystemHomeRef = useRef(refreshSystemHome);
   refreshSystemHomeRef.current = refreshSystemHome;
+
+  const handleNavigateRef = useRef(handleNavigate);
+  handleNavigateRef.current = handleNavigate;
+
 
   useEffect(() => {
     if (!isTauriDesktop()) return;
@@ -2431,6 +2420,124 @@ export default function App() {
 
   const createOperationId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    let cancelled = false;
+    let unlistenProgress: (() => void) | undefined;
+    let unlistenFinished: (() => void) | undefined;
+    void listen<NativeCopyProgress>('copy-operation-progress', event => {
+      setCopyOperation(previous => previous?.jobId === event.payload.jobId
+        ? { ...previous, ...event.payload }
+        : previous);
+    }).then(stop => {
+      if (cancelled) stop();
+      else unlistenProgress = stop;
+    });
+    void listen<NativeCopyFinished>('copy-operation-finished', event => {
+      const active = copyOperationRef.current;
+      if (!active || active.jobId !== event.payload.jobId) return;
+      copyOperationRef.current = null;
+      setCopyOperation(null);
+      setIsFileOperationBusy(false);
+      const result = event.payload.result;
+      void (async () => {
+        await refreshChangedDirectories([active.targetPath]);
+        if (active.selectionPane && result.completedPaths.length > 0) {
+          const pastedIds = result.completedPaths.map(path => 'native-' + encodeURIComponent(path.toLowerCase()));
+          updatePaneTab(active.selectionPane, tab => ({ ...tab, selectedIds: pastedIds, focusedId: pastedIds[0] }));
+        }
+        if (result.failures.length > 0) {
+          showToast(t.core.operationPartial
+            .replace('{completed}', String(result.completedPaths.length))
+            .replace('{failed}', String(result.failures.length))
+            .replace('{reason}', result.failures[0].error));
+        } else if (result.completedPaths.length > 0) {
+          showToast(t.core.copied.replace('{count}', String(result.completedPaths.length)).replace('{target}', active.targetPath));
+        }
+      })();
+    }).then(stop => {
+      if (cancelled) stop();
+      else unlistenFinished = stop;
+    });
+    return () => {
+      cancelled = true;
+      unlistenProgress?.();
+      unlistenFinished?.();
+    };
+  }, [refreshChangedDirectories, showToast, t.core.copied, t.core.operationPartial, updatePaneTab]);
+
+  const startCopyWithProgress = useCallback(async (paths: string[], targetPath: string, selectionPane?: 'left' | 'right') => {
+    if (paths.length === 0) return;
+    const jobId = createOperationId('copy');
+    const operation: CopyOperationView = {
+      jobId,
+      phase: 'scanning',
+      currentItem: '',
+      bytesCopied: 0,
+      totalBytes: 0,
+      currentFileBytes: 0,
+      currentFileTotal: 0,
+      itemsCompleted: 0,
+      totalItems: 0,
+      sourcePaths: paths,
+      targetPath,
+      isPaused: false,
+      isCancelling: false,
+      startedAt: Date.now(),
+      selectionPane,
+    };
+    copyOperationRef.current = operation;
+    setCopyOperation(operation);
+    setIsFileOperationBusy(true);
+    try {
+      await startNativeCopyOperation(paths, targetPath, jobId);
+    } catch (error) {
+      copyOperationRef.current = null;
+      setCopyOperation(null);
+      setIsFileOperationBusy(false);
+      showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
+    }
+  }, [showToast, t.core.operationFailedWithReason]);
+
+  const toggleCopyPause = async () => {
+    const operation = copyOperationRef.current;
+    if (!operation || operation.isCancelling) return;
+    const paused = !operation.isPaused;
+    const next = { ...operation, isPaused: paused };
+    copyOperationRef.current = next;
+    setCopyOperation(next);
+    try {
+      await (paused ? pauseNativeCopyOperation(operation.jobId) : resumeNativeCopyOperation(operation.jobId));
+    } catch (error) {
+      const current = copyOperationRef.current;
+      if (current?.jobId === operation.jobId) {
+        const restored = { ...current, isPaused: !paused };
+        copyOperationRef.current = restored;
+        setCopyOperation(restored);
+      }
+      showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
+    }
+  };
+
+  const cancelCopy = async () => {
+    const operation = copyOperationRef.current;
+    if (!operation || operation.isCancelling) return;
+    const cancelling = { ...operation, isCancelling: true };
+    copyOperationRef.current = cancelling;
+    setCopyOperation(cancelling);
+    try {
+      await cancelNativeCopyOperation(operation.jobId);
+    } catch (error) {
+      const current = copyOperationRef.current;
+      if (current?.jobId === operation.jobId) {
+        const restored = { ...current, isCancelling: false };
+        copyOperationRef.current = restored;
+        setCopyOperation(restored);
+      }
+      showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
+    }
+  };
+
   const moveItemsToPath = useCallback(async (selectedIds: string[], targetPath: string, sourcePane: 'left' | 'right' = activePane) => {
     if (targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH) {
       showToast(t.pane.chooseRealDestinationFolder);
@@ -2514,21 +2621,7 @@ export default function App() {
 
     if (isTauriDesktop()) {
       if (isFileOperationBusy) return;
-      setIsFileOperationBusy(true);
-      void copyNativeItemsToDirectory(roots.map(root => root.path), targetPath)
-        .then(async result => {
-          await refreshChangedDirectories([targetPath]);
-          if (result.failures.length > 0) {
-            showToast(t.core.operationPartial
-              .replace('{completed}', String(result.completedPaths.length))
-              .replace('{failed}', String(result.failures.length))
-              .replace('{reason}', result.failures[0].error));
-          } else if (result.completedPaths.length > 0) {
-            showToast(t.core.copied.replace('{count}', String(result.completedPaths.length)).replace('{target}', inactiveTab.title));
-          }
-        })
-        .catch(error => showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))))
-        .finally(() => setIsFileOperationBusy(false));
+      void startCopyWithProgress(roots.map(root => root.path), targetPath);
       return;
     }
 
@@ -2550,7 +2643,7 @@ export default function App() {
 
     setAllFiles(prev => [...prev, ...newCopies]);
     showToast(t.core.copied.replace('{count}', String(roots.length)).replace('{target}', inactiveTab.title));
-  }, [allFiles, currentTab.selectedIds, inactiveTab.currentPath, inactiveTab.title, isFileOperationBusy, refreshChangedDirectories, t.core.cannotCopyIntoSelf, t.core.copied, t.core.operationFailedWithReason, t.core.operationPartial, t.pane.chooseRealDestinationFolder, showToast]);
+  }, [allFiles, currentTab.selectedIds, inactiveTab.currentPath, inactiveTab.title, isFileOperationBusy, refreshChangedDirectories, t.core.cannotCopyIntoSelf, t.core.copied, t.core.operationFailedWithReason, t.core.operationPartial, t.pane.chooseRealDestinationFolder, showToast, startCopyWithProgress]);
 
   const handleMoveSelected = useCallback(() => {
     moveItemsToPath(currentTab.selectedIds, inactiveTab.currentPath);
@@ -2591,6 +2684,7 @@ export default function App() {
       return;
     }
     setIsFileOperationBusy(true);
+    let copyStarted = false;
     try {
       const clipboard = await getNativeFileClipboard();
       if (clipboard.paths.length === 0) {
@@ -2624,18 +2718,21 @@ export default function App() {
         showToast(t.core.pastedImage.replace('{name}', pastedImage.name));
         return;
       }
-      const result = clipboard.isCut
-        ? await moveNativeItemsToDirectory(clipboard.paths, targetPath)
-        : await copyNativeItemsToDirectory(clipboard.paths, targetPath);
+      if (!clipboard.isCut) {
+        copyStarted = true;
+        void startCopyWithProgress(clipboard.paths, targetPath, pane);
+        return;
+      }
+      const result = await moveNativeItemsToDirectory(clipboard.paths, targetPath);
       await refreshChangedDirectories([
-        ...(clipboard.isCut ? clipboard.paths.map(getParentPath) : []),
+        ...clipboard.paths.map(getParentPath),
         targetPath,
       ]);
       if (result.completedPaths.length > 0) {
         const pastedIds = result.completedPaths.map(path => `native-${encodeURIComponent(path.toLowerCase())}`);
         updatePaneTab(pane, tab => ({ ...tab, selectedIds: pastedIds, focusedId: pastedIds[0] }));
       }
-      if (clipboard.isCut && result.completedPaths.length > 0 && result.failures.length === 0) {
+      if (result.completedPaths.length > 0 && result.failures.length === 0) {
         await clearNativeFileClipboard(clipboard.sequenceNumber);
       }
       if (result.failures.length > 0) {
@@ -2649,9 +2746,9 @@ export default function App() {
     } catch (error) {
       showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
     } finally {
-      setIsFileOperationBusy(false);
+      if (!copyStarted) setIsFileOperationBusy(false);
     }
-  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, refreshChangedDirectories, rightTabs, showToast, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.operationPartial, t.core.pasted, t.core.pastedImage, t.core.clipboardImageFileBaseName, t.pane.chooseRealFolderFirst, updatePaneTab]);
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, refreshChangedDirectories, rightTabs, showToast, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.operationPartial, t.core.pasted, t.core.pastedImage, t.core.clipboardImageFileBaseName, t.pane.chooseRealFolderFirst, updatePaneTab, startCopyWithProgress]);
 
   const handleDropFiles = useCallback((droppedIds: string[], targetFolderPath?: string, sourcePane?: 'left' | 'right') => {
     moveItemsToPath(droppedIds, targetFolderPath || currentTab.currentPath, sourcePane);
@@ -3541,15 +3638,6 @@ export default function App() {
         currentFolderPath={currentTab.currentPath}
         oppositeFolderPath={inactiveTab.currentPath}
         windowsActionsAvailable={isTauriDesktop()}
-        isAdminMode={isAdminMode}
-        adminLaunchPending={adminLaunchPending}
-        onOpenAdminMode={() => {
-          if (adminLaunchPending || isAdminMode) return;
-          setAdminLaunchPending(true);
-          void invoke('launch_admin_mode', { path: currentTab.currentPath, pane: activePane })
-            .catch(error => showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))))
-            .finally(() => setAdminLaunchPending(false));
-        }}
         windowsSpecialFolders={windowsSpecialFolders}
         lastTerminalOption={lastTerminalOption}
         onLastTerminalOptionChange={setLastTerminalOption}
@@ -4013,6 +4101,7 @@ export default function App() {
           }}
         />
       )}
+      <FileOperationModal operation={copyOperation} language={language} onTogglePause={() => { void toggleCopyPause(); }} onCancel={() => { void cancelCopy(); }} />
       <TextInputContextMenu />
 
       <WorkspaceManagerModal

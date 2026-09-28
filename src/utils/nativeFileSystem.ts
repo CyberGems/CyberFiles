@@ -100,6 +100,23 @@ export interface NativeOperationResult {
   failures: Array<{ path: string; error: string }>;
 }
 
+export interface NativeCopyProgress {
+  jobId: string;
+  phase: 'scanning' | 'copying';
+  currentItem: string;
+  bytesCopied: number;
+  totalBytes: number;
+  currentFileBytes: number;
+  currentFileTotal: number;
+  itemsCompleted: number;
+  totalItems: number;
+}
+
+export interface NativeCopyFinished {
+  jobId: string;
+  result: NativeOperationResult;
+}
+
 export interface NativeFileClipboard {
   paths: string[];
   isCut: boolean;
@@ -237,8 +254,20 @@ export async function renameNativeItem(path: string, newName: string): Promise<s
   return invoke<string>('rename_item', { path, newName });
 }
 
-export async function copyNativeItemsToDirectory(paths: string[], targetPath: string): Promise<NativeOperationResult> {
-  return invoke<NativeOperationResult>('copy_items_to_directory', { paths, targetPath });
+export async function startNativeCopyOperation(paths: string[], targetPath: string, jobId: string): Promise<void> {
+  return invoke<void>('start_copy_operation', { paths, targetPath, jobId });
+}
+
+export async function pauseNativeCopyOperation(jobId: string): Promise<void> {
+  return invoke<void>('pause_copy_operation', { jobId });
+}
+
+export async function resumeNativeCopyOperation(jobId: string): Promise<void> {
+  return invoke<void>('resume_copy_operation', { jobId });
+}
+
+export async function cancelNativeCopyOperation(jobId: string): Promise<void> {
+  return invoke<void>('cancel_copy_operation', { jobId });
 }
 
 export async function moveNativeItemsToDirectory(paths: string[], targetPath: string): Promise<NativeOperationResult> {

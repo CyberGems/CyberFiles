@@ -22,8 +22,6 @@ import {
   FileText,
   FolderOpen,
   Terminal,
-  Shield,
-  ShieldCheck,
 } from 'lucide-react';
 import { RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, ViewLayout, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
@@ -44,9 +42,6 @@ interface HeaderBarProps {
   currentFolderPath: string;
   oppositeFolderPath: string;
   windowsActionsAvailable: boolean;
-  isAdminMode: boolean;
-  adminLaunchPending: boolean;
-  onOpenAdminMode: () => void;
   windowsSpecialFolders: WindowsSpecialFolder[];
   lastTerminalOption: WindowsTerminalOption;
   onLastTerminalOptionChange: (option: WindowsTerminalOption) => void;
@@ -80,9 +75,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   currentFolderPath,
   oppositeFolderPath,
   windowsActionsAvailable,
-  isAdminMode,
-  adminLaunchPending,
-  onOpenAdminMode,
   windowsSpecialFolders,
   lastTerminalOption,
   onLastTerminalOptionChange,
@@ -186,20 +178,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 
         {windowsActionsAvailable && (
           <>
-            <Tooltip label={isAdminMode ? t.toolbar.adminModeActive : t.toolbar.openAdminMode} placement="bottom">
-              <button
-                type="button"
-                aria-label={isAdminMode ? t.toolbar.adminModeActive : t.toolbar.openAdminMode}
-                aria-pressed={isAdminMode}
-                disabled={isAdminMode || adminLaunchPending}
-                onClick={onOpenAdminMode}
-                className={isAdminMode
-                  ? 'flex h-9 w-9 items-center justify-center rounded-md border border-amber-700/70 bg-amber-950/60 text-amber-300'
-                  : 'flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-300 transition-colors hover:border-amber-800 hover:bg-neutral-800 hover:text-amber-200'}
-              >
-                {isAdminMode ? <ShieldCheck className="h-4 w-4" /> : <Shield className="h-4 w-4" />}
-              </button>
-            </Tooltip>
             <Tooltip label={t.toolbar.showInWindowsExplorer} placement="bottom" disabled={!canUseFolderActions}>
               <button type="button" aria-label={t.toolbar.showInWindowsExplorer} disabled={!canUseFolderActions} onClick={onShowInWindowsExplorer} className="flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-300 transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40">
                 <ExternalLink className="h-4 w-4" />

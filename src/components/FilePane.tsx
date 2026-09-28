@@ -105,7 +105,7 @@ type FileColumn = 'extension' | 'name' | 'type' | 'size' | 'created' | 'modified
 type RelativeGraphColumn = 'size' | 'created' | 'modified';
 type RelativeGraphWidths = Partial<Record<RelativeGraphColumn, number>>;
 type ResizableColumn = FileColumn;
-type FolderSizeState = { status: 'loading' | 'paused' | 'done' | 'error'; size?: number };
+type FolderSizeState = { status: 'loading' | 'paused' | 'done' | 'error'; size?: number; entriesScanned?: number };
 
 function getDisplayItemName(item: FileItem, showFileExtensions: boolean): string {
   if (showFileExtensions || item.isFolder) return item.name;
@@ -492,8 +492,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const getFolderTooltipSizeText = (item: FileItem) => {
     const folderSize = folderSizeStates[item.id];
     if (folderSize?.status === 'done') return t.pane.folderSizeTotal.replace('{size}', formatFileSize(folderSize.size ?? 0));
-    if (folderSize?.status === 'loading') return t.pane.folderSizeCalculating;
-    if (folderSize?.status === 'paused') return t.pane.folderSizePaused;
+    if (folderSize?.status === 'loading') return t.pane.folderSizeCalculating.replace('{size}', formatFileSize(folderSize.size ?? 0)).replace('{entries}', String(folderSize.entriesScanned ?? 0));
+    if (folderSize?.status === 'paused') return t.pane.folderSizePaused.replace('{size}', formatFileSize(folderSize.size ?? 0)).replace('{entries}', String(folderSize.entriesScanned ?? 0));
     if (folderSize?.status === 'error') return t.pane.folderSizeFailed;
     if (!autoFolderSizeEnabled) return t.pane.folderSizeHoverDisabled;
     return isTauriDesktop() ? t.pane.folderSizeHoverHint : t.pane.folderSizeHoverDesktopOnly;
@@ -601,7 +601,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       folderSizeLeaveTimersRef.current.delete(item.id);
       void cancelNativeFolderSizeCalculation(activeJobId);
     }
-    setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'loading' } }));
+    setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'loading', size: 0, entriesScanned: 0 } }));
     try {
       const size = await calculateNativeFolderSize(item.path);
       setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'done', size } }));
@@ -616,7 +616,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       ? crypto.randomUUID()
       : String(Date.now()) + '-' + Math.random().toString(36).slice(2);
     folderSizeJobsRef.current.set(item.id, jobId);
-    setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'loading' } }));
+    setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'loading', size: 0, entriesScanned: 0 } }));
     try {
       await startNativeFolderSizeCalculation(item.path, jobId);
       if (!hoveredFolderItemsRef.current.has(item.id) && folderSizeJobsRef.current.get(item.id) === jobId) {
@@ -651,7 +651,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const jobId = folderSizeJobsRef.current.get(item.id);
     if (jobId) {
       if (folderSizeStatesRef.current[item.id]?.status === 'paused') {
-        setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'loading' } }));
+        setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'loading', size: 0, entriesScanned: 0 } }));
         void resumeNativeFolderSizeCalculation(jobId);
       }
       return;
@@ -706,6 +706,27 @@ export const FilePane: React.FC<FilePaneProps> = ({
       Object.entries(previous).filter(([, state]) => state.status === 'done'),
     ));
   }, [autoFolderSizeEnabled, tooltipsEnabled]);
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void listen<{ jobId: string; size: number; entriesScanned: number }>('folder-size-calculation-progress', event => {
+      const itemId = [...folderSizeJobsRef.current.entries()].find(([, activeJobId]) => activeJobId === event.payload.jobId)?.[0];
+      if (!itemId) return;
+      setFolderSizeStates(previous => ({
+        ...previous,
+        [itemId]: {
+          status: previous[itemId]?.status === 'paused' ? 'paused' : 'loading',
+          size: event.payload.size,
+          entriesScanned: event.payload.entriesScanned,
+        },
+      }));
+    }).then(stopListening => {
+      if (cancelled) stopListening();
+      else unlisten = stopListening;
+    });
+    return () => { cancelled = true; unlisten?.(); };
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     let unlisten: (() => void) | undefined;

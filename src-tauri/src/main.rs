@@ -1,4 +1,4 @@
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -79,118 +79,6 @@ struct GlobalShortcutStatus {
     enabled: bool,
     shortcut: String,
     registered: bool,
-}
-
-#[cfg(target_os = "windows")]
-fn current_process_is_elevated() -> bool {
-    use std::mem::size_of;
-    use windows_sys::Win32::{
-        Foundation::{CloseHandle, HANDLE},
-        Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY},
-        System::Threading::{GetCurrentProcess, OpenProcessToken},
-    };
-
-    unsafe {
-        let mut token: HANDLE = std::ptr::null_mut();
-        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
-            return false;
-        }
-        let mut elevation = TOKEN_ELEVATION::default();
-        let mut returned_length = 0;
-        let success = GetTokenInformation(
-            token,
-            TokenElevation,
-            (&mut elevation as *mut TOKEN_ELEVATION).cast(),
-            size_of::<TOKEN_ELEVATION>() as u32,
-            &mut returned_length,
-        );
-        CloseHandle(token);
-        success != 0 && elevation.TokenIsElevated != 0
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn current_process_is_elevated() -> bool {
-    false
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct AdminModeContext {
-    is_admin_mode: bool,
-    startup_path: Option<String>,
-    startup_pane: Option<String>,
-}
-
-#[tauri::command]
-fn admin_mode_context() -> AdminModeContext {
-    let arguments: Vec<String> = std::env::args().collect();
-    let is_admin_mode = arguments.iter().any(|argument| argument == "--cyberfiles-admin-mode")
-        && current_process_is_elevated();
-    let startup_path = if is_admin_mode {
-        arguments
-            .windows(2)
-            .find(|pair| pair[0] == "--cyberfiles-admin-path")
-            .and_then(|pair| URL_SAFE_NO_PAD.decode(&pair[1]).ok())
-            .and_then(|bytes| String::from_utf8(bytes).ok())
-    } else {
-        None
-    };
-    let startup_pane = if is_admin_mode {
-        arguments
-            .windows(2)
-            .find(|pair| pair[0] == "--cyberfiles-admin-pane")
-            .map(|pair| pair[1].clone())
-            .filter(|pane| pane == "left" || pane == "right")
-    } else {
-        None
-    };
-    AdminModeContext { is_admin_mode, startup_path, startup_pane }
-}
-
-#[cfg(target_os = "windows")]
-fn launch_admin_instance(path: &str, pane: &str) -> Result<(), String> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows::core::PCWSTR;
-    use windows::Win32::UI::Shell::ShellExecuteW;
-    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
-
-    let executable = std::env::current_exe()
-        .map_err(|error| format!("Could not locate CyberFiles: {error}"))?;
-    let encoded_path = URL_SAFE_NO_PAD.encode(path.as_bytes());
-    let safe_pane = if pane == "right" { "right" } else { "left" };
-    let parameters = format!("--cyberfiles-admin-mode --cyberfiles-admin-path {encoded_path} --cyberfiles-admin-pane {safe_pane}");
-    let verb: Vec<u16> = "runas".encode_utf16().chain(Some(0)).collect();
-    let executable_wide: Vec<u16> = executable.as_os_str().encode_wide().chain(Some(0)).collect();
-    let parameters_wide: Vec<u16> = parameters.encode_utf16().chain(Some(0)).collect();
-    let result = unsafe {
-        ShellExecuteW(
-            None,
-            PCWSTR(verb.as_ptr()),
-            PCWSTR(executable_wide.as_ptr()),
-            PCWSTR(parameters_wide.as_ptr()),
-            PCWSTR::null(),
-            SW_SHOWNORMAL,
-        )
-    };
-    let result_code = result.0 as isize;
-    if result_code > 32 {
-        Ok(())
-    } else {
-        Err(format!("Windows could not start CyberFiles as administrator (ShellExecute error {result_code})."))
-    }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn launch_admin_instance(_path: &str, _pane: &str) -> Result<(), String> {
-    Err("Administrator mode is available only in the Windows desktop app.".to_string())
-}
-
-#[tauri::command]
-async fn launch_admin_mode(path: String, pane: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || launch_admin_instance(&path, &pane))
-        .await
-        .map_err(|error| format!("Administrator launch worker failed: {error}"))?
 }
 
 #[tauri::command]
@@ -526,18 +414,297 @@ struct DirectoryListing {
 
 const DIRECTORY_PAGE_SIZE: usize = 400;
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct NativeOperationFailure {
     path: String,
     error: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct NativeOperationResult {
     completed_paths: Vec<String>,
     failures: Vec<NativeOperationFailure>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct CopyOperationProgress {
+    job_id: String,
+    phase: String,
+    current_item: String,
+    bytes_copied: u64,
+    total_bytes: u64,
+    current_file_bytes: u64,
+    current_file_total: u64,
+    items_completed: usize,
+    total_items: usize,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct CopyOperationFinished {
+    job_id: String,
+    result: NativeOperationResult,
+}
+
+#[derive(Default)]
+struct CopyJobState {
+    paused: bool,
+    cancelled: bool,
+}
+
+struct CopyJobControl {
+    state: Mutex<CopyJobState>,
+    changed: Condvar,
+}
+
+static COPY_JOBS: OnceLock<Mutex<HashMap<String, Arc<CopyJobControl>>>> = OnceLock::new();
+
+fn copy_jobs() -> &'static Mutex<HashMap<String, Arc<CopyJobControl>>> {
+    COPY_JOBS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn find_copy_job(job_id: &str) -> Result<Option<Arc<CopyJobControl>>, String> {
+    let jobs = copy_jobs().lock().map_err(|_| "Copy job registry is unavailable.".to_string())?;
+    Ok(jobs.get(job_id).cloned())
+}
+
+fn wait_for_copy_job(control: &CopyJobControl) -> Result<(), String> {
+    let mut state = control.state.lock().map_err(|_| "Copy operation state is unavailable.".to_string())?;
+    while state.paused && !state.cancelled {
+        state = control.changed.wait(state).map_err(|_| "Copy operation state is unavailable.".to_string())?;
+    }
+    if state.cancelled {
+        Err("Copy operation cancelled.".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+struct CopyProgressTracker {
+    app: tauri::AppHandle,
+    job_id: String,
+    phase: String,
+    current_item: String,
+    bytes_copied: u64,
+    total_bytes: u64,
+    current_file_bytes: u64,
+    current_file_total: u64,
+    items_completed: usize,
+    total_items: usize,
+    last_emit: std::time::Instant,
+}
+
+impl CopyProgressTracker {
+    fn emit(&mut self, force: bool) {
+        if !force && self.last_emit.elapsed() < std::time::Duration::from_millis(180) {
+            return;
+        }
+        self.last_emit = std::time::Instant::now();
+        let _ = self.app.emit("copy-operation-progress", CopyOperationProgress {
+            job_id: self.job_id.clone(),
+            phase: self.phase.clone(),
+            current_item: self.current_item.clone(),
+            bytes_copied: self.bytes_copied,
+            total_bytes: self.total_bytes,
+            current_file_bytes: self.current_file_bytes,
+            current_file_total: self.current_file_total,
+            items_completed: self.items_completed,
+            total_items: self.total_items,
+        });
+    }
+}
+
+fn count_copy_tree(
+    root: &Path,
+    control: &CopyJobControl,
+    tracker: &mut CopyProgressTracker,
+) -> Result<(), String> {
+    wait_for_copy_job(control)?;
+    let root_metadata = fs::symlink_metadata(root).map_err(|error| format!("Cannot inspect {}: {error}", display_path(root)))?;
+    tracker.total_items += 1;
+    if root_metadata.is_file() && !root_metadata.file_type().is_symlink() {
+        tracker.total_bytes = tracker.total_bytes.saturating_add(root_metadata.len());
+    }
+    tracker.current_item = root.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_else(|| display_path(root));
+    tracker.emit(false);
+    let mut pending = if root_metadata.is_dir() && !root_metadata.file_type().is_symlink() {
+        vec![root.to_path_buf()]
+    } else {
+        Vec::new()
+    };
+    while let Some(directory) = pending.pop() {
+        wait_for_copy_job(control)?;
+        let entries = fs::read_dir(&directory).map_err(|error| format!("Cannot read {}: {error}", display_path(&directory)))?;
+        for entry in entries {
+            wait_for_copy_job(control)?;
+            let entry = entry.map_err(|error| error.to_string())?;
+            let path = entry.path();
+            tracker.current_item = entry.file_name().to_string_lossy().to_string();
+            let metadata = fs::symlink_metadata(&path).map_err(|error| format!("Cannot inspect {}: {error}", display_path(&path)))?;
+            tracker.total_items += 1;
+            if metadata.file_type().is_symlink() {
+                tracker.emit(false);
+                continue;
+            }
+            if metadata.is_dir() {
+                pending.push(path);
+            } else if metadata.is_file() {
+                tracker.total_bytes = tracker.total_bytes.saturating_add(metadata.len());
+            }
+            tracker.emit(false);
+        }
+    }
+    tracker.emit(true);
+    Ok(())
+}
+
+fn copy_path_with_progress(
+    source: &Path,
+    destination: &Path,
+    control: &CopyJobControl,
+    tracker: &mut CopyProgressTracker,
+    buffer: &mut [u8],
+) -> Result<(), String> {
+    wait_for_copy_job(control)?;
+    let metadata = fs::symlink_metadata(source).map_err(|error| error.to_string())?;
+    tracker.current_item = source.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_else(|| display_path(source));
+    tracker.current_file_bytes = 0;
+    tracker.current_file_total = 0;
+    if metadata.file_type().is_symlink() {
+        return Err("Symbolic links are not followed by file operations.".to_string());
+    }
+    if metadata.is_dir() {
+        fs::create_dir(destination).map_err(|error| error.to_string())?;
+        tracker.items_completed += 1;
+        tracker.emit(false);
+        for entry in fs::read_dir(source).map_err(|error| error.to_string())? {
+            wait_for_copy_job(control)?;
+            let entry = entry.map_err(|error| error.to_string())?;
+            copy_path_with_progress(
+                &entry.path(),
+                &destination.join(entry.file_name()),
+                control,
+                tracker,
+                buffer,
+            )?;
+        }
+        Ok(())
+    } else if metadata.is_file() {
+        tracker.current_file_bytes = 0;
+        tracker.current_file_total = metadata.len();
+        tracker.emit(false);
+        let mut input = fs::File::open(source).map_err(|error| error.to_string())?;
+        let mut output = fs::OpenOptions::new().write(true).create_new(true).open(destination).map_err(|error| error.to_string())?;
+        loop {
+            wait_for_copy_job(control)?;
+            let count = input.read(buffer).map_err(|error| error.to_string())?;
+            if count == 0 { break; }
+            output.write_all(&buffer[..count]).map_err(|error| error.to_string())?;
+            tracker.bytes_copied = tracker.bytes_copied.saturating_add(count as u64);
+            tracker.current_file_bytes = tracker.current_file_bytes.saturating_add(count as u64);
+            tracker.emit(false);
+        }
+        drop(output);
+        fs::set_permissions(destination, metadata.permissions()).map_err(|error| error.to_string())?;
+        tracker.items_completed += 1;
+        tracker.emit(false);
+        Ok(())
+    } else {
+        Err("This filesystem item type is not supported.".to_string())
+    }
+}
+
+fn copy_native_items_with_progress(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+    target_path: &str,
+    job_id: &str,
+    control: &CopyJobControl,
+) -> NativeOperationResult {
+    let mut failures = Vec::new();
+    let target = match canonical_directory(target_path) {
+        Ok(target) => target,
+        Err(error) => return NativeOperationResult {
+            completed_paths: Vec::new(),
+            failures: paths.into_iter().map(|path| NativeOperationFailure { path, error: error.clone() }).collect(),
+        },
+    };
+    let mut sources: Vec<(String, PathBuf)> = Vec::new();
+    for path in paths {
+        match canonical_item(&path) {
+            Ok(source) => {
+                if !sources.iter().any(|(_, existing)| same_or_descendant_path(&source, existing)) {
+                    sources.retain(|(_, existing)| !same_or_descendant_path(existing, &source));
+                    sources.push((path, source));
+                }
+            }
+            Err(error) => failures.push(NativeOperationFailure { path, error }),
+        }
+    }
+    let mut tracker = CopyProgressTracker {
+        app,
+        job_id: job_id.to_string(),
+        phase: "scanning".to_string(),
+        current_item: String::new(),
+        bytes_copied: 0,
+        total_bytes: 0,
+        current_file_bytes: 0,
+        current_file_total: 0,
+        items_completed: 0,
+        total_items: 0,
+        last_emit: std::time::Instant::now() - std::time::Duration::from_secs(1),
+    };
+    let mut valid_sources = Vec::new();
+    for (original_path, source) in sources {
+        if same_or_descendant_path(&target, &source) {
+            failures.push(NativeOperationFailure { path: original_path, error: "A folder cannot be copied inside itself.".to_string() });
+            continue;
+        }
+        let Some(name) = source.file_name() else {
+            failures.push(NativeOperationFailure { path: original_path, error: "A filesystem root cannot be copied as an item.".to_string() });
+            continue;
+        };
+        let destination = unique_child_path(&target, &name.to_string_lossy());
+        match count_copy_tree(&source, control, &mut tracker) {
+            Ok(()) => valid_sources.push((original_path, source, destination)),
+            Err(error) => {
+                failures.push(NativeOperationFailure { path: original_path, error });
+                if let Err(error) = wait_for_copy_job(control) {
+                    failures.push(NativeOperationFailure { path: display_path(&source), error });
+                    break;
+                }
+            }
+        }
+    }
+    tracker.phase = "copying".to_string();
+    tracker.current_item.clear();
+    tracker.emit(true);
+    let mut completed_paths = Vec::new();
+    let mut buffer = vec![0u8; 1024 * 1024];
+    for (original_path, source, destination) in valid_sources {
+        if wait_for_copy_job(control).is_err() {
+            failures.push(NativeOperationFailure { path: original_path, error: "Copy operation cancelled.".to_string() });
+            break;
+        }
+        match copy_path_with_progress(&source, &destination, control, &mut tracker, &mut buffer) {
+            Ok(()) => {
+                tracker.emit(true);
+                completed_paths.push(display_path(&destination));
+            },
+            Err(error) => {
+                let cancelled = error == "Copy operation cancelled.";
+                if destination.exists() {
+                    let _ = remove_path_without_following_links(&destination);
+                }
+                failures.push(NativeOperationFailure { path: original_path, error });
+                if cancelled { break; }
+            }
+        }
+    }
+    NativeOperationResult { completed_paths, failures }
 }
 
 #[derive(Serialize)]
@@ -1002,15 +1169,62 @@ async fn rename_item(path: String, new_name: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn copy_items_to_directory(
+fn start_copy_operation(
+    app: tauri::AppHandle,
     paths: Vec<String>,
     target_path: String,
-) -> Result<NativeOperationResult, String> {
-    Ok(tauri::async_runtime::spawn_blocking(move || {
-        transfer_native_items(paths, &target_path, false)
-    })
-    .await
-    .map_err(|e| format!("Copy worker failed: {e}"))?)
+    job_id: String,
+) -> Result<(), String> {
+    let control = Arc::new(CopyJobControl {
+        state: Mutex::new(CopyJobState::default()),
+        changed: Condvar::new(),
+    });
+    {
+        let mut jobs = copy_jobs().lock().map_err(|_| "Copy job registry is unavailable.".to_string())?;
+        if jobs.contains_key(&job_id) {
+            return Err("A copy operation with this identifier already exists.".to_string());
+        }
+        jobs.insert(job_id.clone(), Arc::clone(&control));
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = copy_native_items_with_progress(app.clone(), paths, &target_path, &job_id, &control);
+        if let Ok(mut jobs) = copy_jobs().lock() {
+            jobs.remove(&job_id);
+        }
+        let _ = app.emit("copy-operation-finished", CopyOperationFinished { job_id, result });
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn pause_copy_operation(job_id: String) -> Result<(), String> {
+    if let Some(control) = find_copy_job(&job_id)? {
+        if let Ok(mut state) = control.state.lock() { state.paused = true; }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn resume_copy_operation(job_id: String) -> Result<(), String> {
+    if let Some(control) = find_copy_job(&job_id)? {
+        if let Ok(mut state) = control.state.lock() {
+            state.paused = false;
+            control.changed.notify_all();
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn cancel_copy_operation(job_id: String) -> Result<(), String> {
+    if let Some(control) = find_copy_job(&job_id)? {
+        if let Ok(mut state) = control.state.lock() {
+            state.cancelled = true;
+            state.paused = false;
+            control.changed.notify_all();
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1723,6 +1937,14 @@ struct FolderSizeJobControl {
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct FolderSizeJobProgress {
+    job_id: String,
+    size: u64,
+    entries_scanned: usize,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct FolderSizeJobResult {
     job_id: String,
     size: Option<u64>,
@@ -1745,9 +1967,13 @@ fn find_folder_size_job(job_id: &str) -> Result<Option<Arc<FolderSizeJobControl>
 fn calculate_directory_size_controlled(
     root: &Path,
     control: &FolderSizeJobControl,
+    app: &tauri::AppHandle,
+    job_id: &str,
 ) -> Result<u64, String> {
     let mut pending = vec![root.to_path_buf()];
     let mut total = 0u64;
+    let mut entries_scanned = 0usize;
+    let mut last_emit = std::time::Instant::now() - std::time::Duration::from_secs(1);
     while let Some(directory) = pending.pop() {
         let entries = fs::read_dir(&directory)
             .map_err(|error| format!("Cannot read {}: {error}", display_path(&directory)))?;
@@ -1774,20 +2000,29 @@ fn calculate_directory_size_controlled(
                 )
             })?;
             let path = entry.path();
+            entries_scanned += 1;
             let metadata = fs::symlink_metadata(&path)
                 .map_err(|error| format!("Cannot inspect {}: {error}", display_path(&path)))?;
-            if metadata.file_type().is_symlink() {
-                continue;
+            if !metadata.file_type().is_symlink() {
+                if metadata.is_dir() {
+                    pending.push(path);
+                } else if metadata.is_file() {
+                    total = total
+                        .checked_add(metadata.len())
+                        .ok_or_else(|| "The folder size exceeds the supported range.".to_string())?;
+                }
             }
-            if metadata.is_dir() {
-                pending.push(path);
-            } else if metadata.is_file() {
-                total = total
-                    .checked_add(metadata.len())
-                    .ok_or_else(|| "The folder size exceeds the supported range.".to_string())?;
+            if last_emit.elapsed() >= std::time::Duration::from_millis(220) {
+                let _ = app.emit("folder-size-calculation-progress", FolderSizeJobProgress {
+                    job_id: job_id.to_string(), size: total, entries_scanned,
+                });
+                last_emit = std::time::Instant::now();
             }
         }
     }
+    let _ = app.emit("folder-size-calculation-progress", FolderSizeJobProgress {
+        job_id: job_id.to_string(), size: total, entries_scanned,
+    });
     Ok(total)
 }
 
@@ -1813,7 +2048,7 @@ fn start_folder_size_calculation(app: tauri::AppHandle, path: String, job_id: St
     }
 
     tauri::async_runtime::spawn_blocking(move || {
-        let result = calculate_directory_size_controlled(&root, &control);
+        let result = calculate_directory_size_controlled(&root, &control, &app, &job_id);
         if let Ok(mut jobs) = folder_size_jobs().lock() {
             jobs.remove(&job_id);
         }
@@ -3841,9 +4076,7 @@ fn main() {
         let preferences_path = startup_instance_preferences_path()
             .expect("Could not locate CyberFiles instance preferences");
         let preferences = load_instance_preferences(&preferences_path);
-        let launched_as_admin = std::env::args().any(|argument| argument == "--cyberfiles-admin-mode")
-            && current_process_is_elevated();
-        if preferences.allow_multiple_instances || launched_as_admin {
+        if preferences.allow_multiple_instances {
             None
         } else {
             let guard = acquire_single_instance_guard()
@@ -3999,8 +4232,6 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             runtime_info,
-            admin_mode_context,
-            launch_admin_mode,
             show_main_window,
             hide_main_window,
             quit_app,
@@ -4017,7 +4248,10 @@ fn main() {
             create_text_file,
             create_shortcut,
             rename_item,
-            copy_items_to_directory,
+            start_copy_operation,
+            pause_copy_operation,
+            resume_copy_operation,
+            cancel_copy_operation,
             move_items_to_directory,
             set_file_clipboard,
             get_file_clipboard,
