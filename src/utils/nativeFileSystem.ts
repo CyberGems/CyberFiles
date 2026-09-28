@@ -119,6 +119,12 @@ export async function chooseNativeFolder(title = 'Open a folder in CyberFiles'):
   return typeof selected === 'string' ? selected : null;
 }
 
+export async function chooseNativeFile(title = 'Choose a shortcut target'): Promise<string | null> {
+  if (!isTauriDesktop()) return null;
+  const selected = await open({ directory: false, multiple: false, title });
+  return typeof selected === 'string' ? selected : null;
+}
+
 export async function listNativeDirectory(path: string, offset = 0): Promise<{ rootPath: string; rootName: string; entries: FileItem[]; hasMore: boolean; nextOffset: number }> {
   const result = await invoke<LoadedNativeFolder>('list_directory', { path, offset });
   return {
@@ -132,6 +138,14 @@ export async function listNativeDirectory(path: string, offset = 0): Promise<{ r
 
 export async function createNativeDirectory(parentPath: string, name: string): Promise<{ path: string; name: string }> {
   return invoke<{ path: string; name: string }>('create_directory', { parentPath, name });
+}
+
+export async function createNativeTextFile(parentPath: string, name: string): Promise<{ path: string; name: string }> {
+  return invoke<{ path: string; name: string }>('create_text_file', { parentPath, name });
+}
+
+export async function createNativeShortcut(parentPath: string, name: string, targetPath: string): Promise<{ path: string; name: string }> {
+  return invoke<{ path: string; name: string }>('create_shortcut', { parentPath, name, targetPath });
 }
 
 export async function renameNativeItem(path: string, newName: string): Promise<string> {

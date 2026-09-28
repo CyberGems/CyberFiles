@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Check,
   ClipboardPaste,
+  ChevronRight,
   BookmarkPlus,
   Copy,
   Edit3,
@@ -9,8 +10,10 @@ import {
   FilterX,
   FolderPlus,
   FolderOpen,
+  FilePlus2,
   LayoutGrid,
   List,
+  Link2,
   MoveRight,
   RotateCw,
   StretchHorizontal,
@@ -22,6 +25,7 @@ import {
 import { ContextMenuPosition, FileItem, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
+import type { NewItemKind } from './CreateItemModal';
 
 interface ContextMenuProps {
   position: ContextMenuPosition | null;
@@ -41,7 +45,7 @@ interface ContextMenuProps {
   onCopyToClipboard: (item: FileItem) => void;
   onCutToClipboard: (item: FileItem) => void;
   onPaste: () => void;
-  onNewFolder: () => void;
+  onCreateItem: (kind: NewItemKind) => void;
   canModifyFolder: boolean;
   fileClipboardSupported: boolean;
   onRename: (item: FileItem) => void;
@@ -68,7 +72,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onCopyToClipboard,
   onCutToClipboard,
   onPaste,
-  onNewFolder,
+  onCreateItem,
   canModifyFolder,
   fileClipboardSupported,
   onRename,
@@ -77,7 +81,12 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onRestore,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
   const { t } = useLanguage();
+
+  useEffect(() => {
+    setNewMenuOpen(false);
+  }, [position]);
 
   useEffect(() => {
     if (!position) return;
@@ -100,7 +109,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const item = position.targetItem;
   const isSystemLocation = Boolean(item && (item.id.startsWith('system-drive-') || item.id.startsWith('system-location-')));
   const menuWidth = 264;
-  const menuHeight = isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? 370 : item ? 330 : 390;
+  const menuHeight = isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? 370 : item ? 330 : newMenuOpen ? 480 : 420;
   const adjustedX = Math.max(8, Math.min(position.x, window.innerWidth - menuWidth - 8));
   const adjustedY = Math.max(8, Math.min(position.y, window.innerHeight - menuHeight - 8));
 
@@ -166,7 +175,21 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           <div className="border-b border-neutral-800 px-3 py-1.5 font-medium text-neutral-300">{t.contextMenu.workspace}</div>
           <div className="py-0.5">
             <MenuButton icon={<FolderOpen className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.openFolder} onClick={() => { onOpenFolder(); onClose(); }} />
-            <MenuButton icon={<FolderPlus className="h-3.5 w-3.5 text-emerald-400" />} label={t.contextMenu.newFolder} shortcut="F7" disabled={!canModifyFolder} onClick={() => { onNewFolder(); onClose(); }} />
+            <MenuButton
+              icon={<FolderPlus className="h-3.5 w-3.5 text-emerald-400" />}
+              label={t.contextMenu.new}
+              disabled={!canModifyFolder}
+              expanded={newMenuOpen}
+              trailing={<ChevronRight className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${newMenuOpen ? 'rotate-90' : ''}`} />}
+              onClick={() => setNewMenuOpen(open => !open)}
+            />
+            {newMenuOpen && (
+              <div role="menu" aria-label={t.contextMenu.new} className="ml-5 border-l border-neutral-700/80 py-0.5 pl-1">
+                <MenuButton icon={<FolderPlus className="h-3.5 w-3.5 text-emerald-400" />} label={t.contextMenu.newFolder} shortcut="F7" disabled={!canModifyFolder} onClick={() => { onCreateItem('folder'); onClose(); }} />
+                <MenuButton icon={<FilePlus2 className="h-3.5 w-3.5 text-cyan-300" />} label={t.contextMenu.newTextFile} disabled={!canModifyFolder} onClick={() => { onCreateItem('text-file'); onClose(); }} />
+                <MenuButton icon={<Link2 className="h-3.5 w-3.5 text-violet-300" />} label={t.contextMenu.newShortcut} disabled={!canModifyFolder} onClick={() => { onCreateItem('shortcut'); onClose(); }} />
+              </div>
+            )}
             <MenuButton icon={<ClipboardPaste className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.paste} shortcut="Ctrl+V" disabled={!canModifyFolder || !fileClipboardSupported} onClick={() => { onPaste(); onClose(); }} />
             <MenuButton icon={<RotateCw className="h-3.5 w-3.5 text-neutral-400" />} label={t.toolbar.refresh} disabled={!hasFolder} onClick={() => { onRefresh(); onClose(); }} />
             {hasFilter && <MenuButton icon={<FilterX className="h-3.5 w-3.5 text-amber-400" />} label={t.contextMenu.clearFilter} onClick={() => { onClearFilter(); onClose(); }} />}
@@ -193,17 +216,22 @@ const MenuButton: React.FC<{
   onClick: () => void;
   disabled?: boolean;
   danger?: boolean;
-}> = ({ icon, label, shortcut, onClick, disabled = false, danger = false }) => (
+  trailing?: React.ReactNode;
+  expanded?: boolean;
+}> = ({ icon, label, shortcut, onClick, disabled = false, danger = false, trailing, expanded }) => (
   <Tooltip label={label} placement="right">
     <button
       type="button"
       role="menuitem"
       disabled={disabled}
+      aria-haspopup={expanded === undefined ? undefined : 'menu'}
+      aria-expanded={expanded}
       onClick={onClick}
       className={"flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 " + (danger ? "text-rose-300 hover:bg-rose-950/40" : "text-neutral-200 hover:bg-neutral-800")}
     >
       <span className="flex min-w-0 items-center gap-2">{icon}<span className="truncate">{label}</span></span>
       {shortcut && <span className="shrink-0 font-mono text-[10px] text-neutral-500">{shortcut}</span>}
+      {trailing}
     </button>
   </Tooltip>
 );

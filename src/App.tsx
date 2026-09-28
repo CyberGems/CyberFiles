@@ -42,6 +42,7 @@ import { PaneSplitter } from './components/PaneSplitter';
 import { PreviewPane } from './components/PreviewPane';
 import { BottomStatusBar } from './components/BottomStatusBar';
 import { ContextMenu } from './components/ContextMenu';
+import { CreateItemModal, type NewItemKind } from './components/CreateItemModal';
 import { TextInputContextMenu } from './components/TextInputContextMenu';
 import { WorkspaceManagerModal } from './components/WorkspaceManagerModal';
 import { UnsavedWorkspaceChangesModal, type WorkspaceChangesSaveNames } from './components/UnsavedWorkspaceChangesModal';
@@ -69,7 +70,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, emptyNativeRecycleBin, getNativeFileClipboard, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
+import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, createNativeTextFile, createNativeShortcut, emptyNativeRecycleBin, getNativeFileClipboard, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
 const FindFilesModal = lazy(() => import('./components/FindFilesModal').then(module => ({ default: module.FindFilesModal })));
@@ -685,6 +686,7 @@ export default function App() {
 
   // Modals state
   const [isBatchRenameOpen, setIsBatchRenameOpen] = useState(false);
+  const [pendingCreateItem, setPendingCreateItem] = useState<{ kind: NewItemKind; pane: 'left' | 'right'; parentPath: string; suggestedName?: string } | null>(null);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -2558,8 +2560,9 @@ export default function App() {
     showToast(`${renames.length} ${language === 'es' ? 'elementos renombrados.' : 'items renamed.'}`);
   }, [allFiles, isFileOperationBusy, language, refreshChangedDirectories, showToast, t.core.conflict, t.core.invalidName, t.core.operationPartial, updateActiveTab]);
 
-  const handleNewFolder = useCallback(async (suggestedName?: string, pane: 'left' | 'right' = activePane) => {
+  const openCreateItem = useCallback((kind: NewItemKind, pane: 'left' | 'right' = activePane, suggestedName?: string) => {
     const paneTab = pane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
+    if (isFileOperationBusy) return;
     const activePath = paneTab.currentPath;
     if (!activePath) {
       showToast(t.pane.noFolderOpen);
@@ -2569,70 +2572,113 @@ export default function App() {
       showToast(t.pane.chooseRealFolderFirst);
       return;
     }
-    const defaultName = language === 'es' ? 'Nueva Carpeta' : 'New Folder';
-    const baseName = suggestedName || window.prompt(language === 'es' ? 'Nombre de la carpeta:' : 'Folder name:', defaultName);
-    if (baseName === null) return;
-    if (!isValidFileName(baseName)) {
+    if (kind !== 'folder' && !isTauriDesktop()) {
+      showToast(t.core.desktopFileOperationsOnly);
+      return;
+    }
+    setPendingCreateItem({ kind, pane, parentPath: activePath, suggestedName });
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, rightTabs, showToast, t.core.desktopFileOperationsOnly, t.pane.chooseRealFolderFirst, t.pane.noFolderOpen]);
+
+  const handleNewFolder = useCallback((suggestedName?: string, pane: 'left' | 'right' = activePane) => {
+    openCreateItem('folder', pane, suggestedName);
+  }, [activePane, openCreateItem]);
+
+  const handleCreateItem = useCallback(async ({ name, targetPath }: { name: string; targetPath: string }) => {
+    const request = pendingCreateItem;
+    if (!request || isFileOperationBusy) return;
+    let itemName = name.trim();
+    if (!isValidFileName(itemName)) {
       showToast(t.core.invalidName);
       return;
     }
-    const folderName = getUniqueName(baseName, getChildItems(allFiles, activePath).map(item => item.name));
-    if (isTauriDesktop()) {
-      if (isFileOperationBusy) return;
-      setIsFileOperationBusy(true);
-      try {
-        const created = await createNativeDirectory(activePath, folderName);
-        await refreshChangedDirectories([activePath]);
-        const createdId = `native-${encodeURIComponent(created.path.toLowerCase())}`;
-        const createdAtMs = Date.now();
-        const createdEntry: FileItem = {
-          id: createdId,
-          name: created.name,
-          path: created.path,
-          isFolder: true,
-          type: 'folder',
-          size: 0,
-          modifiedDate: new Date(createdAtMs).toISOString().replace('T', ' ').slice(0, 16),
-          createdDate: new Date(createdAtMs).toISOString().replace('T', ' ').slice(0, 16),
-          modifiedAtMs: createdAtMs,
-          createdAtMs,
-          extension: '',
-        };
-        setAllFiles(previous => [
-          ...previous.filter(item => getPathKey(item.path) !== getPathKey(created.path)),
-          createdEntry,
-        ]);
-        updatePaneTab(pane, tab => ({ ...tab, selectedIds: [createdId], focusedId: createdId }));
-        showToast(t.core.createdFolder.replace('{name}', created.name));
-      } catch (error) {
-        showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
-      } finally {
-        setIsFileOperationBusy(false);
-      }
+    if (request.kind === 'text-file' && !/\.[^\.]+$/.test(itemName)) itemName += '.txt';
+    if (request.kind === 'shortcut' && !itemName.toLowerCase().endsWith('.lnk')) itemName += '.lnk';
+    if (!isValidFileName(itemName)) {
+      showToast(t.core.invalidName);
+      return;
+    }
+    if (request.kind === 'shortcut' && !targetPath.trim()) {
+      showToast(t.core.shortcutTargetRequired);
+      return;
+    }
+    const existingNames = getChildItems(allFiles, request.parentPath).map(item => item.name);
+    const uniqueName = getUniqueName(itemName, existingNames);
+    if (!isTauriDesktop() && request.kind !== 'folder') {
+      showToast(t.core.desktopFileOperationsOnly);
       return;
     }
 
-    const now = new Date().toISOString();
-    const nowMs = Date.now();
-    const newFolderItem: FileItem = {
-      id: createOperationId('folder'),
-      name: folderName,
-      path: joinWindowsPath(activePath, folderName),
-      isFolder: true,
-      type: 'folder',
-      size: 0,
-      modifiedDate: now.replace('T', ' ').slice(0, 16),
-      createdDate: now.replace('T', ' ').slice(0, 16),
-      modifiedAtMs: nowMs,
-      createdAtMs: nowMs,
-      lastAccessed: now,
-      extension: '',
-    };
+    setIsFileOperationBusy(true);
+    try {
+      let created: { path: string; name: string };
+      let refreshedEntry: FileItem | undefined;
+      if (isTauriDesktop()) {
+        created = request.kind === 'folder'
+          ? await createNativeDirectory(request.parentPath, uniqueName)
+          : request.kind === 'text-file'
+            ? await createNativeTextFile(request.parentPath, uniqueName)
+            : await createNativeShortcut(request.parentPath, uniqueName, targetPath.trim());
+        await refreshChangedDirectories([request.parentPath]);
+        const refreshedListing = await listNativeDirectory(request.parentPath);
+        refreshedEntry = refreshedListing.entries.find(item => getPathKey(item.path) === getPathKey(created.path));
+      } else {
+        const now = new Date().toISOString();
+        const nowMs = Date.now();
+        const virtualEntry: FileItem = {
+          id: createOperationId('folder'),
+          name: uniqueName,
+          path: joinWindowsPath(request.parentPath, uniqueName),
+          isFolder: true,
+          type: 'folder',
+          size: 0,
+          modifiedDate: now.replace('T', ' ').slice(0, 16),
+          createdDate: now.replace('T', ' ').slice(0, 16),
+          modifiedAtMs: nowMs,
+          createdAtMs: nowMs,
+          lastAccessed: now,
+          extension: '',
+        };
+        setAllFiles(previous => [...previous, virtualEntry]);
+        updatePaneTab(request.pane, tab => ({ ...tab, selectedIds: [virtualEntry.id], focusedId: virtualEntry.id }));
+        setPendingCreateItem(null);
+        showToast(t.core.createdFolder.replace('{name}', uniqueName));
+        return;
+      }
 
-    setAllFiles(prev => [...prev, newFolderItem]);
-    updatePaneTab(pane, tab => ({ ...tab, selectedIds: [newFolderItem.id], focusedId: newFolderItem.id }));
-    showToast(t.core.createdFolder.replace('{name}', folderName));
-  }, [activeLeftTabIndex, activePane, activeRightTabIndex, allFiles, isFileOperationBusy, language, leftTabs, refreshChangedDirectories, rightTabs, showToast, t.core.createdFolder, t.core.invalidName, t.core.operationFailedWithReason, t.pane.chooseRealFolderFirst, t.pane.noFolderOpen, updatePaneTab]);
+      const createdId = `native-${encodeURIComponent(created.path.toLowerCase())}`;
+      const createdAtMs = Date.now();
+      const extension = request.kind === 'folder' ? '' : getFileExtension(created.name);
+      const createdEntry: FileItem = refreshedEntry ?? {
+        id: createdId,
+        name: created.name,
+        path: created.path,
+        isFolder: request.kind === 'folder',
+        type: request.kind === 'folder' ? 'folder' : detectFileType(created.name, false),
+        size: 0,
+        modifiedDate: new Date(createdAtMs).toISOString().replace('T', ' ').slice(0, 16),
+        createdDate: new Date(createdAtMs).toISOString().replace('T', ' ').slice(0, 16),
+        modifiedAtMs: createdAtMs,
+        createdAtMs,
+        extension,
+      };
+      setAllFiles(previous => [
+        ...previous.filter(item => getPathKey(item.path) !== getPathKey(created.path)),
+        createdEntry,
+      ]);
+      updatePaneTab(request.pane, tab => ({ ...tab, selectedIds: [createdId], focusedId: createdId }));
+      setPendingCreateItem(null);
+      const successMessage = request.kind === 'folder'
+        ? t.core.createdFolder
+        : request.kind === 'text-file'
+          ? t.core.createdFile
+          : t.core.createdShortcut;
+      showToast(successMessage.replace('{name}', created.name));
+    } catch (error) {
+      showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
+    } finally {
+      setIsFileOperationBusy(false);
+    }
+  }, [allFiles, isFileOperationBusy, pendingCreateItem, refreshChangedDirectories, showToast, t.core.createdFile, t.core.createdFolder, t.core.createdShortcut, t.core.desktopFileOperationsOnly, t.core.invalidName, t.core.operationFailedWithReason, t.core.shortcutTargetRequired, updatePaneTab]);
 
   const handleDeleteSelected = useCallback((itemsToDelete?: FileItem[]) => {
     if (!isTauriDesktop()) {
@@ -3554,12 +3600,38 @@ export default function App() {
         onCopyToClipboard={item => { void handleFileClipboard(item, false, contextPane); }}
         onCutToClipboard={item => { void handleFileClipboard(item, true, contextPane); }}
         onPaste={() => { void handlePasteFiles(contextPane, contextPaneTab.currentPath); }}
-        onNewFolder={() => { void handleNewFolder(undefined, contextPane); }}
+        onCreateItem={kind => openCreateItem(kind, contextPane)}
         onRename={item => beginInlineRename(item, contextPane)}
         onBatchRename={() => setIsBatchRenameOpen(true)}
         onDelete={(item) => handleDeleteSelected([item])}
         onRestore={(item) => { void handleRestoreRecycleBinItems([item]); }}
       />
+      {pendingCreateItem && (
+        <CreateItemModal
+          key={`${pendingCreateItem.kind}:${pendingCreateItem.parentPath}`}
+          kind={pendingCreateItem.kind}
+          defaultName={pendingCreateItem.suggestedName ?? (
+            pendingCreateItem.kind === 'folder'
+              ? t.contextMenu.defaultFolderName
+              : pendingCreateItem.kind === 'text-file'
+                ? t.contextMenu.defaultTextFileName
+                : t.contextMenu.defaultShortcutName
+          )}
+          isBusy={isFileOperationBusy}
+          onClose={() => setPendingCreateItem(null)}
+          onSubmit={values => { void handleCreateItem(values); }}
+          onChooseTarget={async kind => {
+            try {
+              return kind === 'file'
+                ? await chooseNativeFile(t.contextMenu.chooseTargetFile)
+                : await chooseNativeFolder(t.contextMenu.chooseTargetFolder);
+            } catch (error) {
+              showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
+              return null;
+            }
+          }}
+        />
+      )}
       <TextInputContextMenu />
 
       <WorkspaceManagerModal

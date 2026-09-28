@@ -584,6 +584,96 @@ fn create_native_directory(parent_path: &str, name: &str) -> Result<NativeCreate
     })
 }
 
+fn created_native_entry(path: &Path, fallback_name: &str) -> Result<NativeCreatedFolder, String> {
+    let created = fs::canonicalize(path).map_err(|error| error.to_string())?;
+    Ok(NativeCreatedFolder {
+        path: display_path(&created),
+        name: created
+            .file_name()
+            .map(|value| value.to_string_lossy().to_string())
+            .unwrap_or_else(|| fallback_name.to_string()),
+    })
+}
+
+fn create_native_text_file(parent_path: &str, name: &str) -> Result<NativeCreatedFolder, String> {
+    validate_child_name(name)?;
+    let parent = canonical_directory(parent_path)?;
+    let requested = unique_child_path(&parent, name);
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&requested)
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                "An item with that name already exists.".to_string()
+            } else {
+                error.to_string()
+            }
+        })?;
+    created_native_entry(&requested, name)
+}
+
+#[cfg(target_os = "windows")]
+fn create_native_shortcut(
+    parent_path: &str,
+    name: &str,
+    target_path: &str,
+) -> Result<NativeCreatedFolder, String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::{IUnknown, Interface, PCWSTR};
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistFile, CLSCTX_INPROC_SERVER,
+        COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
+
+    validate_child_name(name)?;
+    let parent = canonical_directory(parent_path)?;
+    let target = canonical_item(target_path)?;
+    let requested = unique_child_path(&parent, name);
+    let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    if initialized.is_err() {
+        return Err(format!(
+            "Could not initialize the Windows Shell apartment (HRESULT 0x{:08X}).",
+            initialized.0 as u32
+        ));
+    }
+    struct ComApartment;
+    impl Drop for ComApartment {
+        fn drop(&mut self) {
+            unsafe { CoUninitialize() };
+        }
+    }
+    let _apartment = ComApartment;
+
+    let target_wide: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
+    let shortcut_wide: Vec<u16> = requested.as_os_str().encode_wide().chain(Some(0)).collect();
+    let shortcut: IShellLinkW =
+        unsafe { CoCreateInstance(&ShellLink, None::<&IUnknown>, CLSCTX_INPROC_SERVER) }
+            .map_err(|error| format!("Windows could not create the shortcut: {error}"))?;
+    unsafe {
+        shortcut
+            .SetPath(PCWSTR(target_wide.as_ptr()))
+            .map_err(|error| format!("Windows could not set the shortcut target: {error}"))?;
+        let persist: IPersistFile = shortcut
+            .cast()
+            .map_err(|error| format!("Windows could not save the shortcut: {error}"))?;
+        persist
+            .Save(PCWSTR(shortcut_wide.as_ptr()), true)
+            .map_err(|error| format!("Windows could not save the shortcut: {error}"))?;
+    }
+    created_native_entry(&requested, name)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn create_native_shortcut(
+    _parent_path: &str,
+    _name: &str,
+    _target_path: &str,
+) -> Result<NativeCreatedFolder, String> {
+    Err("Windows shortcuts are available only in CyberFiles for Windows.".to_string())
+}
+
 fn rename_native_item(source_path: &str, new_name: &str) -> Result<String, String> {
     validate_child_name(new_name)?;
     let source = canonical_item(source_path)?;
@@ -747,6 +837,29 @@ async fn create_directory(
     tauri::async_runtime::spawn_blocking(move || create_native_directory(&parent_path, &name))
         .await
         .map_err(|e| format!("Folder creation worker failed: {e}"))?
+}
+
+#[tauri::command]
+async fn create_text_file(
+    parent_path: String,
+    name: String,
+) -> Result<NativeCreatedFolder, String> {
+    tauri::async_runtime::spawn_blocking(move || create_native_text_file(&parent_path, &name))
+        .await
+        .map_err(|error| format!("File creation worker failed: {error}"))?
+}
+
+#[tauri::command]
+async fn create_shortcut(
+    parent_path: String,
+    name: String,
+    target_path: String,
+) -> Result<NativeCreatedFolder, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        create_native_shortcut(&parent_path, &name, &target_path)
+    })
+    .await
+    .map_err(|error| format!("Shortcut creation worker failed: {error}"))?
 }
 
 #[tauri::command]
@@ -2904,6 +3017,8 @@ fn main() {
             read_text_preview,
             prepare_pdf_preview,
             create_directory,
+            create_text_file,
+            create_shortcut,
             rename_item,
             copy_items_to_directory,
             move_items_to_directory,
