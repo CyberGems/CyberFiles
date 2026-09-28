@@ -12,6 +12,21 @@ export default defineConfig(() => {
   return {
     define: { __APP_VERSION__: JSON.stringify(packageVersion) },
     plugins: [react(), tailwindcss()],
+    build: {
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: 'react-vendor',
+                test: /node_modules[\\/](?:react|react-dom|scheduler)[\\/]/,
+                priority: 20,
+              },
+            ],
+          },
+        },
+      },
+    },
     resolve: {
       alias: {
         '@': path.resolve(projectRoot, '.'),
