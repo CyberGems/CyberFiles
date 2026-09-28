@@ -333,7 +333,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [marqueePreviewIds, setMarqueePreviewIds] = useState<string[] | null>(null);
   const [viewportScrollbarWidth, setViewportScrollbarWidth] = useState(0);
 
-  const visibleFileColumns = columnLayout.order.filter(column => columnLayout.visible.includes(column));
+  const visibleFileColumns = columnLayout.order.filter(column =>
+    columnLayout.visible.includes(column) || (editingItemId !== null && column === 'name'),
+  );
   const columnSortFields: Record<FileColumn, SortField> = {
     extension: 'extension',
     name: 'name',
@@ -693,6 +695,34 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }
     setEditingItemId(null);
   };
+
+  const renderInlineRenameInput = (item: FileItem, formClassName: string, inputAlignment = 'text-left') => (
+    <form
+      onSubmit={event => { event.preventDefault(); handleRenameSubmit(item.id, item.name); }}
+      onClick={event => event.stopPropagation()}
+      onDoubleClick={event => event.stopPropagation()}
+      className={formClassName}
+    >
+      <input
+        ref={renameInputRef}
+        type="text"
+        aria-label={t.toolbar.rename}
+        value={editingItemName}
+        onChange={event => setEditingItemName(event.target.value)}
+        onBlur={() => handleRenameSubmit(item.id, item.name)}
+        onKeyDown={event => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            renameCommitItemRef.current = null;
+            setEditingItemName(item.name);
+            setEditingItemId(null);
+          }
+        }}
+        className={`w-full min-w-0 select-text rounded border border-cyan-400 bg-neutral-950 px-1 py-0.5 text-xs text-neutral-100 outline-none ${inputAlignment}`}
+      />
+    </form>
+  );
 
   const getFileIcon = (type: FileType, isFolder: boolean) => {
     if (isFolder) return <Folder className="w-4 h-4 text-amber-400 fill-amber-400/20" />;
@@ -1373,24 +1403,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             }`} />
                           )}
                           {isEditing ? (
-                            <form onSubmit={event => { event.preventDefault(); handleRenameSubmit(item.id, item.name); }} className="flex-1">
-                              <input
-                                ref={renameInputRef}
-                                type="text"
-                                value={editingItemName}
-                                onChange={event => setEditingItemName(event.target.value)}
-                                onBlur={() => handleRenameSubmit(item.id, item.name)}
-                                onKeyDown={event => {
-                                  if (event.key === 'Escape') {
-                                    event.preventDefault();
-                                    renameCommitItemRef.current = null;
-                                    setEditingItemName(item.name);
-                                    setEditingItemId(null);
-                                  }
-                                }}
-                                className="w-full bg-neutral-950 text-neutral-100 px-1 py-0.5 rounded border border-cyan-400 outline-none text-xs"
-                              />
-                            </form>
+                            renderInlineRenameInput(item, 'min-w-0 flex-1')
                           ) : (
                             <Tooltip label={renderItemTooltip(item)} placement="top">
                               <span data-file-column-content={column} className="truncate text-[11.5px] font-medium" style={getRecentNameStyle(item, isSelected)}>{item.name}</span>
@@ -1440,9 +1453,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   }`}
                 >
                   <span className="flex-shrink-0">{getFileIcon(item.type, item.isFolder)}</span>
-                  <Tooltip label={renderItemTooltip(item)} placement="top">
-                    <span className="min-w-0 flex-1 truncate" style={getRecentNameStyle(item, isSelected)}>{item.name}</span>
-                  </Tooltip>
+                  {editingItemId === item.id ? (
+                    renderInlineRenameInput(item, 'min-w-0 flex-1')
+                  ) : (
+                    <Tooltip label={renderItemTooltip(item)} placement="top">
+                      <span className="min-w-0 flex-1 truncate" style={getRecentNameStyle(item, isSelected)}>{item.name}</span>
+                    </Tooltip>
+                  )}
                   {!item.isFolder && <span className="flex-shrink-0 font-mono text-[10px] text-neutral-500">{formatFileSize(item.size)}</span>}
                 </div>
               );
@@ -1482,9 +1499,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       </div>
                     )}
                   </div>
-                  <Tooltip label={renderItemTooltip(item)} placement="top">
-                    <span className="w-full truncate px-1 text-[11px] font-medium" style={getRecentNameStyle(item, isSelected)}>{item.name}</span>
-                  </Tooltip>
+                  {editingItemId === item.id ? (
+                    renderInlineRenameInput(item, 'w-full min-w-0', 'text-center')
+                  ) : (
+                    <Tooltip label={renderItemTooltip(item)} placement="top">
+                      <span className="w-full truncate px-1 text-[11px] font-medium" style={getRecentNameStyle(item, isSelected)}>{item.name}</span>
+                    </Tooltip>
+                  )}
                   <span className="mt-0.5 text-[9px] font-mono text-neutral-400">
                     {item.isFolder ? 'Carpeta' : formatFileSize(item.size)}
                   </span>
