@@ -245,6 +245,7 @@ export async function listNativeRecycleBin(offset = 0): Promise<{ entries: FileI
       type: detectFileType(entry.name, entry.isFolder),
       size: entry.size,
       modifiedDate: formatLocalDateTime(entry.deletedAtMs),
+      modifiedAtMs: entry.deletedAtMs ?? undefined,
       extension: entry.isFolder ? '' : getFileExtension(entry.name),
     })),
     hasMore: result.hasMore,

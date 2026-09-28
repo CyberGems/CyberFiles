@@ -14,6 +14,7 @@ import {
   Search,
   Trash2,
   PanelsTopLeft,
+  BarChart3,
 } from 'lucide-react';
 import { ViewLayout, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
@@ -24,6 +25,8 @@ interface HeaderBarProps {
   onLayoutChange: (layout: ViewLayout) => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
+  relativeGraphsEnabled: boolean;
+  onToggleRelativeGraphs: () => void;
   propertiesPanelOpen: boolean;
   onTogglePropertiesPanel: () => void;
   onRenameSelected: () => void;
@@ -42,6 +45,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onLayoutChange,
   viewMode,
   onViewModeChange,
+  relativeGraphsEnabled,
+  onToggleRelativeGraphs,
   propertiesPanelOpen,
   onTogglePropertiesPanel,
   onRenameSelected,
@@ -84,6 +89,18 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           <Tooltip label={t.toolbar.viewCompact}><button type="button" aria-label={t.toolbar.viewCompact} aria-pressed={viewMode === 'compact'} onClick={() => onViewModeChange('compact')} className="view-choice"><StretchHorizontal className="h-4 w-4" /></button></Tooltip>
           <Tooltip label={t.toolbar.viewIcons}><button type="button" aria-label={t.toolbar.viewIcons} aria-pressed={viewMode === 'icons'} onClick={() => onViewModeChange('icons')} className="view-choice"><LayoutGrid className="h-4 w-4" /></button></Tooltip>
         </div>
+
+        <Tooltip label={t.toolbar.relativeGraphs} placement="bottom">
+          <button
+            type="button"
+            aria-label={t.toolbar.relativeGraphs}
+            aria-pressed={relativeGraphsEnabled}
+            onClick={onToggleRelativeGraphs}
+            className={relativeGraphsEnabled ? 'flex h-9 w-9 items-center justify-center rounded-md border border-cyan-700/70 bg-cyan-950/70 text-cyan-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70' : 'flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70'}
+          >
+            <BarChart3 className="h-4 w-4" />
+          </button>
+        </Tooltip>
 
         <div className="view-choice-group flex items-center" role="group" aria-label={t.header.layoutModes}>
           <Tooltip label={t.header.layoutDualVertical}><button type="button" aria-label={t.header.layoutDualVertical} aria-pressed={layout === 'dual-vertical'} onClick={() => onLayoutChange('dual-vertical')} className="view-choice"><Columns2 className="h-4 w-4" /></button></Tooltip>

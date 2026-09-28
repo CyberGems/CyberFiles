@@ -96,6 +96,7 @@ const RECENT_ITEMS_STYLE_KEY = 'cyberfiles_recent_items_style_v1';
 const IMAGE_TOOLTIP_THUMBNAILS_KEY = 'cyberfiles_image_tooltip_thumbnails_v1';
 const NOTIFICATION_BANNERS_KEY = 'cyberfiles_notification_banners_v1';
 const TOOLTIPS_ENABLED_KEY = 'cyberfiles_tooltips_enabled_v1';
+const RELATIVE_GRAPHS_ENABLED_KEY = 'cyberfiles_relative_graphs_enabled_v1';
 const SINGLE_CLICK_OPEN_KEY = 'cyberfiles_single_click_open_v1';
 const CUSTOM_QUICK_ACCESS_KEY = 'cyberfiles_custom_quick_access_v1';
 const QUICK_ACCESS_ORDER_KEY = 'cyberfiles_quick_access_order_v1';
@@ -524,6 +525,7 @@ export default function App() {
   const [imageTooltipThumbnailsEnabled, setImageTooltipThumbnailsEnabled] = useState(() => readBooleanPreference(IMAGE_TOOLTIP_THUMBNAILS_KEY, true));
   const [notificationBannersEnabled, setNotificationBannersEnabled] = useState(() => readBooleanPreference(NOTIFICATION_BANNERS_KEY, true));
   const [tooltipsEnabled, setTooltipsEnabled] = useState(() => readBooleanPreference(TOOLTIPS_ENABLED_KEY, true));
+  const [relativeGraphsEnabled, setRelativeGraphsEnabled] = useState(() => readBooleanPreference(RELATIVE_GRAPHS_ENABLED_KEY, true));
   const [autoFolderSizeEnabled, setAutoFolderSizeEnabled] = useState(() => readBooleanPreference(AUTO_FOLDER_SIZE_ENABLED_KEY, true));
   const [autoFolderSizeMaxEntries, setAutoFolderSizeMaxEntries] = useState(() => {
     try {
@@ -1453,6 +1455,14 @@ export default function App() {
       // Keep the selected folder size behavior for the current session when storage is unavailable.
     }
   }, [autoFolderSizeEnabled, autoFolderSizeMaxEntries]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(RELATIVE_GRAPHS_ENABLED_KEY, String(relativeGraphsEnabled));
+    } catch {
+      // Keep the selected graph preference for this session when browser storage is unavailable.
+    }
+  }, [relativeGraphsEnabled]);
 
   useEffect(() => {
     try {
@@ -3370,6 +3380,8 @@ export default function App() {
         workspaceChangesPending={layoutDirty || sessionDirty}
         viewMode={currentTab.viewMode}
         onViewModeChange={handleViewModeChange}
+        relativeGraphsEnabled={relativeGraphsEnabled}
+        onToggleRelativeGraphs={() => setRelativeGraphsEnabled(enabled => !enabled)}
         propertiesPanelOpen={previewOpen}
         onTogglePropertiesPanel={() => setPreviewOpen(value => !value)}
         onRenameSelected={handleRenameSelected}
@@ -3453,6 +3465,7 @@ export default function App() {
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
                   autoFolderSizeEnabled={autoFolderSizeEnabled}
+                  relativeGraphsEnabled={relativeGraphsEnabled}
                   autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
                   drives={drives}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
@@ -3507,6 +3520,7 @@ export default function App() {
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
                   autoFolderSizeEnabled={autoFolderSizeEnabled}
+                  relativeGraphsEnabled={relativeGraphsEnabled}
                   autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
                   drives={drives}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
@@ -3562,6 +3576,7 @@ export default function App() {
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
                   autoFolderSizeEnabled={autoFolderSizeEnabled}
+                  relativeGraphsEnabled={relativeGraphsEnabled}
                   autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
                   drives={drives}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
@@ -3612,6 +3627,7 @@ export default function App() {
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
                   autoFolderSizeEnabled={autoFolderSizeEnabled}
+                  relativeGraphsEnabled={relativeGraphsEnabled}
                   autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
                   drives={drives}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
@@ -3667,6 +3683,7 @@ export default function App() {
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
                   autoFolderSizeEnabled={autoFolderSizeEnabled}
+                  relativeGraphsEnabled={relativeGraphsEnabled}
                   autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
                   drives={drives}
                   hasMore={currentAtRecycleBin ? recycleBinPage.hasMore : (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.hasMore}

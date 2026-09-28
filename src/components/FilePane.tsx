@@ -68,6 +68,7 @@ interface FilePaneProps {
   recentFolderPaths: string[];
   onClearRecentFolders: () => void;
   autoFolderSizeEnabled: boolean;
+  relativeGraphsEnabled: boolean;
   autoFolderSizeMaxEntries: number;
   drives: DriveInfo[];
   hasMore?: boolean;
@@ -99,6 +100,8 @@ interface FilePaneProps {
 type SystemHomeSection = 'folders' | 'devices' | 'network';
 type CollapsedSystemHomeSections = Record<SystemHomeSection, boolean>;
 type FileColumn = 'extension' | 'name' | 'type' | 'size' | 'created' | 'modified';
+type RelativeGraphColumn = 'size' | 'created' | 'modified';
+type RelativeGraphWidths = Partial<Record<RelativeGraphColumn, number>>;
 type ResizableColumn = FileColumn;
 type FolderSizeState = { status: 'loading' | 'done' | 'error' | 'limited'; size?: number; limit?: number };
 
@@ -279,6 +282,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   recentFolderPaths,
   onClearRecentFolders,
   autoFolderSizeEnabled,
+  relativeGraphsEnabled,
   autoFolderSizeMaxEntries,
   drives,
   hasMore = false,
@@ -361,6 +365,59 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const visibleFileColumns = columnLayout.order.filter(column =>
     columnLayout.visible.includes(column) || (editingItemId !== null && column === 'name'),
   );
+  const relativeGraphWidths = React.useMemo(() => {
+    const widths = new Map<string, RelativeGraphWidths>();
+    if (!relativeGraphsEnabled || isSystemHome || effectiveViewMode !== 'details') return widths;
+
+    const timestampFor = (item: FileItem, column: 'created' | 'modified') => {
+      const timestamp = column === 'created' ? item.createdAtMs : item.modifiedAtMs;
+      if (typeof timestamp === 'number' && Number.isFinite(timestamp)) return timestamp;
+      const label = column === 'created' ? item.createdDate : item.modifiedDate;
+      if (!label) return undefined;
+      const parsed = Date.parse(label);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    };
+
+    const itemGroups = [files.filter(item => !item.isFolder), files.filter(item => item.isFolder)];
+    itemGroups.forEach(groupItems => {
+      const knownSizes = groupItems.flatMap(item => {
+        const folderSize = folderSizeStates[item.id];
+        const size = item.isFolder
+          ? folderSize?.status === 'done' ? folderSize.size : undefined
+          : item.size;
+        return typeof size === 'number' && Number.isFinite(size) && size >= 0 ? [{ item, size }] : [];
+      });
+      const largestSize = knownSizes.reduce((largest, entry) => Math.max(largest, entry.size), 0);
+      if (largestSize > 0) {
+        knownSizes.forEach(({ item, size }) => {
+          widths.set(item.id, { ...widths.get(item.id), size: size / largestSize * 100 });
+        });
+      }
+
+      (['created', 'modified'] as const).forEach(column => {
+        const datedItems = groupItems.flatMap(item => {
+          const timestamp = timestampFor(item, column);
+          return timestamp === undefined ? [] : [{ item, timestamp }];
+        });
+        if (datedItems.length < 2) return;
+        const oldest = datedItems.reduce((minimum, entry) => Math.min(minimum, entry.timestamp), Infinity);
+        const newest = datedItems.reduce((maximum, entry) => Math.max(maximum, entry.timestamp), -Infinity);
+        if (oldest === newest) return;
+        datedItems.forEach(({ item, timestamp }) => {
+          const width = (newest - timestamp) / (newest - oldest) * 100;
+          widths.set(item.id, { ...widths.get(item.id), [column]: width });
+        });
+      });
+    });
+    return widths;
+  }, [effectiveViewMode, files, folderSizeStates, isSystemHome, relativeGraphsEnabled]);
+  const getRelativeGraphStyle = (width: number | undefined, field: 'size' | 'date'): React.CSSProperties | undefined => {
+    if (width === undefined || width <= 0) return undefined;
+    const percentage = Math.min(100, Math.max(0, width));
+    const color = field === 'size' ? 'var(--color-cyan-400)' : 'var(--color-amber-400)';
+    const fill = `color-mix(in srgb, ${color} 22%, transparent)`;
+    return { backgroundImage: `linear-gradient(to right, ${fill} ${percentage}%, transparent ${percentage}%)` };
+  };
   const columnSortFields: Record<FileColumn, SortField> = {
     extension: 'extension',
     name: 'name',
@@ -1746,7 +1803,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     }
                     if (column === 'size') {
                       const folderSize = folderSizeStates[item.id];
-                      return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400">{item.isFolder ? (
+                      return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.size, 'size')}>{item.isFolder ? (
                         isTauriDesktop() ? (
                           !isRecycleBin && !item.recycleBinId ? <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip} placement="top">
                             <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="flex w-full items-center justify-end gap-2 rounded px-1 py-0.5 text-right text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip}>
@@ -1762,9 +1819,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     }
                     if (column === 'created') {
                       const createdDate = item.createdDate || (item.createdAtMs ? formatLocalDateTime(item.createdAtMs) : '');
-                      return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{createdDate || '--'}</span></div>;
+                      return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.created, 'date')}><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{createdDate || '--'}</span></div>;
                     }
-                    return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.modifiedDate || '--'}</span></div>;
+                    return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.modified, 'date')}><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.modifiedDate || '--'}</span></div>;
                   })}
                 </div>
               );
