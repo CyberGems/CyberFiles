@@ -5,6 +5,7 @@ export const DEFAULT_LAYOUT_PROFILE_ID = 'builtin-default-layout';
 export const DEFAULT_SESSION_PROFILE_ID = 'builtin-default-session';
 
 export type WorkspacePaneId = 'left' | 'right';
+export type StartupBehavior = 'continue' | 'home' | 'session';
 export type FileColumnId = 'extension' | 'name' | 'type' | 'size' | 'created' | 'modified';
 
 export interface FileColumnLayoutSnapshot {

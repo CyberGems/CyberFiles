@@ -66,6 +66,7 @@ import {
   type LayoutProfile,
   type LayoutSnapshot,
   type PaneColumnsSnapshot,
+  type StartupBehavior,
   type TabSessionProfile,
   type TabSessionSnapshot,
   type WorkspacePaneId,
@@ -98,6 +99,8 @@ const NOTIFICATION_BANNERS_KEY = 'cyberfiles_notification_banners_v1';
 const TOOLTIPS_ENABLED_KEY = 'cyberfiles_tooltips_enabled_v1';
 const RELATIVE_GRAPHS_ENABLED_KEY = 'cyberfiles_relative_graphs_enabled_v1';
 const DATE_FORMAT_KEY = 'cyberfiles_date_format_v1';
+const STARTUP_BEHAVIOR_KEY = 'cyberfiles_startup_behavior_v1';
+const STARTUP_SESSION_KEY = 'cyberfiles_startup_session_v1';
 const SINGLE_CLICK_OPEN_KEY = 'cyberfiles_single_click_open_v1';
 const CUSTOM_QUICK_ACCESS_KEY = 'cyberfiles_custom_quick_access_v1';
 const QUICK_ACCESS_ORDER_KEY = 'cyberfiles_quick_access_order_v1';
@@ -287,6 +290,24 @@ function readBooleanPreference(key: string, defaultValue: boolean): boolean {
     return saved === null ? defaultValue : saved === 'true';
   } catch {
     return defaultValue;
+  }
+}
+
+function readStartupBehavior(): StartupBehavior {
+  try {
+    const saved = window.localStorage.getItem(STARTUP_BEHAVIOR_KEY);
+    return saved === 'home' || saved === 'session' ? saved : 'continue';
+  } catch {
+    return 'continue';
+  }
+}
+
+function readStartupSessionId(): string {
+  try {
+    const saved = window.localStorage.getItem(STARTUP_SESSION_KEY);
+    return saved && saved.length <= 180 ? saved : DEFAULT_SESSION_PROFILE_ID;
+  } catch {
+    return DEFAULT_SESSION_PROFILE_ID;
   }
 }
 
@@ -499,15 +520,23 @@ function createSessionSnapshot(
 export default function App() {
   const { t, language } = useLanguage();
   const startsAtSystemHome = isTauriDesktop();
+  const [startupBehavior, setStartupBehavior] = useState<StartupBehavior>(readStartupBehavior);
+  const [startupSessionId, setStartupSessionId] = useState(readStartupSessionId);
+  const launchedWithStartupOverride = useRef(startupBehavior !== 'continue').current;
   const [initialWorkspaceStore] = useState(initialWorkspaceProfileStore);
   const initialWorkspace = initialWorkspaceStore.workspaces.find(profile => profile.id === initialWorkspaceStore.lastWorkspaceId);
   const initialActiveLayoutId = initialWorkspace?.layoutId ?? initialWorkspaceStore.lastLayoutId;
-  const initialActiveSessionId = initialWorkspace?.sessionId ?? initialWorkspaceStore.lastSessionId;
+  const savedStartupSession = initialWorkspaceStore.sessions.find(profile => profile.id === startupSessionId);
+  const initialActiveSessionId = startupBehavior === 'continue'
+    ? initialWorkspace?.sessionId ?? initialWorkspaceStore.lastSessionId
+    : startupBehavior === 'session' ? savedStartupSession?.id ?? DEFAULT_SESSION_PROFILE_ID : DEFAULT_SESSION_PROFILE_ID;
   const initialLayoutProfile = initialWorkspaceStore.layouts.find(profile => profile.id === initialActiveLayoutId);
-  const initialSessionProfile = initialWorkspaceStore.sessions.find(profile => profile.id === initialActiveSessionId);
+  const initialSessionProfile = startupBehavior === 'continue'
+    ? initialWorkspaceStore.sessions.find(profile => profile.id === initialActiveSessionId)
+    : startupBehavior === 'session' ? savedStartupSession : undefined;
   const [activeLayoutId, setActiveLayoutId] = useState(initialActiveLayoutId);
   const [activeSessionId, setActiveSessionId] = useState(initialActiveSessionId);
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(initialWorkspace?.id ?? null);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(startupBehavior === 'continue' ? initialWorkspace?.id ?? null : null);
   const [workspaceStore, setWorkspaceStore] = useState(initialWorkspaceStore);
   const [initialPanelPreferences] = useState<PanelViewPreferences>(() => initialLayoutProfile
     ? { ...readPanelViewPreferences(), ...initialLayoutProfile.snapshot }
@@ -1360,6 +1389,29 @@ export default function App() {
   const pendingSessionChanged = Boolean(pendingWorkspaceAction && (pendingWorkspaceAction.type === 'quit' || pendingWorkspaceAction.type === 'workspace' || pendingWorkspaceAction.type === 'session') && sessionDirty);
 
   useEffect(() => {
+    try {
+      window.localStorage.setItem(STARTUP_BEHAVIOR_KEY, startupBehavior);
+    } catch {
+      // Keep the selected startup behavior for this session when storage is unavailable.
+    }
+  }, [startupBehavior]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STARTUP_SESSION_KEY, startupSessionId);
+    } catch {
+      // Keep the selected startup session for this session when storage is unavailable.
+    }
+  }, [startupSessionId]);
+
+  useEffect(() => {
+    if (startupSessionId !== DEFAULT_SESSION_PROFILE_ID && !workspaceStore.sessions.some(profile => profile.id === startupSessionId)) {
+      setStartupSessionId(DEFAULT_SESSION_PROFILE_ID);
+    }
+  }, [startupSessionId, workspaceStore.sessions]);
+
+  useEffect(() => {
+    if (launchedWithStartupOverride) return;
     if (workspaceStore.lastLayoutId === activeLayoutId
       && workspaceStore.lastSessionId === activeSessionId
       && workspaceStore.lastWorkspaceId === activeWorkspaceId) return;
@@ -1369,7 +1421,7 @@ export default function App() {
       lastSessionId: activeSessionId,
       lastWorkspaceId: activeWorkspaceId,
     });
-  }, [activeLayoutId, activeSessionId, activeWorkspaceId, persistWorkspaceStore, workspaceStore]);
+  }, [activeLayoutId, activeSessionId, activeWorkspaceId, launchedWithStartupOverride, persistWorkspaceStore, workspaceStore]);
 
   useEffect(() => {
     const updateSystemHomeTitle = (tabs: TabState[]) => {
@@ -4005,6 +4057,11 @@ export default function App() {
             onTooltipsEnabledChange={setTooltipsEnabled}
             dateFormat={dateFormat}
             onDateFormatChange={setDateFormat}
+            startupBehavior={startupBehavior}
+            onStartupBehaviorChange={setStartupBehavior}
+            startupSessionId={startupSessionId}
+            onStartupSessionIdChange={setStartupSessionId}
+            sessions={workspaceStore.sessions}
             autoFolderSizeEnabled={autoFolderSizeEnabled}
             onAutoFolderSizeEnabledChange={setAutoFolderSizeEnabled}
             autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}

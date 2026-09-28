@@ -6,6 +6,7 @@ import { Tooltip } from './Tooltip';
 import { DialogButton } from './DialogButton';
 import { type RecentItemStyle } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
+import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile } from '../utils/workspaceProfiles';
 import { ColorValueEditor } from './ColorValueEditor';
 
 
@@ -39,6 +40,11 @@ interface SettingsModalProps {
   onTooltipsEnabledChange: (enabled: boolean) => void;
   dateFormat: DateFormatMode;
   onDateFormatChange: (format: DateFormatMode) => void;
+  startupBehavior: StartupBehavior;
+  onStartupBehaviorChange: (behavior: StartupBehavior) => void;
+  startupSessionId: string;
+  onStartupSessionIdChange: (sessionId: string) => void;
+  sessions: TabSessionProfile[];
   autoFolderSizeEnabled: boolean;
   onAutoFolderSizeEnabledChange: (enabled: boolean) => void;
   autoFolderSizeMaxEntries: number;
@@ -103,6 +109,11 @@ export function SettingsModal({
   onTooltipsEnabledChange,
   dateFormat,
   onDateFormatChange,
+  startupBehavior,
+  onStartupBehaviorChange,
+  startupSessionId,
+  onStartupSessionIdChange,
+  sessions,
   autoFolderSizeEnabled,
   onAutoFolderSizeEnabledChange,
   autoFolderSizeMaxEntries,
@@ -266,6 +277,52 @@ export function SettingsModal({
                 </Tooltip>
               ))}
             </div>
+          </div>
+
+          <div className="border-t border-neutral-800 pt-4">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.startupSection}</div>
+            <p className="mb-3 text-[11px] leading-relaxed text-neutral-400">{t.settings.startupDescription}</p>
+            <div role="radiogroup" aria-label={t.settings.startupSection} className="space-y-2">
+              {([
+                { id: 'continue', label: t.settings.startupContinue, description: t.settings.startupContinueDescription },
+                { id: 'home', label: t.settings.startupHome, description: t.settings.startupHomeDescription },
+                { id: 'session', label: t.settings.startupSession, description: t.settings.startupSessionDescription },
+              ] as const).map(option => (
+                <Tooltip key={option.id} label={option.description} placement="top">
+                  <label className={`flex cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-xs transition-colors ${startupBehavior === option.id ? 'border-cyan-700/70 bg-cyan-950/20 text-neutral-200' : 'border-neutral-800 bg-neutral-950/60 text-neutral-400 hover:border-neutral-700'}`}>
+                    <input
+                      type="radio"
+                      name="startup-behavior"
+                      value={option.id}
+                      checked={startupBehavior === option.id}
+                      onChange={() => onStartupBehaviorChange(option.id)}
+                      className="mt-0.5 h-4 w-4 flex-shrink-0 accent-cyan-400 focus:ring-cyan-400"
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-medium text-neutral-200">{option.label}</span>
+                      <span className="mt-1 block leading-relaxed">{option.description}</span>
+                    </span>
+                  </label>
+                </Tooltip>
+              ))}
+            </div>
+            {startupBehavior === 'session' && (
+              <div className="mt-3 rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-3">
+                <label className="block text-xs font-medium text-neutral-200" htmlFor="startup-session-select">{t.settings.startupChooseSession}</label>
+                <Tooltip label={t.settings.startupChooseSession} placement="top">
+                  <select
+                    id="startup-session-select"
+                    value={startupSessionId}
+                    onChange={event => onStartupSessionIdChange(event.target.value)}
+                    className="mt-2 w-full rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-2 text-xs text-neutral-200 outline-none focus:border-cyan-600"
+                  >
+                    <option value={DEFAULT_SESSION_PROFILE_ID}>{t.workspaceProfiles.defaultSession}</option>
+                    {sessions.map(session => <option key={session.id} value={session.id}>{session.name}</option>)}
+                  </select>
+                </Tooltip>
+                <p className="mt-2 text-[11px] leading-relaxed text-neutral-500">{t.settings.startupSessionHelp}</p>
+              </div>
+            )}
           </div>
 
           <div className="border-t border-neutral-800 pt-4">
