@@ -79,16 +79,16 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       </div>
 
       <div className="flex items-center gap-2 flex-shrink-0">
-        <div className="flex items-center bg-neutral-950/70 p-0.5 rounded-lg border border-neutral-800">
-          <Tooltip label={t.toolbar.viewDetails}><button onClick={() => onViewModeChange('details')} className={`p-1.5 rounded ${viewMode === 'details' ? 'bg-neutral-800 text-cyan-300' : 'text-neutral-400 hover:text-neutral-200'}`}><List className="w-3.5 h-3.5" /></button></Tooltip>
-          <Tooltip label={t.toolbar.viewCompact}><button onClick={() => onViewModeChange('compact')} className={`p-1.5 rounded ${viewMode === 'compact' ? 'bg-neutral-800 text-cyan-300' : 'text-neutral-400 hover:text-neutral-200'}`}><StretchHorizontal className="w-3.5 h-3.5" /></button></Tooltip>
-          <Tooltip label={t.toolbar.viewIcons}><button onClick={() => onViewModeChange('icons')} className={`p-1.5 rounded ${viewMode === 'icons' ? 'bg-neutral-800 text-cyan-300' : 'text-neutral-400 hover:text-neutral-200'}`}><LayoutGrid className="w-3.5 h-3.5" /></button></Tooltip>
+        <div className="view-choice-group flex items-center" role="group" aria-label={t.toolbar.viewModes}>
+          <Tooltip label={t.toolbar.viewDetails}><button type="button" aria-label={t.toolbar.viewDetails} aria-pressed={viewMode === 'details'} onClick={() => onViewModeChange('details')} className="view-choice"><List className="h-4 w-4" /></button></Tooltip>
+          <Tooltip label={t.toolbar.viewCompact}><button type="button" aria-label={t.toolbar.viewCompact} aria-pressed={viewMode === 'compact'} onClick={() => onViewModeChange('compact')} className="view-choice"><StretchHorizontal className="h-4 w-4" /></button></Tooltip>
+          <Tooltip label={t.toolbar.viewIcons}><button type="button" aria-label={t.toolbar.viewIcons} aria-pressed={viewMode === 'icons'} onClick={() => onViewModeChange('icons')} className="view-choice"><LayoutGrid className="h-4 w-4" /></button></Tooltip>
         </div>
 
-        <div className="flex items-center bg-neutral-950/70 p-0.5 rounded-lg border border-neutral-800">
-          <Tooltip label={t.header.layoutDualVertical}><button onClick={() => onLayoutChange('dual-vertical')} className={`p-1.5 rounded ${layout === 'dual-vertical' ? 'bg-neutral-800 text-cyan-300' : 'text-neutral-400 hover:text-neutral-200'}`}><Columns2 className="w-3.5 h-3.5" /></button></Tooltip>
-          <Tooltip label={t.header.layoutDualHorizontal}><button onClick={() => onLayoutChange('dual-horizontal')} className={`p-1.5 rounded ${layout === 'dual-horizontal' ? 'bg-neutral-800 text-cyan-300' : 'text-neutral-400 hover:text-neutral-200'}`}><Rows2 className="w-3.5 h-3.5" /></button></Tooltip>
-          <Tooltip label={t.header.layoutSingle}><button onClick={() => onLayoutChange('single')} className={`p-1.5 rounded ${layout === 'single' ? 'bg-neutral-800 text-cyan-300' : 'text-neutral-400 hover:text-neutral-200'}`}><Square className="w-3.5 h-3.5" /></button></Tooltip>
+        <div className="view-choice-group flex items-center" role="group" aria-label={t.header.layoutModes}>
+          <Tooltip label={t.header.layoutDualVertical}><button type="button" aria-label={t.header.layoutDualVertical} aria-pressed={layout === 'dual-vertical'} onClick={() => onLayoutChange('dual-vertical')} className="view-choice"><Columns2 className="h-4 w-4" /></button></Tooltip>
+          <Tooltip label={t.header.layoutDualHorizontal}><button type="button" aria-label={t.header.layoutDualHorizontal} aria-pressed={layout === 'dual-horizontal'} onClick={() => onLayoutChange('dual-horizontal')} className="view-choice"><Rows2 className="h-4 w-4" /></button></Tooltip>
+          <Tooltip label={t.header.layoutSingle}><button type="button" aria-label={t.header.layoutSingle} aria-pressed={layout === 'single'} onClick={() => onLayoutChange('single')} className="view-choice"><Square className="h-4 w-4" /></button></Tooltip>
         </div>
 
         <Tooltip label={`${t.workspaceProfiles.open}${workspaceChangesPending ? ` · ${t.workspaceProfiles.modified}` : ''}`} placement="bottom">
@@ -109,6 +109,12 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         .header-action:disabled { opacity:.4; cursor:not-allowed; }
         .header-action.accent { background:var(--color-cyan-950); border:1px solid var(--color-neutral-700); color:var(--color-cyan-200); }
         .shortcut { color:var(--color-neutral-500); font:10px ui-monospace,SFMono-Regular,Menlo,monospace; }
+        .view-choice-group { gap:2px; padding:3px; border:1px solid var(--color-neutral-700); border-radius:6px; background:var(--color-neutral-950); box-shadow:inset 0 1px 2px rgba(0,0,0,.35); }
+        .view-choice { display:flex; width:34px; height:30px; align-items:center; justify-content:center; border:1px solid transparent; border-radius:3px; color:var(--color-neutral-500); transition:background-color .14s,color .14s,border-color .14s,box-shadow .14s; }
+        .view-choice:hover:not([aria-pressed="true"]) { background:var(--color-neutral-800); color:var(--color-neutral-200); }
+        .view-choice[aria-pressed="true"] { border-color:rgba(103,232,249,.2); background:#1d292d; color:#a5f3fc; box-shadow:inset 0 1px rgba(255,255,255,.045); }
+        .view-choice:focus-visible { outline:2px solid rgba(34,211,238,.7); outline-offset:2px; }
+        #root button.view-choice:not([data-file-item="true"]):not([role="separator"]):not(:disabled):active { scale:1; }
         @media (max-width: 1535px) { .action-label { display:none; } .header-action { padding:.375rem .5rem; } }
       `}</style>
     </header>

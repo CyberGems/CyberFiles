@@ -325,6 +325,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const suppressColumnSortRef = useRef(false);
   const previousPathRef = useRef(tab.currentPath);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const columnHeadersRef = useRef<HTMLDivElement>(null);
   const marqueeDragRef = useRef<MarqueeDrag | null>(null);
   const marqueePreviewIdsRef = useRef<string[] | null>(null);
   const suppressViewportClickRef = useRef(false);
@@ -528,6 +529,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (columnResizeDragRef.current?.pointerId === event.pointerId) columnResizeDragRef.current = null;
   };
 
+  const autoFitColumn = (column: ResizableColumn) => {
+    const headerContent = columnHeadersRef.current?.querySelector<HTMLElement>(`[data-file-column-header="${column}"]`);
+    const cells = viewportRef.current?.querySelectorAll<HTMLElement>(`[data-file-column-content="${column}"]`) ?? [];
+    const headerWidth = headerContent ? headerContent.scrollWidth + 28 : 0;
+    const cellChrome = column === 'name' ? 56 : 16;
+    const widestCell = [...cells].reduce((widest, cell) => Math.max(widest, cell.scrollWidth + cellChrome), 0);
+    const fittedWidth = Math.max(headerWidth, widestCell);
+
+    setColumnWidths(previous => {
+      const currentWidth = column === 'name'
+        ? previous.name ?? MIN_NAME_COLUMN_WIDTH
+        : previous[column];
+      return resizeFileColumns(previous, column, fittedWidth - currentWidth);
+    });
+  };
+
   const resizeHandle = (column: ResizableColumn, label: string) => (
     <Tooltip label={t.pane.resizeColumn.replace('{column}', label)} placement="top">
       <button
@@ -536,6 +553,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
         aria-orientation="vertical"
         aria-label={t.pane.resizeColumn.replace('{column}', label)}
         onClick={event => event.stopPropagation()}
+        onDoubleClick={event => {
+          event.preventDefault();
+          event.stopPropagation();
+          autoFitColumn(column);
+        }}
         onPointerDown={event => startColumnResize(column, event)}
         onPointerMove={moveColumnResize}
         onPointerUp={finishColumnResize}
@@ -1168,6 +1190,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* 4. Column Headers (Details View) */}
       {effectiveViewMode === 'details' && !isSystemHome && (
         <div
+          ref={columnHeadersRef}
           className="mx-4 grid shrink-0 items-center gap-2 border-x border-b border-neutral-800 bg-neutral-950 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 select-none"
           style={{ gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
           onContextMenu={openColumnMenu}
@@ -1190,7 +1213,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   }}
                   className={`group relative flex min-w-0 items-center gap-1 rounded-sm px-1 pr-2 cursor-grab active:cursor-grabbing transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${column === 'size' || column === 'created' || column === 'modified' ? 'justify-end' : ''}`}
                 >
-                  <span className="min-w-0 truncate">{columnLabel(column)}</span>
+                  <span data-file-column-header={column} className="min-w-0 truncate">{columnLabel(column)}</span>
                   <DirectionIcon aria-hidden="true" className={`h-3 w-3 flex-shrink-0 ${isSorted ? 'text-cyan-400' : 'text-neutral-700'}`} />
                   {resizeHandle(column, columnLabel(column))}
                 </div>
@@ -1335,7 +1358,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 >
                   {visibleFileColumns.map(column => {
                     if (column === 'extension') {
-                      return <div key={column} className="min-w-0 truncate font-mono text-[10px] uppercase text-neutral-400">{item.isFolder ? '' : (item.extension || '')}</div>;
+                      return <div key={column} className="min-w-0 truncate font-mono text-[10px] uppercase text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder ? '' : (item.extension || '')}</span></div>;
                     }
                     if (column === 'name') {
                       return (
@@ -1370,20 +1393,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             </form>
                           ) : (
                             <Tooltip label={renderItemTooltip(item)} placement="top">
-                              <span className="truncate text-[11.5px] font-medium" style={getRecentNameStyle(item, isSelected)}>{item.name}</span>
+                              <span data-file-column-content={column} className="truncate text-[11.5px] font-medium" style={getRecentNameStyle(item, isSelected)}>{item.name}</span>
                             </Tooltip>
                           )}
                         </div>
                       );
                     }
                     if (column === 'size') {
-                      return <div key={column} className="min-w-0 text-right font-mono text-[11px] text-neutral-400">{item.isFolder ? '--' : formatFileSize(item.size)}</div>;
+                      return <div key={column} className="min-w-0 text-right font-mono text-[11px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder ? '--' : formatFileSize(item.size)}</span></div>;
                     }
                     if (column === 'created') {
                       const createdDate = item.createdDate || (item.createdAtMs ? new Date(item.createdAtMs).toISOString().replace('T', ' ').slice(0, 16) : '');
-                      return <div key={column} className="min-w-0 text-right font-mono text-[10px] text-neutral-400">{createdDate || '--'}</div>;
+                      return <div key={column} className="min-w-0 text-right font-mono text-[10px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{createdDate || '--'}</span></div>;
                     }
-                    return <div key={column} className="min-w-0 text-right font-mono text-[10px] text-neutral-400">{item.modifiedDate || '--'}</div>;
+                    return <div key={column} className="min-w-0 text-right font-mono text-[10px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.modifiedDate || '--'}</span></div>;
                   })}
                 </div>
               );

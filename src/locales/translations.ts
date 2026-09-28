@@ -79,6 +79,7 @@ export const translations = {
       invalidPath: 'La ruta no es válida o no está disponible.',
     },
     header: {
+      layoutModes: 'Disposición de paneles',
       layoutDualVertical: 'Doble Vertical',
       layoutDualHorizontal: 'Doble Horizontal',
       layoutSingle: 'Panel Único',
@@ -656,6 +657,7 @@ export const translations = {
       invalidPath: 'The path is invalid or unavailable.',
     },
     header: {
+      layoutModes: 'Panel layout',
       layoutDualVertical: 'Dual Vertical',
       layoutDualHorizontal: 'Dual Horizontal',
       layoutSingle: 'Single Pane',
