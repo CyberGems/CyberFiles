@@ -1,11 +1,13 @@
 import {
   cloneElement,
+  createContext,
   isValidElement,
   useEffect,
   useId,
   useLayoutEffect,
   useRef,
   useState,
+  useContext,
 } from 'react';
 import type {
   CSSProperties,
@@ -36,6 +38,8 @@ interface TooltipPosition {
 const GAP = 8;
 const VIEWPORT_MARGIN = 8;
 const SHOW_DELAY_MS = 280;
+
+export const TooltipPreferenceContext = createContext(true);
 
 let activeTooltipOwner: symbol | null = null;
 let dismissActiveTooltip: (() => void) | null = null;
@@ -155,6 +159,8 @@ function getArrowStyle(position: TooltipPosition): CSSProperties {
 
 /** A viewport-aware tooltip that does not alter the layout of its trigger. */
 export function Tooltip({ label, placement = 'bottom', children, disabled = false }: TooltipProps) {
+  const preferenceEnabled = useContext(TooltipPreferenceContext);
+  const isDisabled = disabled || !preferenceEnabled;
   const [anchorElement, setAnchorElement] = useState<HTMLElement | null>(null);
   const [position, setPosition] = useState<TooltipPosition | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -212,8 +218,8 @@ export function Tooltip({ label, placement = 'bottom', children, disabled = fals
   };
 
   useEffect(() => {
-    if (disabled) hide();
-  }, [disabled]);
+    if (isDisabled) hide();
+  }, [isDisabled]);
 
   useEffect(() => {
     mountedTooltipInstances += 1;
@@ -259,7 +265,7 @@ export function Tooltip({ label, placement = 'bottom', children, disabled = fals
     };
   }, [anchorElement]);
 
-  if (disabled || !label || !isValidElement(children)) return children;
+  if (isDisabled || !label || !isValidElement(children)) return children;
 
   const child = children as ReactElement<any>;
   const onMouseEnter = (event: ReactMouseEvent<HTMLElement>) => {

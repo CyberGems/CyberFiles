@@ -44,6 +44,7 @@ import { BottomStatusBar } from './components/BottomStatusBar';
 import { ContextMenu } from './components/ContextMenu';
 import { CreateItemModal, type NewItemKind } from './components/CreateItemModal';
 import { TextInputContextMenu } from './components/TextInputContextMenu';
+import { TooltipPreferenceContext } from './components/Tooltip';
 import { WorkspaceManagerModal } from './components/WorkspaceManagerModal';
 import { UnsavedWorkspaceChangesModal, type WorkspaceChangesSaveNames } from './components/UnsavedWorkspaceChangesModal';
 
@@ -91,12 +92,15 @@ const NEW_TABS_NEXT_TO_CURRENT_KEY = 'cyberfiles_new_tabs_next_to_current_v1';
 const RECENT_ITEMS_BOLD_KEY = 'cyberfiles_bold_recent_items_v1';
 const RECENT_ITEMS_STYLE_KEY = 'cyberfiles_recent_items_style_v1';
 const IMAGE_TOOLTIP_THUMBNAILS_KEY = 'cyberfiles_image_tooltip_thumbnails_v1';
+const NOTIFICATION_BANNERS_KEY = 'cyberfiles_notification_banners_v1';
+const TOOLTIPS_ENABLED_KEY = 'cyberfiles_tooltips_enabled_v1';
 const SINGLE_CLICK_OPEN_KEY = 'cyberfiles_single_click_open_v1';
 const CUSTOM_QUICK_ACCESS_KEY = 'cyberfiles_custom_quick_access_v1';
 const QUICK_ACCESS_ORDER_KEY = 'cyberfiles_quick_access_order_v1';
 const QUICK_ACCESS_SORT_MODE_KEY = 'cyberfiles_quick_access_sort_mode_v1';
 const MAX_CUSTOM_QUICK_ACCESS_ITEMS = 100;
 const MAX_TEXT_PREVIEW_BYTES = 200_000;
+const TOAST_DURATION_MS = 3200;
 const DEFAULT_GLOBAL_SHORTCUT = 'Alt+Shift+F';
 const DEFAULT_FOLDER_STYLE = { viewMode: 'details' as ViewMode, sortField: 'name' as SortField, sortOrder: 'asc' as SortOrder };
 const DEFAULT_RECENT_ITEM_STYLE: RecentItemStyle = {
@@ -479,6 +483,8 @@ export default function App() {
   const [newTabsNextToCurrent, setNewTabsNextToCurrent] = useState(() => readBooleanPreference(NEW_TABS_NEXT_TO_CURRENT_KEY, true));
   const [recentItemStyle, setRecentItemStyle] = useState<RecentItemStyle>(readRecentItemStyle);
   const [imageTooltipThumbnailsEnabled, setImageTooltipThumbnailsEnabled] = useState(() => readBooleanPreference(IMAGE_TOOLTIP_THUMBNAILS_KEY, true));
+  const [notificationBannersEnabled, setNotificationBannersEnabled] = useState(() => readBooleanPreference(NOTIFICATION_BANNERS_KEY, true));
+  const [tooltipsEnabled, setTooltipsEnabled] = useState(() => readBooleanPreference(TOOLTIPS_ENABLED_KEY, true));
   const [singleClickOpen, setSingleClickOpen] = useState(() => readBooleanPreference(SINGLE_CLICK_OPEN_KEY, false));
 
   // Global file system state
@@ -566,12 +572,31 @@ export default function App() {
 
   // Notifications / Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastSequence, setToastSequence] = useState(0);
+  const toastSequenceRef = useRef(0);
+  const toastTimerRef = useRef<number | null>(null);
 
   const showToast = useCallback((msg: string) => {
+    if (!notificationBannersEnabled) return;
+    const sequence = ++toastSequenceRef.current;
     setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage((curr) => (curr === msg ? null : curr));
-    }, 3200);
+    setToastSequence(sequence);
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = window.setTimeout(() => {
+      if (toastSequenceRef.current === sequence) setToastMessage(null);
+      toastTimerRef.current = null;
+    }, TOAST_DURATION_MS);
+  }, [notificationBannersEnabled]);
+
+  useEffect(() => {
+    if (notificationBannersEnabled) return;
+    setToastMessage(null);
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = null;
+  }, [notificationBannersEnabled]);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
   }, []);
 
   const [recycleBinStatus, setRecycleBinStatus] = useState<RecycleBinStatus | null>(null);
@@ -1337,6 +1362,22 @@ export default function App() {
       // Keep the selected behavior for the current session when storage is unavailable.
     }
   }, [imageTooltipThumbnailsEnabled]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(NOTIFICATION_BANNERS_KEY, String(notificationBannersEnabled));
+    } catch {
+      // Keep the selected behavior for the current session when storage is unavailable.
+    }
+  }, [notificationBannersEnabled]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(TOOLTIPS_ENABLED_KEY, String(tooltipsEnabled));
+    } catch {
+      // Keep the selected behavior for the current session when storage is unavailable.
+    }
+  }, [tooltipsEnabled]);
 
   useEffect(() => {
     try {
@@ -3227,10 +3268,11 @@ export default function App() {
     : rightTabs[activeRightTabIndex];
 
   return (
-    <div
-      className="h-screen w-screen flex flex-col bg-neutral-950 text-neutral-100 font-sans select-none overflow-hidden"
-      onContextMenuCapture={handleApplicationContextMenuCapture}
-    >
+    <TooltipPreferenceContext.Provider value={tooltipsEnabled}>
+      <div
+        className="h-screen w-screen flex flex-col bg-neutral-950 text-neutral-100 font-sans select-none overflow-hidden"
+        onContextMenuCapture={handleApplicationContextMenuCapture}
+      >
       <WindowTitleBar
         showWindowControls={isTauriDesktop()}
         onOpenSettings={() => setIsSettingsOpen(true)}
@@ -3584,9 +3626,12 @@ export default function App() {
 
       {/* Floating Action Toast */}
       {toastMessage && (
-        <div className="fixed bottom-10 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-start gap-2 rounded-lg border border-cyan-500/50 bg-neutral-900/95 px-4 py-2 text-xs font-medium text-cyan-200 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-150">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+        <div key={toastSequence} role="status" aria-live="polite" className="fixed bottom-10 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-start gap-2 overflow-hidden rounded-lg border border-cyan-500/50 bg-neutral-900/95 px-4 py-2 pb-2.5 text-xs font-medium text-cyan-200 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-150">
+          <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-cyan-400 animate-pulse" />
           <span className="max-w-[42rem] break-words">{toastMessage}</span>
+          <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[2px] bg-cyan-950/70">
+            <div className="cyberfiles-toast-progress h-full w-full origin-left bg-gradient-to-r from-cyan-600 via-cyan-300 to-white shadow-[0_0_8px_rgba(34,211,238,0.8)]" style={{ animationDuration: `${TOAST_DURATION_MS}ms` }} />
+          </div>
         </div>
       )}
 
@@ -3791,6 +3836,10 @@ export default function App() {
             onRecentItemStyleReset={() => setRecentItemStyle({ ...DEFAULT_RECENT_ITEM_STYLE, enabled: recentItemStyle.enabled })}
             imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
             onImageTooltipThumbnailsEnabledChange={setImageTooltipThumbnailsEnabled}
+            notificationBannersEnabled={notificationBannersEnabled}
+            onNotificationBannersEnabledChange={setNotificationBannersEnabled}
+            tooltipsEnabled={tooltipsEnabled}
+            onTooltipsEnabledChange={setTooltipsEnabled}
             singleClickOpen={singleClickOpen}
             onSingleClickOpenChange={setSingleClickOpen}
             sidebarLocationsOpenInNewTab={sidebarLocationsOpenInNewTab}
@@ -3825,6 +3874,7 @@ export default function App() {
           />
         </Suspense>
       )}
-    </div>
+      </div>
+    </TooltipPreferenceContext.Provider>
   );
 }

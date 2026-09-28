@@ -31,6 +31,10 @@ interface SettingsModalProps {
   onRecentItemStyleReset: () => void;
   imageTooltipThumbnailsEnabled: boolean;
   onImageTooltipThumbnailsEnabledChange: (enabled: boolean) => void;
+  notificationBannersEnabled: boolean;
+  onNotificationBannersEnabledChange: (enabled: boolean) => void;
+  tooltipsEnabled: boolean;
+  onTooltipsEnabledChange: (enabled: boolean) => void;
   singleClickOpen: boolean;
   onSingleClickOpenChange: (enabled: boolean) => void;
   sidebarLocationsOpenInNewTab: boolean;
@@ -80,6 +84,10 @@ export function SettingsModal({
   onRecentItemStyleReset,
   imageTooltipThumbnailsEnabled,
   onImageTooltipThumbnailsEnabledChange,
+  notificationBannersEnabled,
+  onNotificationBannersEnabledChange,
+  tooltipsEnabled,
+  onTooltipsEnabledChange,
   singleClickOpen,
   onSingleClickOpenChange,
   sidebarLocationsOpenInNewTab,
@@ -208,6 +216,43 @@ export function SettingsModal({
             </div>
           </div>
 
+          <div className="border-t border-neutral-800 pt-4">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.interfaceSection}</div>
+            <div className="space-y-2">
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                <Tooltip label={t.settings.showNotificationBannersDescription} placement="top">
+                  <label className="flex cursor-pointer items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={notificationBannersEnabled}
+                      onChange={event => onNotificationBannersEnabledChange(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                    />
+                    <span>
+                      <span className="block font-medium text-neutral-200">{t.settings.showNotificationBanners}</span>
+                      <span className="mt-1 block">{t.settings.showNotificationBannersDescription}</span>
+                    </span>
+                  </label>
+                </Tooltip>
+              </div>
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                <Tooltip label={t.settings.showTooltipsDescription} placement="top">
+                  <label className="flex cursor-pointer items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={tooltipsEnabled}
+                      onChange={event => onTooltipsEnabledChange(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                    />
+                    <span>
+                      <span className="block font-medium text-neutral-200">{t.settings.showTooltips}</span>
+                      <span className="mt-1 block">{t.settings.showTooltipsDescription}</span>
+                    </span>
+                  </label>
+                </Tooltip>
+              </div>
+            </div>
+          </div>
           <div className="border-t border-neutral-800 pt-4">
             <div className="flex items-start gap-2">
               <Keyboard className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-300" />

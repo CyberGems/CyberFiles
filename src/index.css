@@ -200,6 +200,13 @@ html[data-theme='light'] .cyberfiles-tooltip-card {
   outline-offset: 2px;
 }
 
+.cyberfiles-toast-progress { animation-name: cyberfiles-toast-countdown; animation-timing-function: linear; animation-fill-mode: forwards; }
+
+@keyframes cyberfiles-toast-countdown {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
 @keyframes workspace-manager-backdrop-in {
   from { opacity: 0; }
   to { opacity: 1; }
