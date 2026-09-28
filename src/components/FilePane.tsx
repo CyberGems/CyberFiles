@@ -1749,10 +1749,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400">{item.isFolder ? (
                         isTauriDesktop() ? (
                           !isRecycleBin && !item.recycleBinId ? <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip} placement="top">
-                            <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="flex w-full items-center justify-between gap-2 rounded px-1 py-0.5 text-left text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip}>
+                            <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="flex w-full items-center justify-end gap-2 rounded px-1 py-0.5 text-right text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip}>
                               <span data-file-column-content={column} className={!folderSize || folderSize.status === 'limited' ? 'inline-flex max-w-full items-center gap-1 whitespace-nowrap' : 'min-w-0 truncate'}>
-                                {(!folderSize || folderSize.status === 'limited') && <Calculator className="h-3 w-3 flex-shrink-0" />}
                                 {folderSize?.status === 'loading' ? '' : folderSize?.status === 'done' ? formatFileSize(folderSize.size ?? 0) : folderSize?.status === 'error' ? '!' : t.pane.folderSizeCalculate}
+                                {(!folderSize || folderSize.status === 'limited') && <Calculator className="h-3 w-3 flex-shrink-0" />}
                               </span>
                               {folderSize?.status === 'loading' ? <LoaderCircle className="h-3 w-3 flex-shrink-0 animate-spin" /> : folderSize?.status === 'error' ? <Calculator className="h-3 w-3 flex-shrink-0" /> : null}
                             </button>
