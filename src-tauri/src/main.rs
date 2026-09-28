@@ -439,6 +439,8 @@ struct NativeCreatedImage {
     path: String,
     name: String,
     size: u64,
+    modified_ms: Option<u64>,
+    created_ms: Option<u64>,
 }
 
 fn validate_child_name(name: &str) -> Result<(), String> {
@@ -1374,6 +1376,13 @@ fn create_native_clipboard_image(
             return Err(format!("Could not write the pasted image: {error}"));
         }
         drop(file);
+        let metadata = match fs::metadata(&candidate) {
+            Ok(metadata) => metadata,
+            Err(error) => {
+                let _ = fs::remove_file(&candidate);
+                return Err(format!("Could not read pasted image metadata: {error}"));
+            }
+        };
         let created = match fs::canonicalize(&candidate) {
             Ok(path) => path,
             Err(error) => {
@@ -1385,6 +1394,16 @@ fn create_native_clipboard_image(
             path: display_path(&created),
             name,
             size: png_bytes.len() as u64,
+            modified_ms: metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .and_then(|duration| duration.as_millis().try_into().ok()),
+            created_ms: metadata
+                .created()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .and_then(|duration| duration.as_millis().try_into().ok()),
         }));
     }
     Err("Could not find an available name for the pasted image.".to_string())

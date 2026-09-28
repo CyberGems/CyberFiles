@@ -2,6 +2,7 @@ import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { DriveInfo, FileItem } from '../types';
 import { detectFileType, getFileExtension } from './fileSystem';
+import { formatLocalDateTime } from './dateTime';
 
 export const MAX_PDF_PREVIEW_BYTES = 100 * 1024 * 1024;
 
@@ -86,11 +87,9 @@ export interface NativeCreatedImage {
   path: string;
   name: string;
   size: number;
+  modifiedMs: number | null;
+  createdMs: number | null;
 }
-
-const formatModifiedDate = (timestamp: number | null) => timestamp
-  ? new Date(timestamp).toISOString().replace('T', ' ').slice(0, 16)
-  : '';
 
 function mapNativeEntries(entries: NativeFolderEntry[]): FileItem[] {
   return entries.map(entry => ({
@@ -100,8 +99,8 @@ function mapNativeEntries(entries: NativeFolderEntry[]): FileItem[] {
     isFolder: entry.isFolder,
     type: detectFileType(entry.name, entry.isFolder),
     size: entry.size,
-    modifiedDate: formatModifiedDate(entry.modifiedMs),
-    createdDate: formatModifiedDate(entry.createdMs),
+    modifiedDate: formatLocalDateTime(entry.modifiedMs),
+    createdDate: formatLocalDateTime(entry.createdMs),
     modifiedAtMs: entry.modifiedMs ?? undefined,
     createdAtMs: entry.createdMs ?? undefined,
     extension: entry.isFolder ? '' : getFileExtension(entry.name),
@@ -224,7 +223,7 @@ export async function listNativeRecycleBin(offset = 0): Promise<{ entries: FileI
       isFolder: entry.isFolder,
       type: detectFileType(entry.name, entry.isFolder),
       size: entry.size,
-      modifiedDate: formatModifiedDate(entry.deletedAtMs),
+      modifiedDate: formatLocalDateTime(entry.deletedAtMs),
       extension: entry.isFolder ? '' : getFileExtension(entry.name),
     })),
     hasMore: result.hasMore,

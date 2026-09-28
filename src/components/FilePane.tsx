@@ -33,6 +33,7 @@ import {
   UnlockKeyhole,
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
+import { formatLocalDateTime } from '../utils/dateTime';
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
 import { isTauriDesktop, loadNativeImageThumbnail } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
@@ -369,7 +370,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   const hasRecentActivity = (item: FileItem) => {
     const changedAt = Math.max(item.createdAtMs ?? 0, item.modifiedAtMs ?? 0);
-    return changedAt > 0 && changedAt <= currentTime && currentTime - changedAt <= RECENT_ITEM_WINDOW_MS;
+    const age = Math.max(currentTime, Date.now()) - changedAt;
+    return changedAt > 0 && age >= -60_000 && age <= RECENT_ITEM_WINDOW_MS;
   };
 
   const isRecentlyChanged = (item: FileItem) => recentItemStyle.enabled && hasRecentActivity(item);
@@ -1433,7 +1435,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder ? '--' : formatFileSize(item.size)}</span></div>;
                     }
                     if (column === 'created') {
-                      const createdDate = item.createdDate || (item.createdAtMs ? new Date(item.createdAtMs).toISOString().replace('T', ' ').slice(0, 16) : '');
+                      const createdDate = item.createdDate || (item.createdAtMs ? formatLocalDateTime(item.createdAtMs) : '');
                       return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{createdDate || '--'}</span></div>;
                     }
                     return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.modifiedDate || '--'}</span></div>;

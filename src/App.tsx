@@ -72,6 +72,7 @@ import {
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
 import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, createNativeTextFile, createNativeShortcut, emptyNativeRecycleBin, getNativeFileClipboard, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
+import { formatLocalDateTime } from './utils/dateTime';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
 const FindFilesModal = lazy(() => import('./components/FindFilesModal').then(module => ({ default: module.FindFilesModal })));
@@ -1488,7 +1489,7 @@ export default function App() {
           size = file.size;
           modifiedAtMs = file.lastModified || undefined;
           modifiedDate = file.lastModified
-            ? new Date(file.lastModified).toISOString().replace('T', ' ').slice(0, 16)
+            ? formatLocalDateTime(file.lastModified)
             : '';
         } catch {
           // The entry can disappear or lose access while a page is being read.
@@ -2362,13 +2363,14 @@ export default function App() {
     try {
       const clipboard = await getNativeFileClipboard();
       if (clipboard.paths.length === 0) {
-        const pastedImage = await pasteNativeClipboardImage(targetPath, t.core.screenshotFileBaseName);
+        const pastedImage = await pasteNativeClipboardImage(targetPath, t.core.clipboardImageFileBaseName);
         if (!pastedImage) {
           showToast(t.core.fileClipboardEmpty);
           return;
         }
         await refreshChangedDirectories([targetPath]);
-        const createdAtMs = Date.now();
+        const createdAtMs = pastedImage.createdMs ?? pastedImage.modifiedMs ?? Date.now();
+        const modifiedAtMs = pastedImage.modifiedMs ?? createdAtMs;
         const imageId = `native-${encodeURIComponent(pastedImage.path.toLowerCase())}`;
         const imageItem: FileItem = {
           id: imageId,
@@ -2377,9 +2379,9 @@ export default function App() {
           isFolder: false,
           type: 'image',
           size: pastedImage.size,
-          modifiedDate: new Date(createdAtMs).toISOString().replace('T', ' ').slice(0, 16),
-          createdDate: new Date(createdAtMs).toISOString().replace('T', ' ').slice(0, 16),
-          modifiedAtMs: createdAtMs,
+          modifiedDate: formatLocalDateTime(modifiedAtMs),
+          createdDate: formatLocalDateTime(createdAtMs),
+          modifiedAtMs,
           createdAtMs,
           extension: 'png',
         };
@@ -2418,7 +2420,7 @@ export default function App() {
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, refreshChangedDirectories, rightTabs, showToast, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.operationPartial, t.core.pasted, t.core.pastedImage, t.core.screenshotFileBaseName, t.pane.chooseRealFolderFirst, updatePaneTab]);
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, refreshChangedDirectories, rightTabs, showToast, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.operationPartial, t.core.pasted, t.core.pastedImage, t.core.clipboardImageFileBaseName, t.pane.chooseRealFolderFirst, updatePaneTab]);
 
   const handleDropFiles = useCallback((droppedIds: string[], targetFolderPath?: string, sourcePane?: 'left' | 'right') => {
     moveItemsToPath(droppedIds, targetFolderPath || currentTab.currentPath, sourcePane);
@@ -2710,8 +2712,8 @@ export default function App() {
         isFolder: request.kind === 'folder',
         type: request.kind === 'folder' ? 'folder' : detectFileType(created.name, false),
         size: 0,
-        modifiedDate: new Date(createdAtMs).toISOString().replace('T', ' ').slice(0, 16),
-        createdDate: new Date(createdAtMs).toISOString().replace('T', ' ').slice(0, 16),
+        modifiedDate: formatLocalDateTime(createdAtMs),
+        createdDate: formatLocalDateTime(createdAtMs),
         modifiedAtMs: createdAtMs,
         createdAtMs,
         extension,
