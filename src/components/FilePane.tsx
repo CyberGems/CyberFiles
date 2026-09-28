@@ -403,7 +403,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   const getRecentNameStyle = (item: FileItem, selected = false): React.CSSProperties | undefined => isRecentlyChanged(item)
     ? {
-      color: recentItemStyle.textColor,
+      color: recentItemStyle.textColor === 'auto' ? 'var(--cyberfiles-recent-item-color)' : recentItemStyle.textColor,
       fontWeight: recentItemStyle.bold ? 700 : 400,
       fontStyle: recentItemStyle.italic ? 'italic' : 'normal',
       ...(selected && recentItemStyle.backgroundEnabled ? {
@@ -1243,7 +1243,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
             : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'
         }`}
       >
-        <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg ${
+        <span
+          data-system-home-icon={category === 'folder' ? 'folder' : drive?.type ?? 'drive'}
+          className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg ${
           category === 'folder'
             ? 'bg-amber-300/10 text-amber-300 group-hover:bg-amber-300/15'
             : drive?.type === 'network'
@@ -1380,10 +1382,27 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
         {/* Breadcrumb Path Box */}
         <div 
-          onClick={() => tab.currentPath && !isSystemHome && !isRecycleBin && setIsEditingPath(true)}
-          className={`flex-1 min-w-0 flex items-center bg-neutral-950 px-2 py-1 rounded border border-neutral-800 min-h-[28px] overflow-hidden ${tab.currentPath && !isSystemHome && !isRecycleBin ? 'cursor-text hover:border-neutral-700' : 'cursor-default'}`}
+          onClick={() => {
+            if (isRecycleBin) return;
+            setPathInput(isSystemHome ? '' : tab.currentPath);
+            setIsEditingPath(true);
+          }}
+          className={`flex-1 min-w-0 flex h-8 min-h-8 items-center bg-neutral-950 px-2 rounded border border-neutral-800 overflow-hidden ${!isRecycleBin ? 'cursor-text hover:border-neutral-700' : 'cursor-default'}`}
         >
-          {isSystemHome ? (
+          {isEditingPath ? (
+            <form onSubmit={handlePathSubmit} onClick={event => event.stopPropagation()} className="w-full">
+              <input
+                ref={pathInputRef}
+                type="text"
+                data-paste-and-go="true"
+                value={pathInput}
+                placeholder={t.pane.addressPathPlaceholder}
+                onChange={(e) => setPathInput(e.target.value)}
+                onBlur={() => setIsEditingPath(false)}
+                className="w-full bg-transparent text-neutral-100 text-xs outline-none font-sans"
+              />
+            </form>
+          ) : isSystemHome ? (
             <div className="flex items-center gap-1.5 px-1 text-neutral-200 text-xs font-sans">
               <Monitor className="h-3.5 w-3.5 text-cyan-400" />
               <span>{t.sidebar.thisPc}</span>
@@ -1393,18 +1412,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
               <Trash2 className="h-3.5 w-3.5 text-rose-300" />
               <span>{t.sidebar.recycleBinTitle}</span>
             </div>
-          ) : isEditingPath ? (
-            <form onSubmit={handlePathSubmit} className="w-full">
-              <input
-                ref={pathInputRef}
-                type="text"
-                data-paste-and-go="true"
-                value={pathInput}
-                onChange={(e) => setPathInput(e.target.value)}
-                onBlur={() => setIsEditingPath(false)}
-                className="w-full bg-transparent text-neutral-100 text-xs outline-none font-sans"
-              />
-            </form>
           ) : (
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto no-scrollbar font-sans text-xs">
               {breadcrumbSegments.length === 0 && <span className="px-1 text-neutral-500">{t.pane.noFolderOpen}</span>}
@@ -1426,21 +1433,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
               ))}
             </div>
           )}
-          {!isEditingPath && (
-            <Tooltip label={t.pane.recentFolders} placement="bottom">
-              <button
-                ref={recentFoldersButtonRef}
-                type="button"
-                aria-label={t.pane.recentFolders}
-                aria-haspopup="menu"
-                aria-expanded={Boolean(recentFoldersMenuPosition)}
-                onClick={toggleRecentFoldersMenu}
-                className={`ml-auto flex-shrink-0 rounded p-1 transition-colors ${recentFoldersMenuPosition ? 'bg-neutral-800 text-cyan-200' : 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200'}`}
-              >
-                <History className="h-3.5 w-3.5" />
-              </button>
-            </Tooltip>
-          )}
+          <Tooltip label={t.pane.recentFolders} placement="bottom">
+            <button
+              ref={recentFoldersButtonRef}
+              type="button"
+              aria-label={t.pane.recentFolders}
+              aria-haspopup="menu"
+              aria-expanded={Boolean(recentFoldersMenuPosition)}
+              aria-hidden={isEditingPath}
+              tabIndex={isEditingPath ? -1 : undefined}
+              disabled={isEditingPath}
+              onClick={toggleRecentFoldersMenu}
+              className={`ml-auto h-6 w-6 flex-shrink-0 rounded p-1 transition-colors ${isEditingPath ? 'invisible pointer-events-none' : recentFoldersMenuPosition ? 'bg-neutral-800 text-cyan-200' : 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200'}`}
+            >
+              <History className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
         </div>
 
         {recentFoldersMenuPosition && createPortal(
@@ -1529,8 +1537,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-x-auto overflow-y-hidden">
-        <div className="flex min-h-0 flex-1 flex-col" style={{ width: effectiveViewMode === 'details' ? `max(100%, ${detailsTableMinimumWidth}px)` : '100%' }}>
+      <div className={`flex min-h-0 flex-1 flex-col ${isSystemHome ? 'overflow-x-hidden' : 'overflow-x-auto'} overflow-y-hidden`}>
+        <div className="flex min-h-0 flex-1 flex-col" style={{ width: !isSystemHome && effectiveViewMode === 'details' ? `max(100%, ${detailsTableMinimumWidth}px)` : '100%' }}>
       {/* 4. Column Headers (Details View) */}
       {effectiveViewMode === 'details' && !isSystemHome && (
         <div
@@ -1742,7 +1750,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                         isTauriDesktop() ? (
                           !isRecycleBin && !item.recycleBinId ? <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip} placement="top">
                             <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip}>
-                              {folderSize?.status === 'loading' ? <LoaderCircle className="h-3 w-3 animate-spin" /> : folderSize?.status === 'done' ? <><Calculator className="h-3 w-3 opacity-60" /><span>{formatFileSize(folderSize.size ?? 0)}</span></> : folderSize?.status === 'error' ? <span aria-hidden="true">!</span> : <><Calculator className="h-3 w-3" />{t.pane.folderSizeCalculate}</>}
+                              {folderSize?.status === 'loading' ? <LoaderCircle className="h-3 w-3 animate-spin" /> : folderSize?.status === 'done' ? <><span>{formatFileSize(folderSize.size ?? 0)}</span><Calculator className="h-3 w-3 opacity-60" /></> : folderSize?.status === 'error' ? <span aria-hidden="true">!</span> : <><Calculator className="h-3 w-3" />{t.pane.folderSizeCalculate}</>}
                             </button>
                           </Tooltip> : '--'
                         ) : '--'

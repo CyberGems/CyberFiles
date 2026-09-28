@@ -111,7 +111,7 @@ const DEFAULT_GLOBAL_SHORTCUT = 'Alt+Shift+F';
 const DEFAULT_FOLDER_STYLE = { viewMode: 'details' as ViewMode, sortField: 'name' as SortField, sortOrder: 'asc' as SortOrder, groupBy: 'none' as GroupByField };
 const DEFAULT_RECENT_ITEM_STYLE: RecentItemStyle = {
   enabled: true,
-  textColor: '#fef3c7',
+  textColor: 'auto',
   backgroundEnabled: false,
   backgroundColor: '#92400e',
   bold: true,
@@ -297,7 +297,9 @@ function readRecentItemStyle(): RecentItemStyle {
     const isColor = (value: unknown): value is string => typeof value === 'string' && /^#[\da-f]{6}$/i.test(value);
     return {
       enabled: typeof saved.enabled === 'boolean' ? saved.enabled : readBooleanPreference(RECENT_ITEMS_BOLD_KEY, true),
-      textColor: isColor(saved.textColor) ? saved.textColor : DEFAULT_RECENT_ITEM_STYLE.textColor,
+      textColor: saved.textColor === 'auto' || !isColor(saved.textColor) || saved.textColor.toLowerCase() === '#fef3c7'
+        ? 'auto'
+        : saved.textColor,
       backgroundEnabled: typeof saved.backgroundEnabled === 'boolean' ? saved.backgroundEnabled : DEFAULT_RECENT_ITEM_STYLE.backgroundEnabled,
       backgroundColor: isColor(saved.backgroundColor) ? saved.backgroundColor : DEFAULT_RECENT_ITEM_STYLE.backgroundColor,
       bold: typeof saved.bold === 'boolean' ? saved.bold : DEFAULT_RECENT_ITEM_STYLE.bold,

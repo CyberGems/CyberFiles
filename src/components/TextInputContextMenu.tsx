@@ -151,7 +151,7 @@ async function copySelectedText(target: TextTarget) {
 
 async function pasteText(target: TextTarget) {
   if (isReadOnly(target)) return;
-  const text = await navigator.clipboard.readText();
+  const text = isTauriDesktop() ? await readNativeClipboardText() : await navigator.clipboard.readText();
   target.focus();
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
     const start = target.selectionStart ?? target.value.length;

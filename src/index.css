@@ -8,6 +8,10 @@
   background: #080d16;
   color-scheme: dark;
   --cyberfiles-tooltip-background: #101826;
+  --cyberfiles-recent-item-color: #fef3c7;
+  --cyberfiles-scrollbar-track: #101826;
+  --cyberfiles-scrollbar-thumb: #34445e;
+  --cyberfiles-scrollbar-thumb-hover: #4f6485;
 }
 
 html,
@@ -38,6 +42,10 @@ body {
 html[data-theme='gray'] {
   background: #0d0d0d;
   --cyberfiles-tooltip-background: #171717;
+  --cyberfiles-recent-item-color: #e5e5e5;
+  --cyberfiles-scrollbar-track: #151515;
+  --cyberfiles-scrollbar-thumb: #454545;
+  --cyberfiles-scrollbar-thumb-hover: #666666;
   --color-cyan-200: oklch(0.84 0 0);
   --color-cyan-300: oklch(0.74 0 0);
   --color-cyan-400: oklch(0.64 0 0);
@@ -76,6 +84,10 @@ html[data-theme='gray'] #root {
 
 html[data-theme='light'] {
   color-scheme: light;
+  --cyberfiles-recent-item-color: #8a5b00;
+  --cyberfiles-scrollbar-track: #e9eef4;
+  --cyberfiles-scrollbar-thumb: #9aa8b6;
+  --cyberfiles-scrollbar-thumb-hover: #77899a;
   --color-neutral-50: oklch(0.24 0.01 250);
   --color-neutral-100: oklch(0.29 0.01 250);
   --color-neutral-200: oklch(0.37 0.01 250);
@@ -127,6 +139,61 @@ html[data-theme='light'] .bg-black {
 
 html[data-theme='light'] .cyberfiles-tooltip-card {
   color: var(--color-neutral-100);
+}
+
+html,
+body,
+#root {
+  scrollbar-color: var(--cyberfiles-scrollbar-thumb) var(--cyberfiles-scrollbar-track);
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: var(--cyberfiles-scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid var(--cyberfiles-scrollbar-track);
+  border-radius: 999px;
+  background-color: var(--cyberfiles-scrollbar-thumb);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--cyberfiles-scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+html[data-theme='light'] [data-system-home-icon='folder'] {
+  color: #a16207 !important;
+  background-color: rgb(250 204 21 / 16%) !important;
+}
+
+html[data-theme='light'] [data-system-home-icon='fixed'],
+html[data-theme='light'] [data-system-home-icon='drive'],
+html[data-theme='light'] [data-system-home-icon='optical'] {
+  color: #0369a1 !important;
+  background-color: rgb(14 165 233 / 13%) !important;
+}
+
+html[data-theme='light'] [data-system-home-icon='removable'] {
+  color: #7e22ce !important;
+  background-color: rgb(168 85 247 / 13%) !important;
+}
+
+html[data-theme='light'] [data-system-home-icon='network'] {
+  color: #4f46e5 !important;
+  background-color: rgb(99 102 241 / 13%) !important;
 }
 
 .theme-preview {

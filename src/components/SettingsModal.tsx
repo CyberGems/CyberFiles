@@ -5,6 +5,7 @@ import { type AppTheme, useTheme } from '../themes/ThemeContext';
 import { Tooltip } from './Tooltip';
 import { DialogButton } from './DialogButton';
 import { type RecentItemStyle } from '../types';
+import { ColorValueEditor } from './ColorValueEditor';
 
 
 interface SettingsModalProps {
@@ -48,6 +49,11 @@ interface SettingsModalProps {
 }
 
 const themes: AppTheme[] = ['cyberfiles', 'gray', 'light'];
+const RECENT_ITEM_AUTO_COLORS: Record<AppTheme, string> = {
+  cyberfiles: '#fef3c7',
+  gray: '#e5e5e5',
+  light: '#8a5b00',
+};
 
 function keyFromEvent(event: KeyboardEvent): string | null {
   const { code } = event;
@@ -105,6 +111,9 @@ export function SettingsModal({
 }: SettingsModalProps) {
   const { t, language, setLanguage } = useLanguage();
   const { theme, setTheme } = useTheme();
+  const recentItemTextColor = recentItemStyle.textColor === 'auto'
+    ? RECENT_ITEM_AUTO_COLORS[theme]
+    : recentItemStyle.textColor;
   const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
   const [shortcutCaptureError, setShortcutCaptureError] = useState<string | null>(null);
 
@@ -475,18 +484,11 @@ export function SettingsModal({
             </div>
 
             <div className="mt-3 grid grid-cols-1 gap-2 border-t border-neutral-800 pt-3 sm:grid-cols-2">
-              <Tooltip label={t.settings.recentItemsTextColor} placement="top">
-                <label className="flex items-center justify-between gap-2 rounded border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-neutral-300">
-                  <span>{t.settings.recentItemsTextColor}</span>
-                  <input
-                    type="color"
-                    aria-label={t.settings.recentItemsTextColor}
-                    value={recentItemStyle.textColor}
-                    onChange={event => onRecentItemStyleChange({ ...recentItemStyle, textColor: event.target.value })}
-                    className="h-7 w-9 cursor-pointer rounded border border-neutral-700 bg-transparent p-0.5"
-                  />
-                </label>
-              </Tooltip>
+              <ColorValueEditor
+                label={t.settings.recentItemsTextColor}
+                value={recentItemTextColor}
+                onChange={textColor => onRecentItemStyleChange({ ...recentItemStyle, textColor })}
+              />
 
               <Tooltip label={t.settings.recentItemsBold} placement="top">
                 <label className="flex cursor-pointer items-center gap-2 rounded border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-neutral-300">
@@ -524,26 +526,19 @@ export function SettingsModal({
                 </label>
               </Tooltip>
 
-              <Tooltip label={t.settings.recentItemsBackgroundColor} placement="top">
-                <label className={`flex items-center justify-between gap-2 rounded border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 ${recentItemStyle.backgroundEnabled ? 'text-neutral-300' : 'text-neutral-600'}`}>
-                  <span>{t.settings.recentItemsBackgroundColor}</span>
-                  <input
-                    type="color"
-                    aria-label={t.settings.recentItemsBackgroundColor}
-                    disabled={!recentItemStyle.backgroundEnabled}
-                    value={recentItemStyle.backgroundColor}
-                    onChange={event => onRecentItemStyleChange({ ...recentItemStyle, backgroundColor: event.target.value })}
-                    className="h-7 w-9 cursor-pointer rounded border border-neutral-700 bg-transparent p-0.5 disabled:cursor-not-allowed disabled:opacity-40"
-                  />
-                </label>
-              </Tooltip>
+              <ColorValueEditor
+                label={t.settings.recentItemsBackgroundColor}
+                disabled={!recentItemStyle.backgroundEnabled}
+                value={recentItemStyle.backgroundColor}
+                onChange={backgroundColor => onRecentItemStyleChange({ ...recentItemStyle, backgroundColor })}
+              />
 
               <div className="flex items-center gap-2 rounded border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-neutral-400 sm:col-span-2">
                 <span>{t.settings.recentItemsPreview}:</span>
                 <span
                   className="rounded px-1.5 py-0.5"
                   style={{
-                    color: recentItemStyle.textColor,
+                    color: recentItemStyle.textColor === 'auto' ? 'var(--cyberfiles-recent-item-color)' : recentItemStyle.textColor,
                     fontWeight: recentItemStyle.bold ? 700 : 400,
                     fontStyle: recentItemStyle.italic ? 'italic' : 'normal',
                     backgroundColor: recentItemStyle.backgroundEnabled ? `color-mix(in srgb, ${recentItemStyle.backgroundColor} 18%, transparent)` : undefined,
