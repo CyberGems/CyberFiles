@@ -15,10 +15,18 @@ import {
   Trash2,
   PanelsTopLeft,
   BarChart3,
+  ChevronDown,
+  Eye,
+  EyeOff,
+  ExternalLink,
+  FileText,
+  FolderOpen,
+  Terminal,
 } from 'lucide-react';
 import { ViewLayout, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
+import type { WindowsSpecialFolder, WindowsTerminalOption } from '../utils/nativeFileSystem';
 
 interface HeaderBarProps {
   layout: ViewLayout;
@@ -27,6 +35,18 @@ interface HeaderBarProps {
   onViewModeChange: (mode: ViewMode) => void;
   relativeGraphsEnabled: boolean;
   onToggleRelativeGraphs: () => void;
+  showHiddenFiles: boolean;
+  onToggleShowHiddenFiles: () => void;
+  showFileExtensions: boolean;
+  onToggleShowFileExtensions: () => void;
+  currentFolderPath: string;
+  windowsActionsAvailable: boolean;
+  windowsSpecialFolders: WindowsSpecialFolder[];
+  lastTerminalOption: WindowsTerminalOption;
+  onLastTerminalOptionChange: (option: WindowsTerminalOption) => void;
+  onShowInWindowsExplorer: () => void;
+  onLaunchTerminal: (option: WindowsTerminalOption) => void;
+  onOpenWindowsSpecialFolder: (folder: WindowsSpecialFolder) => void;
   propertiesPanelOpen: boolean;
   onTogglePropertiesPanel: () => void;
   onRenameSelected: () => void;
@@ -47,6 +67,18 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onViewModeChange,
   relativeGraphsEnabled,
   onToggleRelativeGraphs,
+  showHiddenFiles,
+  onToggleShowHiddenFiles,
+  showFileExtensions,
+  onToggleShowFileExtensions,
+  currentFolderPath,
+  windowsActionsAvailable,
+  windowsSpecialFolders,
+  lastTerminalOption,
+  onLastTerminalOptionChange,
+  onShowInWindowsExplorer,
+  onLaunchTerminal,
+  onOpenWindowsSpecialFolder,
   propertiesPanelOpen,
   onTogglePropertiesPanel,
   onRenameSelected,
@@ -61,6 +93,40 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 }) => {
   const { t, language } = useLanguage();
   const disabled = selectedCount === 0;
+  const [openToolbarMenu, setOpenToolbarMenu] = React.useState<'terminal' | 'windows-folders' | null>(null);
+  const menuRootRef = React.useRef<HTMLDivElement>(null);
+  const hasDriveRoot = /^[a-z]:/i.test(currentFolderPath) && (currentFolderPath[2] === '\\' || currentFolderPath[2] === '/');
+  const canUseFolderActions = windowsActionsAvailable && !currentFolderPath.startsWith('::') && (hasDriveRoot || currentFolderPath.startsWith('\\\\'));
+  const terminalLabels: Record<WindowsTerminalOption, string> = {
+    cmd: t.toolbar.commandPromptHere,
+    'cmd-admin': t.toolbar.commandPromptAdminHere,
+    powershell: t.toolbar.powerShellHere,
+    'powershell-admin': t.toolbar.powerShellAdminHere,
+  };
+  const specialFolderLabels: Record<WindowsSpecialFolder['id'], string> = {
+    programFilesX86: t.toolbar.programFilesX86,
+    programFiles: t.toolbar.programFiles,
+    appData: t.toolbar.appData,
+    programData: t.toolbar.programData,
+    system32: t.toolbar.system32,
+    windows: t.toolbar.windowsFolder,
+    editHosts: t.toolbar.editHostsFile,
+  };
+  React.useEffect(() => {
+    if (!openToolbarMenu) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!menuRootRef.current?.contains(event.target as Node)) setOpenToolbarMenu(null);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenToolbarMenu(null);
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openToolbarMenu]);
 
   return (
     <header className="min-h-14 bg-neutral-900/95 border-b border-neutral-800 px-3 py-2 flex items-center justify-between gap-3 select-none z-20 backdrop-blur-md">
@@ -83,7 +149,72 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div ref={menuRootRef} className="flex items-center gap-2 flex-shrink-0">
+        <Tooltip label={t.toolbar.showHiddenFiles} placement="bottom">
+          <button type="button" aria-label={t.toolbar.showHiddenFiles} aria-pressed={showHiddenFiles} onClick={onToggleShowHiddenFiles} className={showHiddenFiles ? 'flex h-9 w-9 items-center justify-center rounded-md border border-cyan-700/70 bg-cyan-950/70 text-cyan-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70' : 'flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70'}>
+            {showHiddenFiles ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          </button>
+        </Tooltip>
+        <Tooltip label={t.toolbar.showFileExtensions} placement="bottom">
+          <button type="button" aria-label={t.toolbar.showFileExtensions} aria-pressed={showFileExtensions} onClick={onToggleShowFileExtensions} className={showFileExtensions ? 'flex h-9 w-9 items-center justify-center rounded-md border border-cyan-700/70 bg-cyan-950/70 text-cyan-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70' : 'flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70'}>
+            <FileText className="h-4 w-4" />
+          </button>
+        </Tooltip>
+
+        {windowsActionsAvailable && (
+          <>
+            <Tooltip label={t.toolbar.showInWindowsExplorer} placement="bottom" disabled={!canUseFolderActions}>
+              <button type="button" aria-label={t.toolbar.showInWindowsExplorer} disabled={!canUseFolderActions} onClick={onShowInWindowsExplorer} className="flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-300 transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40">
+                <ExternalLink className="h-4 w-4" />
+              </button>
+            </Tooltip>
+
+            <div className="relative flex items-center">
+              <Tooltip label={terminalLabels[lastTerminalOption]} placement="bottom" disabled={!canUseFolderActions}>
+                <button type="button" aria-label={terminalLabels[lastTerminalOption]} disabled={!canUseFolderActions} onClick={() => onLaunchTerminal(lastTerminalOption)} className="flex h-9 w-9 items-center justify-center rounded-l-md border border-r-0 border-neutral-800 bg-neutral-900 text-neutral-300 transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40">
+                  <Terminal className="h-4 w-4" />
+                </button>
+              </Tooltip>
+              <Tooltip label={t.toolbar.chooseTerminal} placement="bottom" disabled={!canUseFolderActions}>
+                <button type="button" aria-label={t.toolbar.chooseTerminal} aria-haspopup="menu" aria-expanded={openToolbarMenu === 'terminal'} disabled={!canUseFolderActions} onClick={() => setOpenToolbarMenu(openToolbarMenu === 'terminal' ? null : 'terminal')} className="flex h-9 w-6 items-center justify-center rounded-r-md border border-neutral-800 bg-neutral-900 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100 disabled:cursor-not-allowed disabled:opacity-40">
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
+              {openToolbarMenu === 'terminal' && (
+                <div role="menu" className="absolute right-0 top-full z-50 mt-2 min-w-56 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-2xl">
+                  {(['cmd', 'cmd-admin', 'powershell', 'powershell-admin'] as WindowsTerminalOption[]).map(option => (
+                    <button key={option} type="button" role="menuitem" aria-label={terminalLabels[option]} onClick={() => { onLastTerminalOptionChange(option); onLaunchTerminal(option); setOpenToolbarMenu(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-800 hover:text-cyan-200">
+                      <Terminal className="h-3.5 w-3.5 text-neutral-400" />
+                      <span>{terminalLabels[option]}</span>
+                      {lastTerminalOption === option && <span className="ml-auto text-cyan-300">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="relative">
+              <Tooltip label={t.toolbar.advancedWindowsFolders} placement="bottom">
+                <button type="button" aria-label={t.toolbar.advancedWindowsFolders} aria-haspopup="menu" aria-expanded={openToolbarMenu === 'windows-folders'} onClick={() => setOpenToolbarMenu(openToolbarMenu === 'windows-folders' ? null : 'windows-folders')} className="flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-300 transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-200">
+                  <FolderOpen className="h-4 w-4" />
+                </button>
+              </Tooltip>
+              {openToolbarMenu === 'windows-folders' && (
+                <div role="menu" className="absolute right-0 top-full z-50 mt-2 max-h-[70vh] min-w-56 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-2xl">
+                  {windowsSpecialFolders.length > 0 ? windowsSpecialFolders.map(folder => (
+                    <button key={folder.id} type="button" role="menuitem" aria-label={specialFolderLabels[folder.id]} onClick={() => { onOpenWindowsSpecialFolder(folder); setOpenToolbarMenu(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-800 hover:text-cyan-200">
+                      <FolderOpen className="h-3.5 w-3.5 flex-shrink-0 text-amber-300" />
+                      <span>{specialFolderLabels[folder.id]}</span>
+                    </button>
+                  )) : (
+                    <div className="px-3 py-2 text-xs text-neutral-500">{t.toolbar.windowsFoldersUnavailable}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
         <div className="view-choice-group flex items-center" role="group" aria-label={t.toolbar.viewModes}>
           <Tooltip label={t.toolbar.viewDetails}><button type="button" aria-label={t.toolbar.viewDetails} aria-pressed={viewMode === 'details'} onClick={() => onViewModeChange('details')} className="view-choice"><List className="h-4 w-4" /></button></Tooltip>
           <Tooltip label={t.toolbar.viewCompact}><button type="button" aria-label={t.toolbar.viewCompact} aria-pressed={viewMode === 'compact'} onClick={() => onViewModeChange('compact')} className="view-choice"><StretchHorizontal className="h-4 w-4" /></button></Tooltip>

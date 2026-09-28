@@ -73,7 +73,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, createNativeTextFile, createNativeShortcut, emptyNativeRecycleBin, getNativeFileClipboard, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus } from './utils/nativeFileSystem';
+import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, copyNativeItemsToDirectory, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
@@ -99,6 +99,10 @@ const NOTIFICATION_BANNERS_KEY = 'cyberfiles_notification_banners_v1';
 const TOOLTIPS_ENABLED_KEY = 'cyberfiles_tooltips_enabled_v1';
 const RELATIVE_GRAPHS_ENABLED_KEY = 'cyberfiles_relative_graphs_enabled_v1';
 const DATE_FORMAT_KEY = 'cyberfiles_date_format_v1';
+const DATE_FORMAT_SYSTEM_DEFAULT_MIGRATION_KEY = 'cyberfiles_date_format_system_default_migrated_v1';
+const SHOW_HIDDEN_FILES_KEY = 'cyberfiles_show_hidden_files_v1';
+const SHOW_FILE_EXTENSIONS_KEY = 'cyberfiles_show_file_extensions_v1';
+const LAST_TERMINAL_OPTION_KEY = 'cyberfiles_last_terminal_option_v1';
 const STARTUP_BEHAVIOR_KEY = 'cyberfiles_startup_behavior_v1';
 const STARTUP_SESSION_KEY = 'cyberfiles_startup_session_v1';
 const SINGLE_CLICK_OPEN_KEY = 'cyberfiles_single_click_open_v1';
@@ -290,6 +294,30 @@ function readBooleanPreference(key: string, defaultValue: boolean): boolean {
     return saved === null ? defaultValue : saved === 'true';
   } catch {
     return defaultValue;
+  }
+}
+
+function readDateFormatPreference(): DateFormatMode {
+  try {
+    const storage = window.localStorage;
+    const saved = storage.getItem(DATE_FORMAT_KEY);
+    if (storage.getItem(DATE_FORMAT_SYSTEM_DEFAULT_MIGRATION_KEY) !== 'true') {
+      if (saved === 'universal') storage.setItem(DATE_FORMAT_KEY, 'system');
+      storage.setItem(DATE_FORMAT_SYSTEM_DEFAULT_MIGRATION_KEY, 'true');
+      return saved === 'application' ? 'application' : 'system';
+    }
+    return saved === 'application' || saved === 'system' || saved === 'universal' ? saved : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+function readLastTerminalOption(): WindowsTerminalOption {
+  try {
+    const saved = window.localStorage.getItem(LAST_TERMINAL_OPTION_KEY);
+    return saved === 'cmd-admin' || saved === 'powershell' || saved === 'powershell-admin' ? saved : 'cmd';
+  } catch {
+    return 'cmd';
   }
 }
 
@@ -556,14 +584,11 @@ export default function App() {
   const [notificationBannersEnabled, setNotificationBannersEnabled] = useState(() => readBooleanPreference(NOTIFICATION_BANNERS_KEY, true));
   const [tooltipsEnabled, setTooltipsEnabled] = useState(() => readBooleanPreference(TOOLTIPS_ENABLED_KEY, true));
   const [relativeGraphsEnabled, setRelativeGraphsEnabled] = useState(() => readBooleanPreference(RELATIVE_GRAPHS_ENABLED_KEY, true));
-  const [dateFormat, setDateFormat] = useState<DateFormatMode>(() => {
-    try {
-      const saved = window.localStorage.getItem(DATE_FORMAT_KEY);
-      return saved === 'application' || saved === 'system' || saved === 'universal' ? saved : 'universal';
-    } catch {
-      return 'universal';
-    }
-  });
+  const [showHiddenFiles, setShowHiddenFiles] = useState(() => readBooleanPreference(SHOW_HIDDEN_FILES_KEY, true));
+  const [showFileExtensions, setShowFileExtensions] = useState(() => readBooleanPreference(SHOW_FILE_EXTENSIONS_KEY, true));
+  const [lastTerminalOption, setLastTerminalOption] = useState<WindowsTerminalOption>(readLastTerminalOption);
+  const [windowsSpecialFolders, setWindowsSpecialFolders] = useState<WindowsSpecialFolder[]>([]);
+  const [dateFormat, setDateFormat] = useState<DateFormatMode>(readDateFormatPreference);
   const [autoFolderSizeEnabled, setAutoFolderSizeEnabled] = useState(() => readBooleanPreference(AUTO_FOLDER_SIZE_ENABLED_KEY, true));
   const [autoFolderSizeMaxEntries, setAutoFolderSizeMaxEntries] = useState(() => {
     try {
@@ -1530,6 +1555,41 @@ export default function App() {
 
   useEffect(() => {
     try {
+      window.localStorage.setItem(SHOW_HIDDEN_FILES_KEY, String(showHiddenFiles));
+    } catch {
+      // Keep the selected file visibility for this session when browser storage is unavailable.
+    }
+  }, [showHiddenFiles]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SHOW_FILE_EXTENSIONS_KEY, String(showFileExtensions));
+    } catch {
+      // Keep the selected extension visibility for this session when browser storage is unavailable.
+    }
+  }, [showFileExtensions]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LAST_TERMINAL_OPTION_KEY, lastTerminalOption);
+    } catch {
+      // Keep the selected terminal option for this session when browser storage is unavailable.
+    }
+  }, [lastTerminalOption]);
+
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    let cancelled = false;
+    void getWindowsSpecialFolders().then(folders => {
+      if (!cancelled) setWindowsSpecialFolders(folders);
+    }).catch(() => {
+      // Keep the other toolbar actions available if Windows paths cannot be enumerated.
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    try {
       window.localStorage.setItem(DATE_FORMAT_KEY, dateFormat);
     } catch {
       // Keep the selected date format for this session when browser storage is unavailable.
@@ -1680,6 +1740,10 @@ export default function App() {
         ? recycleBinItems
         : childrenByParent.get(getPathKey(tabState.currentPath)) ?? [];
 
+    if (!showHiddenFiles) {
+      items = items.filter(item => !item.attributes?.includes('H') && (isTauriDesktop() || !item.name.startsWith('.')));
+    }
+
     // Simple, predictable filtering. Advanced filters belong in the global search.
     if (tabState.filterQuery.trim()) {
       const q = tabState.filterQuery.toLowerCase();
@@ -1708,7 +1772,7 @@ export default function App() {
       ];
     }
     return sortFiles(items, tabState.sortField, tabState.sortOrder);
-  }, [childrenByParent, recycleBinItems, systemHomeItems]);
+  }, [childrenByParent, recycleBinItems, showHiddenFiles, systemHomeItems]);
 
   const leftDisplayFiles = getPaneDisplayFiles(leftTabs[activeLeftTabIndex]);
   const rightDisplayFiles = getPaneDisplayFiles(rightTabs[activeRightTabIndex]);
@@ -3463,6 +3527,33 @@ export default function App() {
         onViewModeChange={handleViewModeChange}
         relativeGraphsEnabled={relativeGraphsEnabled}
         onToggleRelativeGraphs={() => setRelativeGraphsEnabled(enabled => !enabled)}
+        showHiddenFiles={showHiddenFiles}
+        onToggleShowHiddenFiles={() => setShowHiddenFiles(enabled => !enabled)}
+        showFileExtensions={showFileExtensions}
+        onToggleShowFileExtensions={() => setShowFileExtensions(enabled => !enabled)}
+        currentFolderPath={currentTab.currentPath}
+        windowsActionsAvailable={isTauriDesktop()}
+        windowsSpecialFolders={windowsSpecialFolders}
+        lastTerminalOption={lastTerminalOption}
+        onLastTerminalOptionChange={setLastTerminalOption}
+        onShowInWindowsExplorer={() => {
+          void openFolderInWindowsExplorer(currentTab.currentPath).catch(error => showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))));
+        }}
+        onLaunchTerminal={(terminal: WindowsTerminalOption) => {
+          setLastTerminalOption(terminal);
+          void openWindowsTerminalHere(currentTab.currentPath, terminal).catch(error => showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))));
+        }}
+        onOpenWindowsSpecialFolder={(folder: WindowsSpecialFolder) => {
+          if (folder.id === 'editHosts') {
+            void editWindowsHostsFile().catch(error => showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))));
+          } else {
+            // Choosing a Windows system location explicitly leaves a folder-only scope.
+            systemHomeWorkspace.current = true;
+            nativeRootPath.current = SYSTEM_HOME_PATH;
+            browserRootPath.current = '';
+            void handleNavigate(folder.path, activePane);
+          }
+        }}
         propertiesPanelOpen={previewOpen}
         onTogglePropertiesPanel={() => setPreviewOpen(value => !value)}
         onRenameSelected={handleRenameSelected}
@@ -3532,6 +3623,7 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
@@ -3588,6 +3680,7 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
@@ -3645,6 +3738,7 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
@@ -3697,6 +3791,7 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
@@ -3754,6 +3849,7 @@ export default function App() {
                 styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                 onStyleLockToggle={() => setFolderStyleLocked(value => !value)}

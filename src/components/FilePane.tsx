@@ -55,6 +55,7 @@ interface FilePaneProps {
   recentItemStyle: RecentItemStyle;
   emptyAreaDoubleClickNavigatesUp: boolean;
   imageTooltipThumbnailsEnabled: boolean;
+  showFileExtensions: boolean;
   singleClickOpens: boolean;
   onStyleLockToggle: () => void;
   onActivate: () => void;
@@ -105,6 +106,12 @@ type RelativeGraphColumn = 'size' | 'created' | 'modified';
 type RelativeGraphWidths = Partial<Record<RelativeGraphColumn, number>>;
 type ResizableColumn = FileColumn;
 type FolderSizeState = { status: 'loading' | 'done' | 'error' | 'limited'; size?: number; limit?: number };
+
+function getDisplayItemName(item: FileItem, showFileExtensions: boolean): string {
+  if (showFileExtensions || item.isFolder) return item.name;
+  const extensionSeparator = item.name.lastIndexOf('.');
+  return extensionSeparator > 0 ? item.name.slice(0, extensionSeparator) : item.name;
+}
 
 interface ColumnPointerDrag {
   pointerId: number;
@@ -270,6 +277,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   recentItemStyle,
   emptyAreaDoubleClickNavigatesUp,
   imageTooltipThumbnailsEnabled,
+  showFileExtensions,
   singleClickOpens,
   onStyleLockToggle,
   onActivate,
@@ -1316,7 +1324,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           {icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs text-neutral-100 font-medium" style={getRecentNameStyle(item, selected)}>{item.name}</span>
+          <span className="block truncate text-xs text-neutral-100 font-medium" style={getRecentNameStyle(item, selected)}>{getDisplayItemName(item, showFileExtensions)}</span>
           {category === 'folder' ? (
             <span className="mt-1 block truncate text-[10px] text-neutral-500">{item.path}</span>
           ) : hasCapacity && drive ? (
@@ -1772,7 +1780,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 >
                   {visibleFileColumns.map(column => {
                     if (column === 'extension') {
-                      return <div key={column} className="min-w-0 truncate font-sans text-[10px] uppercase text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder ? '' : (item.extension || '')}</span></div>;
+                      return <div key={column} className="min-w-0 truncate font-sans text-[10px] uppercase text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder || !showFileExtensions ? '' : (item.extension || '')}</span></div>;
                     }
                     if (column === 'name') {
                       return (
@@ -1790,7 +1798,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             renderInlineRenameInput(item, 'min-w-0 flex-1')
                           ) : (
                             <Tooltip label={renderItemTooltip(item)} placement="top">
-                              <span data-file-column-content={column} className="truncate text-[11.5px] font-medium" style={getRecentNameStyle(item, isSelected)}>{item.name}</span>
+                              <span data-file-column-content={column} className="truncate text-[11.5px] font-medium" style={getRecentNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
                             </Tooltip>
                           )}
                         </div>
@@ -1871,7 +1879,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     renderInlineRenameInput(item, 'min-w-0 flex-1')
                   ) : (
                     <Tooltip label={renderItemTooltip(item)} placement="top">
-                      <span className="min-w-0 flex-1 truncate" style={getRecentNameStyle(item, isSelected)}>{item.name}</span>
+                      <span className="min-w-0 flex-1 truncate" style={getRecentNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
                     </Tooltip>
                   )}
                   {!item.isFolder && <span className="flex-shrink-0 font-sans text-[10px] text-neutral-500">{formatFileSize(item.size)}</span>}
@@ -1925,7 +1933,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     renderInlineRenameInput(item, 'w-full min-w-0', 'text-center')
                   ) : (
                     <Tooltip label={renderItemTooltip(item)} placement="top">
-                      <span className="w-full truncate px-1 text-[11px] font-medium" style={getRecentNameStyle(item, isSelected)}>{item.name}</span>
+                      <span className="w-full truncate px-1 text-[11px] font-medium" style={getRecentNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
                     </Tooltip>
                   )}
                   <span className="mt-0.5 text-[9px] font-sans text-neutral-400">

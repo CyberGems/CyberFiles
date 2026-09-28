@@ -387,9 +387,18 @@ struct NativeFolderEntry {
     name: String,
     path: String,
     is_folder: bool,
+    is_hidden: bool,
     size: u64,
     modified_ms: Option<u64>,
     created_ms: Option<u64>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WindowsSpecialFolder {
+    id: String,
+    path: String,
+    is_file: bool,
 }
 
 #[derive(Serialize)]
@@ -1496,6 +1505,19 @@ fn display_path(path: &Path) -> String {
     value.to_string()
 }
 
+fn is_hidden_metadata(metadata: &fs::Metadata) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::MetadataExt;
+        metadata.file_attributes() & 0x2 != 0
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = metadata;
+        false
+    }
+}
+
 #[tauri::command]
 async fn list_directory(path: String, offset: usize) -> Result<DirectoryListing, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -1548,6 +1570,7 @@ async fn list_directory(path: String, offset: usize) -> Result<DirectoryListing,
                 name: entry.file_name().to_string_lossy().to_string(),
                 path: display_path(&entry_path),
                 is_folder,
+                is_hidden: is_hidden_metadata(&metadata),
                 size: if is_folder { 0 } else { metadata.len() },
                 modified_ms,
                 created_ms,
@@ -3308,6 +3331,241 @@ async fn open_recycle_bin_in_explorer() -> Result<(), String> {
         .map_err(|error| format!("Recycle Bin launch worker failed: {error}"))?
 }
 
+#[cfg(target_os = "windows")]
+fn reveal_folder_in_explorer(path: &str) -> Result<(), String> {
+    let folder = Path::new(path)
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve the folder: {error}"))?;
+    if !folder.is_dir() {
+        return Err("The selected location is not an available folder.".to_string());
+    }
+    std::process::Command::new("explorer.exe")
+        .arg(&folder)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not open Windows File Explorer: {error}"))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn reveal_folder_in_explorer(_path: &str) -> Result<(), String> {
+    Err("Windows File Explorer is available only in the Windows desktop app.".to_string())
+}
+
+#[tauri::command]
+async fn open_folder_in_windows_explorer(path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || reveal_folder_in_explorer(&path))
+        .await
+        .map_err(|error| format!("Explorer launch worker failed: {error}"))?
+}
+
+#[cfg(target_os = "windows")]
+fn launch_terminal_in_folder(path: &str, terminal: &str) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let folder = Path::new(path)
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve the current folder: {error}"))?;
+    if !folder.is_dir() {
+        return Err("The active location is not an available folder.".to_string());
+    }
+    let (executable, elevated) = match terminal {
+        "cmd" => ("cmd.exe", false),
+        "cmd-admin" => ("cmd.exe", true),
+        "powershell" => ("powershell.exe", false),
+        "powershell-admin" => ("powershell.exe", true),
+        _ => return Err("The selected terminal option is invalid.".to_string()),
+    };
+
+    if elevated {
+        let verb: Vec<u16> = "runas".encode_utf16().chain(Some(0)).collect();
+        let executable_wide: Vec<u16> = executable.encode_utf16().chain(Some(0)).collect();
+        let folder_wide: Vec<u16> = folder.as_os_str().encode_wide().chain(Some(0)).collect();
+        let result = unsafe {
+            ShellExecuteW(
+                None,
+                PCWSTR(verb.as_ptr()),
+                PCWSTR(executable_wide.as_ptr()),
+                PCWSTR::null(),
+                PCWSTR(folder_wide.as_ptr()),
+                SW_SHOWNORMAL,
+            )
+        };
+        let result_code = result.0 as isize;
+        if result_code > 32 {
+            return Ok(());
+        }
+        return Err(format!(
+            "Windows could not start the elevated terminal (ShellExecute error {result_code})."
+        ));
+    }
+
+    use std::os::windows::process::CommandExt;
+    std::process::Command::new(executable)
+        .current_dir(folder)
+        .creation_flags(0x00000010)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not open the terminal here: {error}"))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn launch_terminal_in_folder(_path: &str, _terminal: &str) -> Result<(), String> {
+    Err("Windows terminals are available only in the Windows desktop app.".to_string())
+}
+
+#[tauri::command]
+async fn open_terminal_here(path: String, terminal: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || launch_terminal_in_folder(&path, &terminal))
+        .await
+        .map_err(|error| format!("Terminal launch worker failed: {error}"))?
+}
+
+#[cfg(target_os = "windows")]
+fn list_windows_special_folders_native() -> Vec<WindowsSpecialFolder> {
+    let windows_dir = std::env::var_os("WINDIR")
+        .or_else(|| std::env::var_os("SystemRoot"))
+        .map(PathBuf::from);
+    let app_data = std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+        .or_else(|| {
+            std::env::var_os("USERPROFILE").map(|path| PathBuf::from(path).join("AppData"))
+        });
+    let mut candidates: Vec<(&str, Option<PathBuf>)> = vec![
+        (
+            "programFilesX86",
+            std::env::var_os("ProgramFiles(x86)").map(PathBuf::from),
+        ),
+        (
+            "programFiles",
+            std::env::var_os("ProgramW6432")
+                .or_else(|| std::env::var_os("ProgramFiles"))
+                .map(PathBuf::from),
+        ),
+        ("appData", app_data),
+        (
+            "programData",
+            std::env::var_os("ProgramData").map(PathBuf::from),
+        ),
+        (
+            "system32",
+            windows_dir.as_ref().map(|path| path.join("System32")),
+        ),
+        ("windows", windows_dir.clone()),
+    ];
+    let mut folders = Vec::new();
+    for (id, path) in candidates.drain(..) {
+        let Some(path) = path.filter(|path| path.is_dir()) else {
+            continue;
+        };
+        let display = display_path(&path);
+        if folders
+            .iter()
+            .any(|folder: &WindowsSpecialFolder| folder.path.eq_ignore_ascii_case(&display))
+        {
+            continue;
+        }
+        folders.push(WindowsSpecialFolder {
+            id: id.to_string(),
+            path: display,
+            is_file: false,
+        });
+    }
+    if let Some(hosts) = windows_dir
+        .map(|path| {
+            path.join("System32")
+                .join("drivers")
+                .join("etc")
+                .join("hosts")
+        })
+        .filter(|path| path.is_file())
+    {
+        folders.push(WindowsSpecialFolder {
+            id: "editHosts".to_string(),
+            path: display_path(&hosts),
+            is_file: true,
+        });
+    }
+    folders
+}
+
+#[cfg(not(target_os = "windows"))]
+fn list_windows_special_folders_native() -> Vec<WindowsSpecialFolder> {
+    Vec::new()
+}
+
+#[tauri::command]
+async fn list_windows_special_folders() -> Result<Vec<WindowsSpecialFolder>, String> {
+    tauri::async_runtime::spawn_blocking(list_windows_special_folders_native)
+        .await
+        .map_err(|error| format!("Windows locations worker failed: {error}"))
+}
+
+#[cfg(target_os = "windows")]
+fn edit_windows_hosts_file() -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let windows_dir = std::env::var_os("WINDIR")
+        .or_else(|| std::env::var_os("SystemRoot"))
+        .map(PathBuf::from)
+        .ok_or_else(|| "Could not find the Windows folder.".to_string())?;
+    let hosts = windows_dir
+        .join("System32")
+        .join("drivers")
+        .join("etc")
+        .join("hosts");
+    if !hosts.is_file() {
+        return Err("The Windows hosts file is not available.".to_string());
+    }
+    let verb: Vec<u16> = "runas".encode_utf16().chain(Some(0)).collect();
+    let executable: Vec<u16> = "notepad.exe".encode_utf16().chain(Some(0)).collect();
+    let arguments: Vec<u16> = format!("\"{}\"", hosts.to_string_lossy())
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+    let working_dir: Vec<u16> = hosts
+        .parent()
+        .unwrap_or(&windows_dir)
+        .as_os_str()
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            PCWSTR(verb.as_ptr()),
+            PCWSTR(executable.as_ptr()),
+            PCWSTR(arguments.as_ptr()),
+            PCWSTR(working_dir.as_ptr()),
+            SW_SHOWNORMAL,
+        )
+    };
+    let result_code = result.0 as isize;
+    if result_code > 32 {
+        Ok(())
+    } else {
+        Err(format!("Windows could not open the hosts file as administrator (ShellExecute error {result_code})."))
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn edit_windows_hosts_file() -> Result<(), String> {
+    Err("Editing the Windows hosts file is available only in the Windows desktop app.".to_string())
+}
+
+#[tauri::command]
+async fn edit_hosts_file() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(edit_windows_hosts_file)
+        .await
+        .map_err(|error| format!("Hosts file worker failed: {error}"))?
+}
+
 fn main() {
     #[cfg(target_os = "windows")]
     let _single_instance_guard = {
@@ -3500,6 +3758,10 @@ fn main() {
             open_windows_file_properties,
             open_file_with_default_app,
             open_recycle_bin_in_explorer,
+            open_folder_in_windows_explorer,
+            open_terminal_here,
+            list_windows_special_folders,
+            edit_hosts_file,
             set_tray_language,
             get_global_shortcut_settings,
             set_global_shortcut_settings,

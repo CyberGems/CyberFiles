@@ -19,6 +19,7 @@ interface NativeFolderEntry {
   name: string;
   path: string;
   isFolder: boolean;
+  isHidden: boolean;
   size: number;
   modifiedMs: number | null;
   createdMs: number | null;
@@ -45,6 +46,23 @@ export interface NativeLocation {
   id: 'desktop' | 'documents' | 'downloads' | 'pictures' | 'music' | 'videos';
   path: string;
 }
+
+export type WindowsSpecialFolderId =
+  | 'programFilesX86'
+  | 'programFiles'
+  | 'appData'
+  | 'programData'
+  | 'system32'
+  | 'windows'
+  | 'editHosts';
+
+export interface WindowsSpecialFolder {
+  id: WindowsSpecialFolderId;
+  path: string;
+  isFile: boolean;
+}
+
+export type WindowsTerminalOption = 'cmd' | 'cmd-admin' | 'powershell' | 'powershell-admin';
 
 export interface RecycleBinStatus {
   available: boolean;
@@ -102,6 +120,7 @@ function mapNativeEntries(entries: NativeFolderEntry[]): FileItem[] {
     name: entry.name,
     path: entry.path,
     isFolder: entry.isFolder,
+    attributes: entry.isHidden ? 'H' : '',
     type: detectFileType(entry.name, entry.isFolder),
     size: entry.size,
     modifiedDate: formatLocalDateTime(entry.modifiedMs),
@@ -144,6 +163,26 @@ export async function listNativeDirectory(path: string, offset = 0): Promise<{ r
     hasMore: result.hasMore,
     nextOffset: result.nextOffset,
   };
+}
+
+export async function openFolderInWindowsExplorer(path: string): Promise<void> {
+  if (!isTauriDesktop()) throw new Error('Windows File Explorer is available only in the desktop app.');
+  await invoke('open_folder_in_windows_explorer', { path });
+}
+
+export async function openWindowsTerminalHere(path: string, terminal: WindowsTerminalOption): Promise<void> {
+  if (!isTauriDesktop()) throw new Error('Windows terminals are available only in the desktop app.');
+  await invoke('open_terminal_here', { path, terminal });
+}
+
+export async function getWindowsSpecialFolders(): Promise<WindowsSpecialFolder[]> {
+  if (!isTauriDesktop()) return [];
+  return invoke<WindowsSpecialFolder[]>('list_windows_special_folders');
+}
+
+export async function editWindowsHostsFile(): Promise<void> {
+  if (!isTauriDesktop()) throw new Error('The Windows hosts file can be edited only in the desktop app.');
+  await invoke('edit_hosts_file');
 }
 
 export async function calculateNativeFolderSize(path: string): Promise<number> {
