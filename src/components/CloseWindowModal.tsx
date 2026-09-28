@@ -151,10 +151,9 @@ export function CloseWindowModal({
             </div>
           )}
 
-          <Tooltip label={t.closeWindow.continueDescription} placement="top">
-            <button
+          <button
               type="button"
-              disabled={isBusy}
+              disabled={isBusy || rememberChoice}
               onClick={onCancel}
               className="flex w-full items-center gap-4 rounded-xl border border-neutral-800 bg-neutral-900/70 px-4 py-3.5 text-left transition-colors hover:border-neutral-600 hover:bg-neutral-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:pointer-events-none disabled:opacity-50 sm:px-5"
             >
@@ -163,13 +162,10 @@ export function CloseWindowModal({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold text-neutral-100">{t.closeWindow.continueWorking}</span>
-                <span className="mt-1 block text-xs leading-5 text-neutral-400">{t.closeWindow.continueDescription}</span>
+                <span className="mt-1 block text-xs leading-5 text-neutral-400">{rememberChoice ? t.closeWindow.continueDisabledDescription : t.closeWindow.continueDescription}</span>
               </span>
               <kbd className="shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs font-semibold text-neutral-400">{t.closeWindow.keys.escape}</kbd>
             </button>
-          </Tooltip>
-
-          <Tooltip label={t.closeWindow.hideToTrayDescription} placement="top">
             <button
               ref={hideButtonRef}
               type="button"
@@ -186,9 +182,6 @@ export function CloseWindowModal({
               </span>
               <kbd className="shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs font-semibold text-neutral-400">{t.closeWindow.keys.enter}</kbd>
             </button>
-          </Tooltip>
-
-          <Tooltip label={t.closeWindow.exitDescription} placement="top">
             <button
               type="button"
               disabled={isBusy}
@@ -204,7 +197,6 @@ export function CloseWindowModal({
               </span>
               <kbd className="shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs font-semibold text-neutral-400">{t.closeWindow.keys.space}</kbd>
             </button>
-          </Tooltip>
         </div>
 
         <footer className="border-t border-neutral-800/90 px-5 py-4 sm:px-7">
