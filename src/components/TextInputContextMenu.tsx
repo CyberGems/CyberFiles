@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { ClipboardPaste, Copy, Delete, ListChecks, Redo2, Undo2 } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { isTauriDesktop, readNativeClipboardText } from '../utils/nativeFileSystem';
-import { Tooltip } from './Tooltip';
 
 type TextTarget = HTMLInputElement | HTMLTextAreaElement | HTMLElement;
 type SelectionDirection = 'forward' | 'backward' | 'none';
@@ -344,18 +343,17 @@ export function TextInputContextMenu() {
       className="fixed z-[120] min-w-52 overflow-hidden rounded-md border border-neutral-700 bg-neutral-900 p-1 text-xs shadow-2xl animate-in fade-in zoom-in-95 duration-100"
     >
       {actions.map((action, index) => (
-        <Tooltip key={action.label} label={action.label} placement="right">
-          <button
-            type="button"
-            role="menuitem"
-            disabled={action.disabled}
-            onMouseDown={event => event.preventDefault()}
-            onClick={() => { action.run(); setMenu(null); }}
-            className={'flex w-full items-center gap-2 rounded px-2.5 py-2 text-left transition-colors ' + (index === 2 || index === selectAllSeparatorIndex ? 'mt-1 border-t border-neutral-800 pt-2 ' : '') + (action.disabled ? 'cursor-not-allowed text-neutral-600' : 'text-neutral-200 hover:bg-neutral-800 hover:text-cyan-200 active:bg-cyan-950/60')}
-          >
-            {action.icon}<span>{action.label}</span>
-          </button>
-        </Tooltip>
+        <button
+          key={action.label}
+          type="button"
+          role="menuitem"
+          disabled={action.disabled}
+          onMouseDown={event => event.preventDefault()}
+          onClick={() => { action.run(); setMenu(null); }}
+          className={'flex w-full items-center gap-2 rounded px-2.5 py-2 text-left transition-colors ' + (index === 2 || index === selectAllSeparatorIndex ? 'mt-1 border-t border-neutral-800 pt-2 ' : '') + (action.disabled ? 'cursor-not-allowed text-neutral-600' : 'text-neutral-200 hover:bg-neutral-800 hover:text-cyan-200 active:bg-cyan-950/60')}
+        >
+          {action.icon}<span>{action.label}</span>
+        </button>
       ))}
     </div>
   );

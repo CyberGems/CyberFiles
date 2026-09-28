@@ -36,7 +36,7 @@ import {
   History,
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, GroupByField, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
-import { formatLocalDateTime } from '../utils/dateTime';
+import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, calculateNativeFolderSizeBounded, isTauriDesktop, loadNativeImageThumbnail } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
@@ -69,6 +69,7 @@ interface FilePaneProps {
   onClearRecentFolders: () => void;
   autoFolderSizeEnabled: boolean;
   relativeGraphsEnabled: boolean;
+  dateFormat: DateFormatMode;
   autoFolderSizeMaxEntries: number;
   drives: DriveInfo[];
   hasMore?: boolean;
@@ -283,6 +284,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onClearRecentFolders,
   autoFolderSizeEnabled,
   relativeGraphsEnabled,
+  dateFormat,
   autoFolderSizeMaxEntries,
   drives,
   hasMore = false,
@@ -489,9 +491,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
       <span className="font-semibold">{item.name}</span>
       {item.path && <span className="break-all font-sans text-[10px] text-cyan-200">{item.path}</span>}
       {!item.isFolder && <span>{formatFileSize(item.size)}</span>}
-      {item.modifiedDate && (
+      {(item.modifiedDate || item.modifiedAtMs !== undefined) && (
         <span className="text-[10px] text-neutral-300">
-          {t.pane.itemTooltipModifiedDate.replace('{date}', item.modifiedDate)}
+          {t.pane.itemTooltipModifiedDate.replace('{date}', formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language))}
         </span>
       )}
       {hasRecentActivity(item) && (
@@ -1518,38 +1520,35 @@ export const FilePane: React.FC<FilePaneProps> = ({
           >
             <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.pane.recentFolders}</div>
             {recentFolderPaths.length > 0 ? recentFolderPaths.map(path => (
-              <Tooltip key={path} label={path} placement="right">
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setPathInput(path);
-                    setIsEditingPath(false);
-                    setRecentFoldersMenuPosition(null);
-                    onNavigate(path);
-                  }}
-                  className="flex w-full min-w-0 items-center gap-2 rounded px-2.5 py-2 text-left text-neutral-200 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
-                >
-                  <Folder className="h-3.5 w-3.5 flex-shrink-0 text-cyan-400" />
-                  <span className="min-w-0 flex-1 truncate font-sans">{path}</span>
-                </button>
-              </Tooltip>
+              <button
+                key={path}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setPathInput(path);
+                  setIsEditingPath(false);
+                  setRecentFoldersMenuPosition(null);
+                  onNavigate(path);
+                }}
+                className="flex w-full min-w-0 items-center gap-2 rounded px-2.5 py-2 text-left text-neutral-200 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
+              >
+                <Folder className="h-3.5 w-3.5 flex-shrink-0 text-cyan-400" />
+                <span className="min-w-0 flex-1 truncate font-sans">{path}</span>
+              </button>
             )) : (
               <div className="px-2.5 py-3 text-center text-neutral-500">{t.pane.noRecentFolders}</div>
             )}
             <div className="my-1 h-px bg-neutral-800" />
-            <Tooltip label={t.pane.clearRecentFolders} placement="right">
-              <button
-                type="button"
-                role="menuitem"
-                disabled={recentFolderPaths.length === 0}
-                onClick={onClearRecentFolders}
-                className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-rose-300 transition-colors hover:bg-rose-950/40 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                <span>{t.pane.clearRecentFolders}</span>
-              </button>
-            </Tooltip>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={recentFolderPaths.length === 0}
+              onClick={onClearRecentFolders}
+              className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-rose-300 transition-colors hover:bg-rose-950/40 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>{t.pane.clearRecentFolders}</span>
+            </button>
           </div>,
           document.body,
         )}
@@ -1648,18 +1647,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
             {columnLayout.order.map(column => {
               const isVisible = columnLayout.visible.includes(column);
               return (
-                <Tooltip key={column} label={t.pane.columns.columnHeaderTooltip} placement="right">
-                  <button
-                    type="button"
-                    role="menuitemcheckbox"
-                    aria-checked={isVisible}
-                    onClick={() => toggleFileColumn(column)}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
-                  >
-                    <span aria-hidden="true" className={`flex h-3.5 w-3.5 items-center justify-center rounded-sm border ${isVisible ? 'border-cyan-500 bg-cyan-950 text-cyan-300' : 'border-neutral-600 text-transparent'}`}>✓</span>
-                    <span>{columnLabel(column)}</span>
-                  </button>
-                </Tooltip>
+                <button
+                  key={column}
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={isVisible}
+                  onClick={() => toggleFileColumn(column)}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+                >
+                  <span aria-hidden="true" className={`flex h-3.5 w-3.5 items-center justify-center rounded-sm border ${isVisible ? 'border-cyan-500 bg-cyan-950 text-cyan-300' : 'border-neutral-600 text-transparent'}`}>✓</span>
+                  <span>{columnLabel(column)}</span>
+                </button>
               );
             })}
           </div>,
@@ -1822,10 +1820,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       ) : <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{formatFileSize(item.size)}</span>}</div>;
                     }
                     if (column === 'created') {
-                      const createdDate = item.createdDate || (item.createdAtMs ? formatLocalDateTime(item.createdAtMs) : '');
+                      const createdDate = formatDateTimeForDisplay(item.createdAtMs, item.createdDate, dateFormat, language);
                       return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.created, 'date')}><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{createdDate || '--'}</span></div>;
                     }
-                    return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.modified, 'date')}><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.modifiedDate || '--'}</span></div>;
+                    const modifiedDate = formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language);
+                    return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.modified, 'date')}><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{modifiedDate || '--'}</span></div>;
                   })}
                 </div>
               );

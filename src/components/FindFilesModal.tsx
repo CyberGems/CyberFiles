@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { FileItem, SearchMatch } from '../types';
 import { formatFileSize, getFileExtension } from '../utils/fileSystem';
+import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { searchFileSystem, SearchOptions } from '../utils/searchIndex';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
@@ -32,6 +33,7 @@ interface FindFilesModalProps {
   onClose: () => void;
   allFiles: FileItem[];
   currentPath: string;
+  dateFormat: DateFormatMode;
   onNavigateToFile: (file: FileItem) => void;
   onPreviewFile?: (file: FileItem) => void;
 }
@@ -41,6 +43,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
   onClose,
   allFiles,
   currentPath,
+  dateFormat,
   onNavigateToFile,
   onPreviewFile,
 }) => {
@@ -413,7 +416,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
                       {file.isFolder ? '<DIR>' : formatFileSize(file.size)}
                     </div>
                     <div className="font-sans text-[10px] text-neutral-500 hidden md:block min-w-[110px]">
-                      {file.modifiedDate}
+                      {formatDateTimeForDisplay(file.modifiedAtMs, file.modifiedDate, dateFormat, language)}
                     </div>
 
                     {/* Action buttons */}

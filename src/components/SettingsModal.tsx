@@ -5,6 +5,7 @@ import { type AppTheme, useTheme } from '../themes/ThemeContext';
 import { Tooltip } from './Tooltip';
 import { DialogButton } from './DialogButton';
 import { type RecentItemStyle } from '../types';
+import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { ColorValueEditor } from './ColorValueEditor';
 
 
@@ -36,6 +37,8 @@ interface SettingsModalProps {
   onNotificationBannersEnabledChange: (enabled: boolean) => void;
   tooltipsEnabled: boolean;
   onTooltipsEnabledChange: (enabled: boolean) => void;
+  dateFormat: DateFormatMode;
+  onDateFormatChange: (format: DateFormatMode) => void;
   autoFolderSizeEnabled: boolean;
   onAutoFolderSizeEnabledChange: (enabled: boolean) => void;
   autoFolderSizeMaxEntries: number;
@@ -98,6 +101,8 @@ export function SettingsModal({
   onNotificationBannersEnabledChange,
   tooltipsEnabled,
   onTooltipsEnabledChange,
+  dateFormat,
+  onDateFormatChange,
   autoFolderSizeEnabled,
   onAutoFolderSizeEnabledChange,
   autoFolderSizeMaxEntries,
@@ -230,6 +235,36 @@ export function SettingsModal({
             <div className="mt-2 inline-flex rounded-lg border border-neutral-700 bg-neutral-950/60 p-1">
               <button onClick={() => setLanguage('es')} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${language === 'es' ? 'bg-cyan-950 text-cyan-200' : 'text-neutral-400 hover:text-neutral-100'}`}>{t.settings.spanish}</button>
               <button onClick={() => setLanguage('en')} className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${language === 'en' ? 'bg-cyan-950 text-cyan-200' : 'text-neutral-400 hover:text-neutral-100'}`}>{t.settings.english}</button>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-3">
+            <div className="mb-2">
+              <div className="text-xs font-medium text-neutral-200">{t.settings.dateFormat}</div>
+              <p className="mt-1 text-[11px] leading-relaxed text-neutral-400">{t.settings.dateFormatDescription}</p>
+            </div>
+            <div role="radiogroup" aria-label={t.settings.dateFormat} className="grid gap-2 sm:grid-cols-3">
+              {([
+                { id: 'application', label: t.settings.dateFormatApplication, description: t.settings.dateFormatApplicationDescription },
+                { id: 'system', label: t.settings.dateFormatSystem, description: t.settings.dateFormatSystemDescription },
+                { id: 'universal', label: t.settings.dateFormatUniversal, description: t.settings.dateFormatUniversalDescription },
+              ] as const).map(option => (
+                <Tooltip key={option.id} label={option.description} placement="top">
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={dateFormat === option.id}
+                    onClick={() => onDateFormatChange(option.id)}
+                    className={`min-w-0 rounded-md border px-2.5 py-2 text-left transition-colors ${dateFormat === option.id ? 'border-cyan-500/70 bg-cyan-950/30 text-cyan-100' : 'border-neutral-700 bg-neutral-900/60 text-neutral-300 hover:border-neutral-600 hover:bg-neutral-800/70'}`}
+                  >
+                    <span className="block text-[11px] font-semibold">{option.label}</span>
+                    <span className="mt-1 block truncate text-[9px] text-neutral-500">{t.settings.dateFormatRecentPreview}</span>
+                    <span className="block truncate font-sans text-[10px] tabular-nums text-neutral-300">{formatDateTimeForDisplay(Date.now(), undefined, option.id, language)}</span>
+                    <span className="mt-1 block truncate text-[9px] text-neutral-500">{t.settings.dateFormatOlderPreview}</span>
+                    <span className="block truncate font-sans text-[10px] tabular-nums text-neutral-300">{formatDateTimeForDisplay(new Date(2021, 11, 31, 14, 30).getTime(), undefined, option.id, language)}</span>
+                  </button>
+                </Tooltip>
+              ))}
             </div>
           </div>
 

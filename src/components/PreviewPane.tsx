@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, FileText, Folder, Image as ImageIcon, Code2, Copy, Check, Info, Music, Video, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { FileItem } from '../types';
+import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, isTextPreviewableFile } from '../utils/fileSystem';
 import { isTauriDesktop, loadNativeImageThumbnail, loadNativePdfPreviewUrl, MAX_PDF_PREVIEW_BYTES } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
@@ -130,13 +131,14 @@ function createSafeHtmlPreview(content: string): string {
 
 interface PreviewPaneProps {
   item: FileItem | null;
+  dateFormat: DateFormatMode;
   onClose: () => void;
   nativePropertiesSupported: boolean;
   onOpenWindowsProperties: () => void;
   onOpenWithDefaultApp: () => void;
 }
 
-export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, nativePropertiesSupported, onOpenWindowsProperties, onOpenWithDefaultApp }) => {
+export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onClose, nativePropertiesSupported, onOpenWindowsProperties, onOpenWithDefaultApp }) => {
   const [copied, setCopied] = useState(false);
   const [collapsedSection, setCollapsedSection] = useState<'preview' | 'properties' | null>(null);
   const previewCollapsed = collapsedSection === 'preview';
@@ -145,7 +147,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, nativeP
   const [imagePreviewState, setImagePreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const [pdfPreviewSource, setPdfPreviewSource] = useState<{ itemId: string; url: string } | null>(null);
   const [pdfPreviewState, setPdfPreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable' | 'too-large'>('idle');
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   useEffect(() => {
     if (!item || item.isFolder || item.type !== 'image') {
@@ -367,7 +369,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, nativeP
                 ) : (
                   <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.fileSize}:</span><span className="text-right text-neutral-200">{formatFileSize(item.size)} ({item.size.toLocaleString()} bytes)</span></div>
                 )}
-                <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.modified}:</span><span className="text-right text-neutral-200">{item.modifiedDate || '----'}</span></div>
+                <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.modified}:</span><span className="text-right text-neutral-200">{formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language) || '----'}</span></div>
                 <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.attributes}:</span><span className="text-right text-neutral-200">{item.attributes || '----'}</span></div>
               </div>
 
