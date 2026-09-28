@@ -4291,6 +4291,8 @@ export default function App() {
             isOpen={isCloseDialogOpen}
             rememberChoice={rememberCloseChoice}
             isBusy={isCloseActionBusy}
+            sessionHasChanges={sessionDirty}
+            layoutHasChanges={layoutDirty}
             onRememberChoiceChange={setRememberCloseChoice}
             onCancel={cancelCloseDialog}
             onExit={handleExitFromCloseDialog}
