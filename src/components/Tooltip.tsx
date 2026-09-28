@@ -47,7 +47,7 @@ let pendingTooltipOwner: symbol | null = null;
 let cancelPendingTooltip: (() => void) | null = null;
 let mountedTooltipInstances = 0;
 
-const dismissAllTooltips = () => {
+export const dismissAllTooltips = () => {
   const cancelPending = cancelPendingTooltip;
   cancelPendingTooltip = null;
   pendingTooltipOwner = null;

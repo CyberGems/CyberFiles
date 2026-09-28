@@ -1479,7 +1479,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       e.stopPropagation();
                       onNavigate(seg.fullPath);
                     }}
-                    className="hover:text-cyan-300 hover:underline px-1 py-0.5 rounded text-neutral-300 truncate"
+                    className="rounded-md px-1.5 py-1 text-neutral-300 transition-colors duration-150 hover:bg-neutral-800/80 hover:text-neutral-100 active:bg-neutral-700/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70 truncate"
                   >
                     {seg.label}
                   </button>
@@ -1804,16 +1804,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     if (column === 'size') {
                       const folderSize = folderSizeStates[item.id];
                       return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.size, 'size')}>{item.isFolder ? (
-                        isTauriDesktop() ? (
-                          !isRecycleBin && !item.recycleBinId ? <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip} placement="top">
-                            <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="flex w-full items-center justify-end gap-2 rounded px-1 py-0.5 text-right text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip}>
-                              <span data-file-column-content={column} className={!folderSize || folderSize.status === 'limited' ? 'inline-flex max-w-full items-center gap-1 whitespace-nowrap' : 'min-w-0 truncate'}>
-                                {folderSize?.status === 'loading' ? '' : folderSize?.status === 'done' ? formatFileSize(folderSize.size ?? 0) : folderSize?.status === 'error' ? '!' : t.pane.folderSizeCalculate}
-                                {(!folderSize || folderSize.status === 'limited') && <Calculator className="h-3 w-3 flex-shrink-0" />}
-                              </span>
-                              {folderSize?.status === 'loading' ? <LoaderCircle className="h-3 w-3 flex-shrink-0 animate-spin" /> : folderSize?.status === 'error' ? <Calculator className="h-3 w-3 flex-shrink-0" /> : null}
-                            </button>
-                          </Tooltip> : <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">--</span>
+                        isTauriDesktop() && !isRecycleBin && !item.recycleBinId ? (
+                          folderSize?.status === 'done' ? (
+                            <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{formatFileSize(folderSize.size ?? 0)}</span>
+                          ) : (
+                            <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip} placement="top">
+                              <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="ml-auto inline-flex w-fit max-w-full items-center justify-end gap-1 rounded px-1 py-0.5 text-right text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip}>
+                                <span data-file-column-content={column} className="inline-flex max-w-full items-center gap-1 whitespace-nowrap">
+                                  {folderSize?.status === 'loading' ? '' : folderSize?.status === 'error' ? '!' : t.pane.folderSizeCalculate}
+                                  {(!folderSize || folderSize.status === 'limited' || folderSize.status === 'error') && <Calculator className="h-3 w-3 flex-shrink-0" />}
+                                </span>
+                                {folderSize?.status === 'loading' && <LoaderCircle className="h-3 w-3 flex-shrink-0 animate-spin" />}
+                              </button>
+                            </Tooltip>
+                          )
                         ) : <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">--</span>
                       ) : <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{formatFileSize(item.size)}</span>}</div>;
                     }

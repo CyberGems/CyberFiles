@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Globe, Info, Keyboard, Minus, MoreHorizontal, Settings, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
-import { Tooltip } from './Tooltip';
+import { dismissAllTooltips, Tooltip } from './Tooltip';
 
 interface WindowTitleBarProps {
   showWindowControls: boolean;
@@ -48,6 +48,22 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenShort
         if (mounted) setIsMaximized(maximized);
       }).catch(() => undefined);
     }).then(unlisten => {
+      if (mounted) stopListening = unlisten;
+      else unlisten();
+    }).catch(() => undefined);
+
+    return () => {
+      mounted = false;
+      stopListening?.();
+    };
+  }, [appWindow]);
+
+  useEffect(() => {
+    if (!appWindow) return;
+    let mounted = true;
+    let stopListening: (() => void) | undefined;
+
+    void appWindow.onFocusChanged(() => dismissAllTooltips()).then(unlisten => {
       if (mounted) stopListening = unlisten;
       else unlisten();
     }).catch(() => undefined);
@@ -213,7 +229,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenShort
             <button
               type="button"
               aria-label={tTitlebar('Minimizar', 'Minimize')}
-              onClick={() => runWindowCommand('minimize', () => appWindow.minimize())}
+              onClick={() => { dismissAllTooltips(); runWindowCommand('minimize', () => appWindow.minimize()); }}
               className="flex h-9 w-10 items-center justify-center text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
             >
               <Minus className="h-4 w-4" />

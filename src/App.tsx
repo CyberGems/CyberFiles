@@ -1019,9 +1019,12 @@ export default function App() {
       icon: location.id,
     }));
   }, [systemLocations, t.sidebar.desktop, t.sidebar.documents, t.sidebar.downloads, t.sidebar.music, t.sidebar.pictures, t.sidebar.videos]);
-  const baseSidebarQuickAccess = systemHomeWorkspace.current || currentTab.history.includes(SYSTEM_HOME_PATH)
-    ? systemQuickAccess
-    : quickAccess;
+  const hasSystemWorkspaceAccess = systemHomeWorkspace.current || currentTab.history.includes(SYSTEM_HOME_PATH);
+  const isNativeDesktop = isTauriDesktop();
+  const baseSidebarQuickAccess = useMemo(() => [
+    ...(isNativeDesktop ? [{ id: 'system-quick-home', name: t.sidebar.thisPc, path: SYSTEM_HOME_PATH, icon: 'monitor' }] : []),
+    ...(hasSystemWorkspaceAccess ? systemQuickAccess : quickAccess),
+  ], [hasSystemWorkspaceAccess, isNativeDesktop, quickAccess, systemQuickAccess, t.sidebar.thisPc]);
   const sidebarQuickAccess = useMemo(() => {
     const baseQuickAccessPaths = new Set(baseSidebarQuickAccess.map(item => getPathKey(item.path)));
     const combined = [
@@ -3098,6 +3101,15 @@ export default function App() {
     if (item.isFolder) addCustomQuickAccessPath(item.path, item.name);
   }, [addCustomQuickAccessPath]);
   const handleOpenCustomQuickAccess = useCallback((item: QuickAccessItem) => {
+    if (item.path === SYSTEM_HOME_PATH) {
+      if (!isTauriDesktop()) return;
+      systemHomeWorkspace.current = true;
+      nativeRootPath.current = SYSTEM_HOME_PATH;
+      browserRootPath.current = '';
+      void handleNavigate(item.path, activePane, false, sidebarLocationsOpenInNewTab);
+      return;
+    }
+
     if (isTauriDesktop()) {
       if (!systemHomeWorkspace.current && nativeRootPath.current && !isSameOrDescendantPath(item.path, nativeRootPath.current)) {
         systemHomeWorkspace.current = true;

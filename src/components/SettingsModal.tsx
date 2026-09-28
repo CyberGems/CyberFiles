@@ -424,20 +424,18 @@ export function SettingsModal({
           </div>
 
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
-            <Tooltip label={t.settings.singleClickOpenDescription} placement="top">
-              <label className="flex cursor-pointer items-start gap-2.5">
-                <input
-                  type="checkbox"
-                  checked={singleClickOpen}
-                  onChange={event => onSingleClickOpenChange(event.target.checked)}
-                  className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
-                />
-                <span>
-                  <span className="block font-medium text-neutral-200">{t.settings.singleClickOpen}</span>
-                  <span className="mt-1 block">{t.settings.singleClickOpenDescription}</span>
-                </span>
-              </label>
-            </Tooltip>
+            <label className="flex cursor-pointer items-start gap-2.5">
+              <input
+                type="checkbox"
+                checked={singleClickOpen}
+                onChange={event => onSingleClickOpenChange(event.target.checked)}
+                className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+              />
+              <span>
+                <span className="block font-medium text-neutral-200">{t.settings.singleClickOpen}</span>
+                <span className="mt-1 block">{t.settings.singleClickOpenDescription}</span>
+              </span>
+            </label>
           </div>
 
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">

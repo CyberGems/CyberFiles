@@ -644,10 +644,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           </button>
                         </Tooltip>
                       )}
-                      <Tooltip label={item.path} placement="right">
+                      <Tooltip label={item.path === SYSTEM_HOME_PATH ? item.name : item.path} placement="right">
                         <button
                           type="button"
-                          onClick={() => item.isCustom ? onOpenCustomQuickAccess(item) : onNavigate(item.path)}
+                          onClick={() => item.path === SYSTEM_HOME_PATH || item.isCustom ? onOpenCustomQuickAccess(item) : onNavigate(item.path)}
                           className={`flex min-w-0 flex-1 items-center justify-between rounded-md px-2.5 py-1.5 text-left transition-colors ${
                             isSelected
                               ? 'bg-neutral-800/90 text-cyan-300 font-medium'
