@@ -338,6 +338,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   folderSizeStatesRef.current = folderSizeStates;
   const autoFolderSizeJobsRef = useRef(new Set<string>());
   const folderSizeHoverTimersRef = useRef(new Map<string, number>());
+  const hoveredFolderItemsRef = useRef(new Map<string, FileItem>());
+  const folderSizeHoverRequestsRef = useRef(new Set<string>());
+  const fullHoverFolderSizeJobsRef = useRef(new Set<string>());
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [columnWidths, setColumnWidths] = useState(() => columnPreferences.widths);
   const [columnLayout, setColumnLayout] = useState(() => columnPreferences.layout);
@@ -488,6 +491,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
       ? { backgroundColor: `color-mix(in srgb, ${recentItemStyle.backgroundColor} 18%, transparent)` }
       : undefined;
 
+  const getFolderTooltipSizeText = (item: FileItem) => {
+    const folderSize = folderSizeStates[item.id];
+    if (folderSize?.status === 'done') return t.pane.folderSizeTotal.replace('{size}', formatFileSize(folderSize.size ?? 0));
+    if (folderSize?.status === 'loading') return t.pane.folderSizeCalculating;
+    if (folderSize?.status === 'error') return t.pane.folderSizeFailed;
+    if (!autoFolderSizeEnabled) return t.pane.folderSizeHoverDisabled;
+    return isTauriDesktop() ? t.pane.folderSizeHoverHint : t.pane.folderSizeHoverDesktopOnly;
+  };
+
   const renderItemTooltip = (item: FileItem, additionalDetails?: React.ReactNode) => (
     <div className="flex max-w-[18rem] flex-col items-center gap-1 text-center">
       {imageTooltipThumbnailsEnabled && item.type === 'image' && !item.isFolder && (
@@ -500,6 +512,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
       )}
       <span className="font-semibold">{item.name}</span>
       {item.path && <span className="break-all font-sans text-[10px] text-cyan-200">{item.path}</span>}
+      {item.isFolder && !item.recycleBinId && !isRecycleBin && (
+        <span className="text-cyan-100">{getFolderTooltipSizeText(item)}</span>
+      )}
       {!item.isFolder && <span>{formatFileSize(item.size)}</span>}
       {(item.modifiedDate || item.modifiedAtMs !== undefined) && (
         <span className="text-[10px] text-neutral-300">
@@ -588,39 +603,50 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }
   };
   const calculateFolderSizeOnHover = async (item: FileItem) => {
-    if (!isTauriDesktop() || !autoFolderSizeEnabled || autoFolderSizeJobsRef.current.has(item.id)) return;
+    if (!isTauriDesktop() || !autoFolderSizeEnabled || fullHoverFolderSizeJobsRef.current.has(item.id)) return;
     const existing = folderSizeStatesRef.current[item.id];
-    if (existing?.status === 'done' || (existing?.status === 'limited' && (existing.limit ?? 0) >= autoFolderSizeMaxEntries)) return;
+    if (existing?.status === 'done') {
+      folderSizeHoverRequestsRef.current.delete(item.id);
+      return;
+    }
+    if (autoFolderSizeJobsRef.current.has(item.id)) return;
 
+    folderSizeHoverRequestsRef.current.delete(item.id);
+    fullHoverFolderSizeJobsRef.current.add(item.id);
     autoFolderSizeJobsRef.current.add(item.id);
     setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'loading' } }));
     try {
-      const result = await calculateNativeFolderSizeBounded(item.path, autoFolderSizeMaxEntries);
-      setFolderSizeStates(previous => ({
-        ...previous,
-        [item.id]: result.complete
-          ? { status: 'done', size: result.size }
-          : { status: 'limited', limit: autoFolderSizeMaxEntries },
-      }));
+      const size = await calculateNativeFolderSize(item.path);
+      setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'done', size } }));
     } catch {
       setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'error' } }));
     } finally {
+      fullHoverFolderSizeJobsRef.current.delete(item.id);
       autoFolderSizeJobsRef.current.delete(item.id);
+      folderSizeHoverRequestsRef.current.delete(item.id);
     }
   };
   const scheduleFolderSizeOnHover = (item: FileItem) => {
-    if (!tooltipsEnabled || !autoFolderSizeEnabled || !isTauriDesktop() || !item.isFolder || !item.path) return;
-    const existing = folderSizeStatesRef.current[item.id];
-    if (existing?.status === 'done' || existing?.status === 'loading' || (existing?.status === 'limited' && (existing.limit ?? 0) >= autoFolderSizeMaxEntries)) return;
+    if (!tooltipsEnabled || !autoFolderSizeEnabled || !isTauriDesktop() || !item.isFolder || item.recycleBinId || !item.path) return;
+    if (folderSizeStatesRef.current[item.id]?.status === 'done' || fullHoverFolderSizeJobsRef.current.has(item.id)) return;
     const pendingTimer = folderSizeHoverTimersRef.current.get(item.id);
     if (pendingTimer !== undefined) window.clearTimeout(pendingTimer);
     const timer = window.setTimeout(() => {
       folderSizeHoverTimersRef.current.delete(item.id);
+      if (!hoveredFolderItemsRef.current.has(item.id)) return;
+      folderSizeHoverRequestsRef.current.add(item.id);
       void calculateFolderSizeOnHover(item);
     }, 1100);
     folderSizeHoverTimersRef.current.set(item.id, timer);
   };
-  const cancelFolderSizeHover = (item: FileItem) => {
+  const handleFolderTooltipMouseEnter = (item: FileItem) => {
+    if (!item.isFolder || item.recycleBinId || isRecycleBin) return;
+    hoveredFolderItemsRef.current.set(item.id, item);
+    scheduleFolderSizeOnHover(item);
+  };
+  const handleFolderTooltipMouseLeave = (item: FileItem) => {
+    hoveredFolderItemsRef.current.delete(item.id);
+    folderSizeHoverRequestsRef.current.delete(item.id);
     const timer = folderSizeHoverTimersRef.current.get(item.id);
     if (timer !== undefined) {
       window.clearTimeout(timer);
@@ -630,6 +656,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   useEffect(() => () => {
     for (const timer of folderSizeHoverTimersRef.current.values()) window.clearTimeout(timer);
     folderSizeHoverTimersRef.current.clear();
+    hoveredFolderItemsRef.current.clear();
+    folderSizeHoverRequestsRef.current.clear();
   }, []);
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -672,8 +700,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
           || shouldSkip(item)) continue;
         autoFolderSizeJobsRef.current.add(item.id);
         setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'loading' } }));
+        let sizeComplete = false;
         try {
           const result = await calculateNativeFolderSizeBounded(item.path, autoFolderSizeMaxEntries);
+          sizeComplete = result.complete;
           setFolderSizeStates(previous => ({
             ...previous,
             [item.id]: result.complete
@@ -684,6 +714,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
           setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'error' } }));
         } finally {
           autoFolderSizeJobsRef.current.delete(item.id);
+          const hoverRequestedFullSize = folderSizeHoverRequestsRef.current.delete(item.id);
+          if (!sizeComplete && hoverRequestedFullSize && hoveredFolderItemsRef.current.has(item.id)) {
+            folderSizeHoverRequestsRef.current.add(item.id);
+            void calculateFolderSizeOnHover(item);
+          }
         }
       }
       running = false;
@@ -1329,20 +1364,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const usedPercent = hasCapacity && drive
       ? Math.min(100, Math.round((drive.usedBytes / drive.totalBytes) * 100))
       : 0;
-    const folderSize = folderSizeStates[item.id];
-    const folderTooltipDetails = folderSize?.status === 'done'
-      ? t.pane.folderSizeTotal.replace('{size}', formatFileSize(folderSize.size ?? 0))
-      : folderSize?.status === 'loading'
-        ? t.pane.folderSizeCalculating
-        : folderSize?.status === 'limited'
-          ? t.pane.folderSizeHoverLimit.replace('{limit}', String(folderSize.limit ?? autoFolderSizeMaxEntries))
-          : folderSize?.status === 'error'
-            ? t.pane.folderSizeFailed
-            : !autoFolderSizeEnabled
-              ? t.pane.folderSizeHoverDisabled
-              : isTauriDesktop()
-                ? t.pane.folderSizeHoverHint
-                : t.pane.folderSizeHoverDesktopOnly;
+    const folderTooltipDetails = getFolderTooltipSizeText(item);
     const tooltipLabel = category === 'folder'
       ? (
         <div className="max-w-[18rem] text-center text-cyan-100">{folderTooltipDetails}</div>
@@ -1364,9 +1386,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
         type="button"
         data-file-item="true"
         data-file-id={item.id}
-        onMouseEnter={() => scheduleFolderSizeOnHover(item)}
-        onMouseLeave={() => cancelFolderSizeHover(item)}
-        onClick={event => { cancelFolderSizeHover(item); handleItemClick(event, item, index); handleConfiguredSingleClick(event, item); }}
+        onMouseEnter={() => handleFolderTooltipMouseEnter(item)}
+        onMouseLeave={() => handleFolderTooltipMouseLeave(item)}
+        onClick={event => { handleFolderTooltipMouseLeave(item); handleItemClick(event, item, index); handleConfiguredSingleClick(event, item); }}
         onDoubleClick={() => handleConfiguredDoubleClick(item)}
         onContextMenu={event => handleFileItemContextMenu(event, item)}
         style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, selected) }}
@@ -1832,7 +1854,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       handleDrop(e, item);
                     }
                   }}
-                  onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
+                  onClick={(e) => { handleFolderTooltipMouseLeave(item); handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth}px`, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
@@ -1864,7 +1886,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             renderInlineRenameInput(item, 'min-w-0 flex-1')
                           ) : (
                             <Tooltip label={renderItemTooltip(item)} placement="top">
-                              <span data-file-column-content={column} className="truncate text-[11.5px] font-medium" style={getRecentNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+                              <span data-file-column-content={column} className="truncate text-[11.5px] font-medium" style={getRecentNameStyle(item, isSelected)} onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)}>{getDisplayItemName(item, showFileExtensions)}</span>
                             </Tooltip>
                           )}
                         </div>
@@ -1930,7 +1952,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       handleDrop(event, item);
                     }
                   }}
-                  onClick={event => { handleItemClick(event, item, idx); handleConfiguredSingleClick(event, item); }}
+                  onClick={event => { handleFolderTooltipMouseLeave(item); handleItemClick(event, item, idx); handleConfiguredSingleClick(event, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
@@ -1945,7 +1967,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     renderInlineRenameInput(item, 'min-w-0 flex-1')
                   ) : (
                     <Tooltip label={renderItemTooltip(item)} placement="top">
-                      <span className="min-w-0 flex-1 truncate" style={getRecentNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+                      <span className="min-w-0 flex-1 truncate" style={getRecentNameStyle(item, isSelected)} onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)}>{getDisplayItemName(item, showFileExtensions)}</span>
                     </Tooltip>
                   )}
                   {!item.isFolder && <span className="flex-shrink-0 font-sans text-[10px] text-neutral-500">{formatFileSize(item.size)}</span>}
@@ -1974,7 +1996,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   data-file-id={item.id}
                   draggable={!item.recycleBinId}
                   onDragStart={(e) => handleDragStart(e, item)}
-                  onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
+                  onClick={(e) => { handleFolderTooltipMouseLeave(item); handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
@@ -1999,7 +2021,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     renderInlineRenameInput(item, 'w-full min-w-0', 'text-center')
                   ) : (
                     <Tooltip label={renderItemTooltip(item)} placement="top">
-                      <span className="w-full truncate px-1 text-[11px] font-medium" style={getRecentNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+                      <span className="w-full truncate px-1 text-[11px] font-medium" style={getRecentNameStyle(item, isSelected)} onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)}>{getDisplayItemName(item, showFileExtensions)}</span>
                     </Tooltip>
                   )}
                   <span className="mt-0.5 text-[9px] font-sans text-neutral-400">
