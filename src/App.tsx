@@ -101,6 +101,9 @@ const CUSTOM_QUICK_ACCESS_KEY = 'cyberfiles_custom_quick_access_v1';
 const QUICK_ACCESS_ORDER_KEY = 'cyberfiles_quick_access_order_v1';
 const QUICK_ACCESS_SORT_MODE_KEY = 'cyberfiles_quick_access_sort_mode_v1';
 const RECENT_FOLDER_PATHS_KEY = 'cyberfiles_recent_folder_paths_v1';
+const AUTO_FOLDER_SIZE_ENABLED_KEY = 'cyberfiles_auto_folder_size_enabled_v1';
+const AUTO_FOLDER_SIZE_LIMIT_KEY = 'cyberfiles_auto_folder_size_limit_v1';
+const AUTO_FOLDER_SIZE_LIMITS = [100, 300, 500, 1000, 2500, 5000];
 const MAX_CUSTOM_QUICK_ACCESS_ITEMS = 100;
 const MAX_TEXT_PREVIEW_BYTES = 200_000;
 const TOAST_DURATION_MS = 3200;
@@ -519,6 +522,15 @@ export default function App() {
   const [imageTooltipThumbnailsEnabled, setImageTooltipThumbnailsEnabled] = useState(() => readBooleanPreference(IMAGE_TOOLTIP_THUMBNAILS_KEY, true));
   const [notificationBannersEnabled, setNotificationBannersEnabled] = useState(() => readBooleanPreference(NOTIFICATION_BANNERS_KEY, true));
   const [tooltipsEnabled, setTooltipsEnabled] = useState(() => readBooleanPreference(TOOLTIPS_ENABLED_KEY, true));
+  const [autoFolderSizeEnabled, setAutoFolderSizeEnabled] = useState(() => readBooleanPreference(AUTO_FOLDER_SIZE_ENABLED_KEY, true));
+  const [autoFolderSizeMaxEntries, setAutoFolderSizeMaxEntries] = useState(() => {
+    try {
+      const saved = Number(window.localStorage.getItem(AUTO_FOLDER_SIZE_LIMIT_KEY));
+      return AUTO_FOLDER_SIZE_LIMITS.includes(saved) ? saved : 300;
+    } catch {
+      return 300;
+    }
+  });
   const [singleClickOpen, setSingleClickOpen] = useState(() => readBooleanPreference(SINGLE_CLICK_OPEN_KEY, false));
 
   // Global file system state
@@ -1430,6 +1442,15 @@ export default function App() {
       // Keep the selected behavior for the current session when storage is unavailable.
     }
   }, [tooltipsEnabled]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(AUTO_FOLDER_SIZE_ENABLED_KEY, String(autoFolderSizeEnabled));
+      window.localStorage.setItem(AUTO_FOLDER_SIZE_LIMIT_KEY, String(autoFolderSizeMaxEntries));
+    } catch {
+      // Keep the selected folder size behavior for the current session when storage is unavailable.
+    }
+  }, [autoFolderSizeEnabled, autoFolderSizeMaxEntries]);
 
   useEffect(() => {
     try {
@@ -3429,6 +3450,8 @@ export default function App() {
                   files={leftDisplayFiles}
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
+                  autoFolderSizeEnabled={autoFolderSizeEnabled}
+                  autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
                   drives={drives}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
                   isLoadingDirectory={leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
@@ -3481,6 +3504,8 @@ export default function App() {
                   files={rightDisplayFiles}
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
+                  autoFolderSizeEnabled={autoFolderSizeEnabled}
+                  autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
                   drives={drives}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
                   isLoadingDirectory={rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
@@ -3534,6 +3559,8 @@ export default function App() {
                   files={leftDisplayFiles}
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
+                  autoFolderSizeEnabled={autoFolderSizeEnabled}
+                  autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
                   drives={drives}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
                   isLoadingDirectory={leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
@@ -3582,6 +3609,8 @@ export default function App() {
                   files={rightDisplayFiles}
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
+                  autoFolderSizeEnabled={autoFolderSizeEnabled}
+                  autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
                   drives={drives}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
                   isLoadingDirectory={rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
@@ -3635,6 +3664,8 @@ export default function App() {
                   files={activeDisplayFiles}
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
+                  autoFolderSizeEnabled={autoFolderSizeEnabled}
+                  autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
                   drives={drives}
                   hasMore={currentAtRecycleBin ? recycleBinPage.hasMore : (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.hasMore}
                   isLoadingDirectory={(activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.loading || (currentTab.currentPath === SYSTEM_HOME_PATH && systemHomeLoading) || (currentAtRecycleBin && recycleBinPage.loading)}
@@ -3917,6 +3948,10 @@ export default function App() {
             onNotificationBannersEnabledChange={setNotificationBannersEnabled}
             tooltipsEnabled={tooltipsEnabled}
             onTooltipsEnabledChange={setTooltipsEnabled}
+            autoFolderSizeEnabled={autoFolderSizeEnabled}
+            onAutoFolderSizeEnabledChange={setAutoFolderSizeEnabled}
+            autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
+            onAutoFolderSizeMaxEntriesChange={setAutoFolderSizeMaxEntries}
             singleClickOpen={singleClickOpen}
             onSingleClickOpenChange={setSingleClickOpen}
             sidebarLocationsOpenInNewTab={sidebarLocationsOpenInNewTab}

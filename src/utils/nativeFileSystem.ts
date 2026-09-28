@@ -146,6 +146,17 @@ export async function calculateNativeFolderSize(path: string): Promise<number> {
   return invoke<number>('calculate_folder_size', { path });
 }
 
+export interface NativeFolderSizeCalculation {
+  size: number;
+  entriesScanned: number;
+  complete: boolean;
+}
+
+export async function calculateNativeFolderSizeBounded(path: string, maxEntries: number): Promise<NativeFolderSizeCalculation> {
+  if (!isTauriDesktop()) throw new Error('Folder size calculation is only available in the desktop app.');
+  return invoke<NativeFolderSizeCalculation>('calculate_folder_size_bounded', { path, maxEntries });
+}
+
 export async function createNativeDirectory(parentPath: string, name: string): Promise<{ path: string; name: string }> {
   return invoke<{ path: string; name: string }>('create_directory', { parentPath, name });
 }

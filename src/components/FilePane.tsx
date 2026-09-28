@@ -38,7 +38,7 @@ import {
 import { DriveInfo, FileItem, FileType, GroupByField, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
 import { formatLocalDateTime } from '../utils/dateTime';
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
-import { calculateNativeFolderSize, isTauriDesktop, loadNativeImageThumbnail } from '../utils/nativeFileSystem';
+import { calculateNativeFolderSize, calculateNativeFolderSizeBounded, isTauriDesktop, loadNativeImageThumbnail } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 import {
@@ -67,6 +67,8 @@ interface FilePaneProps {
   files: FileItem[];
   recentFolderPaths: string[];
   onClearRecentFolders: () => void;
+  autoFolderSizeEnabled: boolean;
+  autoFolderSizeMaxEntries: number;
   drives: DriveInfo[];
   hasMore?: boolean;
   isLoadingDirectory?: boolean;
@@ -98,6 +100,7 @@ type SystemHomeSection = 'folders' | 'devices' | 'network';
 type CollapsedSystemHomeSections = Record<SystemHomeSection, boolean>;
 type FileColumn = 'extension' | 'name' | 'type' | 'size' | 'created' | 'modified';
 type ResizableColumn = FileColumn;
+type FolderSizeState = { status: 'loading' | 'done' | 'error' | 'limited'; size?: number; limit?: number };
 
 interface ColumnPointerDrag {
   pointerId: number;
@@ -275,6 +278,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   files,
   recentFolderPaths,
   onClearRecentFolders,
+  autoFolderSizeEnabled,
+  autoFolderSizeMaxEntries,
   drives,
   hasMore = false,
   isLoadingDirectory = false,
@@ -313,7 +318,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const renameCommitItemRef = useRef<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [collapsedSystemHomeSections, setCollapsedSystemHomeSections] = useState(() => readCollapsedSystemHomeSections(paneId));
-  const [folderSizeStates, setFolderSizeStates] = useState<Record<string, { status: 'loading' | 'done' | 'error'; size?: number }>>({});
+  const [folderSizeStates, setFolderSizeStates] = useState<Record<string, FolderSizeState>>({});
+  const folderSizeStatesRef = useRef(folderSizeStates);
+  folderSizeStatesRef.current = folderSizeStates;
+  const autoFolderSizeJobsRef = useRef(new Set<string>());
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [columnWidths, setColumnWidths] = useState(() => columnPreferences.widths);
   const [columnLayout, setColumnLayout] = useState(() => columnPreferences.layout);
@@ -510,6 +518,91 @@ export const FilePane: React.FC<FilePaneProps> = ({
       setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'error' } }));
     }
   };
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const canCalculateAutomatically = autoFolderSizeEnabled
+      && isTauriDesktop()
+      && !isSystemHome
+      && !isRecycleBin
+      && effectiveViewMode === 'details'
+      && columnLayout.visible.includes('size')
+      && Boolean(viewport)
+      && typeof IntersectionObserver !== 'undefined';
+    if (!canCalculateAutomatically || !viewport) return;
+
+    let active = true;
+    let running = false;
+    const queue: FileItem[] = [];
+    const queuedIds = new Set<string>();
+    const elementsById = new Map<string, HTMLElement>();
+    const foldersById = new Map(files
+      .filter(item => item.isFolder && !item.recycleBinId && item.path && !item.id.startsWith('system-'))
+      .map(item => [item.id, item]));
+    const shouldSkip = (item: FileItem) => {
+      const existing = folderSizeStatesRef.current[item.id];
+      return autoFolderSizeJobsRef.current.has(item.id)
+        || Boolean(existing && (existing.status !== 'limited' || (existing.limit ?? 0) >= autoFolderSizeMaxEntries));
+    };
+    const processQueue = async () => {
+      if (running) return;
+      running = true;
+      while (active && queue.length > 0) {
+        const item = queue.shift();
+        if (!item) continue;
+        queuedIds.delete(item.id);
+        const element = elementsById.get(item.id);
+        const rowBounds = element?.getBoundingClientRect();
+        const viewportBounds = viewport.getBoundingClientRect();
+        if (!element?.isConnected || !rowBounds
+          || rowBounds.bottom < viewportBounds.top - 120
+          || rowBounds.top > viewportBounds.bottom + 120
+          || shouldSkip(item)) continue;
+        autoFolderSizeJobsRef.current.add(item.id);
+        setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'loading' } }));
+        try {
+          const result = await calculateNativeFolderSizeBounded(item.path, autoFolderSizeMaxEntries);
+          setFolderSizeStates(previous => ({
+            ...previous,
+            [item.id]: result.complete
+              ? { status: 'done', size: result.size }
+              : { status: 'limited', limit: autoFolderSizeMaxEntries },
+          }));
+        } catch {
+          setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'error' } }));
+        } finally {
+          autoFolderSizeJobsRef.current.delete(item.id);
+        }
+      }
+      running = false;
+    };
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const element = entry.target as HTMLElement;
+        observer.unobserve(element);
+        const itemId = element.dataset.fileId ?? '';
+        const item = foldersById.get(itemId);
+        if (!item || shouldSkip(item) || queuedIds.has(item.id)) continue;
+        elementsById.set(item.id, element);
+        queuedIds.add(item.id);
+        queue.push(item);
+      }
+      void processQueue();
+    }, { root: viewport, rootMargin: '120px 0px' });
+    const observerTimer = window.setTimeout(() => {
+      for (const element of viewport.querySelectorAll<HTMLElement>('[data-file-item][data-file-id]')) {
+        if (foldersById.has(element.dataset.fileId ?? '')) observer.observe(element);
+      }
+    }, 350);
+
+    return () => {
+      active = false;
+      queue.length = 0;
+      window.clearTimeout(observerTimer);
+      observer.disconnect();
+    };
+  }, [autoFolderSizeEnabled, autoFolderSizeMaxEntries, columnLayout.visible, effectiveViewMode, files, isRecycleBin, isSystemHome]);
+
   const detailsTableMinimumWidth = visibleFileColumns.reduce((total, column) => total + (column === 'name' ? columnWidths.name ?? MIN_NAME_COLUMN_WIDTH : columnWidths[column]), 0)
     + Math.max(0, visibleFileColumns.length - 1) * 8 + 18 + viewportScrollbarWidth + 32;
 
@@ -1647,8 +1740,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       const folderSize = folderSizeStates[item.id];
                       return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder ? (
                         isTauriDesktop() ? (
-                          !isRecycleBin && !item.recycleBinId ? <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip} placement="top">
-                            <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
+                          !isRecycleBin && !item.recycleBinId ? <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip} placement="top">
+                            <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip}>
                               {folderSize?.status === 'loading' ? <LoaderCircle className="h-3 w-3 animate-spin" /> : folderSize?.status === 'done' ? <>{formatFileSize(folderSize.size ?? 0)}<Calculator className="h-3 w-3 opacity-60" /></> : folderSize?.status === 'error' ? <span aria-hidden="true">!</span> : <><Calculator className="h-3 w-3" />{t.pane.folderSizeCalculate}</>}
                             </button>
                           </Tooltip> : '--'

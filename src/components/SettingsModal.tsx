@@ -35,6 +35,10 @@ interface SettingsModalProps {
   onNotificationBannersEnabledChange: (enabled: boolean) => void;
   tooltipsEnabled: boolean;
   onTooltipsEnabledChange: (enabled: boolean) => void;
+  autoFolderSizeEnabled: boolean;
+  onAutoFolderSizeEnabledChange: (enabled: boolean) => void;
+  autoFolderSizeMaxEntries: number;
+  onAutoFolderSizeMaxEntriesChange: (maxEntries: number) => void;
   singleClickOpen: boolean;
   onSingleClickOpenChange: (enabled: boolean) => void;
   sidebarLocationsOpenInNewTab: boolean;
@@ -88,6 +92,10 @@ export function SettingsModal({
   onNotificationBannersEnabledChange,
   tooltipsEnabled,
   onTooltipsEnabledChange,
+  autoFolderSizeEnabled,
+  onAutoFolderSizeEnabledChange,
+  autoFolderSizeMaxEntries,
+  onAutoFolderSizeMaxEntriesChange,
   singleClickOpen,
   onSingleClickOpenChange,
   sidebarLocationsOpenInNewTab,
@@ -234,6 +242,37 @@ export function SettingsModal({
                     </span>
                   </label>
                 </Tooltip>
+              </div>
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                <Tooltip label={t.settings.autoFolderSizeDescription} placement="top">
+                  <label className="flex cursor-pointer items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={autoFolderSizeEnabled}
+                      onChange={event => onAutoFolderSizeEnabledChange(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                    />
+                    <span>
+                      <span className="block font-medium text-neutral-200">{t.settings.autoFolderSize}</span>
+                      <span className="mt-1 block">{t.settings.autoFolderSizeDescription}</span>
+                    </span>
+                  </label>
+                </Tooltip>
+                {autoFolderSizeEnabled && (
+                  <div className="mt-3 flex items-center justify-between gap-3 border-t border-neutral-800 pt-3">
+                    <span>{t.settings.autoFolderSizeLimit}</span>
+                    <Tooltip label={t.settings.autoFolderSizeLimitDescription} placement="top">
+                      <select
+                        aria-label={t.settings.autoFolderSizeLimit}
+                        value={autoFolderSizeMaxEntries}
+                        onChange={event => onAutoFolderSizeMaxEntriesChange(Number(event.target.value))}
+                        className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1.5 text-xs text-neutral-200 focus:border-cyan-500 focus:outline-none"
+                      >
+                        {[100, 300, 500, 1000, 2500, 5000].map(limit => <option key={limit} value={limit}>{limit.toLocaleString()}</option>)}
+                      </select>
+                    </Tooltip>
+                  </div>
+                )}
               </div>
               <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
                 <Tooltip label={t.settings.showTooltipsDescription} placement="top">

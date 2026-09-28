@@ -1505,14 +1505,39 @@ async fn list_directory(path: String, offset: usize) -> Result<DirectoryListing,
     .map_err(|error| format!("Folder scan worker failed: {error}"))?
 }
 
-fn calculate_directory_size(root: &Path) -> Result<u64, String> {
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FolderSizeCalculation {
+    size: u64,
+    entries_scanned: usize,
+    complete: bool,
+}
+
+fn calculate_directory_size(
+    root: &Path,
+    max_entries: Option<usize>,
+) -> Result<FolderSizeCalculation, String> {
     let mut pending = vec![root.to_path_buf()];
     let mut total = 0u64;
+    let mut entries_scanned = 0usize;
     while let Some(directory) = pending.pop() {
         let entries = fs::read_dir(&directory)
             .map_err(|error| format!("Cannot read {}: {error}", display_path(&directory)))?;
         for entry in entries {
-            let entry = entry.map_err(|error| format!("Cannot read an entry in {}: {error}", display_path(&directory)))?;
+            if max_entries.is_some_and(|limit| entries_scanned >= limit) {
+                return Ok(FolderSizeCalculation {
+                    size: total,
+                    entries_scanned,
+                    complete: false,
+                });
+            }
+            let entry = entry.map_err(|error| {
+                format!(
+                    "Cannot read an entry in {}: {error}",
+                    display_path(&directory)
+                )
+            })?;
+            entries_scanned += 1;
             let path = entry.path();
             let metadata = fs::symlink_metadata(&path)
                 .map_err(|error| format!("Cannot inspect {}: {error}", display_path(&path)))?;
@@ -1522,23 +1547,45 @@ fn calculate_directory_size(root: &Path) -> Result<u64, String> {
             if metadata.is_dir() {
                 pending.push(path);
             } else if metadata.is_file() {
-                total = total.checked_add(metadata.len())
+                total = total
+                    .checked_add(metadata.len())
                     .ok_or_else(|| "The folder size exceeds the supported range.".to_string())?;
             }
         }
     }
-    Ok(total)
+    Ok(FolderSizeCalculation {
+        size: total,
+        entries_scanned,
+        complete: true,
+    })
 }
 
 #[tauri::command]
 async fn calculate_folder_size(path: String) -> Result<u64, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let root = fs::canonicalize(&path)
-            .map_err(|error| format!("Cannot access folder: {error}"))?;
+        let root =
+            fs::canonicalize(&path).map_err(|error| format!("Cannot access folder: {error}"))?;
         if !root.is_dir() {
             return Err("The selected location is not a folder.".to_string());
         }
-        calculate_directory_size(&root)
+        calculate_directory_size(&root, None).map(|result| result.size)
+    })
+    .await
+    .map_err(|error| format!("Folder size worker failed: {error}"))?
+}
+
+#[tauri::command]
+async fn calculate_folder_size_bounded(
+    path: String,
+    max_entries: usize,
+) -> Result<FolderSizeCalculation, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root =
+            fs::canonicalize(&path).map_err(|error| format!("Cannot access folder: {error}"))?;
+        if !root.is_dir() {
+            return Err("The selected location is not a folder.".to_string());
+        }
+        calculate_directory_size(&root, Some(max_entries.clamp(1, 50_000)))
     })
     .await
     .map_err(|error| format!("Folder size worker failed: {error}"))?
@@ -3367,6 +3414,7 @@ fn main() {
             quit_app,
             list_directory,
             calculate_folder_size,
+            calculate_folder_size_bounded,
             read_text_preview,
             prepare_pdf_preview,
             create_directory,
