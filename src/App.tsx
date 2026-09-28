@@ -721,6 +721,8 @@ export default function App() {
   });
   const [pendingDeleteItems, setPendingDeleteItems] = useState<FileItem[]>([]);
   const [isFileOperationBusy, setIsFileOperationBusy] = useState(false);
+  const [renameRequest, setRenameRequest] = useState<{ requestId: number; itemId: string; paneId: 'left' | 'right' } | null>(null);
+  const renameRequestSequence = useRef(0);
   const [isEmptyRecycleBinConfirmOpen, setIsEmptyRecycleBinConfirmOpen] = useState(false);
   const shouldMountBatchRenameModal = useKeepModalMountedAfterFirstOpen(isBatchRenameOpen);
   const shouldMountShortcutsModal = useKeepModalMountedAfterFirstOpen(isShortcutsOpen);
@@ -2422,22 +2424,28 @@ export default function App() {
     showToast(t.core.renamed.replace('{name}', newName));
   }, [activePane, allFiles, isFileOperationBusy, refreshChangedDirectories, showToast, t.core.conflict, t.core.invalidName, t.core.operationFailedWithReason, t.core.renamed, updatePaneTab]);
 
+  const beginInlineRename = useCallback((item: FileItem, paneId: 'left' | 'right') => {
+    if (item.recycleBinId) {
+      showToast(t.core.recycleBinRestoreFirst);
+      return;
+    }
+
+    renameRequestSequence.current += 1;
+    setRenameRequest({ requestId: renameRequestSequence.current, itemId: item.id, paneId });
+  }, [showToast, t.core.recycleBinRestoreFirst]);
+
+  const handleRenameRequestHandled = useCallback((requestId: number) => {
+    setRenameRequest(current => current?.requestId === requestId ? null : current);
+  }, []);
+
   const handleRenameSelected = useCallback(() => {
     const item = selectedItemsForDelete[0];
     if (!item) {
       showToast(t.core.noSelection);
       return;
     }
-    if (item.recycleBinId) {
-      showToast(t.core.recycleBinRestoreFirst);
-      return;
-    }
-
-    const newName = window.prompt(language === 'es' ? 'Renombrar:' : 'Rename:', item.name);
-    if (newName && newName !== item.name) {
-      handleInlineRename(item.id, newName);
-    }
-  }, [handleInlineRename, language, selectedItemsForDelete, showToast, t.core.noSelection, t.core.recycleBinRestoreFirst]);
+    beginInlineRename(item, activePane);
+  }, [activePane, beginInlineRename, selectedItemsForDelete, showToast, t.core.noSelection]);
 
   const handleCopySelectedPaths = useCallback(async (items: FileItem[]) => {
     try {
@@ -3275,6 +3283,8 @@ export default function App() {
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFilesFromOtherPane={handleDropFiles}
                   onInlineRename={handleInlineRename}
+                  renameRequest={renameRequest}
+                  onRenameRequestHandled={handleRenameRequestHandled}
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
                 />
@@ -3323,6 +3333,8 @@ export default function App() {
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFilesFromOtherPane={handleDropFiles}
                   onInlineRename={handleInlineRename}
+                  renameRequest={renameRequest}
+                  onRenameRequestHandled={handleRenameRequestHandled}
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
                 />
@@ -3372,6 +3384,8 @@ export default function App() {
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFilesFromOtherPane={handleDropFiles}
                   onInlineRename={handleInlineRename}
+                  renameRequest={renameRequest}
+                  onRenameRequestHandled={handleRenameRequestHandled}
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
                 />
@@ -3416,6 +3430,8 @@ export default function App() {
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFilesFromOtherPane={handleDropFiles}
                   onInlineRename={handleInlineRename}
+                  renameRequest={renameRequest}
+                  onRenameRequestHandled={handleRenameRequestHandled}
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
                 />
@@ -3465,6 +3481,8 @@ export default function App() {
                 onBackgroundDoubleClick={handleBackgroundDoubleClick}
                 onDropFilesFromOtherPane={handleDropFiles}
                 onInlineRename={handleInlineRename}
+                renameRequest={renameRequest}
+                onRenameRequestHandled={handleRenameRequestHandled}
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
               />
@@ -3479,7 +3497,6 @@ export default function App() {
             <PreviewPane
               item={previewItem}
               onClose={() => setPreviewOpen(false)}
-              onRename={handleRenameSelected}
               nativePropertiesSupported={isTauriDesktop()}
               onOpenWindowsProperties={() => void handleOpenWindowsProperties(previewItem)}
               onOpenWithDefaultApp={() => {
@@ -3534,12 +3551,7 @@ export default function App() {
         onCutToClipboard={item => { void handleFileClipboard(item, true, contextPane); }}
         onPaste={() => { void handlePasteFiles(contextPane, contextPaneTab.currentPath); }}
         onNewFolder={() => { void handleNewFolder(undefined, contextPane); }}
-        onRename={(item) => {
-          const newName = window.prompt(language === 'es' ? 'Nuevo nombre para el archivo:' : 'New file name:', item.name);
-          if (newName && newName !== item.name) {
-            void handleInlineRename(item.id, newName, contextPane);
-          }
-        }}
+        onRename={item => beginInlineRename(item, contextPane)}
         onBatchRename={() => setIsBatchRenameOpen(true)}
         onDelete={(item) => handleDeleteSelected([item])}
         onRestore={(item) => { void handleRestoreRecycleBinItems([item]); }}

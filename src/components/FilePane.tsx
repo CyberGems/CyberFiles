@@ -80,7 +80,9 @@ interface FilePaneProps {
   onBackgroundClick: (e: React.MouseEvent, pane: 'left' | 'right') => void;
   onBackgroundDoubleClick: (e: React.MouseEvent, pane: 'left' | 'right') => void;
   onDropFilesFromOtherPane: (droppedIds: string[], targetFolder?: string, sourcePane?: 'left' | 'right') => void;
-  onInlineRename: (itemId: string, newName: string) => void;
+  onInlineRename: (itemId: string, newName: string, paneId: 'left' | 'right') => void;
+  renameRequest: { requestId: number; itemId: string; paneId: 'left' | 'right' } | null;
+  onRenameRequestHandled: (requestId: number) => void;
   columnPreferencesRevision: number;
   columnPreferences: PaneColumnsSnapshot;
   onColumnPreferencesChange: (pane: 'left' | 'right', preferences: PaneColumnsSnapshot) => void;
@@ -281,6 +283,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onBackgroundDoubleClick,
   onDropFilesFromOtherPane,
   onInlineRename,
+  renameRequest,
+  onRenameRequestHandled,
   columnPreferencesRevision,
   columnPreferences,
   onColumnPreferencesChange,
@@ -294,6 +298,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [pathInput, setPathInput] = useState(tab.currentPath);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingItemName, setEditingItemName] = useState('');
+  const renameCommitItemRef = useRef<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [collapsedSystemHomeSections, setCollapsedSystemHomeSections] = useState(() => readCollapsedSystemHomeSections(paneId));
   const [columnWidths, setColumnWidths] = useState(() => columnPreferences.widths);
@@ -627,6 +632,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, [isEditingPath]);
 
   useEffect(() => {
+    if (!renameRequest || renameRequest.paneId !== paneId) return;
+    const item = files.find(candidate => candidate.id === renameRequest.itemId);
+    onRenameRequestHandled(renameRequest.requestId);
+    if (!item || item.recycleBinId) return;
+    renameCommitItemRef.current = item.id;
+    setEditingItemName(item.name);
+    setEditingItemId(item.id);
+  }, [files, onRenameRequestHandled, paneId, renameRequest]);
+
+  useEffect(() => {
     if (editingItemId && renameInputRef.current) {
       renameInputRef.current.focus();
       // Select base name without extension
@@ -647,9 +662,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }
   };
 
-  const handleRenameSubmit = (itemId: string) => {
-    if (editingItemName.trim()) {
-      onInlineRename(itemId, editingItemName.trim());
+  const handleRenameSubmit = (itemId: string, originalName: string) => {
+    if (renameCommitItemRef.current !== itemId) return;
+    renameCommitItemRef.current = null;
+    const nextName = editingItemName.trim();
+    if (nextName && nextName !== originalName) {
+      onInlineRename(itemId, nextName, paneId);
     }
     setEditingItemId(null);
   };
@@ -1332,13 +1350,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             }`} />
                           )}
                           {isEditing ? (
-                            <form onSubmit={event => { event.preventDefault(); handleRenameSubmit(item.id); }} className="flex-1">
+                            <form onSubmit={event => { event.preventDefault(); handleRenameSubmit(item.id, item.name); }} className="flex-1">
                               <input
                                 ref={renameInputRef}
                                 type="text"
                                 value={editingItemName}
                                 onChange={event => setEditingItemName(event.target.value)}
-                                onBlur={() => handleRenameSubmit(item.id)}
+                                onBlur={() => handleRenameSubmit(item.id, item.name)}
+                                onKeyDown={event => {
+                                  if (event.key === 'Escape') {
+                                    event.preventDefault();
+                                    renameCommitItemRef.current = null;
+                                    setEditingItemName(item.name);
+                                    setEditingItemId(null);
+                                  }
+                                }}
                                 className="w-full bg-neutral-950 text-neutral-100 px-1 py-0.5 rounded border border-cyan-400 outline-none text-xs"
                               />
                             </form>

@@ -131,13 +131,12 @@ function createSafeHtmlPreview(content: string): string {
 interface PreviewPaneProps {
   item: FileItem | null;
   onClose: () => void;
-  onRename: () => void;
   nativePropertiesSupported: boolean;
   onOpenWindowsProperties: () => void;
   onOpenWithDefaultApp: () => void;
 }
 
-export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRename, nativePropertiesSupported, onOpenWindowsProperties, onOpenWithDefaultApp }) => {
+export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, nativePropertiesSupported, onOpenWindowsProperties, onOpenWithDefaultApp }) => {
   const [copied, setCopied] = useState(false);
   const [collapsedSection, setCollapsedSection] = useState<'preview' | 'properties' | null>(null);
   const previewCollapsed = collapsedSection === 'preview';
@@ -367,9 +366,6 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, onRenam
         </section>
       </div>
 
-      <div className="flex flex-shrink-0 items-center gap-2 border-t border-neutral-800 bg-neutral-900/60 p-2.5">
-        <button type="button" onClick={onRename} className="flex-1 rounded bg-neutral-800 px-2 py-1.5 text-center font-medium text-neutral-200 transition-colors hover:bg-neutral-700">{t.contextMenu.rename}</button>
-      </div>
     </aside>
   );
 };
