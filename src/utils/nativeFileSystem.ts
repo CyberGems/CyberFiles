@@ -346,6 +346,10 @@ export async function moveNativeItemsToRecycleBin(paths: string[]): Promise<Recy
   return invoke<RecycleBinDeleteResult>('move_to_recycle_bin', { paths });
 }
 
+export async function permanentlyDeleteNativeItems(paths: string[]): Promise<NativeOperationResult> {
+  return invoke<NativeOperationResult>('permanently_delete_items', { paths });
+}
+
 export async function emptyNativeRecycleBin(): Promise<void> {
   await invoke('empty_recycle_bin');
 }

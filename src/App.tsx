@@ -75,7 +75,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
@@ -3143,45 +3143,60 @@ export default function App() {
     showToast(t.core.noSelection);
   }, [allFiles, selectedItemsForDelete, showToast, t.core.desktopFileOperationsOnly, t.core.noSelection, t.core.recycleBinRestoreFirst]);
 
-  const handleConfirmDelete = useCallback(async () => {
+  const handleConfirmDelete = useCallback(async (permanentlyDelete = false) => {
     if (isFileOperationBusy || pendingDeleteItems.length === 0) return;
     setIsFileOperationBusy(true);
     try {
-      const result = await moveNativeItemsToRecycleBin(pendingDeleteItems.map(item => item.path));
-      const recycledPaths = result.recycledPaths;
-      const recycledIds = new Set(
+      const paths = pendingDeleteItems.map(item => item.path);
+      const { removedPaths, failures } = permanentlyDelete
+        ? await permanentlyDeleteNativeItems(paths).then(result => ({
+          removedPaths: result.completedPaths,
+          failures: result.failures,
+        }))
+        : await moveNativeItemsToRecycleBin(paths).then(result => ({
+          removedPaths: result.recycledPaths,
+          failures: result.failures,
+        }));
+      const removedIds = new Set(
         allFiles
-          .filter(item => recycledPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath)))
+          .filter(item => removedPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath)))
           .map(item => item.id)
       );
-      if (recycledPaths.length > 0) {
-        setAllFiles(previous => previous.filter(item => !recycledPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath))));
-        const clearRecycledSelections = (tabs: TabState[]) => tabs.map(tab => ({
+      if (removedPaths.length > 0) {
+        setAllFiles(previous => previous.filter(item => !removedPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath))));
+        const clearRemovedSelections = (tabs: TabState[]) => tabs.map(tab => ({
           ...tab,
-          selectedIds: tab.selectedIds.filter(id => !recycledIds.has(id)),
-          focusedId: tab.focusedId && recycledIds.has(tab.focusedId) ? null : tab.focusedId,
+          selectedIds: tab.selectedIds.filter(id => !removedIds.has(id)),
+          focusedId: tab.focusedId && removedIds.has(tab.focusedId) ? null : tab.focusedId,
         }));
-        setLeftTabs(clearRecycledSelections);
-        setRightTabs(clearRecycledSelections);
+        setLeftTabs(clearRemovedSelections);
+        setRightTabs(clearRemovedSelections);
       }
 
-      if (result.failures.length > 0) {
-        showToast(t.core.deletePartial
-          .replace('{moved}', String(recycledPaths.length))
-          .replace('{failed}', String(result.failures.length)));
+      if (failures.length > 0) {
+        showToast(permanentlyDelete
+          ? t.core.permanentDeletePartial
+            .replace('{deleted}', String(removedPaths.length))
+            .replace('{failed}', String(failures.length))
+          : t.core.deletePartial
+            .replace('{moved}', String(removedPaths.length))
+            .replace('{failed}', String(failures.length)));
       } else {
-        showToast(t.core.deletedCount.replace('{count}', String(recycledPaths.length)));
+        showToast(permanentlyDelete
+          ? t.core.permanentlyDeletedCount.replace('{count}', String(removedPaths.length))
+          : t.core.deletedCount.replace('{count}', String(removedPaths.length)));
       }
       setPendingDeleteItems([]);
-      void refreshRecycleBinStatus();
-      void refreshRecycleBinContents();
+      if (!permanentlyDelete) {
+        void refreshRecycleBinStatus();
+        void refreshRecycleBinContents();
+      }
     } catch {
-      showToast(t.core.deleteFailed);
+      showToast(permanentlyDelete ? t.core.permanentDeleteFailed : t.core.deleteFailed);
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [allFiles, isFileOperationBusy, pendingDeleteItems, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount]);
-
+  }, [allFiles, isFileOperationBusy, pendingDeleteItems, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount]);
   const handleRequestEmptyRecycleBin = useCallback(() => {
     if (!recycleBinStatus?.available || recycleBinStatus.itemCount === 0) return;
     setIsEmptyRecycleBinConfirmOpen(true);
@@ -4249,6 +4264,8 @@ export default function App() {
               onCancel={() => setPendingDeleteItems([])}
               onConfirm={handleConfirmDelete}
               isBusy={isFileOperationBusy}
+              allowPermanentDelete
+              confirmVariant="secondary"
             />
           )}
           {isEmptyRecycleBinConfirmOpen && (

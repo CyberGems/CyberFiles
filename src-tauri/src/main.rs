@@ -3556,6 +3556,86 @@ async fn move_to_recycle_bin(paths: Vec<String>) -> Result<RecycleBinDeleteResul
     )
 }
 
+fn validate_permanent_delete_source(source: &Path) -> Result<(), String> {
+    if !source.is_absolute() {
+        return Err("Only fully qualified paths can be permanently deleted.".to_string());
+    }
+    if source.components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::Prefix(prefix)
+                if matches!(
+                    prefix.kind(),
+                    std::path::Prefix::UNC(..) | std::path::Prefix::VerbatimUNC(..)
+                )
+        )
+    }) {
+        return Err("Network shares cannot be permanently deleted through this operation.".to_string());
+    }
+    let mut depth = 0_i64;
+    for component in source.components() {
+        match component {
+            std::path::Component::Normal(_) => depth += 1,
+            std::path::Component::ParentDir => depth -= 1,
+            _ => {}
+        }
+        if depth < 0 {
+            return Err("The path traverses above a filesystem root.".to_string());
+        }
+    }
+    if depth == 0 {
+        return Err("A filesystem root cannot be permanently deleted.".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn permanently_delete_path(path: &str) -> Result<(), String> {
+    let source = Path::new(path);
+    validate_permanent_delete_source(source)?;
+    let metadata = fs::symlink_metadata(source).map_err(|error| error.to_string())?;
+    if metadata.file_type().is_symlink() {
+        return Err("Symbolic links cannot be permanently deleted through this operation.".to_string());
+    }
+
+    let resolved = source.canonicalize().map_err(|error| error.to_string())?;
+    validate_permanent_delete_source(&resolved)?;
+    remove_path_without_following_links(&resolved)?;
+    if resolved.exists() {
+        return Err("The selected item still exists after deletion.".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn permanently_delete_path(_path: &str) -> Result<(), String> {
+    Err("Permanent deletion is available only in the Windows desktop app.".to_string())
+}
+
+fn permanently_delete_paths(paths: Vec<String>) -> NativeOperationResult {
+    let mut result = NativeOperationResult {
+        completed_paths: Vec::new(),
+        failures: Vec::new(),
+    };
+    let mut seen = std::collections::HashSet::new();
+    for path in paths {
+        if !seen.insert(path.to_lowercase()) {
+            continue;
+        }
+        match permanently_delete_path(&path) {
+            Ok(()) => result.completed_paths.push(path),
+            Err(error) => result.failures.push(NativeOperationFailure { path, error }),
+        }
+    }
+    result
+}
+
+#[tauri::command]
+async fn permanently_delete_items(paths: Vec<String>) -> Result<NativeOperationResult, String> {
+    tauri::async_runtime::spawn_blocking(move || permanently_delete_paths(paths))
+        .await
+        .map_err(|error| format!("Permanent deletion worker failed: {error}"))
+}
 #[cfg(target_os = "windows")]
 fn empty_windows_recycle_bin() -> Result<(), String> {
     use windows_sys::Win32::UI::Shell::{
@@ -4170,6 +4250,7 @@ fn main() {
             list_recycle_bin,
             restore_recycle_bin_items,
             move_to_recycle_bin,
+            permanently_delete_items,
             empty_recycle_bin,
             open_windows_file_properties,
             open_file_with_default_app,
