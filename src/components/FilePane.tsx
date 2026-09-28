@@ -325,6 +325,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const suppressColumnSortRef = useRef(false);
   const previousPathRef = useRef(tab.currentPath);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const lastScrolledFocusedIdRef = useRef<string | null>(null);
   const columnHeadersRef = useRef<HTMLDivElement>(null);
   const marqueeDragRef = useRef<MarqueeDrag | null>(null);
   const marqueePreviewIdsRef = useRef<string[] | null>(null);
@@ -431,6 +432,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
     observer?.observe(viewport);
     return () => observer?.disconnect();
   }, [files.length, effectiveViewMode]);
+
+  useEffect(() => {
+    if (!tab.focusedId || !tab.selectedIds.includes(tab.focusedId)) {
+      lastScrolledFocusedIdRef.current = null;
+      return;
+    }
+    if (lastScrolledFocusedIdRef.current === tab.focusedId) return;
+    const focusedItem = [...(viewportRef.current?.querySelectorAll<HTMLElement>('[data-file-item][data-file-id]') ?? [])]
+      .find(element => element.dataset.fileId === tab.focusedId);
+    if (focusedItem) {
+      focusedItem.scrollIntoView({ block: 'nearest' });
+      lastScrolledFocusedIdRef.current = tab.focusedId;
+    }
+  }, [files, tab.focusedId, tab.selectedIds]);
 
   useEffect(() => {
     setPathInput(tab.currentPath);

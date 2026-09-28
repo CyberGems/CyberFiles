@@ -1717,7 +1717,10 @@ export default function App() {
       }));
     } catch {
       if (generation === nativeWorkspaceGeneration.current) {
-        setNativeDirectories(previous => ({ ...previous, [pathKey]: { nextOffset: 0, hasMore: false, loading: false } }));
+        setNativeDirectories(previous => ({
+          ...previous,
+          [pathKey]: { ...(previous[pathKey] || { nextOffset: 0, hasMore: false }), loading: false },
+        }));
         showToast(language === 'es' ? 'No se pudo leer esta carpeta.' : 'This folder could not be read.');
       }
     } finally {
@@ -1750,25 +1753,6 @@ export default function App() {
   const refreshChangedDirectories = useCallback(async (paths: string[]) => {
     const affectedKeys = new Set(paths.filter(Boolean).map(getPathKey));
     for (const key of affectedKeys) nativeLoadedDirectories.current.delete(key);
-    setAllFiles(previous => {
-      const affectedRoots = new Map<string, string[]>();
-      for (const item of previous) {
-        const parentKey = getPathKey(getParentPath(item.path));
-        if (!affectedKeys.has(parentKey)) continue;
-        affectedRoots.set(parentKey, [...(affectedRoots.get(parentKey) || []), item.path]);
-      }
-      return previous.filter(item => {
-        const parentKey = getPathKey(getParentPath(item.path));
-        return !affectedKeys.has(parentKey) && !Array.from(affectedRoots.values()).some(roots =>
-          roots.some(root => isSameOrDescendantPath(item.path, root))
-        );
-      });
-    });
-    setNativeDirectories(previous => {
-      const next = { ...previous };
-      for (const key of affectedKeys) next[key] = { nextOffset: 0, hasMore: false, loading: false };
-      return next;
-    });
     const visible = [
       { pane: 'left' as const, path: leftTabs[activeLeftTabIndex]?.currentPath },
       { pane: 'right' as const, path: rightTabs[activeRightTabIndex]?.currentPath },
@@ -2373,6 +2357,10 @@ export default function App() {
         ...(clipboard.isCut ? clipboard.paths.map(getParentPath) : []),
         targetPath,
       ]);
+      if (result.completedPaths.length > 0) {
+        const pastedIds = result.completedPaths.map(path => `native-${encodeURIComponent(path.toLowerCase())}`);
+        updatePaneTab(pane, tab => ({ ...tab, selectedIds: pastedIds, focusedId: pastedIds[0] }));
+      }
       if (clipboard.isCut && result.completedPaths.length > 0 && result.failures.length === 0) {
         await clearNativeFileClipboard(clipboard.sequenceNumber);
       }
