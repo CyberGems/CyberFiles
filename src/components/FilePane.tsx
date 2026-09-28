@@ -812,7 +812,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         if (currentTab.id === tabId && currentTab.currentPath === currentPath && selectionUnchanged) {
           onSelectItems([item.id], false, false);
         }
-      }, 500);
+      }, 220);
       pendingDeselectionRef.current = timer;
       return;
     }

@@ -1520,14 +1520,18 @@ export default function App() {
     const item = filesById.get(id);
     return item ? [item] : [];
   });
+  const activeFolderItem = React.useMemo(() => {
+    if (!currentTab.currentPath || currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH) return null;
+    const currentPathKey = getPathKey(currentTab.currentPath);
+    return allFiles.find(item => item.isFolder && getPathKey(item.path) === currentPathKey) ?? null;
+  }, [allFiles, currentTab.currentPath]);
   const previewItem = React.useMemo(() => {
     if (currentTab.selectedIds.length > 0) {
       const found = filesById.get(currentTab.selectedIds[0]);
       if (found) return found;
     }
-    if (currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH) return null;
-    return activeDisplayFiles[0] || null;
-  }, [currentTab.currentPath, currentTab.selectedIds, filesById, activeDisplayFiles]);
+    return activeFolderItem;
+  }, [activeFolderItem, currentTab.selectedIds, filesById]);
 
   useEffect(() => {
     if (!previewItem || previewItem.isFolder || previewItem.contentPreview !== undefined || !isTextPreviewableFile(previewItem)) {

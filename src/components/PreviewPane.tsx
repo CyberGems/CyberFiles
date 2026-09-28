@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, FileText, Image as ImageIcon, Code2, Copy, Check, Info, Music, Video, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { X, FileText, Folder, Image as ImageIcon, Code2, Copy, Check, Info, Music, Video, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
 import { FileItem } from '../types';
 import { formatFileSize, isTextPreviewableFile } from '../utils/fileSystem';
 import { isTauriDesktop, loadNativeImageThumbnail, loadNativePdfPreviewUrl, MAX_PDF_PREVIEW_BYTES } from '../utils/nativeFileSystem';
@@ -249,6 +249,15 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, nativeP
   };
 
   const renderContent = () => {
+    if (item.isFolder) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-3 p-6 text-neutral-400">
+          <Folder className="h-12 w-12 fill-amber-400/15 text-amber-400" />
+          <span className="text-[11px] font-medium">{t.preview.folder}</span>
+        </div>
+      );
+    }
+
     const extension = item.extension.toLowerCase();
     if (extension === 'pdf') {
       if (pdfPreviewState !== 'unavailable' && pdfPreviewState !== 'too-large' && pdfPreviewSource?.itemId === item.id) {
@@ -318,7 +327,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, nativeP
       <div className="flex h-10 flex-shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-900/60 px-3">
         <span className="truncate font-semibold text-neutral-200">{item.name}</span>
         <div className="flex flex-shrink-0 items-center gap-1">
-          {item.extension.toLowerCase() === 'pdf' && nativePropertiesSupported && <Tooltip label={t.preview.openWithDefaultApp} placement="bottom"><button type="button" onClick={onOpenWithDefaultApp} aria-label={t.preview.openWithDefaultApp} className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300"><ExternalLink className="h-4 w-4" /></button></Tooltip>}
+          {!item.isFolder && item.extension.toLowerCase() === 'pdf' && nativePropertiesSupported && <Tooltip label={t.preview.openWithDefaultApp} placement="bottom"><button type="button" onClick={onOpenWithDefaultApp} aria-label={t.preview.openWithDefaultApp} className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300"><ExternalLink className="h-4 w-4" /></button></Tooltip>}
           {nativePropertiesSupported && <Tooltip label={t.preview.openWindowsProperties} placement="bottom"><button type="button" onClick={onOpenWindowsProperties} aria-label={t.preview.openWindowsProperties} className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300"><Info className="h-4 w-4" /></button></Tooltip>}
           <Tooltip label={t.preview.close} placement="bottom"><button type="button" onClick={onClose} aria-label={t.preview.close} className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"><X className="h-4 w-4" /></button></Tooltip>
         </div>
@@ -353,8 +362,12 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, onClose, nativeP
           {!propertiesCollapsed && (
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-3">
               <div className="rounded-lg border border-neutral-800/80 bg-neutral-900/50 p-2.5 font-mono text-[11px] space-y-1.5">
-                <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.fileSize}:</span><span className="text-right text-neutral-200">{formatFileSize(item.size)} ({item.size.toLocaleString()} bytes)</span></div>
-                <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.modified}:</span><span className="text-right text-neutral-200">{item.modifiedDate}</span></div>
+                {item.isFolder ? (
+                  <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.type}:</span><span className="text-right text-neutral-200">{t.preview.folder}</span></div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.fileSize}:</span><span className="text-right text-neutral-200">{formatFileSize(item.size)} ({item.size.toLocaleString()} bytes)</span></div>
+                )}
+                <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.modified}:</span><span className="text-right text-neutral-200">{item.modifiedDate || '----'}</span></div>
                 <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.attributes}:</span><span className="text-right text-neutral-200">{item.attributes || '----'}</span></div>
               </div>
 
