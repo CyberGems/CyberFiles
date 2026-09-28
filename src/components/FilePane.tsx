@@ -1544,7 +1544,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         <div
           ref={columnHeadersRef}
           className="mx-4 grid shrink-0 items-center gap-2 border-x border-b border-neutral-800 bg-neutral-950 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 select-none"
-          style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth + viewportScrollbarWidth}px`, gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
+          style={{ width: columnWidths.name === null ? 'calc(100% - 2rem)' : `${detailsRowWidth + viewportScrollbarWidth}px`, gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
           onContextMenu={openColumnMenu}
         >
           {visibleFileColumns.map(column => {
@@ -1746,15 +1746,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     }
                     if (column === 'size') {
                       const folderSize = folderSizeStates[item.id];
-                      return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder ? (
+                      return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400">{item.isFolder ? (
                         isTauriDesktop() ? (
                           !isRecycleBin && !item.recycleBinId ? <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip} placement="top">
-                            <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip}>
-                              {folderSize?.status === 'loading' ? <LoaderCircle className="h-3 w-3 animate-spin" /> : folderSize?.status === 'done' ? <><span>{formatFileSize(folderSize.size ?? 0)}</span><Calculator className="h-3 w-3 opacity-60" /></> : folderSize?.status === 'error' ? <span aria-hidden="true">!</span> : <><Calculator className="h-3 w-3" />{t.pane.folderSizeCalculate}</>}
+                            <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="flex w-full items-center justify-between gap-2 rounded px-1 py-0.5 text-left text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : folderSize?.status === 'limited' ? t.pane.folderSizeAutoLimitReached : t.pane.folderSizeTooltip}>
+                              <span data-file-column-content={column} className="min-w-0 truncate">{folderSize?.status === 'loading' ? '' : folderSize?.status === 'done' ? formatFileSize(folderSize.size ?? 0) : folderSize?.status === 'error' ? '!' : t.pane.folderSizeCalculate}</span>
+                              {folderSize?.status === 'loading' ? <LoaderCircle className="h-3 w-3 flex-shrink-0 animate-spin" /> : <Calculator className={`h-3 w-3 flex-shrink-0 ${folderSize?.status === 'done' ? 'opacity-60' : ''}`} />}
                             </button>
-                          </Tooltip> : '--'
-                        ) : '--'
-                      ) : formatFileSize(item.size)}</span></div>;
+                          </Tooltip> : <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">--</span>
+                        ) : <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">--</span>
+                      ) : <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{formatFileSize(item.size)}</span>}</div>;
                     }
                     if (column === 'created') {
                       const createdDate = item.createdDate || (item.createdAtMs ? formatLocalDateTime(item.createdAtMs) : '');
