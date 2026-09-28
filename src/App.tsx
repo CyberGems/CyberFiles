@@ -111,8 +111,6 @@ const QUICK_ACCESS_ORDER_KEY = 'cyberfiles_quick_access_order_v1';
 const QUICK_ACCESS_SORT_MODE_KEY = 'cyberfiles_quick_access_sort_mode_v1';
 const RECENT_FOLDER_PATHS_KEY = 'cyberfiles_recent_folder_paths_v1';
 const AUTO_FOLDER_SIZE_ENABLED_KEY = 'cyberfiles_auto_folder_size_enabled_v1';
-const AUTO_FOLDER_SIZE_LIMIT_KEY = 'cyberfiles_auto_folder_size_limit_v1';
-const AUTO_FOLDER_SIZE_LIMITS = [100, 300, 500, 1000, 2500, 5000];
 const MAX_CUSTOM_QUICK_ACCESS_ITEMS = 100;
 const MAX_TEXT_PREVIEW_BYTES = 200_000;
 const TOAST_DURATION_MS = 3200;
@@ -590,14 +588,8 @@ export default function App() {
   const [windowsSpecialFolders, setWindowsSpecialFolders] = useState<WindowsSpecialFolder[]>([]);
   const [dateFormat, setDateFormat] = useState<DateFormatMode>(readDateFormatPreference);
   const [autoFolderSizeEnabled, setAutoFolderSizeEnabled] = useState(() => readBooleanPreference(AUTO_FOLDER_SIZE_ENABLED_KEY, true));
-  const [autoFolderSizeMaxEntries, setAutoFolderSizeMaxEntries] = useState(() => {
-    try {
-      const saved = Number(window.localStorage.getItem(AUTO_FOLDER_SIZE_LIMIT_KEY));
-      return AUTO_FOLDER_SIZE_LIMITS.includes(saved) ? saved : 300;
-    } catch {
-      return 300;
-    }
-  });
+  const [isAdminMode, setIsAdminMode] = useState(false);
+  const [adminLaunchPending, setAdminLaunchPending] = useState(false);
   const [singleClickOpen, setSingleClickOpen] = useState(() => readBooleanPreference(SINGLE_CLICK_OPEN_KEY, false));
 
   // Global file system state
@@ -1539,11 +1531,10 @@ export default function App() {
   useEffect(() => {
     try {
       window.localStorage.setItem(AUTO_FOLDER_SIZE_ENABLED_KEY, String(autoFolderSizeEnabled));
-      window.localStorage.setItem(AUTO_FOLDER_SIZE_LIMIT_KEY, String(autoFolderSizeMaxEntries));
     } catch {
       // Keep the selected folder size behavior for the current session when storage is unavailable.
     }
-  }, [autoFolderSizeEnabled, autoFolderSizeMaxEntries]);
+  }, [autoFolderSizeEnabled]);
 
   useEffect(() => {
     try {
@@ -2053,6 +2044,22 @@ export default function App() {
   };
   const handleNavigateRef = useRef(handleNavigate);
   handleNavigateRef.current = handleNavigate;
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    let active = true;
+    void invoke<{ isAdminMode: boolean; startupPath?: string | null; startupPane?: string | null }>('admin_mode_context')
+      .then(context => {
+        if (!active) return;
+        setIsAdminMode(context.isAdminMode);
+        if (context.isAdminMode && context.startupPath) {
+          const pane = context.startupPane === 'right' ? 'right' : 'left';
+          setActivePane(pane);
+          void handleNavigateRef.current(context.startupPath, pane);
+        }
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
   const refreshSystemHomeRef = useRef(refreshSystemHome);
   refreshSystemHomeRef.current = refreshSystemHome;
 
@@ -3534,6 +3541,15 @@ export default function App() {
         currentFolderPath={currentTab.currentPath}
         oppositeFolderPath={inactiveTab.currentPath}
         windowsActionsAvailable={isTauriDesktop()}
+        isAdminMode={isAdminMode}
+        adminLaunchPending={adminLaunchPending}
+        onOpenAdminMode={() => {
+          if (adminLaunchPending || isAdminMode) return;
+          setAdminLaunchPending(true);
+          void invoke('launch_admin_mode', { path: currentTab.currentPath, pane: activePane })
+            .catch(error => showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))))
+            .finally(() => setAdminLaunchPending(false));
+        }}
         windowsSpecialFolders={windowsSpecialFolders}
         lastTerminalOption={lastTerminalOption}
         onLastTerminalOptionChange={setLastTerminalOption}
@@ -3641,7 +3657,6 @@ export default function App() {
                   autoFolderSizeEnabled={autoFolderSizeEnabled}
                   relativeGraphsEnabled={relativeGraphsEnabled}
                   dateFormat={dateFormat}
-                  autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
                   drives={drives}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
                   isLoadingDirectory={leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
@@ -3698,7 +3713,6 @@ export default function App() {
                   autoFolderSizeEnabled={autoFolderSizeEnabled}
                   relativeGraphsEnabled={relativeGraphsEnabled}
                   dateFormat={dateFormat}
-                  autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
                   drives={drives}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
                   isLoadingDirectory={rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
@@ -3756,7 +3770,6 @@ export default function App() {
                   autoFolderSizeEnabled={autoFolderSizeEnabled}
                   relativeGraphsEnabled={relativeGraphsEnabled}
                   dateFormat={dateFormat}
-                  autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
                   drives={drives}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
                   isLoadingDirectory={leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
@@ -3809,7 +3822,6 @@ export default function App() {
                   autoFolderSizeEnabled={autoFolderSizeEnabled}
                   relativeGraphsEnabled={relativeGraphsEnabled}
                   dateFormat={dateFormat}
-                  autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
                   drives={drives}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
                   isLoadingDirectory={rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
@@ -3867,7 +3879,6 @@ export default function App() {
                   autoFolderSizeEnabled={autoFolderSizeEnabled}
                   relativeGraphsEnabled={relativeGraphsEnabled}
                   dateFormat={dateFormat}
-                  autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
                   drives={drives}
                   hasMore={currentAtRecycleBin ? recycleBinPage.hasMore : (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.hasMore}
                   isLoadingDirectory={(activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.loading || (currentTab.currentPath === SYSTEM_HOME_PATH && systemHomeLoading) || (currentAtRecycleBin && recycleBinPage.loading)}
@@ -4161,8 +4172,6 @@ export default function App() {
             sessions={workspaceStore.sessions}
             autoFolderSizeEnabled={autoFolderSizeEnabled}
             onAutoFolderSizeEnabledChange={setAutoFolderSizeEnabled}
-            autoFolderSizeMaxEntries={autoFolderSizeMaxEntries}
-            onAutoFolderSizeMaxEntriesChange={setAutoFolderSizeMaxEntries}
             singleClickOpen={singleClickOpen}
             onSingleClickOpenChange={setSingleClickOpen}
             sidebarLocationsOpenInNewTab={sidebarLocationsOpenInNewTab}

@@ -1,15 +1,16 @@
-use base64::Engine;
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     fs,
     io::{self, Cursor, Read, Write},
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{Arc, Condvar, Mutex, OnceLock},
 };
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
-    Manager, PhysicalPosition, PhysicalSize,
+    Emitter, Manager, PhysicalPosition, PhysicalSize,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
@@ -78,6 +79,118 @@ struct GlobalShortcutStatus {
     enabled: bool,
     shortcut: String,
     registered: bool,
+}
+
+#[cfg(target_os = "windows")]
+fn current_process_is_elevated() -> bool {
+    use std::mem::size_of;
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, HANDLE},
+        Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY},
+        System::Threading::{GetCurrentProcess, OpenProcessToken},
+    };
+
+    unsafe {
+        let mut token: HANDLE = std::ptr::null_mut();
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+            return false;
+        }
+        let mut elevation = TOKEN_ELEVATION::default();
+        let mut returned_length = 0;
+        let success = GetTokenInformation(
+            token,
+            TokenElevation,
+            (&mut elevation as *mut TOKEN_ELEVATION).cast(),
+            size_of::<TOKEN_ELEVATION>() as u32,
+            &mut returned_length,
+        );
+        CloseHandle(token);
+        success != 0 && elevation.TokenIsElevated != 0
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn current_process_is_elevated() -> bool {
+    false
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdminModeContext {
+    is_admin_mode: bool,
+    startup_path: Option<String>,
+    startup_pane: Option<String>,
+}
+
+#[tauri::command]
+fn admin_mode_context() -> AdminModeContext {
+    let arguments: Vec<String> = std::env::args().collect();
+    let is_admin_mode = arguments.iter().any(|argument| argument == "--cyberfiles-admin-mode")
+        && current_process_is_elevated();
+    let startup_path = if is_admin_mode {
+        arguments
+            .windows(2)
+            .find(|pair| pair[0] == "--cyberfiles-admin-path")
+            .and_then(|pair| URL_SAFE_NO_PAD.decode(&pair[1]).ok())
+            .and_then(|bytes| String::from_utf8(bytes).ok())
+    } else {
+        None
+    };
+    let startup_pane = if is_admin_mode {
+        arguments
+            .windows(2)
+            .find(|pair| pair[0] == "--cyberfiles-admin-pane")
+            .map(|pair| pair[1].clone())
+            .filter(|pane| pane == "left" || pane == "right")
+    } else {
+        None
+    };
+    AdminModeContext { is_admin_mode, startup_path, startup_pane }
+}
+
+#[cfg(target_os = "windows")]
+fn launch_admin_instance(path: &str, pane: &str) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("Could not locate CyberFiles: {error}"))?;
+    let encoded_path = URL_SAFE_NO_PAD.encode(path.as_bytes());
+    let safe_pane = if pane == "right" { "right" } else { "left" };
+    let parameters = format!("--cyberfiles-admin-mode --cyberfiles-admin-path {encoded_path} --cyberfiles-admin-pane {safe_pane}");
+    let verb: Vec<u16> = "runas".encode_utf16().chain(Some(0)).collect();
+    let executable_wide: Vec<u16> = executable.as_os_str().encode_wide().chain(Some(0)).collect();
+    let parameters_wide: Vec<u16> = parameters.encode_utf16().chain(Some(0)).collect();
+    let result = unsafe {
+        ShellExecuteW(
+            None,
+            PCWSTR(verb.as_ptr()),
+            PCWSTR(executable_wide.as_ptr()),
+            PCWSTR(parameters_wide.as_ptr()),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    let result_code = result.0 as isize;
+    if result_code > 32 {
+        Ok(())
+    } else {
+        Err(format!("Windows could not start CyberFiles as administrator (ShellExecute error {result_code})."))
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn launch_admin_instance(_path: &str, _pane: &str) -> Result<(), String> {
+    Err("Administrator mode is available only in the Windows desktop app.".to_string())
+}
+
+#[tauri::command]
+async fn launch_admin_mode(path: String, pane: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || launch_admin_instance(&path, &pane))
+        .await
+        .map_err(|error| format!("Administrator launch worker failed: {error}"))?
 }
 
 #[tauri::command]
@@ -1595,6 +1708,162 @@ struct FolderSizeCalculation {
     size: u64,
     entries_scanned: usize,
     complete: bool,
+}
+
+#[derive(Default)]
+struct FolderSizeJobState {
+    paused: bool,
+    cancelled: bool,
+}
+
+struct FolderSizeJobControl {
+    state: Mutex<FolderSizeJobState>,
+    changed: Condvar,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FolderSizeJobResult {
+    job_id: String,
+    size: Option<u64>,
+    error: Option<String>,
+}
+
+static FOLDER_SIZE_JOBS: OnceLock<Mutex<HashMap<String, Arc<FolderSizeJobControl>>>> = OnceLock::new();
+
+fn folder_size_jobs() -> &'static Mutex<HashMap<String, Arc<FolderSizeJobControl>>> {
+    FOLDER_SIZE_JOBS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn find_folder_size_job(job_id: &str) -> Result<Option<Arc<FolderSizeJobControl>>, String> {
+    let jobs = folder_size_jobs()
+        .lock()
+        .map_err(|_| "Folder size job registry is unavailable.".to_string())?;
+    Ok(jobs.get(job_id).cloned())
+}
+
+fn calculate_directory_size_controlled(
+    root: &Path,
+    control: &FolderSizeJobControl,
+) -> Result<u64, String> {
+    let mut pending = vec![root.to_path_buf()];
+    let mut total = 0u64;
+    while let Some(directory) = pending.pop() {
+        let entries = fs::read_dir(&directory)
+            .map_err(|error| format!("Cannot read {}: {error}", display_path(&directory)))?;
+        for entry in entries {
+            let mut state = control
+                .state
+                .lock()
+                .map_err(|_| "Folder size calculation state is unavailable.".to_string())?;
+            while state.paused && !state.cancelled {
+                state = control
+                    .changed
+                    .wait(state)
+                    .map_err(|_| "Folder size calculation state is unavailable.".to_string())?;
+            }
+            if state.cancelled {
+                return Err("Folder size calculation cancelled.".to_string());
+            }
+            drop(state);
+
+            let entry = entry.map_err(|error| {
+                format!(
+                    "Cannot read an entry in {}: {error}",
+                    display_path(&directory)
+                )
+            })?;
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path)
+                .map_err(|error| format!("Cannot inspect {}: {error}", display_path(&path)))?;
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            if metadata.is_dir() {
+                pending.push(path);
+            } else if metadata.is_file() {
+                total = total
+                    .checked_add(metadata.len())
+                    .ok_or_else(|| "The folder size exceeds the supported range.".to_string())?;
+            }
+        }
+    }
+    Ok(total)
+}
+
+#[tauri::command]
+fn start_folder_size_calculation(app: tauri::AppHandle, path: String, job_id: String) -> Result<(), String> {
+    let root = fs::canonicalize(&path).map_err(|error| format!("Cannot access folder: {error}"))?;
+    if !root.is_dir() {
+        return Err("The selected location is not a folder.".to_string());
+    }
+
+    let control = Arc::new(FolderSizeJobControl {
+        state: Mutex::new(FolderSizeJobState::default()),
+        changed: Condvar::new(),
+    });
+    {
+        let mut jobs = folder_size_jobs()
+            .lock()
+            .map_err(|_| "Folder size job registry is unavailable.".to_string())?;
+        if jobs.contains_key(&job_id) {
+            return Err("A folder size calculation with this identifier already exists.".to_string());
+        }
+        jobs.insert(job_id.clone(), Arc::clone(&control));
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = calculate_directory_size_controlled(&root, &control);
+        if let Ok(mut jobs) = folder_size_jobs().lock() {
+            jobs.remove(&job_id);
+        }
+        let payload = match result {
+            Ok(size) => FolderSizeJobResult { job_id, size: Some(size), error: None },
+            Err(error) => FolderSizeJobResult { job_id, size: None, error: Some(error) },
+        };
+        let _ = app.emit("folder-size-calculation-finished", payload);
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn pause_folder_size_calculation(job_id: String) -> Result<(), String> {
+    let Some(control) = find_folder_size_job(&job_id)? else { return Ok(()); };
+    let mut state = control
+        .state
+        .lock()
+        .map_err(|_| "Folder size calculation state is unavailable.".to_string())?;
+    if !state.cancelled {
+        state.paused = true;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn resume_folder_size_calculation(job_id: String) -> Result<(), String> {
+    let Some(control) = find_folder_size_job(&job_id)? else { return Ok(()); };
+    let mut state = control
+        .state
+        .lock()
+        .map_err(|_| "Folder size calculation state is unavailable.".to_string())?;
+    if !state.cancelled {
+        state.paused = false;
+        control.changed.notify_all();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn cancel_folder_size_calculation(job_id: String) -> Result<(), String> {
+    let Some(control) = find_folder_size_job(&job_id)? else { return Ok(()); };
+    let mut state = control
+        .state
+        .lock()
+        .map_err(|_| "Folder size calculation state is unavailable.".to_string())?;
+    state.cancelled = true;
+    state.paused = false;
+    control.changed.notify_all();
+    Ok(())
 }
 
 fn calculate_directory_size(
@@ -3572,7 +3841,9 @@ fn main() {
         let preferences_path = startup_instance_preferences_path()
             .expect("Could not locate CyberFiles instance preferences");
         let preferences = load_instance_preferences(&preferences_path);
-        if preferences.allow_multiple_instances {
+        let launched_as_admin = std::env::args().any(|argument| argument == "--cyberfiles-admin-mode")
+            && current_process_is_elevated();
+        if preferences.allow_multiple_instances || launched_as_admin {
             None
         } else {
             let guard = acquire_single_instance_guard()
@@ -3728,12 +3999,18 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             runtime_info,
+            admin_mode_context,
+            launch_admin_mode,
             show_main_window,
             hide_main_window,
             quit_app,
             list_directory,
             calculate_folder_size,
             calculate_folder_size_bounded,
+            start_folder_size_calculation,
+            pause_folder_size_calculation,
+            resume_folder_size_calculation,
+            cancel_folder_size_calculation,
             read_text_preview,
             prepare_pdf_preview,
             create_directory,

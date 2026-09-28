@@ -37,7 +37,7 @@ interface TooltipPosition {
 
 const GAP = 8;
 const VIEWPORT_MARGIN = 8;
-const SHOW_DELAY_MS = 280;
+const SHOW_DELAY_MS = 550;
 
 export const TooltipPreferenceContext = createContext(true);
 

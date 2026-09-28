@@ -35,9 +35,18 @@ import {
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, QuickAccessItem, QuickAccessSortMode, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
-import type { RecycleBinStatus } from '../utils/nativeFileSystem';
+import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
+
+interface FolderTreeState {
+  folders: FileItem[];
+  hasMore: boolean;
+  nextOffset: number;
+  loading: boolean;
+  loaded: boolean;
+  error: boolean;
+}
 
 interface SidebarProps {
   drives: DriveInfo[];
@@ -125,6 +134,133 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [editingQuickAccessName, setEditingQuickAccessName] = useState('');
   const [draggingQuickAccessId, setDraggingQuickAccessId] = useState<string | null>(null);
   const [dragTargetQuickAccessId, setDragTargetQuickAccessId] = useState<string | null>(null);
+  const [expandedFolderPaths, setExpandedFolderPaths] = useState<Set<string>>(() => new Set());
+  const [folderTreeStates, setFolderTreeStates] = useState<Record<string, FolderTreeState>>({});
+
+  const loadFolderTreeChildren = async (path: string, offset = 0) => {
+    setFolderTreeStates(previous => {
+      const current = previous[path];
+      if (current?.loading) return previous;
+      return {
+        ...previous,
+        [path]: {
+          folders: current?.folders ?? [],
+          hasMore: current?.hasMore ?? false,
+          nextOffset: current?.nextOffset ?? 0,
+          loading: true,
+          loaded: current?.loaded ?? false,
+          error: false,
+        },
+      };
+    });
+    try {
+      const page = await listNativeDirectory(path, offset);
+      setFolderTreeStates(previous => {
+        const current = previous[path];
+        const folders = page.entries.filter(entry => entry.isFolder);
+        return {
+          ...previous,
+          [path]: {
+            folders: offset === 0 ? folders : [...(current?.folders ?? []), ...folders],
+            hasMore: page.hasMore,
+            nextOffset: page.nextOffset,
+            loading: false,
+            loaded: true,
+            error: false,
+          },
+        };
+      });
+    } catch {
+      setFolderTreeStates(previous => ({
+        ...previous,
+        [path]: {
+          folders: previous[path]?.folders ?? [],
+          hasMore: false,
+          nextOffset: previous[path]?.nextOffset ?? 0,
+          loading: false,
+          loaded: previous[path]?.loaded ?? false,
+          error: true,
+        },
+      }));
+    }
+  };
+
+  const toggleFolderTreePath = (path: string) => {
+    const willExpand = !expandedFolderPaths.has(path);
+    setExpandedFolderPaths(previous => {
+      const next = new Set(previous);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+    const state = folderTreeStates[path];
+    if (willExpand && !state?.loaded && !state?.loading) void loadFolderTreeChildren(path);
+  };
+
+  const renderFolderTreeChildren = (path: string, depth: number): React.ReactNode => {
+    const state = folderTreeStates[path];
+    if (!state) return null;
+    return (
+      <div className="space-y-0.5">
+        {state.loading && state.folders.length === 0 && (
+          <div className="px-2 py-1 text-[10px] text-neutral-500">{t.sidebar.loadingFolderTree}</div>
+        )}
+        {state.error && state.folders.length === 0 && (
+          <div className="px-2 py-1 text-[10px] text-rose-300">{t.sidebar.folderTreeFailed}</div>
+        )}
+        {state.loaded && state.folders.length === 0 && !state.error && (
+          <div className="px-2 py-1 text-[10px] text-neutral-500">{t.sidebar.noSubfolders}</div>
+        )}
+        {state.folders.map(folder => {
+          const childExpanded = expandedFolderPaths.has(folder.path);
+          const childState = folderTreeStates[folder.path];
+          return (
+            <div key={folder.path}>
+              <div className="flex min-w-0 items-center gap-0.5" style={{ paddingLeft: String(Math.min(depth, 12) * 10) + 'px' }}>
+                <Tooltip label={(childExpanded ? t.sidebar.collapseFolderTree : t.sidebar.expandFolderTree).replace('{name}', folder.name)} placement="right">
+                  <button
+                    type="button"
+                    aria-label={(childExpanded ? t.sidebar.collapseFolderTree : t.sidebar.expandFolderTree).replace('{name}', folder.name)}
+                    aria-expanded={childExpanded}
+                    onClick={() => toggleFolderTreePath(folder.path)}
+                    className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-neutral-500 hover:bg-neutral-800 hover:text-cyan-200"
+                  >
+                    {childExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                  </button>
+                </Tooltip>
+                <Tooltip label={t.sidebar.openTreeFolder.replace('{name}', folder.name)} placement="right">
+                  <button
+                    type="button"
+                    onClick={() => onNavigate(folder.path)}
+                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-1 text-left text-[10px] text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100"
+                  >
+                    <FolderOpen className="h-3 w-3 flex-shrink-0 text-amber-300" />
+                    <span className="truncate">{folder.name}</span>
+                  </button>
+                </Tooltip>
+              </div>
+              {childExpanded && renderFolderTreeChildren(folder.path, depth + 1)}
+              {childExpanded && childState?.loading && childState.folders.length > 0 && (
+                <div className="py-0.5 text-[9px] text-neutral-500" style={{ paddingLeft: String(Math.min(depth + 1, 12) * 10 + 20) + 'px' }}>{t.sidebar.loadingFolderTree}</div>
+              )}
+            </div>
+          );
+        })}
+        {state.hasMore && (
+          <Tooltip label={t.sidebar.loadNextFolderPage} placement="right">
+            <button
+              type="button"
+              disabled={state.loading}
+              onClick={() => void loadFolderTreeChildren(path, state.nextOffset)}
+              className="ml-5 rounded px-1.5 py-0.5 text-left text-[9px] text-cyan-300 hover:bg-neutral-900 disabled:opacity-50"
+            >
+              {state.loading ? t.sidebar.loadingFolderTree : t.sidebar.loadMoreFolders}
+            </button>
+          </Tooltip>
+        )}
+      </div>
+    );
+  };
   const [collapsedSections, setCollapsedSections] = useState(() => {
     try {
       const saved = JSON.parse(window.localStorage.getItem('cyberfiles_sidebar_collapsed_sections_v1') || 'null');
@@ -598,9 +734,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     );
                   }
 
+                  const canExpandTree = isTauriDesktop() && item.path !== SYSTEM_HOME_PATH;
+                  const treeExpanded = expandedFolderPaths.has(item.path);
+
                   return (
+                    <React.Fragment key={item.id}>
                     <div
-                      key={item.id}
                       className={"group flex min-w-0 items-center gap-0.5 rounded " + (dragTargetQuickAccessId === item.id ? "ring-1 ring-cyan-500/60 bg-cyan-950/20 " : "") + (draggingQuickAccessId === item.id ? "opacity-50" : "")}
                       onDragOver={event => {
                         if (quickAccessSortMode !== 'manual') return;
@@ -641,6 +780,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             className="flex-shrink-0 cursor-grab rounded p-0.5 text-neutral-600 transition-colors hover:text-neutral-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70 active:cursor-grabbing"
                           >
                             <GripVertical className="h-3.5 w-3.5" />
+                          </button>
+                        </Tooltip>
+                      )}
+                      {canExpandTree && (
+                        <Tooltip label={(treeExpanded ? t.sidebar.collapseFolderTree : t.sidebar.expandFolderTree).replace('{name}', item.name)} placement="right">
+                          <button
+                            type="button"
+                            aria-label={(treeExpanded ? t.sidebar.collapseFolderTree : t.sidebar.expandFolderTree).replace('{name}', item.name)}
+                            aria-expanded={treeExpanded}
+                            onClick={() => toggleFolderTreePath(item.path)}
+                            className="flex h-6 w-5 flex-shrink-0 items-center justify-center rounded text-neutral-500 hover:bg-neutral-800 hover:text-cyan-200"
+                          >
+                            {treeExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                           </button>
                         </Tooltip>
                       )}
@@ -694,6 +846,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         </div>
                       )}
                     </div>
+                    {treeExpanded && (
+                      <div className="pb-1" style={{ paddingLeft: quickAccessSortMode === 'manual' ? '1.75rem' : '0.25rem' }}>
+                        {renderFolderTreeChildren(item.path, 1)}
+                      </div>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </div>}
