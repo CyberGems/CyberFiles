@@ -100,7 +100,7 @@ export interface NativeOperationResult {
   failures: Array<{ path: string; error: string }>;
 }
 
-export interface NativeCopyProgress {
+export interface NativeTransferProgress {
   jobId: string;
   phase: 'scanning' | 'copying';
   currentItem: string;
@@ -112,7 +112,7 @@ export interface NativeCopyProgress {
   totalItems: number;
 }
 
-export interface NativeCopyFinished {
+export interface NativeTransferFinished {
   jobId: string;
   result: NativeOperationResult;
 }
@@ -254,24 +254,21 @@ export async function renameNativeItem(path: string, newName: string): Promise<s
   return invoke<string>('rename_item', { path, newName });
 }
 
-export async function startNativeCopyOperation(paths: string[], targetPath: string, jobId: string): Promise<void> {
+export async function startNativeTransferOperation(paths: string[], targetPath: string, jobId: string, moveItems: boolean): Promise<void> {
+  if (moveItems) return invoke<void>('start_move_operation', { paths, targetPath, jobId });
   return invoke<void>('start_copy_operation', { paths, targetPath, jobId });
 }
 
-export async function pauseNativeCopyOperation(jobId: string): Promise<void> {
-  return invoke<void>('pause_copy_operation', { jobId });
+export async function pauseNativeTransferOperation(jobId: string): Promise<void> {
+  return invoke<void>('pause_transfer_operation', { jobId });
 }
 
-export async function resumeNativeCopyOperation(jobId: string): Promise<void> {
-  return invoke<void>('resume_copy_operation', { jobId });
+export async function resumeNativeTransferOperation(jobId: string): Promise<void> {
+  return invoke<void>('resume_transfer_operation', { jobId });
 }
 
-export async function cancelNativeCopyOperation(jobId: string): Promise<void> {
-  return invoke<void>('cancel_copy_operation', { jobId });
-}
-
-export async function moveNativeItemsToDirectory(paths: string[], targetPath: string): Promise<NativeOperationResult> {
-  return invoke<NativeOperationResult>('move_items_to_directory', { paths, targetPath });
+export async function cancelNativeTransferOperation(jobId: string): Promise<void> {
+  return invoke<void>('cancel_transfer_operation', { jobId });
 }
 
 export async function setNativeFileClipboard(paths: string[], isCut: boolean): Promise<number> {

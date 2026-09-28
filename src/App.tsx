@@ -49,7 +49,7 @@ import { TextInputContextMenu } from './components/TextInputContextMenu';
 import { TooltipPreferenceContext } from './components/Tooltip';
 import { WorkspaceManagerModal } from './components/WorkspaceManagerModal';
 import { UnsavedWorkspaceChangesModal, type WorkspaceChangesSaveNames } from './components/UnsavedWorkspaceChangesModal';
-import { FileOperationModal, type CopyOperationView } from './components/FileOperationModal';
+import { FileOperationModal, type TransferOperationView } from './components/FileOperationModal';
 
 
 import { useLanguage } from './locales/LanguageContext';
@@ -75,7 +75,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeCopyOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToDirectory, moveNativeItemsToRecycleBin, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeCopyOperation, pauseNativeCopyOperation, resumeNativeCopyOperation, type NativeCopyProgress, type NativeCopyFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
@@ -871,9 +871,10 @@ export default function App() {
   });
   const [pendingDeleteItems, setPendingDeleteItems] = useState<FileItem[]>([]);
   const [isFileOperationBusy, setIsFileOperationBusy] = useState(false);
-  const [copyOperation, setCopyOperation] = useState<CopyOperationView | null>(null);
-  const copyOperationRef = useRef<CopyOperationView | null>(null);
-  copyOperationRef.current = copyOperation;
+  const [transferOperations, setTransferOperations] = useState<TransferOperationView[]>([]);
+  const transferOperationsRef = useRef<TransferOperationView[]>([]);
+  const activeTransferIdRef = useRef<string | null>(null);
+  const [transferEventsReady, setTransferEventsReady] = useState(!isTauriDesktop());
   const [renameRequest, setRenameRequest] = useState<{ requestId: number; itemId: string; paneId: 'left' | 'right' } | null>(null);
   const renameRequestSequence = useRef(0);
   const [isEmptyRecycleBinConfirmOpen, setIsEmptyRecycleBinConfirmOpen] = useState(false);
@@ -966,6 +967,10 @@ export default function App() {
   }, [t.settings.instancePreferencesDesktopOnly, t.settings.instancePreferencesSaveError]);
 
   const runCloseAction = useCallback(async (choice: 'hide' | 'quit', remember = rememberCloseChoice) => {
+    if (choice === 'quit' && transferOperationsRef.current.some(operation => ['queued', 'running', 'paused', 'cancelling'].includes(operation.status))) {
+      showToast(language === 'es' ? 'Espera a que terminen las transferencias antes de salir.' : 'Wait for transfers to finish before quitting.');
+      return;
+    }
     if (closeActionInProgress.current) return;
     closeActionInProgress.current = true;
     setIsCloseActionBusy(true);
@@ -999,7 +1004,7 @@ export default function App() {
       setIsCloseDialogOpen(true);
       showToast(t.closeWindow.closeFailed);
     }
-  }, [rememberCloseChoice, showToast, t.closeWindow.closeFailed]);
+  }, [language, rememberCloseChoice, showToast, t.closeWindow.closeFailed]);
 
   const cancelCloseDialog = useCallback(() => {
     if (closeActionInProgress.current) return;
@@ -2420,57 +2425,150 @@ export default function App() {
 
   const createOperationId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
+  const updateTransferOperation = useCallback((jobId: string, update: (operation: TransferOperationView) => TransferOperationView) => {
+    const current = transferOperationsRef.current;
+    const index = current.findIndex(operation => operation.jobId === jobId);
+    if (index < 0) return;
+    const next = current.slice();
+    next[index] = update(current[index]);
+    transferOperationsRef.current = next;
+    setTransferOperations(next);
+  }, []);
+
+  const clearTransferHistory = useCallback(() => {
+    const next = transferOperationsRef.current.filter(operation => ['queued', 'running', 'paused', 'cancelling'].includes(operation.status));
+    transferOperationsRef.current = next;
+    setTransferOperations(next);
+  }, []);
+
+  const transferCompletionActionsRef = useRef({ refreshChangedDirectories, updatePaneTab, showToast, t, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex });
+  transferCompletionActionsRef.current = { refreshChangedDirectories, updatePaneTab, showToast, t, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex };
+
   useEffect(() => {
-    if (!isTauriDesktop()) return;
+    if (!isTauriDesktop()) {
+      setTransferEventsReady(true);
+      return;
+    }
     let cancelled = false;
     let unlistenProgress: (() => void) | undefined;
     let unlistenFinished: (() => void) | undefined;
-    void listen<NativeCopyProgress>('copy-operation-progress', event => {
-      setCopyOperation(previous => previous?.jobId === event.payload.jobId
-        ? { ...previous, ...event.payload }
-        : previous);
-    }).then(stop => {
-      if (cancelled) stop();
-      else unlistenProgress = stop;
-    });
-    void listen<NativeCopyFinished>('copy-operation-finished', event => {
-      const active = copyOperationRef.current;
-      if (!active || active.jobId !== event.payload.jobId) return;
-      copyOperationRef.current = null;
-      setCopyOperation(null);
-      setIsFileOperationBusy(false);
-      const result = event.payload.result;
-      void (async () => {
-        await refreshChangedDirectories([active.targetPath]);
-        if (active.selectionPane && result.completedPaths.length > 0) {
-          const pastedIds = result.completedPaths.map(path => 'native-' + encodeURIComponent(path.toLowerCase()));
-          updatePaneTab(active.selectionPane, tab => ({ ...tab, selectedIds: pastedIds, focusedId: pastedIds[0] }));
-        }
-        if (result.failures.length > 0) {
-          showToast(t.core.operationPartial
-            .replace('{completed}', String(result.completedPaths.length))
-            .replace('{failed}', String(result.failures.length))
-            .replace('{reason}', result.failures[0].error));
-        } else if (result.completedPaths.length > 0) {
-          showToast(t.core.copied.replace('{count}', String(result.completedPaths.length)).replace('{target}', active.targetPath));
-        }
-      })();
-    }).then(stop => {
-      if (cancelled) stop();
-      else unlistenFinished = stop;
+    const setupListeners = async () => {
+      const [stopProgress, stopFinished] = await Promise.all([
+        listen<NativeTransferProgress>('transfer-operation-progress', event => {
+          updateTransferOperation(event.payload.jobId, operation => ({ ...operation, ...event.payload }));
+        }),
+        listen<NativeTransferFinished>('transfer-operation-finished', event => {
+          const operation = transferOperationsRef.current.find(item => item.jobId === event.payload.jobId);
+          if (!operation) return;
+          void (async () => {
+            const actions = transferCompletionActionsRef.current;
+            const result = event.payload.result;
+            const changedDirectories = [operation.targetPath];
+            if (operation.kind === 'move') changedDirectories.push(...operation.sourcePaths.map(getParentPath));
+            try {
+              await actions.refreshChangedDirectories(changedDirectories);
+            } catch (error) {
+              actions.showToast(actions.t.core.operationFailedWithReason.replace('{reason}', String(error)));
+            }
+            if (result.completedPaths.length > 0 && operation.selectionPane) {
+              const paneTabs = operation.selectionPane === 'left' ? actions.leftTabs : actions.rightTabs;
+              const activeIndex = operation.selectionPane === 'left' ? actions.activeLeftTabIndex : actions.activeRightTabIndex;
+              if (getPathKey(paneTabs[activeIndex]?.currentPath || '') === getPathKey(operation.targetPath)) {
+                const pastedIds = result.completedPaths.map(path => 'native-' + encodeURIComponent(path.toLowerCase()));
+                actions.updatePaneTab(operation.selectionPane, tab => ({ ...tab, selectedIds: pastedIds, focusedId: pastedIds[0] }));
+              }
+            } else if (operation.kind === 'move' && operation.sourcePane && !operation.clipboardSequence) {
+              const paneTabs = operation.sourcePane === 'left' ? actions.leftTabs : actions.rightTabs;
+              const activeIndex = operation.sourcePane === 'left' ? actions.activeLeftTabIndex : actions.activeRightTabIndex;
+              const sourceParent = operation.sourcePaths[0] ? getParentPath(operation.sourcePaths[0]) : '';
+              if (getPathKey(paneTabs[activeIndex]?.currentPath || '') === getPathKey(sourceParent)) {
+                actions.updatePaneTab(operation.sourcePane, tab => ({ ...tab, selectedIds: [], focusedId: null }));
+              }
+            }
+            if (operation.clipboardSequence && result.completedPaths.length > 0 && result.failures.length === 0) {
+              try {
+                await clearNativeFileClipboard(operation.clipboardSequence);
+              } catch (error) {
+                actions.showToast(actions.t.core.operationFailedWithReason.replace('{reason}', String(error)));
+              }
+            }
+            const wasCancelled = result.failures.some(failure => failure.error.toLowerCase().includes('cancelled'));
+            const status = wasCancelled ? 'cancelled' : result.failures.length > 0 ? 'failed' : 'completed';
+            if (result.failures.length > 0) {
+              actions.showToast(actions.t.core.operationPartial
+                .replace('{completed}', String(result.completedPaths.length))
+                .replace('{failed}', String(result.failures.length))
+                .replace('{reason}', result.failures[0].error));
+            } else if (result.completedPaths.length > 0) {
+              if (operation.kind === 'copy') {
+                actions.showToast(actions.t.core.copied.replace('{count}', String(result.completedPaths.length)).replace('{target}', operation.targetPath));
+              } else if (operation.clipboardSequence) {
+                actions.showToast(actions.t.core.pasted.replace('{count}', String(result.completedPaths.length)));
+              } else {
+                actions.showToast(actions.t.core.moved.replace('{count}', String(result.completedPaths.length)).replace('{target}', operation.targetPath));
+              }
+            }
+            updateTransferOperation(operation.jobId, current => ({ ...current, status, error: result.failures[0]?.error }));
+            if (activeTransferIdRef.current === operation.jobId) activeTransferIdRef.current = null;
+          })();
+        }),
+      ]);
+      if (cancelled) {
+        stopProgress();
+        stopFinished();
+      } else {
+        unlistenProgress = stopProgress;
+        unlistenFinished = stopFinished;
+        setTransferEventsReady(true);
+      }
+    };
+    void setupListeners().catch(error => {
+      const actions = transferCompletionActionsRef.current;
+      actions.showToast(actions.t.core.operationFailedWithReason.replace('{reason}', String(error)));
     });
     return () => {
       cancelled = true;
       unlistenProgress?.();
       unlistenFinished?.();
     };
-  }, [refreshChangedDirectories, showToast, t.core.copied, t.core.operationPartial, updatePaneTab]);
+  }, [updateTransferOperation]);
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void listen('tray-quit-requested', () => {
+      void (async () => {
+        try {
+          const hasPendingTransfers = transferOperationsRef.current.some(operation => ['queued', 'running', 'paused', 'cancelling'].includes(operation.status));
+          if (hasPendingTransfers) {
+            const window = getCurrentWindow();
+            await window.show();
+            await window.setFocus();
+            showToast(language === 'es'
+              ? 'Hay transferencias pendientes. Minimiza CyberFiles para dejarlas terminar.'
+              : 'Transfers are still pending. Minimize CyberFiles to let them finish.');
+            return;
+          }
+          await invoke('quit_app');
+        } catch (error) {
+          showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
+        }
+      })();
+    }).then(stop => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [language, showToast, t.core.operationFailedWithReason]);
 
-  const startCopyWithProgress = useCallback(async (paths: string[], targetPath: string, selectionPane?: 'left' | 'right') => {
+  const queueNativeTransfer = useCallback((kind: 'copy' | 'move', paths: string[], targetPath: string, options: { sourcePane?: 'left' | 'right'; selectionPane?: 'left' | 'right'; clipboardSequence?: number } = {}) => {
     if (paths.length === 0) return;
-    const jobId = createOperationId('copy');
-    const operation: CopyOperationView = {
-      jobId,
+    const operation: TransferOperationView = {
+      jobId: createOperationId(kind),
+      kind,
       phase: 'scanning',
       currentItem: '',
       bytesCopied: 0,
@@ -2481,63 +2579,64 @@ export default function App() {
       totalItems: 0,
       sourcePaths: paths,
       targetPath,
-      isPaused: false,
-      isCancelling: false,
-      startedAt: Date.now(),
-      selectionPane,
+      status: 'queued',
+      startedAt: null,
+      sourcePane: options.sourcePane,
+      selectionPane: options.selectionPane,
+      clipboardSequence: options.clipboardSequence,
     };
-    copyOperationRef.current = operation;
-    setCopyOperation(operation);
-    setIsFileOperationBusy(true);
+    const next = [...transferOperationsRef.current, operation];
+    transferOperationsRef.current = next;
+    setTransferOperations(next);
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriDesktop() || !transferEventsReady || activeTransferIdRef.current) return;
+    const nextOperation = transferOperationsRef.current.find(operation => operation.status === 'queued');
+    if (!nextOperation) return;
+    activeTransferIdRef.current = nextOperation.jobId;
+    updateTransferOperation(nextOperation.jobId, operation => ({ ...operation, status: 'running', startedAt: Date.now() }));
+    void startNativeTransferOperation(nextOperation.sourcePaths, nextOperation.targetPath, nextOperation.jobId, nextOperation.kind === 'move')
+      .catch(error => {
+        const reason = String(error);
+        updateTransferOperation(nextOperation.jobId, operation => ({ ...operation, status: 'failed', error: reason }));
+        if (activeTransferIdRef.current === nextOperation.jobId) activeTransferIdRef.current = null;
+        showToast(t.core.operationFailedWithReason.replace('{reason}', reason));
+      });
+  }, [showToast, t.core.operationFailedWithReason, transferEventsReady, transferOperations, updateTransferOperation]);
+
+  const toggleTransferPause = useCallback(async (jobId: string) => {
+    const operation = transferOperationsRef.current.find(item => item.jobId === jobId);
+    if (!operation || !['running', 'paused'].includes(operation.status)) return;
+    const wasPaused = operation.status === 'paused';
+    updateTransferOperation(jobId, current => ({ ...current, status: wasPaused ? 'running' : 'paused' }));
     try {
-      await startNativeCopyOperation(paths, targetPath, jobId);
+      await (wasPaused ? resumeNativeTransferOperation(jobId) : pauseNativeTransferOperation(jobId));
     } catch (error) {
-      copyOperationRef.current = null;
-      setCopyOperation(null);
-      setIsFileOperationBusy(false);
+      updateTransferOperation(jobId, current => ({ ...current, status: wasPaused ? 'paused' : 'running' }));
       showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
     }
-  }, [showToast, t.core.operationFailedWithReason]);
+  }, [showToast, t.core.operationFailedWithReason, updateTransferOperation]);
 
-  const toggleCopyPause = async () => {
-    const operation = copyOperationRef.current;
-    if (!operation || operation.isCancelling) return;
-    const paused = !operation.isPaused;
-    const next = { ...operation, isPaused: paused };
-    copyOperationRef.current = next;
-    setCopyOperation(next);
+  const cancelTransfer = useCallback(async (jobId: string) => {
+    const operation = transferOperationsRef.current.find(item => item.jobId === jobId);
+    if (!operation || ['cancelling', 'cancelled', 'completed', 'failed'].includes(operation.status)) return;
+    if (operation.status === 'queued') {
+      updateTransferOperation(jobId, current => ({ ...current, status: 'cancelled' }));
+      return;
+    }
+    updateTransferOperation(jobId, current => ({ ...current, status: 'cancelling' }));
     try {
-      await (paused ? pauseNativeCopyOperation(operation.jobId) : resumeNativeCopyOperation(operation.jobId));
+      await cancelNativeTransferOperation(jobId);
     } catch (error) {
-      const current = copyOperationRef.current;
-      if (current?.jobId === operation.jobId) {
-        const restored = { ...current, isPaused: !paused };
-        copyOperationRef.current = restored;
-        setCopyOperation(restored);
-      }
+      updateTransferOperation(jobId, current => ({ ...current, status: operation.status }));
       showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
     }
-  };
+  }, [showToast, t.core.operationFailedWithReason, updateTransferOperation]);
 
-  const cancelCopy = async () => {
-    const operation = copyOperationRef.current;
-    if (!operation || operation.isCancelling) return;
-    const cancelling = { ...operation, isCancelling: true };
-    copyOperationRef.current = cancelling;
-    setCopyOperation(cancelling);
-    try {
-      await cancelNativeCopyOperation(operation.jobId);
-    } catch (error) {
-      const current = copyOperationRef.current;
-      if (current?.jobId === operation.jobId) {
-        const restored = { ...current, isCancelling: false };
-        copyOperationRef.current = restored;
-        setCopyOperation(restored);
-      }
-      showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
-    }
-  };
-
+  const startCopyWithProgress = useCallback((paths: string[], targetPath: string, selectionPane?: 'left' | 'right') => {
+    queueNativeTransfer('copy', paths, targetPath, { selectionPane });
+  }, [queueNativeTransfer]);
   const moveItemsToPath = useCallback(async (selectedIds: string[], targetPath: string, sourcePane: 'left' | 'right' = activePane) => {
     if (targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH) {
       showToast(t.pane.chooseRealDestinationFolder);
@@ -2552,29 +2651,9 @@ export default function App() {
     }
 
     if (isTauriDesktop()) {
-      if (isFileOperationBusy) return;
-      setIsFileOperationBusy(true);
-      try {
-        const result = await moveNativeItemsToDirectory(roots.map(root => root.path), targetPath);
-        await refreshChangedDirectories([...roots.map(root => getParentPath(root.path)), targetPath]);
-        updatePaneTab(sourcePane, tab => ({ ...tab, selectedIds: [], focusedId: null }));
-        if (result.failures.length > 0) {
-          const message = t.core.operationPartial
-            .replace('{completed}', String(result.completedPaths.length))
-            .replace('{failed}', String(result.failures.length))
-            .replace('{reason}', result.failures[0].error);
-          showToast(message);
-        } else if (result.completedPaths.length > 0) {
-          showToast(t.core.moved.replace('{count}', String(result.completedPaths.length)).replace('{target}', targetPath));
-        }
-      } catch (error) {
-        showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
-      } finally {
-        setIsFileOperationBusy(false);
-      }
+      queueNativeTransfer('move', roots.map(root => root.path), targetPath, { sourcePane });
       return;
     }
-
     const movingIds = new Set(roots.map(root => root.id));
     const siblingNames = new Set(
       getChildItems(allFiles, targetPath)
@@ -2604,7 +2683,7 @@ export default function App() {
 
     updatePaneTab(sourcePane, tab => ({ ...tab, selectedIds: [], focusedId: null }));
     showToast(t.core.moved.replace('{count}', String(roots.length)).replace('{target}', targetPath));
-  }, [activePane, allFiles, isFileOperationBusy, refreshChangedDirectories, t.core.cannotMoveIntoSelf, t.core.moved, t.core.operationFailedWithReason, t.core.operationPartial, t.pane.chooseRealDestinationFolder, showToast, updatePaneTab]);
+  }, [activePane, allFiles, queueNativeTransfer, t.core.cannotMoveIntoSelf, t.core.moved, t.pane.chooseRealDestinationFolder, showToast, updatePaneTab]);
 
   const handleCopySelected = useCallback(() => {
     const roots = getRootItems(allFiles, currentTab.selectedIds);
@@ -2620,8 +2699,7 @@ export default function App() {
     }
 
     if (isTauriDesktop()) {
-      if (isFileOperationBusy) return;
-      void startCopyWithProgress(roots.map(root => root.path), targetPath);
+      startCopyWithProgress(roots.map(root => root.path), targetPath);
       return;
     }
 
@@ -2643,7 +2721,7 @@ export default function App() {
 
     setAllFiles(prev => [...prev, ...newCopies]);
     showToast(t.core.copied.replace('{count}', String(roots.length)).replace('{target}', inactiveTab.title));
-  }, [allFiles, currentTab.selectedIds, inactiveTab.currentPath, inactiveTab.title, isFileOperationBusy, refreshChangedDirectories, t.core.cannotCopyIntoSelf, t.core.copied, t.core.operationFailedWithReason, t.core.operationPartial, t.pane.chooseRealDestinationFolder, showToast, startCopyWithProgress]);
+  }, [allFiles, currentTab.selectedIds, inactiveTab.currentPath, inactiveTab.title, t.core.cannotCopyIntoSelf, t.core.copied, t.pane.chooseRealDestinationFolder, showToast, startCopyWithProgress]);
 
   const handleMoveSelected = useCallback(() => {
     moveItemsToPath(currentTab.selectedIds, inactiveTab.currentPath);
@@ -2683,11 +2761,18 @@ export default function App() {
       showToast(t.pane.chooseRealFolderFirst);
       return;
     }
-    setIsFileOperationBusy(true);
-    let copyStarted = false;
     try {
       const clipboard = await getNativeFileClipboard();
-      if (clipboard.paths.length === 0) {
+      if (clipboard.paths.length > 0) {
+        if (clipboard.isCut) {
+          queueNativeTransfer('move', clipboard.paths, targetPath, { selectionPane: pane, clipboardSequence: clipboard.sequenceNumber });
+        } else {
+          queueNativeTransfer('copy', clipboard.paths, targetPath, { selectionPane: pane });
+        }
+        return;
+      }
+      setIsFileOperationBusy(true);
+      try {
         const pastedImage = await pasteNativeClipboardImage(targetPath, t.core.clipboardImageFileBaseName);
         if (!pastedImage) {
           showToast(t.core.fileClipboardEmpty);
@@ -2716,40 +2801,13 @@ export default function App() {
         ]);
         updatePaneTab(pane, tab => ({ ...tab, selectedIds: [imageId], focusedId: imageId }));
         showToast(t.core.pastedImage.replace('{name}', pastedImage.name));
-        return;
-      }
-      if (!clipboard.isCut) {
-        copyStarted = true;
-        void startCopyWithProgress(clipboard.paths, targetPath, pane);
-        return;
-      }
-      const result = await moveNativeItemsToDirectory(clipboard.paths, targetPath);
-      await refreshChangedDirectories([
-        ...clipboard.paths.map(getParentPath),
-        targetPath,
-      ]);
-      if (result.completedPaths.length > 0) {
-        const pastedIds = result.completedPaths.map(path => `native-${encodeURIComponent(path.toLowerCase())}`);
-        updatePaneTab(pane, tab => ({ ...tab, selectedIds: pastedIds, focusedId: pastedIds[0] }));
-      }
-      if (result.completedPaths.length > 0 && result.failures.length === 0) {
-        await clearNativeFileClipboard(clipboard.sequenceNumber);
-      }
-      if (result.failures.length > 0) {
-        showToast(t.core.operationPartial
-          .replace('{completed}', String(result.completedPaths.length))
-          .replace('{failed}', String(result.failures.length))
-          .replace('{reason}', result.failures[0].error));
-      } else if (result.completedPaths.length > 0) {
-        showToast(t.core.pasted.replace('{count}', String(result.completedPaths.length)));
+      } finally {
+        setIsFileOperationBusy(false);
       }
     } catch (error) {
       showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
-    } finally {
-      if (!copyStarted) setIsFileOperationBusy(false);
     }
-  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, refreshChangedDirectories, rightTabs, showToast, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.operationPartial, t.core.pasted, t.core.pastedImage, t.core.clipboardImageFileBaseName, t.pane.chooseRealFolderFirst, updatePaneTab, startCopyWithProgress]);
-
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, queueNativeTransfer, refreshChangedDirectories, rightTabs, showToast, t.core.clipboardImageFileBaseName, t.core.desktopFileOperationsOnly, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.pastedImage, t.pane.chooseRealFolderFirst, updatePaneTab]);
   const handleDropFiles = useCallback((droppedIds: string[], targetFolderPath?: string, sourcePane?: 'left' | 'right') => {
     moveItemsToPath(droppedIds, targetFolderPath || currentTab.currentPath, sourcePane);
   }, [currentTab.currentPath, moveItemsToPath]);
@@ -4101,7 +4159,7 @@ export default function App() {
           }}
         />
       )}
-      <FileOperationModal operation={copyOperation} language={language} onTogglePause={() => { void toggleCopyPause(); }} onCancel={() => { void cancelCopy(); }} />
+      <FileOperationModal operations={transferOperations} language={language} onTogglePause={jobId => { void toggleTransferPause(jobId); }} onCancel={jobId => { void cancelTransfer(jobId); }} onClearHistory={clearTransferHistory} />
       <TextInputContextMenu />
 
       <WorkspaceManagerModal

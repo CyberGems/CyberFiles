@@ -118,11 +118,15 @@ fn hide_main_window(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Resu
 }
 
 #[tauri::command]
-fn quit_app(window: tauri::WebviewWindow, app: tauri::AppHandle) {
+fn quit_app(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+    if has_active_transfer_jobs() {
+        return Err("File transfers are still running.".to_string());
+    }
     if let Ok(path) = window_state_path(&app) {
         let _ = save_window_state(&window, &path);
     }
     app.exit(0);
+    Ok(())
 }
 
 fn global_shortcut_config_path<R: tauri::Runtime, M: Manager<R>>(
@@ -430,7 +434,7 @@ struct NativeOperationResult {
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct CopyOperationProgress {
+struct TransferOperationProgress {
     job_id: String,
     phase: String,
     current_item: String,
@@ -444,46 +448,50 @@ struct CopyOperationProgress {
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct CopyOperationFinished {
+struct TransferOperationFinished {
     job_id: String,
     result: NativeOperationResult,
 }
 
 #[derive(Default)]
-struct CopyJobState {
+struct TransferJobState {
     paused: bool,
     cancelled: bool,
 }
 
-struct CopyJobControl {
-    state: Mutex<CopyJobState>,
+struct TransferJobControl {
+    state: Mutex<TransferJobState>,
     changed: Condvar,
 }
 
-static COPY_JOBS: OnceLock<Mutex<HashMap<String, Arc<CopyJobControl>>>> = OnceLock::new();
+static TRANSFER_JOBS: OnceLock<Mutex<HashMap<String, Arc<TransferJobControl>>>> = OnceLock::new();
 
-fn copy_jobs() -> &'static Mutex<HashMap<String, Arc<CopyJobControl>>> {
-    COPY_JOBS.get_or_init(|| Mutex::new(HashMap::new()))
+fn transfer_jobs() -> &'static Mutex<HashMap<String, Arc<TransferJobControl>>> {
+    TRANSFER_JOBS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn find_copy_job(job_id: &str) -> Result<Option<Arc<CopyJobControl>>, String> {
-    let jobs = copy_jobs().lock().map_err(|_| "Copy job registry is unavailable.".to_string())?;
+fn has_active_transfer_jobs() -> bool {
+    transfer_jobs().lock().map(|jobs| !jobs.is_empty()).unwrap_or(true)
+}
+
+fn find_transfer_job(job_id: &str) -> Result<Option<Arc<TransferJobControl>>, String> {
+    let jobs = transfer_jobs().lock().map_err(|_| "File transfer registry is unavailable.".to_string())?;
     Ok(jobs.get(job_id).cloned())
 }
 
-fn wait_for_copy_job(control: &CopyJobControl) -> Result<(), String> {
-    let mut state = control.state.lock().map_err(|_| "Copy operation state is unavailable.".to_string())?;
+fn wait_for_transfer_job(control: &TransferJobControl) -> Result<(), String> {
+    let mut state = control.state.lock().map_err(|_| "File transfer state is unavailable.".to_string())?;
     while state.paused && !state.cancelled {
-        state = control.changed.wait(state).map_err(|_| "Copy operation state is unavailable.".to_string())?;
+        state = control.changed.wait(state).map_err(|_| "File transfer state is unavailable.".to_string())?;
     }
     if state.cancelled {
-        Err("Copy operation cancelled.".to_string())
+        Err("File transfer cancelled.".to_string())
     } else {
         Ok(())
     }
 }
 
-struct CopyProgressTracker {
+struct TransferProgressTracker {
     app: tauri::AppHandle,
     job_id: String,
     phase: String,
@@ -497,13 +505,13 @@ struct CopyProgressTracker {
     last_emit: std::time::Instant,
 }
 
-impl CopyProgressTracker {
+impl TransferProgressTracker {
     fn emit(&mut self, force: bool) {
         if !force && self.last_emit.elapsed() < std::time::Duration::from_millis(180) {
             return;
         }
         self.last_emit = std::time::Instant::now();
-        let _ = self.app.emit("copy-operation-progress", CopyOperationProgress {
+        let _ = self.app.emit("transfer-operation-progress", TransferOperationProgress {
             job_id: self.job_id.clone(),
             phase: self.phase.clone(),
             current_item: self.current_item.clone(),
@@ -519,10 +527,10 @@ impl CopyProgressTracker {
 
 fn count_copy_tree(
     root: &Path,
-    control: &CopyJobControl,
-    tracker: &mut CopyProgressTracker,
+    control: &TransferJobControl,
+    tracker: &mut TransferProgressTracker,
 ) -> Result<(), String> {
-    wait_for_copy_job(control)?;
+    wait_for_transfer_job(control)?;
     let root_metadata = fs::symlink_metadata(root).map_err(|error| format!("Cannot inspect {}: {error}", display_path(root)))?;
     tracker.total_items += 1;
     if root_metadata.is_file() && !root_metadata.file_type().is_symlink() {
@@ -536,10 +544,10 @@ fn count_copy_tree(
         Vec::new()
     };
     while let Some(directory) = pending.pop() {
-        wait_for_copy_job(control)?;
+        wait_for_transfer_job(control)?;
         let entries = fs::read_dir(&directory).map_err(|error| format!("Cannot read {}: {error}", display_path(&directory)))?;
         for entry in entries {
-            wait_for_copy_job(control)?;
+            wait_for_transfer_job(control)?;
             let entry = entry.map_err(|error| error.to_string())?;
             let path = entry.path();
             tracker.current_item = entry.file_name().to_string_lossy().to_string();
@@ -564,11 +572,11 @@ fn count_copy_tree(
 fn copy_path_with_progress(
     source: &Path,
     destination: &Path,
-    control: &CopyJobControl,
-    tracker: &mut CopyProgressTracker,
+    control: &TransferJobControl,
+    tracker: &mut TransferProgressTracker,
     buffer: &mut [u8],
 ) -> Result<(), String> {
-    wait_for_copy_job(control)?;
+    wait_for_transfer_job(control)?;
     let metadata = fs::symlink_metadata(source).map_err(|error| error.to_string())?;
     tracker.current_item = source.file_name().map(|name| name.to_string_lossy().to_string()).unwrap_or_else(|| display_path(source));
     tracker.current_file_bytes = 0;
@@ -581,7 +589,7 @@ fn copy_path_with_progress(
         tracker.items_completed += 1;
         tracker.emit(false);
         for entry in fs::read_dir(source).map_err(|error| error.to_string())? {
-            wait_for_copy_job(control)?;
+            wait_for_transfer_job(control)?;
             let entry = entry.map_err(|error| error.to_string())?;
             copy_path_with_progress(
                 &entry.path(),
@@ -599,7 +607,7 @@ fn copy_path_with_progress(
         let mut input = fs::File::open(source).map_err(|error| error.to_string())?;
         let mut output = fs::OpenOptions::new().write(true).create_new(true).open(destination).map_err(|error| error.to_string())?;
         loop {
-            wait_for_copy_job(control)?;
+            wait_for_transfer_job(control)?;
             let count = input.read(buffer).map_err(|error| error.to_string())?;
             if count == 0 { break; }
             output.write_all(&buffer[..count]).map_err(|error| error.to_string())?;
@@ -617,12 +625,13 @@ fn copy_path_with_progress(
     }
 }
 
-fn copy_native_items_with_progress(
+fn transfer_native_items_with_progress(
     app: tauri::AppHandle,
     paths: Vec<String>,
     target_path: &str,
     job_id: &str,
-    control: &CopyJobControl,
+    move_items: bool,
+    control: &TransferJobControl,
 ) -> NativeOperationResult {
     let mut failures = Vec::new();
     let target = match canonical_directory(target_path) {
@@ -644,7 +653,7 @@ fn copy_native_items_with_progress(
             Err(error) => failures.push(NativeOperationFailure { path, error }),
         }
     }
-    let mut tracker = CopyProgressTracker {
+    let mut tracker = TransferProgressTracker {
         app,
         job_id: job_id.to_string(),
         phase: "scanning".to_string(),
@@ -660,19 +669,27 @@ fn copy_native_items_with_progress(
     let mut valid_sources = Vec::new();
     for (original_path, source) in sources {
         if same_or_descendant_path(&target, &source) {
-            failures.push(NativeOperationFailure { path: original_path, error: "A folder cannot be copied inside itself.".to_string() });
+            failures.push(NativeOperationFailure { path: original_path, error: "A folder cannot be transferred inside itself.".to_string() });
             continue;
         }
         let Some(name) = source.file_name() else {
-            failures.push(NativeOperationFailure { path: original_path, error: "A filesystem root cannot be copied as an item.".to_string() });
+            failures.push(NativeOperationFailure { path: original_path, error: "A filesystem root cannot be transferred as an item.".to_string() });
             continue;
         };
         let destination = unique_child_path(&target, &name.to_string_lossy());
+        let previous_bytes = tracker.total_bytes;
+        let previous_items = tracker.total_items;
         match count_copy_tree(&source, control, &mut tracker) {
-            Ok(()) => valid_sources.push((original_path, source, destination)),
+            Ok(()) => valid_sources.push((
+                original_path,
+                source,
+                destination,
+                tracker.total_bytes.saturating_sub(previous_bytes),
+                tracker.total_items.saturating_sub(previous_items),
+            )),
             Err(error) => {
                 failures.push(NativeOperationFailure { path: original_path, error });
-                if let Err(error) = wait_for_copy_job(control) {
+                if let Err(error) = wait_for_transfer_job(control) {
                     failures.push(NativeOperationFailure { path: display_path(&source), error });
                     break;
                 }
@@ -684,18 +701,58 @@ fn copy_native_items_with_progress(
     tracker.emit(true);
     let mut completed_paths = Vec::new();
     let mut buffer = vec![0u8; 1024 * 1024];
-    for (original_path, source, destination) in valid_sources {
-        if wait_for_copy_job(control).is_err() {
-            failures.push(NativeOperationFailure { path: original_path, error: "Copy operation cancelled.".to_string() });
+    for (original_path, source, destination, source_bytes, source_items) in valid_sources {
+        if wait_for_transfer_job(control).is_err() {
+            failures.push(NativeOperationFailure { path: original_path, error: "File transfer cancelled.".to_string() });
             break;
         }
-        match copy_path_with_progress(&source, &destination, control, &mut tracker, &mut buffer) {
+        if move_items && source.parent().is_some_and(|parent| parent == target) {
+            tracker.bytes_copied = tracker.bytes_copied.saturating_add(source_bytes);
+            tracker.items_completed = tracker.items_completed.saturating_add(source_items);
+            tracker.emit(true);
+            completed_paths.push(display_path(&source));
+            continue;
+        }
+        let bytes_before = tracker.bytes_copied;
+        let items_before = tracker.items_completed;
+        let transfer = if move_items {
+            match fs::rename(&source, &destination) {
+                Ok(()) => {
+                    tracker.bytes_copied = tracker.bytes_copied.saturating_add(source_bytes);
+                    tracker.items_completed = tracker.items_completed.saturating_add(source_items);
+                    tracker.emit(true);
+                    Ok(())
+                }
+                Err(rename_error) => {
+                    match copy_path_with_progress(&source, &destination, control, &mut tracker, &mut buffer) {
+                        Err(copy_error) => {
+                            if destination.exists() {
+                                let _ = remove_path_without_following_links(&destination);
+                            }
+                            Err(format!("Move failed ({rename_error}); copy fallback failed ({copy_error})."))
+                        }
+                        Ok(()) => match remove_path_without_following_links(&source) {
+                            Ok(()) => Ok(()),
+                            Err(remove_error) => {
+                                let _ = remove_path_without_following_links(&destination);
+                                Err(format!("The item was copied, but its original could not be removed ({remove_error})."))
+                            }
+                        },
+                    }
+                }
+            }
+        } else {
+            copy_path_with_progress(&source, &destination, control, &mut tracker, &mut buffer)
+        };
+        match transfer {
             Ok(()) => {
                 tracker.emit(true);
                 completed_paths.push(display_path(&destination));
-            },
+            }
             Err(error) => {
-                let cancelled = error == "Copy operation cancelled.";
+                tracker.bytes_copied = bytes_before;
+                tracker.items_completed = items_before;
+                let cancelled = error.contains("cancelled");
                 if destination.exists() {
                     let _ = remove_path_without_following_links(&destination);
                 }
@@ -824,41 +881,6 @@ fn remove_path_without_following_links(path: &Path) -> Result<(), String> {
         fs::remove_dir_all(path).map_err(|e| e.to_string())
     } else {
         fs::remove_file(path).map_err(|e| e.to_string())
-    }
-}
-
-fn copy_path_recursive(source: &Path, destination: &Path) -> Result<(), String> {
-    let metadata = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
-    if metadata.file_type().is_symlink() {
-        return Err("Symbolic links are not followed by file operations.".to_string());
-    }
-    if metadata.is_dir() {
-        fs::create_dir(destination).map_err(|e| e.to_string())?;
-        for entry in fs::read_dir(source).map_err(|e| e.to_string())? {
-            let entry = entry.map_err(|e| e.to_string())?;
-            copy_path_recursive(&entry.path(), &destination.join(entry.file_name()))?;
-        }
-        Ok(())
-    } else if metadata.is_file() {
-        let mut input = fs::File::open(source).map_err(|e| e.to_string())?;
-        let mut output = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(destination)
-            .map_err(|e| e.to_string())?;
-        if let Err(error) = io::copy(&mut input, &mut output) {
-            drop(output);
-            let _ = fs::remove_file(destination);
-            return Err(error.to_string());
-        }
-        drop(output);
-        if let Err(error) = fs::set_permissions(destination, metadata.permissions()) {
-            let _ = fs::remove_file(destination);
-            return Err(error.to_string());
-        }
-        Ok(())
-    } else {
-        Err("This filesystem item type is not supported.".to_string())
     }
 }
 
@@ -1018,116 +1040,6 @@ fn rename_native_item(source_path: &str, new_name: &str) -> Result<String, Strin
     Ok(display_path(&renamed))
 }
 
-fn transfer_native_items(
-    paths: Vec<String>,
-    target_path: &str,
-    move_items: bool,
-) -> NativeOperationResult {
-    let target = match canonical_directory(target_path) {
-        Ok(target) => target,
-        Err(error) => {
-            return NativeOperationResult {
-                completed_paths: Vec::new(),
-                failures: paths
-                    .into_iter()
-                    .map(|path| NativeOperationFailure {
-                        path,
-                        error: error.clone(),
-                    })
-                    .collect(),
-            }
-        }
-    };
-    let mut sources: Vec<(String, PathBuf)> = Vec::new();
-    let mut failures = Vec::new();
-    for path in paths {
-        match canonical_item(&path) {
-            Ok(source) => {
-                if !sources
-                    .iter()
-                    .any(|(_, existing)| same_or_descendant_path(&source, existing))
-                {
-                    sources.retain(|(_, existing)| !same_or_descendant_path(existing, &source));
-                    sources.push((path, source));
-                }
-            }
-            Err(error) => failures.push(NativeOperationFailure { path, error }),
-        }
-    }
-
-    let mut completed_paths = Vec::new();
-    for (original_path, source) in sources {
-        if same_or_descendant_path(&target, &source) {
-            failures.push(NativeOperationFailure {
-                path: original_path,
-                error: if move_items {
-                    "A folder cannot be moved inside itself."
-                } else {
-                    "A folder cannot be copied inside itself."
-                }
-                .to_string(),
-            });
-            continue;
-        }
-        let Some(name) = source.file_name() else {
-            failures.push(NativeOperationFailure {
-                path: original_path,
-                error: "A filesystem root cannot be transferred as an item.".to_string(),
-            });
-            continue;
-        };
-        let name = name.to_string_lossy().to_string();
-        if move_items && source.parent().is_some_and(|parent| parent == target) {
-            completed_paths.push(display_path(&source));
-            continue;
-        }
-        let destination = unique_child_path(&target, &name);
-        let result = if move_items {
-            match fs::rename(&source, &destination) {
-                Ok(()) => Ok(()),
-                Err(rename_error) => {
-                    match copy_path_recursive(&source, &destination) {
-                        Err(copy_error) => {
-                            if destination.exists() {
-                                let _ = remove_path_without_following_links(&destination);
-                            }
-                            Err(format!("Move failed ({rename_error}); copy fallback failed ({copy_error})."))
-                        }
-                        Ok(()) => match remove_path_without_following_links(&source) {
-                            Ok(()) => Ok(()),
-                            Err(remove_error) => {
-                                let _ = remove_path_without_following_links(&destination);
-                                Err(format!("The item was copied, but its original could not be removed ({remove_error})."))
-                            }
-                        },
-                    }
-                }
-            }
-        } else {
-            match copy_path_recursive(&source, &destination) {
-                Ok(()) => Ok(()),
-                Err(error) => {
-                    if destination.exists() {
-                        let _ = remove_path_without_following_links(&destination);
-                    }
-                    Err(error)
-                }
-            }
-        };
-        match result {
-            Ok(()) => completed_paths.push(display_path(&destination)),
-            Err(error) => failures.push(NativeOperationFailure {
-                path: original_path,
-                error,
-            }),
-        }
-    }
-    NativeOperationResult {
-        completed_paths,
-        failures,
-    }
-}
-
 #[tauri::command]
 async fn create_directory(
     parent_path: String,
@@ -1168,45 +1080,55 @@ async fn rename_item(path: String, new_name: String) -> Result<String, String> {
         .map_err(|e| format!("Rename worker failed: {e}"))?
 }
 
-#[tauri::command]
-fn start_copy_operation(
+fn start_native_transfer_operation(
     app: tauri::AppHandle,
     paths: Vec<String>,
     target_path: String,
     job_id: String,
+    move_items: bool,
 ) -> Result<(), String> {
-    let control = Arc::new(CopyJobControl {
-        state: Mutex::new(CopyJobState::default()),
+    let control = Arc::new(TransferJobControl {
+        state: Mutex::new(TransferJobState::default()),
         changed: Condvar::new(),
     });
     {
-        let mut jobs = copy_jobs().lock().map_err(|_| "Copy job registry is unavailable.".to_string())?;
+        let mut jobs = transfer_jobs().lock().map_err(|_| "File transfer queue is unavailable.".to_string())?;
         if jobs.contains_key(&job_id) {
-            return Err("A copy operation with this identifier already exists.".to_string());
+            return Err("A file transfer with this identifier already exists.".to_string());
         }
         jobs.insert(job_id.clone(), Arc::clone(&control));
     }
     tauri::async_runtime::spawn_blocking(move || {
-        let result = copy_native_items_with_progress(app.clone(), paths, &target_path, &job_id, &control);
-        if let Ok(mut jobs) = copy_jobs().lock() {
+        let result = transfer_native_items_with_progress(app.clone(), paths, &target_path, &job_id, move_items, &control);
+        if let Ok(mut jobs) = transfer_jobs().lock() {
             jobs.remove(&job_id);
         }
-        let _ = app.emit("copy-operation-finished", CopyOperationFinished { job_id, result });
+        let _ = app.emit("transfer-operation-finished", TransferOperationFinished { job_id, result });
     });
     Ok(())
 }
 
 #[tauri::command]
-fn pause_copy_operation(job_id: String) -> Result<(), String> {
-    if let Some(control) = find_copy_job(&job_id)? {
+fn start_copy_operation(app: tauri::AppHandle, paths: Vec<String>, target_path: String, job_id: String) -> Result<(), String> {
+    start_native_transfer_operation(app, paths, target_path, job_id, false)
+}
+
+#[tauri::command]
+fn start_move_operation(app: tauri::AppHandle, paths: Vec<String>, target_path: String, job_id: String) -> Result<(), String> {
+    start_native_transfer_operation(app, paths, target_path, job_id, true)
+}
+
+#[tauri::command]
+fn pause_transfer_operation(job_id: String) -> Result<(), String> {
+    if let Some(control) = find_transfer_job(&job_id)? {
         if let Ok(mut state) = control.state.lock() { state.paused = true; }
     }
     Ok(())
 }
 
 #[tauri::command]
-fn resume_copy_operation(job_id: String) -> Result<(), String> {
-    if let Some(control) = find_copy_job(&job_id)? {
+fn resume_transfer_operation(job_id: String) -> Result<(), String> {
+    if let Some(control) = find_transfer_job(&job_id)? {
         if let Ok(mut state) = control.state.lock() {
             state.paused = false;
             control.changed.notify_all();
@@ -1216,8 +1138,8 @@ fn resume_copy_operation(job_id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn cancel_copy_operation(job_id: String) -> Result<(), String> {
-    if let Some(control) = find_copy_job(&job_id)? {
+fn cancel_transfer_operation(job_id: String) -> Result<(), String> {
+    if let Some(control) = find_transfer_job(&job_id)? {
         if let Ok(mut state) = control.state.lock() {
             state.cancelled = true;
             state.paused = false;
@@ -1225,18 +1147,6 @@ fn cancel_copy_operation(job_id: String) -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-#[tauri::command]
-async fn move_items_to_directory(
-    paths: Vec<String>,
-    target_path: String,
-) -> Result<NativeOperationResult, String> {
-    Ok(tauri::async_runtime::spawn_blocking(move || {
-        transfer_native_items(paths, &target_path, true)
-    })
-    .await
-    .map_err(|e| format!("Move worker failed: {e}"))?)
 }
 
 #[cfg(target_os = "windows")]
@@ -4143,12 +4053,7 @@ fn main() {
                 .on_menu_event(move |app, event| match event.id.as_ref() {
                     "toggle" => toggle_main_window(app, &tray_toggle),
                     "quit" => {
-                        if let (Some(window), Ok(path)) =
-                            (app.get_webview_window("main"), window_state_path(app))
-                        {
-                            let _ = save_window_state(&window, &path);
-                        }
-                        app.exit(0);
+                        let _ = app.emit("tray-quit-requested", ());
                     }
                     _ => {}
                 })
@@ -4249,10 +4154,10 @@ fn main() {
             create_shortcut,
             rename_item,
             start_copy_operation,
-            pause_copy_operation,
-            resume_copy_operation,
-            cancel_copy_operation,
-            move_items_to_directory,
+            start_move_operation,
+            pause_transfer_operation,
+            resume_transfer_operation,
+            cancel_transfer_operation,
             set_file_clipboard,
             get_file_clipboard,
             clear_file_clipboard,
