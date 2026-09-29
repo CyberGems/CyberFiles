@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { X, FileText, Folder, Image as ImageIcon, Code2, Copy, Check, Info, Music, Video, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { X, FileText, Folder, Image as ImageIcon, Code2, Copy, Check, Info, Music, Video, ChevronDown, ChevronUp, ExternalLink, Archive, TriangleAlert } from 'lucide-react';
 import { FileItem } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, isTextPreviewableFile } from '../utils/fileSystem';
-import { isTauriDesktop, loadNativeImageThumbnail, loadNativePdfPreviewUrl, MAX_PDF_PREVIEW_BYTES } from '../utils/nativeFileSystem';
+import { isTauriDesktop, loadNativeImageThumbnail, loadNativePdfPreviewUrl, loadNativeArchivePreview, MAX_PDF_PREVIEW_BYTES, type NativeArchivePreview } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 
@@ -147,6 +147,8 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
   const [imagePreviewState, setImagePreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const [pdfPreviewSource, setPdfPreviewSource] = useState<{ itemId: string; url: string } | null>(null);
   const [pdfPreviewState, setPdfPreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable' | 'too-large'>('idle');
+  const [archivePreview, setArchivePreview] = useState<{ itemId: string; data: NativeArchivePreview } | null>(null);
+  const [archivePreviewState, setArchivePreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable' | 'desktop-only' | 'too-many-entries'>('idle');
   const { t, language } = useLanguage();
 
   useEffect(() => {
@@ -230,6 +232,36 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
     return () => { cancelled = true; };
   }, [item?.id, item?.path, item?.extension, item?.isFolder, item?.size]);
 
+  useEffect(() => {
+    if (!item || item.isFolder || item.type !== 'archive') {
+      setArchivePreview(null);
+      setArchivePreviewState('idle');
+      return;
+    }
+    if (!['zip', 'rar'].includes(item.extension.toLowerCase())) {
+      setArchivePreview(null);
+      setArchivePreviewState('idle');
+      return;
+    }
+    if (!isTauriDesktop()) {
+      setArchivePreview(null);
+      setArchivePreviewState('desktop-only');
+      return;
+    }
+    let cancelled = false;
+    setArchivePreview(null);
+    setArchivePreviewState('loading');
+    void loadNativeArchivePreview(item.path).then(data => {
+      if (cancelled) return;
+      setArchivePreview({ itemId: item.id, data });
+      setArchivePreviewState('ready');
+    }).catch(error => {
+      if (!cancelled) {
+        setArchivePreviewState(String(error).includes('ARCHIVE_TOO_MANY_ENTRIES') ? 'too-many-entries' : 'unavailable');
+      }
+    });
+    return () => { cancelled = true; };
+  }, [item?.id, item?.path, item?.extension, item?.type, item?.isFolder]);
   if (!item) {
     return (
       <aside className="w-full min-w-0 bg-neutral-950 border-l border-neutral-800 flex flex-col justify-center items-center text-neutral-500 p-6 text-center select-none text-xs flex-shrink-0">
@@ -261,6 +293,37 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
     }
 
     const extension = item.extension.toLowerCase();
+    if (item.type === 'archive') {
+      if (!['zip', 'rar'].includes(extension)) return <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400"><Archive className="h-10 w-10 text-violet-400" /><span className="text-[11px]">{t.preview.archiveFormatUnsupported}</span></div>;
+      if (archivePreviewState === 'desktop-only') return <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400"><Archive className="h-10 w-10 text-violet-400" /><span className="text-[11px]">{t.preview.archivePreviewDesktopOnly}</span></div>;
+      if (archivePreviewState === 'loading') return <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400"><Archive className="h-10 w-10 text-violet-400" /><span className="text-[11px]">{t.preview.archiveLoading}</span></div>;
+      if (archivePreviewState === 'too-many-entries') return <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400"><TriangleAlert className="h-10 w-10 text-amber-400" /><span className="text-[11px]">{t.core.archiveTooManyEntries}</span></div>;
+      const preview = archivePreview?.itemId === item.id ? archivePreview.data : null;
+      if (!preview || archivePreviewState === 'unavailable') return <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400"><Archive className="h-10 w-10 text-violet-400" /><span className="text-[11px]">{t.preview.archivePreviewUnavailable}</span></div>;
+      return (
+        <div className="flex h-full min-h-0 w-full flex-col text-left">
+          <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-neutral-800 px-3 py-2 text-[10px] text-neutral-400">
+            <span>{t.preview.archiveEntryCount.replace('{count}', preview.totalEntries.toLocaleString(language === 'es' ? 'es-CR' : 'en-US'))}</span>
+            <span className="truncate text-right">{t.preview.archiveExpandedSize.replace('{size}', formatFileSize(preview.totalBytes))}</span>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+            {preview.entries.map((entry, index) => {
+              const warningLabel = entry.unsafePath || entry.link
+                ? t.preview.archiveUnsafeEntry
+                : !entry.extractable ? t.preview.archiveEntryUnavailable : null;
+              return (
+                <div key={`${index}:${entry.name}`} className="flex min-w-0 items-center gap-2 rounded px-2 py-1.5 text-[10px] text-neutral-300 hover:bg-neutral-800/60">
+                  {entry.isDirectory ? <Folder className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" /> : <FileText className="h-3.5 w-3.5 flex-shrink-0 text-cyan-300" />}
+                  <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                  {warningLabel ? <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0 text-amber-400" aria-label={warningLabel} /> : <span className="flex-shrink-0 text-neutral-500">{entry.isDirectory ? '' : formatFileSize(entry.size)}</span>}
+                </div>
+              );
+            })}
+            {preview.truncated && <div className="px-2 py-2 text-center text-[10px] text-neutral-500">{t.preview.archiveTruncated.replace('{count}', preview.entries.length.toLocaleString(language === 'es' ? 'es-CR' : 'en-US'))}</div>}
+          </div>
+        </div>
+      );
+    }
     if (extension === 'pdf') {
       if (pdfPreviewState !== 'unavailable' && pdfPreviewState !== 'too-large' && pdfPreviewSource?.itemId === item.id) {
         return <iframe aria-label={`${t.preview.contentPreview}: ${item.name}`} src={pdfPreviewSource.url} onLoad={() => setPdfPreviewState('ready')} onError={() => setPdfPreviewState('unavailable')} className="h-full min-h-0 w-full border-0 bg-neutral-900" />;

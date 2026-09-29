@@ -50,7 +50,7 @@ import { TextInputContextMenu } from './components/TextInputContextMenu';
 import { TooltipPreferenceContext } from './components/Tooltip';
 import { WorkspaceManagerModal } from './components/WorkspaceManagerModal';
 import { UnsavedWorkspaceChangesModal, type WorkspaceChangesSaveNames } from './components/UnsavedWorkspaceChangesModal';
-import { FileOperationModal, type TransferOperationView } from './components/FileOperationModal';
+import { FileOperationModal, type TransferOperationView, type TransferKind } from './components/FileOperationModal';
 
 
 import { useLanguage } from './locales/LanguageContext';
@@ -76,7 +76,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
@@ -2495,15 +2495,28 @@ export default function App() {
                 actions.showToast(actions.t.core.operationFailedWithReason.replace('{reason}', String(error)));
               }
             }
+            const archiveFailureMessages: Record<string, string> = {
+              ARCHIVE_UNSAFE_ENTRY: actions.t.core.archiveUnsafeExtraction,
+              ARCHIVE_ADDITIONAL_VOLUMES: actions.t.core.archiveRequiresVolumes,
+              ARCHIVE_SIZE_LIMIT: actions.t.core.archiveSizeLimit,
+              ARCHIVE_TOO_MANY_ENTRIES: actions.t.core.archiveTooManyEntries,
+              ARCHIVE_OUTPUT_NAME: actions.t.core.archiveOutputName,
+            };
+            const failureReason = result.failures[0]
+              ? archiveFailureMessages[result.failures[0].error] ?? result.failures[0].error
+              : undefined;
             const wasCancelled = result.failures.some(failure => failure.error.toLowerCase().includes('cancelled'));
             const status = wasCancelled ? 'cancelled' : result.failures.length > 0 ? 'failed' : 'completed';
             if (result.failures.length > 0) {
               actions.showToast(actions.t.core.operationPartial
                 .replace('{completed}', String(result.completedPaths.length))
                 .replace('{failed}', String(result.failures.length))
-                .replace('{reason}', result.failures[0].error));
+                .replace('{reason}', failureReason ?? ''));
             } else if (result.completedPaths.length > 0) {
-              if (operation.kind === 'copy') {
+              if (operation.kind === 'extract') {
+                const archiveName = operation.sourcePaths[0]?.split(/[\\/]/).pop() ?? '';
+                actions.showToast(actions.t.core.archiveExtracted.replace('{archive}', archiveName).replace('{target}', result.completedPaths[0] ?? operation.targetPath));
+              } else if (operation.kind === 'copy') {
                 actions.showToast(actions.t.core.copied.replace('{count}', String(result.completedPaths.length)).replace('{target}', operation.targetPath));
               } else if (operation.clipboardSequence) {
                 actions.showToast(actions.t.core.pasted.replace('{count}', String(result.completedPaths.length)));
@@ -2511,7 +2524,7 @@ export default function App() {
                 actions.showToast(actions.t.core.moved.replace('{count}', String(result.completedPaths.length)).replace('{target}', operation.targetPath));
               }
             }
-            updateTransferOperation(operation.jobId, current => ({ ...current, status, error: result.failures[0]?.error }));
+            updateTransferOperation(operation.jobId, current => ({ ...current, status, error: failureReason }));
             if (activeTransferIdRef.current === operation.jobId) activeTransferIdRef.current = null;
           })();
         }),
@@ -2567,7 +2580,7 @@ export default function App() {
     };
   }, [language, showToast, t.core.operationFailedWithReason]);
 
-  const queueNativeTransfer = useCallback((kind: 'copy' | 'move', paths: string[], targetPath: string, options: { sourcePane?: 'left' | 'right'; selectionPane?: 'left' | 'right'; clipboardSequence?: number } = {}) => {
+  const queueNativeTransfer = useCallback((kind: TransferKind, paths: string[], targetPath: string, options: { sourcePane?: 'left' | 'right'; selectionPane?: 'left' | 'right'; clipboardSequence?: number } = {}) => {
     if (paths.length === 0) return;
     const operation: TransferOperationView = {
       jobId: createOperationId(kind),
@@ -2599,7 +2612,9 @@ export default function App() {
     if (!nextOperation) return;
     activeTransferIdRef.current = nextOperation.jobId;
     updateTransferOperation(nextOperation.jobId, operation => ({ ...operation, status: 'running', startedAt: Date.now() }));
-    void startNativeTransferOperation(nextOperation.sourcePaths, nextOperation.targetPath, nextOperation.jobId, nextOperation.kind === 'move')
+    void (nextOperation.kind === 'extract'
+      ? startNativeArchiveExtractionOperation(nextOperation.sourcePaths[0] ?? '', nextOperation.targetPath, nextOperation.jobId)
+      : startNativeTransferOperation(nextOperation.sourcePaths, nextOperation.targetPath, nextOperation.jobId, nextOperation.kind === 'move'))
       .catch(error => {
         const reason = String(error);
         updateTransferOperation(nextOperation.jobId, operation => ({ ...operation, status: 'failed', error: reason }));
@@ -3834,18 +3849,30 @@ export default function App() {
     powershell: t.toolbar.powerShellHere,
     'powershell-admin': t.toolbar.powerShellAdminHere,
   };
+  const windowsSpecialFolderLabels: Record<WindowsSpecialFolder['id'], string> = {
+    programFilesX86: t.toolbar.programFilesX86,
+    programFiles: t.toolbar.programFiles,
+    appData: t.toolbar.appData,
+    programData: t.toolbar.programData,
+    system32: t.toolbar.system32,
+    windows: t.toolbar.windowsFolder,
+    editHosts: t.toolbar.editHostsFile,
+  };
   const paletteWindowsCommands: CommandPaletteCommand[] = isTauriDesktop() && currentFolderIsReal
     ? [
       { id: 'show-in-explorer', group: t.commandPalette.groups.windows, label: t.commandPalette.commands.showInExplorer, keywords: 'windows explorer open folder', onSelect: handleShowCurrentFolderInExplorer },
       { id: 'open-terminal', group: t.commandPalette.groups.windows, label: t.commandPalette.commands.openTerminal, description: lastTerminalLabel[lastTerminalOption], keywords: 'cmd command prompt powershell shell console', onSelect: () => handleLaunchWindowsTerminal(lastTerminalOption) },
-      ...windowsSpecialFolders.map(folder => ({
-        id: `windows-folder-${folder.id}`,
-        group: t.commandPalette.groups.windows,
-        label: folder.id === 'editHosts' ? t.toolbar.editHostsFile : folder.name,
-        description: folder.path,
-        keywords: `${folder.name} ${folder.path} ${t.toolbar.advancedWindowsFolders}`,
-        onSelect: () => handleOpenWindowsSpecialFolder(folder),
-      })),
+      ...windowsSpecialFolders.map(folder => {
+        const label = windowsSpecialFolderLabels[folder.id];
+        return {
+          id: `windows-folder-${folder.id}`,
+          group: t.commandPalette.groups.windows,
+          label,
+          description: folder.path,
+          keywords: `${label} ${folder.path} ${t.toolbar.advancedWindowsFolders}`,
+          onSelect: () => handleOpenWindowsSpecialFolder(folder),
+        };
+      }),
     ]
     : [];
 
@@ -4308,6 +4335,8 @@ export default function App() {
           touchFileAccessed(item.id);
           setPreviewOpen(true);
         }}
+        supportsArchiveExtraction={isTauriDesktop()}
+        onExtractArchive={item => queueNativeTransfer('extract', [item.path], getParentPath(item.path), { selectionPane: contextPane })}
         onCopyOpposite={() => handleCopySelected()}
         onMoveOpposite={() => handleMoveSelected()}
         onCopyToClipboard={item => { void handleFileClipboard(item, false, contextPane); }}

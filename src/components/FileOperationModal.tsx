@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, Copy, Gauge, ListChecks, Maximize2, Minimize2, MoveRight, Pause, Play, Trash2, X } from 'lucide-react';
+import { Archive, Check, ChevronDown, Copy, Gauge, ListChecks, Maximize2, Minimize2, MoveRight, Pause, Play, Trash2, X } from 'lucide-react';
 import { formatFileSize } from '../utils/fileSystem';
 import { Tooltip } from './Tooltip';
 import type { NativeTransferProgress } from '../utils/nativeFileSystem';
 
-export type TransferKind = 'copy' | 'move';
+export type TransferKind = 'copy' | 'move' | 'extract';
 export type TransferStatus = 'queued' | 'running' | 'paused' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 
 export interface TransferOperationView extends NativeTransferProgress {
@@ -57,17 +57,18 @@ function statusLabel(operation: TransferOperationView, language: 'en' | 'es'): s
 
 function operationName(operation: TransferOperationView, language: 'en' | 'es'): string {
   const spanish = language === 'es';
-  if (operation.status === 'queued') return spanish ? 'Esperando turno' : 'Waiting in queue';
-  if (operation.status === 'completed') return spanish ? 'Transferencia completada' : 'Transfer complete';
-  if (operation.status === 'failed') return spanish ? 'Transferencia con errores' : 'Transfer finished with errors';
-  if (operation.status === 'cancelled') return spanish ? 'Transferencia cancelada' : 'Transfer cancelled';
-  if (operation.status === 'cancelling') return spanish ? 'Cancelando transferencia' : 'Cancelling transfer';
-  if (operation.status === 'paused') return spanish ? 'Transferencia en pausa' : 'Transfer paused';
+  const extracting = operation.kind === 'extract';
+  if (operation.status === 'queued') return extracting ? (spanish ? 'Esperando extracción' : 'Waiting to extract') : (spanish ? 'Esperando turno' : 'Waiting in queue');
+  if (operation.status === 'completed') return extracting ? (spanish ? 'Extracción completada' : 'Extraction complete') : (spanish ? 'Transferencia completada' : 'Transfer complete');
+  if (operation.status === 'failed') return extracting ? (spanish ? 'Extracción con errores' : 'Extraction failed') : (spanish ? 'Transferencia con errores' : 'Transfer finished with errors');
+  if (operation.status === 'cancelled') return extracting ? (spanish ? 'Extracción cancelada' : 'Extraction cancelled') : (spanish ? 'Transferencia cancelada' : 'Transfer cancelled');
+  if (operation.status === 'cancelling') return extracting ? (spanish ? 'Cancelando extracción' : 'Cancelling extraction') : (spanish ? 'Cancelando transferencia' : 'Cancelling transfer');
+  if (operation.status === 'paused') return extracting ? (spanish ? 'Extracción en pausa' : 'Extraction paused') : (spanish ? 'Transferencia en pausa' : 'Transfer paused');
+  if (extracting) return spanish ? 'Descomprimiendo archivos' : 'Extracting archive';
   return operation.kind === 'copy'
     ? (spanish ? 'Copiando archivos' : 'Copying files')
     : (spanish ? 'Moviendo archivos' : 'Moving files');
 }
-
 export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operations, language, onTogglePause, onCancel, onClearHistory }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [elapsed, setElapsed] = useState(0);
@@ -126,7 +127,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
   }).join(' ');
   const currentItemLabel = activeOperation?.currentItem || activeOperation?.sourcePaths[0] || (isSpanish ? 'Preparando…' : 'Preparing…');
   const remainingLabel = remaining === null ? '—' : elapsedLabel(remaining, language);
-  const title = isSpanish ? 'Transferencias' : 'Transfers';
+  const title = isSpanish ? 'Operaciones de archivos' : 'File operations';
 
   return createPortal(
     <aside className="pointer-events-none fixed bottom-4 right-4 z-[120] flex max-h-[min(80vh,800px)] w-[min(760px,calc(100vw-2rem))] flex-col items-end" aria-label={title}>
@@ -135,7 +136,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-cyan-950/70 text-cyan-300"><ListChecks className="h-5 w-5" /></span>
           <div className="min-w-0 flex-1">
             <h2 className="font-semibold">{title}</h2>
-            <p className="text-xs text-neutral-400">{pendingCount > 0 ? (isSpanish ? `${pendingCount} pendiente${pendingCount === 1 ? '' : 's'}` : `${pendingCount} pending`) : (isSpanish ? 'Sin transferencias pendientes' : 'No pending transfers')}</p>
+            <p className="text-xs text-neutral-400">{pendingCount > 0 ? (isSpanish ? `${pendingCount} pendiente${pendingCount === 1 ? '' : 's'}` : `${pendingCount} pending`) : (isSpanish ? 'Sin operaciones pendientes' : 'No pending operations')}</p>
           </div>
           {activeOperation && <span className="rounded-md border border-neutral-700 px-2 py-1 font-mono text-xs text-cyan-200">{percent}%</span>}
           {recentOperations.length > 0 && <Tooltip label={isSpanish ? 'Limpiar historial' : 'Clear history'} placement="top"><button type="button" aria-label={isSpanish ? 'Limpiar historial' : 'Clear history'} onClick={onClearHistory} className="grid h-8 w-8 place-items-center rounded-md text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-100"><Trash2 className="h-4 w-4" /></button></Tooltip>}
@@ -180,7 +181,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
 
             <div className="relative h-16 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950/80 px-2">
               <div className="absolute inset-x-2 top-1/2 border-t border-neutral-800" />
-              <div className="absolute bottom-1.5 left-3 text-[10px] text-neutral-500">{isSpanish ? 'Ritmo de transferencia' : 'Transfer throughput'}</div>
+              <div className="absolute bottom-1.5 left-3 text-[10px] text-neutral-500">{isSpanish ? 'Ritmo de operación' : 'Operation throughput'}</div>
               <svg viewBox="0 0 100 46" preserveAspectRatio="none" className="h-full w-full">{graphPoints && <polyline points={graphPoints} fill="none" stroke="rgb(34 197 94)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />}</svg>
             </div>
             <footer className="flex items-center justify-between border-t border-neutral-800 pt-3">
@@ -191,7 +192,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
                     {activeOperation.status === 'paused' ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}{activeOperation.status === 'paused' ? (isSpanish ? 'Continuar' : 'Resume') : (isSpanish ? 'Pausar' : 'Pause')}
                   </button>
                 </Tooltip>
-                <Tooltip label={isSpanish ? 'Cancelar transferencia y limpiar el elemento parcial' : 'Cancel transfer and remove the partial item'} placement="top">
+                <Tooltip label={isSpanish ? 'Cancelar operación y limpiar el elemento parcial' : 'Cancel operation and remove the partial item'} placement="top">
                   <button type="button" disabled={activeOperation.status === 'cancelling'} onClick={() => onCancel(activeOperation.jobId)} className="inline-flex h-9 items-center gap-2 rounded-md border border-rose-800/80 bg-rose-950/50 px-3 text-sm text-rose-200 transition hover:bg-rose-900/70 disabled:opacity-50">
                     <X className="h-4 w-4" />{isSpanish ? 'Cancelar' : 'Cancel'}
                   </button>
@@ -200,10 +201,10 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
             </footer>
           </>}
 
-          {queuedOperations.length > 0 && <section className="space-y-2" aria-label={isSpanish ? 'Transferencias en cola' : 'Queued transfers'}>
+          {queuedOperations.length > 0 && <section className="space-y-2" aria-label={isSpanish ? 'Operaciones en cola' : 'Queued operations'}>
             <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{isSpanish ? 'En cola' : 'Queue'} ({queuedOperations.length})</h3>
             {queuedOperations.map(operation => <div key={operation.jobId} className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950/40 px-3 py-2">
-              <span className="text-cyan-300">{operation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" />}</span>
+              <span className="text-cyan-300">{operation.kind === 'extract' ? <Archive className="h-4 w-4" /> : operation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" />}</span>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm text-neutral-200">{operation.sourcePaths.length > 1 ? `${operation.sourcePaths.length} ${isSpanish ? 'elementos' : 'items'}` : displayPath(operation.sourcePaths[0])}</div>
                 <div className="truncate text-xs text-neutral-500">{(isSpanish ? 'Hacia ' : 'To ') + displayPath(operation.targetPath)}</div>
@@ -213,10 +214,10 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
             </div>)}
           </section>}
 
-          {recentOperations.length > 0 && <section className="space-y-2" aria-label={isSpanish ? 'Transferencias recientes' : 'Recent transfers'}>
+          {recentOperations.length > 0 && <section className="space-y-2" aria-label={isSpanish ? 'Operaciones recientes' : 'Recent operations'}>
             <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{isSpanish ? 'Recientes' : 'Recent'}</h3>
             {recentOperations.map(operation => <div key={operation.jobId} className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950/30 px-3 py-2">
-              <span className={operation.status === 'completed' ? 'text-emerald-400' : operation.status === 'failed' ? 'text-rose-400' : 'text-neutral-500'}>{operation.status === 'completed' ? <Check className="h-4 w-4" /> : operation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" />}</span>
+              <span className={operation.status === 'completed' ? 'text-emerald-400' : operation.status === 'failed' ? 'text-rose-400' : 'text-neutral-500'}>{operation.status === 'completed' ? <Check className="h-4 w-4" /> : operation.kind === 'extract' ? <Archive className="h-4 w-4" /> : operation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" />}</span>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm text-neutral-300">{operation.sourcePaths.length > 1 ? `${operation.sourcePaths.length} ${isSpanish ? 'elementos' : 'items'}` : displayPath(operation.sourcePaths[0])}</div>
                 <div className="truncate text-xs text-neutral-500">{statusLabel(operation, language)}{operation.error ? ': ' + operation.error : ''}</div>
@@ -225,7 +226,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
             </div>)}
           </section>}
 
-          {!activeOperation && queuedOperations.length === 0 && recentOperations.length === 0 && <div className="py-3 text-center text-sm text-neutral-500">{isSpanish ? 'El historial está vacío.' : 'Transfer history is empty.'}</div>}
+          {!activeOperation && queuedOperations.length === 0 && recentOperations.length === 0 && <div className="py-3 text-center text-sm text-neutral-500">{isSpanish ? 'El historial de operaciones está vacío.' : 'Operation history is empty.'}</div>}
         </div>}
 
         {!isExpanded && <button type="button" onClick={() => setIsExpanded(true)} className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-300 hover:bg-neutral-800"><ChevronDown className="h-4 w-4" />{activeOperation ? operationName(activeOperation, language) : queuedOperations.length ? (isSpanish ? `${queuedOperations.length} en cola` : `${queuedOperations.length} queued`) : (isSpanish ? 'Ver actividad reciente' : 'View recent activity')}</button>}

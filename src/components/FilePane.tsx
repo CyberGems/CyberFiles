@@ -134,6 +134,7 @@ interface FileColumnWidths {
 interface ColumnResizeDrag {
   pointerId: number;
   startX: number;
+  latestClientX: number;
   guideStartX: number;
   column: ResizableColumn;
   widths: FileColumnWidths;
@@ -371,6 +372,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const recentFoldersButtonRef = useRef<HTMLButtonElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const columnResizeDragRef = useRef<ColumnResizeDrag | null>(null);
+  const columnResizeFrameRef = useRef<number | null>(null);
+  const columnResizeGuideRef = useRef<HTMLDivElement>(null);
   const columnResizeGuideFadeTimeoutRef = useRef<number | null>(null);
   const nativeFileIconGenerationRef = useRef(0);
   const nativeFileIconRequestsRef = useRef<NativeFileIconRequest[]>([]);
@@ -535,6 +538,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   useEffect(() => () => {
     clearPendingDeselection();
+    if (columnResizeFrameRef.current !== null) {
+      window.cancelAnimationFrame(columnResizeFrameRef.current);
+    }
     if (columnResizeGuideFadeTimeoutRef.current !== null) {
       window.clearTimeout(columnResizeGuideFadeTimeoutRef.current);
     }
@@ -981,9 +987,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const headerRect = columnHeadersRef.current?.getBoundingClientRect();
     const viewportRect = viewportRef.current?.getBoundingClientRect();
     const guideStartX = separatorRect.left + separatorRect.width / 2;
+    if (columnResizeGuideRef.current) columnResizeGuideRef.current.style.translate = '0px 0px';
     columnResizeDragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
+      latestClientX: event.clientX,
       guideStartX,
       column,
       widths: dragWidths,
@@ -999,22 +1007,36 @@ export const FilePane: React.FC<FilePaneProps> = ({
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
+  const updateColumnResizeGuide = (drag: ColumnResizeDrag, clientX: number) => {
+    const resizedWidths = resizeFileColumns(drag.widths, drag.column, clientX - drag.startX);
+    const initialWidth = drag.column === 'name' ? drag.widths.name ?? MIN_NAME_COLUMN_WIDTH : drag.widths[drag.column];
+    const resizedWidth = drag.column === 'name' ? resizedWidths.name ?? MIN_NAME_COLUMN_WIDTH : resizedWidths[drag.column];
+    if (columnResizeGuideRef.current) {
+      columnResizeGuideRef.current.style.translate = `${resizedWidth - initialWidth}px 0`;
+    }
+    return resizedWidths;
+  };
+
   const moveColumnResize = (event: React.PointerEvent<HTMLButtonElement>) => {
     const drag = columnResizeDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    const resizedWidths = resizeFileColumns(drag.widths, drag.column, event.clientX - drag.startX);
-    const initialWidth = drag.column === 'name' ? drag.widths.name ?? MIN_NAME_COLUMN_WIDTH : drag.widths[drag.column];
-    const resizedWidth = drag.column === 'name' ? resizedWidths.name ?? MIN_NAME_COLUMN_WIDTH : resizedWidths[drag.column];
-    setColumnWidths(resizedWidths);
-    setColumnResizeGuide(previous => previous ? {
-      ...previous,
-      left: drag.guideStartX + resizedWidth - initialWidth,
-      fadingOut: false,
-    } : previous);
+    drag.latestClientX = event.clientX;
+    if (columnResizeFrameRef.current !== null) return;
+    columnResizeFrameRef.current = window.requestAnimationFrame(() => {
+      columnResizeFrameRef.current = null;
+      if (columnResizeDragRef.current === drag) updateColumnResizeGuide(drag, drag.latestClientX);
+    });
   };
 
   const finishColumnResize = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (columnResizeDragRef.current?.pointerId === event.pointerId) {
+    const drag = columnResizeDragRef.current;
+    if (drag?.pointerId === event.pointerId) {
+      drag.latestClientX = event.clientX;
+      if (columnResizeFrameRef.current !== null) {
+        window.cancelAnimationFrame(columnResizeFrameRef.current);
+        columnResizeFrameRef.current = null;
+      }
+      setColumnWidths(updateColumnResizeGuide(drag, drag.latestClientX));
       columnResizeDragRef.current = null;
       setColumnResizeGuide(previous => previous ? { ...previous, fadingOut: true } : null);
       if (columnResizeGuideFadeTimeoutRef.current !== null) {
@@ -1892,6 +1914,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
       {columnResizeGuide && createPortal(
         <div
+          ref={columnResizeGuideRef}
           aria-hidden="true"
           className={`column-resize-guide pointer-events-none fixed z-[80] w-px rounded-full bg-cyan-200/60 ${columnResizeGuide.fadingOut ? 'column-resize-guide-out' : 'column-resize-guide-in'}`}
           style={{

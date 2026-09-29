@@ -14,6 +14,10 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+// UnRAR source code may be used in any software to handle RAR archives without limitations free of charge, but cannot be used to develop RAR (WinRAR) compatible archiver and to re-create RAR compression algorithm, which is proprietary. Distribution of modified UnRAR source code in separate form or as a part of other software is permitted, provided that full text of this paragraph, starting from "UnRAR source code" words, is included in license, or in documentation if license is not available, and in source code comments of resulting package.
+use unrar_rs::{sanitize_path as sanitize_rar_path, RarArchive};
+use zip::read::ZipArchive;
+
 mod windows_file_icons;
 
 #[derive(Serialize)]
@@ -2172,6 +2176,554 @@ fn is_text_preview_extension_allowed(path: &Path) -> bool {
     )
 }
 
+const MAX_ARCHIVE_MEMBERS: usize = 50_000;
+const MAX_ARCHIVE_PREVIEW_ENTRIES: usize = 500;
+const MAX_ARCHIVE_TOTAL_BYTES: u64 = 100 * 1024 * 1024 * 1024;
+const MAX_ARCHIVE_FILE_BYTES: u64 = 50 * 1024 * 1024 * 1024;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ArchivePreviewEntry {
+    name: String,
+    is_directory: bool,
+    size: u64,
+    compressed_size: u64,
+    unsafe_path: bool,
+    link: bool,
+    extractable: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ArchivePreview {
+    entries: Vec<ArchivePreviewEntry>,
+    total_entries: usize,
+    total_bytes: u64,
+    truncated: bool,
+}
+
+struct ArchiveMember {
+    index: usize,
+    name: String,
+    relative_path: Option<PathBuf>,
+    is_directory: bool,
+    size: u64,
+    compressed_size: u64,
+    is_link: bool,
+    extractable: bool,
+}
+
+fn archive_extension(path: &Path) -> Result<&str, String> {
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match extension.as_str() {
+        "zip" | "rar" => Ok(if extension == "zip" { "zip" } else { "rar" }),
+        _ => Err("Only ZIP and RAR archives are supported.".to_string()),
+    }
+}
+
+fn safe_archive_relative_path(raw_name: &str, is_rar: bool) -> Option<PathBuf> {
+    if raw_name.is_empty() || raw_name.contains('\0') {
+        return None;
+    }
+    let normalized = raw_name.replace('\\', "/");
+    if normalized.starts_with('/') || normalized.starts_with("//") {
+        return None;
+    }
+    if is_rar {
+        let sanitized = sanitize_rar_path(raw_name);
+        if sanitized.replace('\\', "/") != normalized {
+            return None;
+        }
+    }
+    let mut relative = PathBuf::new();
+    let parts: Vec<&str> = normalized.split('/').collect();
+    for (index, part) in parts.iter().enumerate() {
+        if part.is_empty() && index + 1 == parts.len() {
+            continue;
+        }
+        if part.is_empty()
+            || *part == "."
+            || *part == ".."
+            || part.contains(':')
+            || part.ends_with('.')
+            || part.ends_with(' ')
+            || part.chars().any(|character| {
+                character.is_control() || matches!(character, '<' | '>' | '"' | '|' | '?' | '*')
+            })
+        {
+            return None;
+        }
+        let device_name = part
+            .split('.')
+            .next()
+            .unwrap_or("")
+            .trim_end_matches([' ', '.'])
+            .to_ascii_uppercase();
+        if matches!(
+            device_name.as_str(),
+            "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+        ) || (device_name.len() == 4
+            && (device_name.starts_with("COM") || device_name.starts_with("LPT"))
+            && device_name.as_bytes()[3].is_ascii_digit()
+            && device_name.as_bytes()[3] != b'0')
+        {
+            return None;
+        }
+        relative.push(part);
+    }
+    if relative.as_os_str().is_empty()
+        || relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return None;
+    }
+    Some(relative)
+}
+
+fn collect_archive_members(path: &Path) -> Result<Vec<ArchiveMember>, String> {
+    let extension = archive_extension(path)?;
+    let metadata =
+        fs::symlink_metadata(path).map_err(|error| format!("Cannot inspect archive: {error}"))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("Only regular archive files can be opened.".to_string());
+    }
+    let resolved = path
+        .canonicalize()
+        .map_err(|error| format!("Cannot resolve archive: {error}"))?;
+    if extension == "zip" {
+        let file =
+            fs::File::open(&resolved).map_err(|error| format!("Cannot open archive: {error}"))?;
+        let mut archive =
+            ZipArchive::new(file).map_err(|error| format!("Cannot read ZIP archive: {error}"))?;
+        if archive.len() > MAX_ARCHIVE_MEMBERS {
+            return Err("ARCHIVE_TOO_MANY_ENTRIES".to_string());
+        }
+        let mut members = Vec::with_capacity(archive.len());
+        for index in 0..archive.len() {
+            let entry = archive
+                .by_index(index)
+                .map_err(|error| format!("Cannot read ZIP entry: {error}"))?;
+            let name = entry.name().to_string();
+            let mode = entry.unix_mode().unwrap_or(0);
+            let file_type = mode & 0o170000;
+            let is_link = file_type == 0o120000
+                || (file_type != 0 && file_type != 0o100000 && file_type != 0o040000);
+            members.push(ArchiveMember {
+                index,
+                relative_path: safe_archive_relative_path(&name, false),
+                name,
+                is_directory: entry.is_dir(),
+                size: entry.size(),
+                compressed_size: entry.compressed_size(),
+                is_link,
+                extractable: true,
+            });
+        }
+        Ok(members)
+    } else {
+        let file =
+            fs::File::open(&resolved).map_err(|error| format!("Cannot open archive: {error}"))?;
+        let archive =
+            RarArchive::open(file).map_err(|error| format!("Cannot read RAR archive: {error}"))?;
+        let has_complete_volume_set = !archive.more_volumes();
+        let indexed_members = archive.indexed_member_infos();
+        if indexed_members.len() > MAX_ARCHIVE_MEMBERS {
+            return Err("ARCHIVE_TOO_MANY_ENTRIES".to_string());
+        }
+        Ok(indexed_members
+            .into_iter()
+            .map(|entry| {
+                let info = entry.info;
+                let raw_name = info.raw_name;
+                ArchiveMember {
+                    index: entry.index,
+                    relative_path: safe_archive_relative_path(&raw_name, true),
+                    name: info.name,
+                    is_directory: info.is_directory,
+                    size: info.unpacked_size.unwrap_or(0),
+                    compressed_size: info.compressed_size,
+                    is_link: info.is_symlink || info.is_hardlink || info.is_file_copy,
+                    extractable: entry.extractable && has_complete_volume_set,
+                }
+            })
+            .collect())
+    }
+}
+
+fn read_archive_preview_blocking(path: &str) -> Result<ArchivePreview, String> {
+    let source = Path::new(path);
+    let members = collect_archive_members(source)?;
+    let total_entries = members.len();
+    let total_bytes = members
+        .iter()
+        .fold(0u64, |total, member| total.saturating_add(member.size));
+    let entries = members
+        .iter()
+        .take(MAX_ARCHIVE_PREVIEW_ENTRIES)
+        .map(|member| ArchivePreviewEntry {
+            name: member.name.clone(),
+            is_directory: member.is_directory,
+            size: member.size,
+            compressed_size: member.compressed_size,
+            unsafe_path: member.relative_path.is_none(),
+            link: member.is_link,
+            extractable: member.extractable,
+        })
+        .collect();
+    Ok(ArchivePreview {
+        entries,
+        total_entries,
+        total_bytes,
+        truncated: total_entries > MAX_ARCHIVE_PREVIEW_ENTRIES,
+    })
+}
+
+#[tauri::command]
+async fn read_archive_preview(path: String) -> Result<ArchivePreview, String> {
+    tauri::async_runtime::spawn_blocking(move || read_archive_preview_blocking(&path))
+        .await
+        .map_err(|error| format!("Archive preview worker failed: {error}"))?
+}
+
+struct ArchiveProgressWriter<'a> {
+    file: fs::File,
+    control: &'a TransferJobControl,
+    tracker: &'a mut TransferProgressTracker,
+    start_bytes: u64,
+    file_bytes: u64,
+}
+
+impl Write for ArchiveProgressWriter<'_> {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        wait_for_transfer_job(self.control)
+            .map_err(|error| io::Error::new(io::ErrorKind::Interrupted, error))?;
+        if self.file_bytes.saturating_add(buffer.len() as u64) > MAX_ARCHIVE_FILE_BYTES
+            || self
+                .start_bytes
+                .saturating_add(self.file_bytes)
+                .saturating_add(buffer.len() as u64)
+                > MAX_ARCHIVE_TOTAL_BYTES
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "ARCHIVE_SIZE_LIMIT",
+            ));
+        }
+        let written = self.file.write(buffer)?;
+        self.file_bytes = self.file_bytes.saturating_add(written as u64);
+        self.tracker.bytes_copied = self.start_bytes.saturating_add(self.file_bytes);
+        self.tracker.current_file_bytes = self.file_bytes;
+        self.tracker.emit(false);
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.file.flush()
+    }
+}
+
+fn create_archive_output_root(parent: &Path, archive_path: &Path) -> Result<PathBuf, String> {
+    let base = archive_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Extracted");
+    for suffix in 0..=1_000_000u32 {
+        let name = if suffix == 0 {
+            base.to_string()
+        } else {
+            format!("{base} ({suffix})")
+        };
+        if validate_child_name(&name).is_err() {
+            return Err("ARCHIVE_OUTPUT_NAME".to_string());
+        }
+        let candidate = parent.join(name);
+        match fs::create_dir(&candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("Cannot create extraction folder: {error}")),
+        }
+    }
+    Err("Could not find an unused extraction folder name.".to_string())
+}
+
+fn archive_entry_extraction_error(member_name: &str, error: impl std::fmt::Display) -> String {
+    let error = error.to_string();
+    if error.contains("ARCHIVE_SIZE_LIMIT") {
+        "ARCHIVE_SIZE_LIMIT".to_string()
+    } else {
+        format!("Cannot extract {member_name}: {error}")
+    }
+}
+
+fn archive_failure(path: &str, error: String) -> NativeOperationResult {
+    NativeOperationResult {
+        completed_paths: Vec::new(),
+        failures: vec![NativeOperationFailure {
+            path: path.to_string(),
+            error,
+        }],
+    }
+}
+
+fn extract_archive_with_progress(
+    app: tauri::AppHandle,
+    archive_path: &str,
+    target_path: &str,
+    job_id: &str,
+    control: &TransferJobControl,
+) -> NativeOperationResult {
+    let source = match canonical_item(archive_path) {
+        Ok(source) => source,
+        Err(error) => return archive_failure(archive_path, error),
+    };
+    let target = match canonical_directory(target_path) {
+        Ok(target) => target,
+        Err(error) => return archive_failure(archive_path, error),
+    };
+    let members = match collect_archive_members(&source) {
+        Ok(members) => members,
+        Err(error) => return archive_failure(archive_path, error),
+    };
+    if members
+        .iter()
+        .any(|member| member.relative_path.is_none() || member.is_link)
+    {
+        return archive_failure(archive_path, "ARCHIVE_UNSAFE_ENTRY".to_string());
+    }
+    if members.iter().any(|member| !member.extractable) {
+        return archive_failure(archive_path, "ARCHIVE_ADDITIONAL_VOLUMES".to_string());
+    }
+    let total_bytes = members
+        .iter()
+        .fold(0u64, |total, member| total.saturating_add(member.size));
+    if total_bytes > MAX_ARCHIVE_TOTAL_BYTES
+        || members
+            .iter()
+            .any(|member| member.size > MAX_ARCHIVE_FILE_BYTES)
+    {
+        return archive_failure(archive_path, "ARCHIVE_SIZE_LIMIT".to_string());
+    }
+    if let Err(error) = wait_for_transfer_job(control) {
+        return archive_failure(archive_path, error);
+    }
+    let output_root = match create_archive_output_root(&target, &source) {
+        Ok(path) => path,
+        Err(error) => return archive_failure(archive_path, error),
+    };
+    let mut tracker = TransferProgressTracker {
+        app,
+        job_id: job_id.to_string(),
+        phase: "copying".to_string(),
+        current_item: String::new(),
+        bytes_copied: 0,
+        total_bytes,
+        current_file_bytes: 0,
+        current_file_total: 0,
+        items_completed: 0,
+        total_items: members.len(),
+        last_emit: std::time::Instant::now(),
+    };
+    tracker.emit(true);
+
+    let result = (|| -> Result<(), String> {
+        match archive_extension(&source)? {
+            "zip" => {
+                let file = fs::File::open(&source)
+                    .map_err(|error| format!("Cannot open ZIP archive: {error}"))?;
+                let mut archive = ZipArchive::new(file)
+                    .map_err(|error| format!("Cannot read ZIP archive: {error}"))?;
+                for member in &members {
+                    wait_for_transfer_job(control)?;
+                    let relative = member
+                        .relative_path
+                        .as_ref()
+                        .expect("archive paths were prevalidated");
+                    let output = output_root.join(relative);
+                    tracker.current_item = member.name.clone();
+                    tracker.current_file_bytes = 0;
+                    tracker.current_file_total = member.size;
+                    if member.is_directory {
+                        fs::create_dir_all(&output).map_err(|error| {
+                            format!("Cannot create folder {}: {error}", display_path(&output))
+                        })?;
+                    } else {
+                        let parent = output
+                            .parent()
+                            .ok_or_else(|| "Archive entry has no parent folder.".to_string())?;
+                        fs::create_dir_all(parent).map_err(|error| {
+                            format!("Cannot create folder {}: {error}", display_path(parent))
+                        })?;
+                        let output_file = fs::OpenOptions::new()
+                            .write(true)
+                            .create_new(true)
+                            .open(&output)
+                            .map_err(|error| {
+                                format!("Cannot create {}: {error}", display_path(&output))
+                            })?;
+                        let mut entry = archive.by_index(member.index).map_err(|error| {
+                            format!("Cannot open ZIP entry {}: {error}", member.name)
+                        })?;
+                        if entry.is_dir() || entry.unix_mode().unwrap_or(0) & 0o170000 == 0o120000 {
+                            return Err("ARCHIVE_UNSAFE_ENTRY".to_string());
+                        }
+                        let start_bytes = tracker.bytes_copied;
+                        let mut writer = ArchiveProgressWriter {
+                            file: output_file,
+                            control,
+                            tracker: &mut tracker,
+                            start_bytes,
+                            file_bytes: 0,
+                        };
+                        io::copy(&mut entry, &mut writer)
+                            .map_err(|error| archive_entry_extraction_error(&member.name, error))?;
+                        writer
+                            .flush()
+                            .map_err(|error| format!("Cannot flush {}: {error}", member.name))?;
+                    }
+                    tracker.items_completed += 1;
+                    tracker.emit(true);
+                }
+            }
+            "rar" => {
+                let file = fs::File::open(&source)
+                    .map_err(|error| format!("Cannot open RAR archive: {error}"))?;
+                let mut archive = RarArchive::open(file)
+                    .map_err(|error| format!("Cannot read RAR archive: {error}"))?;
+                let volume_provider =
+                    unrar_rs::volume::StaticVolumeProvider::from_ordered(vec![source.clone()]);
+                for member in &members {
+                    wait_for_transfer_job(control)?;
+                    let relative = member
+                        .relative_path
+                        .as_ref()
+                        .expect("archive paths were prevalidated");
+                    let output = output_root.join(relative);
+                    tracker.current_item = member.name.clone();
+                    tracker.current_file_bytes = 0;
+                    tracker.current_file_total = member.size;
+                    if member.is_directory {
+                        fs::create_dir_all(&output).map_err(|error| {
+                            format!("Cannot create folder {}: {error}", display_path(&output))
+                        })?;
+                    } else {
+                        let parent = output
+                            .parent()
+                            .ok_or_else(|| "Archive entry has no parent folder.".to_string())?;
+                        fs::create_dir_all(parent).map_err(|error| {
+                            format!("Cannot create folder {}: {error}", display_path(parent))
+                        })?;
+                        let output_file = fs::OpenOptions::new()
+                            .write(true)
+                            .create_new(true)
+                            .open(&output)
+                            .map_err(|error| {
+                                format!("Cannot create {}: {error}", display_path(&output))
+                            })?;
+                        let start_bytes = tracker.bytes_copied;
+                        let mut writer = ArchiveProgressWriter {
+                            file: output_file,
+                            control,
+                            tracker: &mut tracker,
+                            start_bytes,
+                            file_bytes: 0,
+                        };
+                        archive
+                            .extract_member_streaming(
+                                member.index,
+                                &unrar_rs::ExtractOptions::default(),
+                                &volume_provider,
+                                &mut writer,
+                            )
+                            .map_err(|error| archive_entry_extraction_error(&member.name, error))?;
+                        writer
+                            .flush()
+                            .map_err(|error| format!("Cannot flush {}: {error}", member.name))?;
+                    }
+                    tracker.items_completed += 1;
+                    tracker.emit(true);
+                }
+            }
+            _ => return Err("Only ZIP and RAR archives are supported.".to_string()),
+        }
+        wait_for_transfer_job(control)?;
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => {
+            tracker.current_item.clear();
+            tracker.current_file_bytes = 0;
+            tracker.current_file_total = 0;
+            tracker.emit(true);
+            NativeOperationResult {
+                completed_paths: vec![output_root.to_string_lossy().into_owned()],
+                failures: Vec::new(),
+            }
+        }
+        Err(error) => {
+            let cleanup_error = remove_path_without_following_links(&output_root).err();
+            let error = cleanup_error.map_or(error.clone(), |cleanup| {
+                format!("{error} Partial extraction cleanup failed: {cleanup}")
+            });
+            archive_failure(archive_path, error)
+        }
+    }
+}
+
+fn start_native_archive_extraction_operation(
+    app: tauri::AppHandle,
+    archive_path: String,
+    target_path: String,
+    job_id: String,
+) -> Result<(), String> {
+    let control = Arc::new(TransferJobControl {
+        state: Mutex::new(TransferJobState::default()),
+        changed: Condvar::new(),
+    });
+    {
+        let mut jobs = transfer_jobs()
+            .lock()
+            .map_err(|_| "File operation queue is unavailable.".to_string())?;
+        if jobs.contains_key(&job_id) {
+            return Err("A file operation with this identifier already exists.".to_string());
+        }
+        jobs.insert(job_id.clone(), Arc::clone(&control));
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = extract_archive_with_progress(
+            app.clone(),
+            &archive_path,
+            &target_path,
+            &job_id,
+            &control,
+        );
+        if let Ok(mut jobs) = transfer_jobs().lock() {
+            jobs.remove(&job_id);
+        }
+        let _ = app.emit(
+            "transfer-operation-finished",
+            TransferOperationFinished { job_id, result },
+        );
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn start_archive_extraction(
+    app: tauri::AppHandle,
+    archive_path: String,
+    target_path: String,
+    job_id: String,
+) -> Result<(), String> {
+    start_native_archive_extraction_operation(app, archive_path, target_path, job_id)
+}
 #[tauri::command]
 async fn read_text_preview(path: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -4276,6 +4828,8 @@ fn main() {
             resume_folder_size_calculation,
             cancel_folder_size_calculation,
             read_text_preview,
+            read_archive_preview,
+            start_archive_extraction,
             prepare_pdf_preview,
             create_directory,
             create_text_file,

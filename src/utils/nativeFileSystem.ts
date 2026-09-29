@@ -105,6 +105,22 @@ export interface RecycleBinRestoreResult {
   failures: Array<{ path: string; error: string }>;
 }
 
+export interface NativeArchivePreviewEntry {
+  name: string;
+  isDirectory: boolean;
+  size: number;
+  compressedSize: number;
+  unsafePath: boolean;
+  link: boolean;
+  extractable: boolean;
+}
+
+export interface NativeArchivePreview {
+  entries: NativeArchivePreviewEntry[];
+  totalEntries: number;
+  totalBytes: number;
+  truncated: boolean;
+}
 export interface NativeOperationResult {
   completedPaths: string[];
   failures: Array<{ path: string; error: string }>;
@@ -163,6 +179,10 @@ export async function loadNativeTextPreview(path: string): Promise<string> {
   return invoke<string>('read_text_preview', { path });
 }
 
+export async function loadNativeArchivePreview(path: string): Promise<NativeArchivePreview> {
+  if (!isTauriDesktop()) throw new Error('Archive previews are only available in the desktop app.');
+  return invoke<NativeArchivePreview>('read_archive_preview', { path });
+}
 export async function loadNativePdfPreviewUrl(path: string): Promise<string> {
   if (!isTauriDesktop()) throw new Error('Native PDF previews are unavailable.');
   const authorizedPath = await invoke<string>('prepare_pdf_preview', { path });
@@ -273,6 +293,9 @@ export async function startNativeTransferOperation(paths: string[], targetPath: 
   return invoke<void>('start_copy_operation', { paths, targetPath, jobId });
 }
 
+export async function startNativeArchiveExtractionOperation(archivePath: string, targetPath: string, jobId: string): Promise<void> {
+  return invoke<void>('start_archive_extraction', { archivePath, targetPath, jobId });
+}
 export async function pauseNativeTransferOperation(jobId: string): Promise<void> {
   return invoke<void>('pause_transfer_operation', { jobId });
 }
