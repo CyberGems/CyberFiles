@@ -21,3 +21,7 @@ CLAUDE.md
 .cursorrules
 .cursor/
 .github/copilot-instructions.md
+
+# WinUI prototype build outputs
+native-winui-spike/bin/
+native-winui-spike/obj/
