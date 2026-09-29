@@ -1,10 +1,10 @@
 # WinUI file pane spike
 
-This isolated proof of concept evaluates a Windows-native CyberFiles file pane using C#, XAML, and WinUI 3.
+This isolated proof of concept evaluates a Windows-native CyberFiles explorer using C#, XAML, and WinUI 3.
 
-It enumerates direct children of a folder on a background task, reports the exact observed direct-child count, supports basic sorting and name filtering, and presents rows in a WinUI ListView with a virtualizing ItemsStackPanel. Rows include names, item types, file sizes, and modified dates. Double-clicking a folder navigates into it.
+The window has two reusable file panes. Each pane has independent navigation history, path entry, filtering, sorting, selection, and direct-child counts. It enumerates directory entries on a background task, reports the exact observed direct-child count, and presents rows in a WinUI ListView with a virtualizing ItemsStackPanel. Rows include names, item types, file sizes, and modified dates. Double-clicking a folder navigates within that pane.
 
-This is a focused architecture spike, not a CyberFiles rewrite. It currently loads metadata rows for the complete direct directory into memory. The WinUI list virtualizes visible row containers, but the prototype does not yet implement data virtualization, filesystem watching, thumbnails, archive previews, operation queues, or CyberFiles selection and dual-pane workflows. These limitations are intentional so the first comparison isolates the file pane.
+This is a focused architecture spike, not a CyberFiles rewrite. It currently loads metadata rows for the complete direct directory into memory. The WinUI list virtualizes visible row containers, but the prototype does not yet implement data virtualization, filesystem watching, thumbnails, archive previews, file operations, or integration with CyberFiles settings and saved sessions. The two panes establish a native browsing foundation before those workflows are ported.
 
 ## Build
 
