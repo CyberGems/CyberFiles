@@ -25,6 +25,16 @@ interface NativeFolderEntry {
   createdMs: number | null;
 }
 
+export interface NativeFileIconRequest {
+  id: string;
+  path: string;
+}
+
+export interface NativeFileIconGroup {
+  itemIds: string[];
+  dataUrl: string;
+}
+
 interface LoadedNativeFolder {
   rootPath: string;
   rootName: string;
@@ -182,6 +192,10 @@ export async function listNativeDirectory(path: string, offset = 0): Promise<{ r
   };
 }
 
+export async function getNativeFileIcons(items: NativeFileIconRequest[], large: boolean): Promise<NativeFileIconGroup[]> {
+  if (!isTauriDesktop() || items.length === 0) return [];
+  return invoke<NativeFileIconGroup[]>('get_file_icons', { items, large });
+}
 export async function openFolderInWindowsExplorer(path: string): Promise<void> {
   if (!isTauriDesktop()) throw new Error('Windows File Explorer is available only in the desktop app.');
   await invoke('open_folder_in_windows_explorer', { path });

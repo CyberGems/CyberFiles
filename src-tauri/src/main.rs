@@ -14,6 +14,8 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+mod windows_file_icons;
+
 #[derive(Serialize)]
 struct RuntimeInfo {
     app_name: &'static str,
@@ -396,6 +398,19 @@ struct NativeFolderEntry {
     size: u64,
     modified_ms: Option<u64>,
     created_ms: Option<u64>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeFileIconRequest {
+    id: String,
+    path: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeFileIconGroup {
+    item_ids: Vec<String>,
+    data_url: String,
 }
 
 #[derive(Serialize)]
@@ -2261,6 +2276,38 @@ async fn image_thumbnail(path: String) -> Option<String> {
     .await
     .ok()
     .flatten()
+}
+
+#[tauri::command]
+async fn get_file_icons(
+    items: Vec<NativeFileIconRequest>,
+    large: bool,
+) -> Result<Vec<NativeFileIconGroup>, String> {
+    const MAX_ICON_BATCH_SIZE: usize = 48;
+    if items.len() > MAX_ICON_BATCH_SIZE {
+        return Err("Too many file icons were requested at once.".to_string());
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(_shell_apartment) = windows_file_icons::ShellApartment::initialize() else {
+            return Ok(Vec::new());
+        };
+        let mut grouped_icons: HashMap<String, Vec<String>> = HashMap::new();
+        for item in items {
+            if item.path.len() > 32_767 || item.id.len() > 32_767 {
+                continue;
+            }
+            if let Some(data_url) = windows_file_icons::get_associated_file_icon(&item.path, large) {
+                grouped_icons.entry(data_url).or_default().push(item.id);
+            }
+        }
+        Ok(grouped_icons
+            .into_iter()
+            .map(|(data_url, item_ids)| NativeFileIconGroup { item_ids, data_url })
+            .collect())
+    })
+    .await
+    .map_err(|error| format!("File icon worker failed: {error}"))?
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -4221,6 +4268,7 @@ fn main() {
             hide_main_window,
             quit_app,
             list_directory,
+            get_file_icons,
             calculate_folder_size,
             calculate_folder_size_bounded,
             start_folder_size_calculation,

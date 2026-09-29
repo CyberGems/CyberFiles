@@ -307,9 +307,39 @@ html[data-theme='light'] [data-system-home-icon='network'] {
   }
 }
 
+@keyframes column-resize-guide-in {
+  0% { opacity: 0; filter: blur(1.2px); }
+  42% { opacity: 0.48; filter: blur(0.3px); }
+  68% { opacity: 0.28; }
+  100% { opacity: 0.52; filter: blur(0); }
+}
+
+@keyframes column-resize-guide-out {
+  0% { opacity: 0.52; filter: blur(0); }
+  44% { opacity: 0.25; }
+  100% { opacity: 0; filter: blur(1.2px); }
+}
+
+.column-resize-guide {
+  box-shadow: 0 0 4px 1px rgb(34 211 238 / 18%);
+}
+
+.column-resize-guide-in {
+  animation: column-resize-guide-in 110ms ease-out both;
+}
+
+.column-resize-guide-out {
+  animation: column-resize-guide-out 120ms ease-in both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   #root {
     transition: none;
+  }
+
+  .column-resize-guide-in,
+  .column-resize-guide-out {
+    animation: none;
   }
 
   .workspace-manager-backdrop,

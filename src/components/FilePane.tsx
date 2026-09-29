@@ -38,7 +38,7 @@ import {
 import { DriveInfo, FileItem, FileType, GroupByField, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
-import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation } from '../utils/nativeFileSystem';
+import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
 import { listen } from '@tauri-apps/api/event';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip, TooltipPreferenceContext } from './Tooltip';
@@ -143,6 +143,7 @@ interface ColumnResizeGuide {
   left: number;
   top: number;
   height: number;
+  fadingOut: boolean;
 }
 
 interface MarqueeBounds {
@@ -330,6 +331,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const isSystemHome = tab.currentPath === SYSTEM_HOME_PATH;
   const isRecycleBin = tab.currentPath === RECYCLE_BIN_PATH;
   const effectiveViewMode = tab.viewMode;
+  const nativeFileIconSize = effectiveViewMode === 'icons' ? 'large' : 'small';
+  const nativeFileIconScope = `${tab.currentPath}\u0000${nativeFileIconSize}`;
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [isEditingPath, setIsEditingPath] = useState(false);
   const [recentFoldersMenuPosition, setRecentFoldersMenuPosition] = useState<{ left: number; top: number; width: number } | null>(null);
@@ -352,6 +355,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [columnMenuPosition, setColumnMenuPosition] = useState<{ left: number; top: number } | null>(null);
   const [columnResizeGuide, setColumnResizeGuide] = useState<ColumnResizeGuide | null>(null);
   const [columnDropTarget, setColumnDropTarget] = useState<FileColumn | null>(null);
+  const [nativeFileIconState, setNativeFileIconState] = useState<{ scope: string; byItemId: Record<string, string> }>({ scope: '', byItemId: {} });
   const lastSingleClickOpenRef = useRef<{ itemId: string; timestamp: number } | null>(null);
   const pendingDeselectionRef = useRef<number | null>(null);
   const latestTabRef = useRef(tab);
@@ -367,6 +371,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const recentFoldersButtonRef = useRef<HTMLButtonElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const columnResizeDragRef = useRef<ColumnResizeDrag | null>(null);
+  const columnResizeGuideFadeTimeoutRef = useRef<number | null>(null);
+  const nativeFileIconGenerationRef = useRef(0);
+  const nativeFileIconRequestsRef = useRef<NativeFileIconRequest[]>([]);
   const columnWidthsSaveTimeoutRef = useRef<number | null>(null);
   const columnPointerDragRef = useRef<ColumnPointerDrag | null>(null);
   const lastColumnPreferencesRevision = useRef(columnPreferencesRevision);
@@ -386,6 +393,63 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const visibleFileColumns = columnLayout.order.filter(column =>
     columnLayout.visible.includes(column) || (editingItemId !== null && column === 'name'),
   );
+  const { requests: nativeFileIconRequests, key: nativeFileIconRequestKey } = React.useMemo(() => {
+    const requests: NativeFileIconRequest[] = [];
+    const keyParts: string[] = [];
+    files.forEach(item => {
+      if (item.isFolder || item.recycleBinId || !item.path) return;
+      requests.push({ id: item.id, path: item.path });
+      keyParts.push(`${item.id}\u0000${item.path}\u0000${item.modifiedAtMs ?? ''}`);
+    });
+    keyParts.sort();
+    return { requests, key: keyParts.join('\u0001') };
+  }, [files]);
+  nativeFileIconRequestsRef.current = nativeFileIconRequests;
+
+  useEffect(() => {
+    const generation = ++nativeFileIconGenerationRef.current;
+    const scope = nativeFileIconScope;
+    const iconRequests = nativeFileIconRequestsRef.current;
+    let cancelled = false;
+    let scheduledBatch: number | null = null;
+
+    setNativeFileIconState(previous => previous.scope === scope ? previous : { scope, byItemId: {} });
+    if (!isTauriDesktop() || isRecycleBin || iconRequests.length === 0) {
+      return () => { cancelled = true; };
+    }
+
+    let nextIndex = 0;
+    const loadNextIconBatch = async () => {
+      const batch = iconRequests.slice(nextIndex, nextIndex + 48);
+      nextIndex += batch.length;
+      try {
+        const groups = await getNativeFileIcons(batch, nativeFileIconSize === 'large');
+        if (cancelled || generation !== nativeFileIconGenerationRef.current) return;
+        setNativeFileIconState(previous => {
+          if (generation !== nativeFileIconGenerationRef.current) return previous;
+          const byItemId = previous.scope === scope ? previous.byItemId : {};
+          const nextByItemId = { ...byItemId };
+          groups.forEach(group => group.itemIds.forEach(id => { nextByItemId[id] = group.dataUrl; }));
+          return { scope, byItemId: nextByItemId };
+        });
+      } catch {
+        // Shell icons are an enhancement. Keep the generic file icons when a lookup fails.
+      }
+
+      if (!cancelled && generation === nativeFileIconGenerationRef.current && nextIndex < iconRequests.length) {
+        scheduledBatch = window.setTimeout(() => { void loadNextIconBatch(); }, 24);
+      }
+    };
+
+    if (nativeFileIconRequestKey) {
+      scheduledBatch = window.setTimeout(() => { void loadNextIconBatch(); }, 48);
+    }
+    return () => {
+      cancelled = true;
+      if (scheduledBatch !== null) window.clearTimeout(scheduledBatch);
+    };
+  }, [isRecycleBin, nativeFileIconRequestKey, nativeFileIconScope, nativeFileIconSize]);
+
   const relativeGraphWidths = React.useMemo(() => {
     const widths = new Map<string, RelativeGraphWidths>();
     if (!relativeGraphsEnabled || isSystemHome || effectiveViewMode !== 'details') return widths;
@@ -469,7 +533,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
     return () => window.clearInterval(interval);
   }, []);
 
-  useEffect(() => () => clearPendingDeselection(), []);
+  useEffect(() => () => {
+    clearPendingDeselection();
+    if (columnResizeGuideFadeTimeoutRef.current !== null) {
+      window.clearTimeout(columnResizeGuideFadeTimeoutRef.current);
+    }
+  }, []);
 
   const hasRecentActivity = (item: FileItem) => {
     const changedAt = Math.max(item.createdAtMs ?? 0, item.modifiedAtMs ?? 0);
@@ -900,6 +969,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const startColumnResize = (column: ResizableColumn, event: React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    if (columnResizeGuideFadeTimeoutRef.current !== null) {
+      window.clearTimeout(columnResizeGuideFadeTimeoutRef.current);
+      columnResizeGuideFadeTimeoutRef.current = null;
+    }
     const measuredNameWidth = event.currentTarget.parentElement?.clientWidth ?? MIN_NAME_COLUMN_WIDTH;
     const dragWidths = column === 'name' && columnWidths.name === null
       ? { ...columnWidths, name: measuredNameWidth }
@@ -920,6 +993,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         left: guideStartX,
         top: headerRect.top,
         height: Math.max(0, viewportRect.bottom - headerRect.top),
+        fadingOut: false,
       });
     }
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -932,13 +1006,24 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const initialWidth = drag.column === 'name' ? drag.widths.name ?? MIN_NAME_COLUMN_WIDTH : drag.widths[drag.column];
     const resizedWidth = drag.column === 'name' ? resizedWidths.name ?? MIN_NAME_COLUMN_WIDTH : resizedWidths[drag.column];
     setColumnWidths(resizedWidths);
-    setColumnResizeGuide(previous => previous ? { ...previous, left: drag.guideStartX + resizedWidth - initialWidth } : previous);
+    setColumnResizeGuide(previous => previous ? {
+      ...previous,
+      left: drag.guideStartX + resizedWidth - initialWidth,
+      fadingOut: false,
+    } : previous);
   };
 
   const finishColumnResize = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (columnResizeDragRef.current?.pointerId === event.pointerId) {
       columnResizeDragRef.current = null;
-      setColumnResizeGuide(null);
+      setColumnResizeGuide(previous => previous ? { ...previous, fadingOut: true } : null);
+      if (columnResizeGuideFadeTimeoutRef.current !== null) {
+        window.clearTimeout(columnResizeGuideFadeTimeoutRef.current);
+      }
+      columnResizeGuideFadeTimeoutRef.current = window.setTimeout(() => {
+        setColumnResizeGuide(null);
+        columnResizeGuideFadeTimeoutRef.current = null;
+      }, 120);
     }
   };
 
@@ -1163,6 +1248,25 @@ export const FilePane: React.FC<FilePaneProps> = ({
       case 'binary': return <Binary className="w-4 h-4 text-orange-400" />;
       default: return <FileCode className="w-4 h-4 text-neutral-400" />;
     }
+  };
+
+  const getDisplayFileIcon = (item: FileItem, size: 'small' | 'large' = 'small') => {
+    const nativeIcon = !item.isFolder && nativeFileIconState.scope === nativeFileIconScope
+      ? nativeFileIconState.byItemId[item.id]
+      : undefined;
+    if (nativeIcon) {
+      return (
+        <img
+          src={nativeIcon}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          className={`${size === 'large' ? 'h-8 w-8' : 'h-4 w-4'} flex-shrink-0 object-contain`}
+        />
+      );
+    }
+    const fallback = getFileIcon(item.type, item.isFolder);
+    return size === 'large' ? <span className="scale-[2]">{fallback}</span> : fallback;
   };
 
   // Breadcrumbs generator for Windows paths: "C:\Users\Cali\Documents"
@@ -1789,7 +1893,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {columnResizeGuide && createPortal(
         <div
           aria-hidden="true"
-          className="pointer-events-none fixed z-[80] w-0.5 rounded-full bg-cyan-300/90 shadow-[0_0_7px_2px_rgba(34,211,238,0.42)]"
+          className={`column-resize-guide pointer-events-none fixed z-[80] w-px rounded-full bg-cyan-200/60 ${columnResizeGuide.fadingOut ? 'column-resize-guide-out' : 'column-resize-guide-in'}`}
           style={{
             left: columnResizeGuide.left,
             top: columnResizeGuide.top,
@@ -1914,7 +2018,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     if (column === 'name') {
                       return (
                         <div key={column} className="flex min-w-0 items-center gap-2">
-                          <span className="flex-shrink-0">{getFileIcon(item.type, item.isFolder)}</span>
+                          <span className="flex-shrink-0">{getDisplayFileIcon(item)}</span>
                           {item.colorLabel && (
                             <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
                               item.colorLabel === 'red' ? 'bg-red-400' :
@@ -2005,7 +2109,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       : 'border-transparent text-neutral-300 hover:border-neutral-800 hover:bg-neutral-800/60 hover:text-neutral-100'
                   }`}
                 >
-                  <span className="flex-shrink-0">{getFileIcon(item.type, item.isFolder)}</span>
+                  <span className="flex-shrink-0">{getDisplayFileIcon(item)}</span>
                   {editingItemId === item.id ? (
                     renderInlineRenameInput(item, 'min-w-0 flex-1')
                   ) : (
@@ -2056,9 +2160,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       <ImageFileThumbnail item={item} fallback={getFileIcon(item.type, item.isFolder)} />
                     ) : (
                       <div className="flex h-20 w-full items-center justify-center rounded-md border border-neutral-700/70 bg-neutral-900/80">
-                        <div className="scale-[2]">
-                        {getFileIcon(item.type, item.isFolder)}
-                        </div>
+                        {getDisplayFileIcon(item, 'large')}
                       </div>
                     )}
                   </div>
