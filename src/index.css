@@ -28,6 +28,20 @@ body {
   overflow: hidden;
 }
 
+select {
+  color-scheme: inherit;
+}
+
+select option {
+  background-color: #171717;
+  color: #e5e5e5;
+}
+
+html[data-theme='light'] select option {
+  background-color: #f8fafc;
+  color: #1f2937;
+}
+
 #root {
   opacity: 0;
   transition: opacity 140ms ease-out;

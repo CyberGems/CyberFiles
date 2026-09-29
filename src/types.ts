@@ -48,7 +48,7 @@ export interface RecentItemStyle {
 export type SortField = 'name' | 'size' | 'type' | 'createdDate' | 'modifiedDate' | 'extension';
 export type GroupByField = 'none' | 'name' | 'modifiedDate' | 'type' | 'size';
 export type SortOrder = 'asc' | 'desc';
-export type QuickAccessSortMode = 'manual' | 'name';
+export type QuickAccessSortMode = 'manual' | 'name' | 'name-desc';
 export type ArchiveExtractionMode = 'here' | 'folder';
 
 export type ViewLayout = 'dual-vertical' | 'dual-horizontal' | 'single';

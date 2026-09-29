@@ -18,12 +18,14 @@ import {
   Search,
   Trash2,
   Eye,
-  Recycle,
   X,
   Plus,
   GripVertical,
   Copy,
-  MoveRight,
+  ArrowLeft,
+  ArrowRight,
+  ArrowDown,
+  ArrowUp,
   Pencil,
   Check,
   Square,
@@ -72,11 +74,8 @@ interface SidebarProps {
   onInvertSelection: () => void;
   onTogglePropertiesPanel: () => void;
   propertiesPanelOpen: boolean;
-  onCopySelected: () => void;
-  onMoveSelected: () => void;
   onRenameSelected: () => void;
   onDeleteSelected: () => void;
-  onOpenSelectedFolder: (item: FileItem) => void;
   onPreviewSelectedFile: (item: FileItem) => void;
   supportsArchiveExtraction: boolean;
   onExtractSelected: (item: FileItem, mode: ArchiveExtractionMode) => void;
@@ -85,6 +84,14 @@ interface SidebarProps {
   onCopySelectedPaths: (items: FileItem[]) => void;
   recycleBinSupported: boolean;
   recycleBinStatus: RecycleBinStatus | null;
+  isDualPane: boolean;
+  isHorizontalDual: boolean;
+  hasLeftPaneSelection: boolean;
+  hasRightPaneSelection: boolean;
+  onCopyLeftToRight: () => void;
+  onCopyRightToLeft: () => void;
+  onMoveLeftToRight: () => void;
+  onMoveRightToLeft: () => void;
   onOpenRecycleBin: () => void;
   onRestoreRecycleBinItems: () => void;
   onRequestEmptyRecycleBin: () => void;
@@ -115,11 +122,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onInvertSelection,
   onTogglePropertiesPanel,
   propertiesPanelOpen,
-  onCopySelected,
-  onMoveSelected,
   onRenameSelected,
   onDeleteSelected,
-  onOpenSelectedFolder,
   onPreviewSelectedFile,
   supportsArchiveExtraction,
   onExtractSelected,
@@ -128,11 +132,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCopySelectedPaths,
   recycleBinSupported,
   recycleBinStatus,
+  isDualPane,
+  isHorizontalDual,
+  hasLeftPaneSelection,
+  hasRightPaneSelection,
+  onCopyLeftToRight,
+  onCopyRightToLeft,
+  onMoveLeftToRight,
+  onMoveRightToLeft,
   onOpenRecycleBin,
   onRestoreRecycleBinItems,
   onRequestEmptyRecycleBin,
 }) => {
   const { t, language } = useLanguage();
+  const ForwardPaneArrow = isHorizontalDual ? ArrowDown : ArrowRight;
+  const BackwardPaneArrow = isHorizontalDual ? ArrowUp : ArrowLeft;
   const [activeTab, setActiveTab] = useState<'tree' | 'recent'>('tree');
   const [showLauncherWithSelection, setShowLauncherWithSelection] = useState(false);
   const showSelectionContext = selectedItems.length > 0 && !showLauncherWithSelection;
@@ -144,6 +158,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [dragTargetQuickAccessId, setDragTargetQuickAccessId] = useState<string | null>(null);
   const [expandedFolderPaths, setExpandedFolderPaths] = useState<Set<string>>(() => new Set());
   const [folderTreeStates, setFolderTreeStates] = useState<Record<string, FolderTreeState>>({});
+  const [quickAccessSortOpen, setQuickAccessSortOpen] = useState(false);
+  const quickAccessSortRef = React.useRef<HTMLDivElement>(null);
 
   const loadFolderTreeChildren = async (path: string, offset = 0) => {
     setFolderTreeStates(previous => {
@@ -293,6 +309,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (selectedItems.length === 0) setShowLauncherWithSelection(false);
   }, [selectedItems.length]);
 
+  useEffect(() => {
+    if (!quickAccessSortOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (!quickAccessSortRef.current?.contains(event.target as Node)) setQuickAccessSortOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setQuickAccessSortOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [quickAccessSortOpen]);
+
   const toggleSection = (section: 'drives' | 'quickAccess') => {
     setCollapsedSections(previous => ({ ...previous, [section]: !previous[section] }));
   };
@@ -425,38 +457,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
 
-      <div className="border-b border-neutral-800/80 bg-neutral-950 px-2 py-2">
-        <div className="flex items-stretch gap-1.5">
-          <Tooltip label={canEmptyRecycleBin ? t.sidebar.emptyRecycleBinAction : recycleBinStateLabel} placement="right" disabled={!canEmptyRecycleBin}>
-            <button
-              type="button"
-              disabled={!canEmptyRecycleBin}
-              onClick={onRequestEmptyRecycleBin}
-              aria-label={`${t.sidebar.recycleBinTitle}: ${recycleBinStateLabel}`}
-              className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-neutral-800 bg-neutral-900/60 px-2.5 py-2 text-left transition-colors enabled:hover:border-rose-800/80 enabled:hover:bg-rose-950/25 disabled:cursor-default"
-            >
-              <Trash2 className={`h-4 w-4 flex-shrink-0 ${canEmptyRecycleBin ? 'text-rose-300' : 'text-neutral-500'}`} />
-              <span className="min-w-0 flex-1">
-                <span className="block text-[10px] font-semibold text-neutral-200">{t.sidebar.recycleBinTitle}</span>
-                <span className={`block truncate text-[9px] ${canEmptyRecycleBin ? 'text-neutral-400' : 'text-neutral-500'}`}>{recycleBinStateLabel}</span>
-              </span>
-              {canEmptyRecycleBin && <span className="flex-shrink-0 rounded border border-rose-900/60 px-1.5 py-0.5 text-[9px] font-semibold text-rose-200">{t.sidebar.emptyRecycleBinButton}</span>}
-            </button>
-          </Tooltip>
-          <Tooltip label={recycleBinSupported ? t.sidebar.openRecycleBinAction : t.sidebar.recycleBinDesktopOnly} placement="right">
-            <button
-              type="button"
-              disabled={!recycleBinSupported}
-              onClick={onOpenRecycleBin}
-              aria-label={t.sidebar.openRecycleBinAction}
-              className="flex w-10 flex-shrink-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900/60 text-neutral-400 transition-colors enabled:hover:border-cyan-800/80 enabled:hover:bg-cyan-950/25 enabled:hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              <Recycle className="h-4 w-4" />
-            </button>
-          </Tooltip>
-        </div>
-      </div>
-
       {currentPath !== SYSTEM_HOME_PATH && (
         <div className="border-b border-neutral-800/80 bg-neutral-950 px-2 py-2">
           <div className="grid grid-cols-4 gap-1.5">
@@ -545,7 +545,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </div>
 
-          {hasRecycleBinSelection ? (
+          {hasRecycleBinSelection && (
             <button
               type="button"
               onClick={onRestoreRecycleBinItems}
@@ -555,14 +555,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <RotateCcw className="h-3.5 w-3.5" />
               <span>{t.sidebar.restoreSelected}</span>
             </button>
-          ) : selectedItems.length === 1 && (
+          )}
+
+          {!hasRecycleBinSelection && selectedItems.length === 1 && !selectedItems[0].isFolder && (
             <button
               type="button"
-              onClick={() => selectedItems[0].isFolder ? onOpenSelectedFolder(selectedItems[0]) : onPreviewSelectedFile(selectedItems[0])}
+              onClick={() => onPreviewSelectedFile(selectedItems[0])}
               className="flex w-full items-center gap-2 rounded-md border border-cyan-800/70 bg-cyan-950/40 px-2.5 py-2 text-left text-[11px] font-medium text-cyan-200 transition-colors hover:border-cyan-600 hover:bg-cyan-950/70"
             >
-              {selectedItems[0].isFolder ? <FolderOpen className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              <span>{selectedItems[0].isFolder ? t.sidebar.openSelected : t.sidebar.previewSelected}</span>
+              <Eye className="h-3.5 w-3.5" />
+              <span>{t.sidebar.previewSelected}</span>
             </button>
           )}
 
@@ -578,13 +580,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {!hasRecycleBinSelection && <>
+          {isDualPane && (
+            <div className="grid grid-cols-2 gap-1.5">
+              <Tooltip label={isHorizontalDual ? t.sidebar.copyTopToBottomHint : t.sidebar.copyLeftToRightHint} placement="right">
+                <button type="button" onClick={onCopyLeftToRight} disabled={!hasLeftPaneSelection} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40">
+                  <ForwardPaneArrow className="h-3.5 w-3.5 flex-shrink-0 text-cyan-300" /><span>{isHorizontalDual ? t.sidebar.copyTopToBottom : t.sidebar.copyLeftToRight}</span>
+                </button>
+              </Tooltip>
+              <Tooltip label={isHorizontalDual ? t.sidebar.copyBottomToTopHint : t.sidebar.copyRightToLeftHint} placement="right">
+                <button type="button" onClick={onCopyRightToLeft} disabled={!hasRightPaneSelection} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40">
+                  <BackwardPaneArrow className="h-3.5 w-3.5 flex-shrink-0 text-cyan-300" /><span>{isHorizontalDual ? t.sidebar.copyBottomToTop : t.sidebar.copyRightToLeft}</span>
+                </button>
+              </Tooltip>
+              <Tooltip label={isHorizontalDual ? t.sidebar.moveTopToBottomHint : t.sidebar.moveLeftToRightHint} placement="right">
+                <button type="button" onClick={onMoveLeftToRight} disabled={!hasLeftPaneSelection} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40">
+                  <ForwardPaneArrow className="h-3.5 w-3.5 flex-shrink-0 text-blue-300" /><span>{isHorizontalDual ? t.sidebar.moveTopToBottom : t.sidebar.moveLeftToRight}</span>
+                </button>
+              </Tooltip>
+              <Tooltip label={isHorizontalDual ? t.sidebar.moveBottomToTopHint : t.sidebar.moveRightToLeftHint} placement="right">
+                <button type="button" onClick={onMoveRightToLeft} disabled={!hasRightPaneSelection} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40">
+                  <BackwardPaneArrow className="h-3.5 w-3.5 flex-shrink-0 text-blue-300" /><span>{isHorizontalDual ? t.sidebar.moveBottomToTop : t.sidebar.moveRightToLeft}</span>
+                </button>
+              </Tooltip>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-1.5">
-            <button type="button" onClick={onCopySelected} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800">
-              <Copy className="h-3.5 w-3.5 flex-shrink-0 text-cyan-300" /><span>{t.toolbar.copyOpposite}</span>
-            </button>
-            <button type="button" onClick={onMoveSelected} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800">
-              <MoveRight className="h-3.5 w-3.5 flex-shrink-0 text-cyan-300" /><span>{t.toolbar.moveOpposite}</span>
-            </button>
             <button type="button" onClick={onRenameSelected} disabled={selectedItems.length !== 1} className="flex min-w-0 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-2 text-left text-[10px] text-neutral-200 transition-colors hover:border-cyan-700/70 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40">
               <Pencil className="h-3.5 w-3.5 flex-shrink-0 text-amber-300" /><span>{t.toolbar.rename}</span>
             </button>
@@ -665,6 +686,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           )}
 
+          <div className="flex items-center gap-1">
+            <Tooltip label={recycleBinSupported ? t.sidebar.openRecycleBinAction : t.sidebar.recycleBinDesktopOnly} placement="right">
+              <button
+                type="button"
+                disabled={!recycleBinSupported}
+                onClick={onOpenRecycleBin}
+                aria-label={t.sidebar.openRecycleBinAction}
+                aria-current={currentPath === RECYCLE_BIN_PATH ? 'page' : undefined}
+                className={"flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 " + (currentPath === RECYCLE_BIN_PATH ? "bg-neutral-800/90 text-cyan-300 font-medium" : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100")}
+              >
+                <Trash2 className={"h-4 w-4 flex-shrink-0 " + (currentPath === RECYCLE_BIN_PATH ? "text-cyan-300" : canEmptyRecycleBin ? "text-rose-300" : "text-neutral-500")} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[11px]">{t.sidebar.recycleBinTitle}</span>
+                  <span className="block truncate text-[9px] text-neutral-500">{recycleBinStateLabel}</span>
+                </span>
+              </button>
+            </Tooltip>
+            {canEmptyRecycleBin && (
+              <Tooltip label={t.sidebar.emptyRecycleBinAction} placement="right">
+                <button
+                  type="button"
+                  onClick={onRequestEmptyRecycleBin}
+                  aria-label={t.sidebar.emptyRecycleBinAction}
+                  className="flex-shrink-0 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-[9px] text-neutral-400 transition-colors hover:border-rose-800/70 hover:bg-rose-950/30 hover:text-rose-200"
+                >
+                  {t.sidebar.emptyRecycleBinButton}
+                </button>
+              </Tooltip>
+            )}
+          </div>
+
           {(quickAccess.length > 0 || onAddQuickAccess) && (
             <div className="space-y-1">
               <div className="flex items-center gap-1">
@@ -678,17 +730,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {collapsedSections.quickAccess ? <ChevronRight data-collapse-chevron="true" className="h-3 w-3" /> : <ChevronDown data-collapse-chevron="true" className="h-3 w-3" />}
                   <span>{t.sidebar.quickAccessTitle}</span>
                 </button>
-                <Tooltip label={t.sidebar.quickAccessSort} placement="right">
-                  <select
-                    aria-label={t.sidebar.quickAccessSort}
-                    value={quickAccessSortMode}
-                    onChange={event => onQuickAccessSortModeChange(event.target.value as QuickAccessSortMode)}
-                    className="max-w-[68px] rounded border border-neutral-800 bg-neutral-950 px-1 py-0.5 text-[9px] text-neutral-400 outline-none transition-colors hover:text-neutral-200 focus:border-cyan-500/60"
-                  >
-                    <option value="manual">{t.sidebar.quickAccessSortManual}</option>
-                    <option value="name">{t.sidebar.quickAccessSortName}</option>
-                  </select>
-                </Tooltip>
+                <div ref={quickAccessSortRef} className="relative">
+                  <Tooltip label={t.sidebar.quickAccessSort} placement="right">
+                    <button
+                      type="button"
+                      aria-label={t.sidebar.quickAccessSort}
+                      aria-haspopup="menu"
+                      aria-expanded={quickAccessSortOpen}
+                      onClick={() => setQuickAccessSortOpen(open => !open)}
+                      className="flex max-w-[68px] items-center gap-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-[9px] text-neutral-300 outline-none transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-100 focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+                    >
+                      <span>{quickAccessSortMode === 'manual' ? t.sidebar.quickAccessSortManual : quickAccessSortMode === 'name' ? t.sidebar.quickAccessSortName : t.sidebar.quickAccessSortNameDescending}</span>
+                      <ChevronDown className="h-3 w-3 flex-shrink-0 text-neutral-500" />
+                    </button>
+                  </Tooltip>
+                  {quickAccessSortOpen && (
+                    <div role="menu" aria-label={t.sidebar.quickAccessSort} className="absolute right-0 top-full z-40 mt-1 w-28 overflow-hidden rounded-md border border-neutral-700 bg-neutral-900 py-1 shadow-xl">
+                      {([
+                        ['manual', t.sidebar.quickAccessSortManual],
+                        ['name', t.sidebar.quickAccessSortName],
+                        ['name-desc', t.sidebar.quickAccessSortNameDescending],
+                      ] as const).map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={quickAccessSortMode === mode}
+                          onClick={() => { onQuickAccessSortModeChange(mode); setQuickAccessSortOpen(false); }}
+                          className={"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[10px] transition-colors " + (quickAccessSortMode === mode ? "bg-neutral-800 text-cyan-200" : "text-neutral-300 hover:bg-neutral-800/70 hover:text-neutral-100")}
+                        >
+                          <span>{label}</span>
+                          {quickAccessSortMode === mode && <Check className="h-3 w-3 text-cyan-300" />}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 {onAddQuickAccess && (
                   <Tooltip label={t.sidebar.addQuickAccess} placement="right">
                     <button
@@ -767,7 +844,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <div
                       className={"group flex min-w-0 items-center gap-0.5 rounded " + (dragTargetQuickAccessId === item.id ? "ring-1 ring-cyan-500/60 bg-cyan-950/20 " : "") + (draggingQuickAccessId === item.id ? "opacity-50" : "")}
                       onDragOver={event => {
-                        if (quickAccessSortMode !== 'manual') return;
+                        if (quickAccessSortMode !== 'manual' || item.path === SYSTEM_HOME_PATH) return;
                         event.preventDefault();
                         event.dataTransfer.dropEffect = 'move';
                         setDragTargetQuickAccessId(item.id);
@@ -775,12 +852,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onDrop={event => {
                         event.preventDefault();
                         const draggedId = event.dataTransfer.getData('text/plain') || draggingQuickAccessId;
-                        if (draggedId) onReorderQuickAccess(draggedId, item.id);
+                        if (draggedId && item.path !== SYSTEM_HOME_PATH) onReorderQuickAccess(draggedId, item.id);
                         setDraggingQuickAccessId(null);
                         setDragTargetQuickAccessId(null);
                       }}
                     >
-                      {quickAccessSortMode === 'manual' && (
+                      {quickAccessSortMode === 'manual' && item.path !== SYSTEM_HOME_PATH && (
                         <Tooltip label={t.sidebar.quickAccessReorderHint} placement="right">
                           <button
                             type="button"

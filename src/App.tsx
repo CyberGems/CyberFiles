@@ -419,7 +419,8 @@ function readCustomQuickAccess(): QuickAccessItem[] {
 
 function readQuickAccessSortMode(): QuickAccessSortMode {
   try {
-    return window.localStorage.getItem(QUICK_ACCESS_SORT_MODE_KEY) === 'name' ? 'name' : 'manual';
+    const mode = window.localStorage.getItem(QUICK_ACCESS_SORT_MODE_KEY);
+    return mode === 'name' || mode === 'name-desc' ? mode : 'manual';
   } catch {
     return 'manual';
   }
@@ -1161,14 +1162,18 @@ export default function App() {
       ...baseSidebarQuickAccess,
       ...customQuickAccess.filter(item => !baseQuickAccessPaths.has(getPathKey(item.path))),
     ];
-    if (quickAccessSortMode === 'name') {
-      return combined.sort((a, b) =>
-        a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }) || a.id.localeCompare(b.id),
+    const pinned = combined.filter(item => getPathKey(item.path) === getPathKey(SYSTEM_HOME_PATH));
+    const sortable = combined.filter(item => getPathKey(item.path) !== getPathKey(SYSTEM_HOME_PATH));
+    if (quickAccessSortMode === 'name' || quickAccessSortMode === 'name-desc') {
+      const direction = quickAccessSortMode === 'name' ? 1 : -1;
+      sortable.sort((a, b) =>
+        direction * (a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }) || a.id.localeCompare(b.id)),
       );
+      return [...pinned, ...sortable];
     }
 
     const orderById = new Map(quickAccessOrder.map((id, index) => [id, index]));
-    return combined
+    const manuallySorted = sortable
       .map((item, index) => ({ item, index, order: orderById.get(item.id) }))
       .sort((a, b) => {
         if (a.order === undefined && b.order === undefined) return a.index - b.index;
@@ -1177,6 +1182,7 @@ export default function App() {
         return a.order - b.order || a.index - b.index;
       })
       .map(entry => entry.item);
+    return [...pinned, ...manuallySorted];
   }, [baseSidebarQuickAccess, customQuickAccess, quickAccessOrder, quickAccessSortMode]);
   const leftViewMode = leftTabs[activeLeftTabIndex]?.viewMode ?? initialPanelPreferences.leftViewMode;
   const rightViewMode = rightTabs[activeRightTabIndex]?.viewMode ?? initialPanelPreferences.rightViewMode;
@@ -3016,10 +3022,12 @@ export default function App() {
     showToast(t.core.moved.replace('{count}', String(roots.length)).replace('{target}', targetPath));
   }, [activePane, allFiles, pushUndoAction, queueNativeTransfer, t.core.cannotMoveIntoSelf, t.core.moved, t.pane.chooseRealDestinationFolder, showToast, updatePaneTab]);
 
-  const handleCopySelected = useCallback(() => {
-    const roots = getRootItems(allFiles, currentTab.selectedIds);
+  const handleCopySelectedFromPane = useCallback((sourcePane: 'left' | 'right') => {
+    const sourceTab = sourcePane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
+    const destinationTab = sourcePane === 'left' ? rightTabs[activeRightTabIndex] : leftTabs[activeLeftTabIndex];
+    const roots = getRootItems(allFiles, sourceTab.selectedIds);
     if (roots.length === 0) return;
-    const targetPath = inactiveTab.currentPath;
+    const targetPath = destinationTab.currentPath;
     if (targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH) {
       showToast(t.pane.chooseRealDestinationFolder);
       return;
@@ -3030,7 +3038,7 @@ export default function App() {
     }
 
     if (isTauriDesktop()) {
-      startCopyWithProgress(roots.map(root => root.path), targetPath);
+      startCopyWithProgress(roots.map(root => root.path), targetPath, sourcePane);
       return;
     }
 
@@ -3051,12 +3059,22 @@ export default function App() {
     });
 
     setAllFiles(prev => [...prev, ...newCopies]);
-    showToast(t.core.copied.replace('{count}', String(roots.length)).replace('{target}', inactiveTab.title));
-  }, [allFiles, currentTab.selectedIds, inactiveTab.currentPath, inactiveTab.title, t.core.cannotCopyIntoSelf, t.core.copied, t.pane.chooseRealDestinationFolder, showToast, startCopyWithProgress]);
+    showToast(t.core.copied.replace('{count}', String(roots.length)).replace('{target}', destinationTab.title));
+  }, [activeLeftTabIndex, activeRightTabIndex, allFiles, leftTabs, rightTabs, showToast, startCopyWithProgress, t.core.cannotCopyIntoSelf, t.core.copied, t.pane.chooseRealDestinationFolder]);
+
+  const handleCopySelected = useCallback(() => {
+    handleCopySelectedFromPane(activePane);
+  }, [activePane, handleCopySelectedFromPane]);
+
+  const handleMoveSelectedFromPane = useCallback((sourcePane: 'left' | 'right') => {
+    const sourceTab = sourcePane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
+    const destinationTab = sourcePane === 'left' ? rightTabs[activeRightTabIndex] : leftTabs[activeLeftTabIndex];
+    return moveItemsToPath(sourceTab.selectedIds, destinationTab.currentPath, sourcePane);
+  }, [activeLeftTabIndex, activeRightTabIndex, leftTabs, moveItemsToPath, rightTabs]);
 
   const handleMoveSelected = useCallback(() => {
-    moveItemsToPath(currentTab.selectedIds, inactiveTab.currentPath);
-  }, [currentTab.selectedIds, inactiveTab.currentPath, moveItemsToPath]);
+    void handleMoveSelectedFromPane(activePane);
+  }, [activePane, handleMoveSelectedFromPane]);
 
   const handleFileClipboard = useCallback(async (item: FileItem | undefined, isCut: boolean, pane: 'left' | 'right' = activePane) => {
     if (!isTauriDesktop()) {
@@ -3956,7 +3974,7 @@ export default function App() {
 
   const handleReorderQuickAccess = useCallback((draggedId: string, targetId: string) => {
     if (quickAccessSortMode !== 'manual' || draggedId === targetId) return;
-    const reorderedIds = sidebarQuickAccess.map(item => item.id);
+    const reorderedIds = sidebarQuickAccess.filter(item => getPathKey(item.path) !== getPathKey(SYSTEM_HOME_PATH)).map(item => item.id);
     const fromIndex = reorderedIds.indexOf(draggedId);
     const toIndex = reorderedIds.indexOf(targetId);
     if (fromIndex < 0 || toIndex < 0) return;
@@ -3971,7 +3989,7 @@ export default function App() {
 
   const handleMoveQuickAccess = useCallback((itemId: string, direction: -1 | 1) => {
     if (quickAccessSortMode !== 'manual') return;
-    const items = sidebarQuickAccess.map(item => item.id);
+    const items = sidebarQuickAccess.filter(item => getPathKey(item.path) !== getPathKey(SYSTEM_HOME_PATH)).map(item => item.id);
     const index = items.indexOf(itemId);
     const targetIndex = index + direction;
     if (index < 0 || targetIndex < 0 || targetIndex >= items.length) return;
@@ -4215,6 +4233,12 @@ export default function App() {
   const rightAtSystemHome = rightTabs[activeRightTabIndex].currentPath === SYSTEM_HOME_PATH;
   const leftAtRecycleBin = leftTabs[activeLeftTabIndex].currentPath === RECYCLE_BIN_PATH;
   const rightAtRecycleBin = rightTabs[activeRightTabIndex].currentPath === RECYCLE_BIN_PATH;
+  const leftTransferTab = leftTabs[activeLeftTabIndex];
+  const rightTransferTab = rightTabs[activeRightTabIndex];
+  const canTransferLeftToRight = layout !== 'single' && getRootItems(allFiles, leftTransferTab.selectedIds).length > 0 &&
+    rightTransferTab.currentPath !== SYSTEM_HOME_PATH && rightTransferTab.currentPath !== RECYCLE_BIN_PATH;
+  const canTransferRightToLeft = layout !== 'single' && getRootItems(allFiles, rightTransferTab.selectedIds).length > 0 &&
+    leftTransferTab.currentPath !== SYSTEM_HOME_PATH && leftTransferTab.currentPath !== RECYCLE_BIN_PATH;
   const contextPane = contextMenuPos?.paneId ?? activePane;
   const contextPaneTab = contextPane === 'left'
     ? leftTabs[activeLeftTabIndex]
@@ -4414,7 +4438,6 @@ export default function App() {
         showFileExtensions={showFileExtensions}
         onToggleShowFileExtensions={() => setShowFileExtensions(enabled => !enabled)}
         currentFolderPath={currentTab.currentPath}
-        oppositeFolderPath={inactiveTab.currentPath}
         windowsActionsAvailable={isTauriDesktop()}
         windowsSpecialFolders={windowsSpecialFolders}
         lastTerminalOption={lastTerminalOption}
@@ -4424,10 +4447,7 @@ export default function App() {
         onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
         propertiesPanelOpen={previewOpen}
         onTogglePropertiesPanel={() => setPreviewOpen(value => !value)}
-        onRenameSelected={handleRenameSelected}
         onNewFolder={handleNewFolder}
-        onCopySelected={handleCopySelected}
-        onMoveSelected={handleMoveSelected}
         onDeleteSelected={() => handleDeleteSelected(selectedItemsForDelete)}
         undoHistory={undoHistory}
         onUndoAction={handleUndoAction}
@@ -4463,11 +4483,8 @@ export default function App() {
           onInvertSelection={handleInvertVisibleSelection}
           onTogglePropertiesPanel={() => setPreviewOpen(value => !value)}
           propertiesPanelOpen={previewOpen}
-          onCopySelected={handleCopySelected}
-          onMoveSelected={handleMoveSelected}
           onRenameSelected={handleRenameSelected}
           onDeleteSelected={() => handleDeleteSelected(selectedItemsForDelete)}
-          onOpenSelectedFolder={item => { void handleNavigate(item.path, activePane); }}
           onPreviewSelectedFile={handleSelectRecentFile}
           supportsArchiveExtraction={isTauriDesktop()}
           onExtractSelected={(item, mode) => queueNativeTransfer('extract', [item.path], getParentPath(item.path), { selectionPane: activePane, extractionMode: mode })}
@@ -4476,6 +4493,14 @@ export default function App() {
           onCopySelectedPaths={handleCopySelectedPaths}
           recycleBinSupported={isTauriDesktop()}
           recycleBinStatus={recycleBinStatus}
+          isDualPane={layout !== 'single'}
+          isHorizontalDual={layout === 'dual-horizontal'}
+          hasLeftPaneSelection={canTransferLeftToRight && activePane === 'left'}
+          hasRightPaneSelection={canTransferRightToLeft && activePane === 'right'}
+          onCopyLeftToRight={() => handleCopySelectedFromPane('left')}
+          onCopyRightToLeft={() => handleCopySelectedFromPane('right')}
+          onMoveLeftToRight={() => { void handleMoveSelectedFromPane('left'); }}
+          onMoveRightToLeft={() => { void handleMoveSelectedFromPane('right'); }}
           onOpenRecycleBin={() => { void handleOpenRecycleBin(); }}
           onRestoreRecycleBinItems={() => { void handleRestoreRecycleBinItems(selectedItemsForDelete); }}
           onRequestEmptyRecycleBin={handleRequestEmptyRecycleBin}
