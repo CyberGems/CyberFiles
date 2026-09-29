@@ -1933,6 +1933,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
         ref={viewportRef}
         className={`relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto py-0.5 select-none focus:outline-none ${marqueeBounds ? 'cursor-crosshair' : ''}`}
         tabIndex={0}
+        onScroll={event => {
+          if (!hasMore || isLoadingDirectory || !onLoadMore) return;
+          const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+          if (scrollHeight - scrollTop - clientHeight <= Math.max(500, clientHeight)) onLoadMore();
+        }}
         onClick={handleViewportClick}
         onContextMenu={handleViewportContextMenu}
         onDoubleClick={handleViewportDoubleClick}
@@ -2236,6 +2241,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
             </span>
           )}
         </div>
+
+        {hasMore && <span className="hidden min-w-0 flex-1 truncate text-center text-cyan-500/80 sm:block">{t.pane.moreItemsAvailable}</span>}
 
         <div className="text-neutral-500 hidden lg:block">
           F2: Renombrar · F5: Copiar · F6: Mover · F3: Ver

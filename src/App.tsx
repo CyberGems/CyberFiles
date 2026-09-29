@@ -3868,7 +3868,7 @@ export default function App() {
       completeOnboarding();
       const count = loaded.files.length - 1;
       const suffix = loaded.hasMore
-        ? (language === 'es' ? ', primeros 400. Usa “Cargar más” para continuar.' : ', first 400. Use “Load more” to continue.')
+        ? (language === 'es' ? ', primeros 400. Desplázate hacia abajo para cargar más automáticamente.' : ', first 400. Scroll down to load more automatically.')
         : '';
       showToast(`${language === 'es' ? 'Carpeta cargada' : 'Folder loaded'}: "${loaded.rootName}" (${count} ${language === 'es' ? 'elementos' : 'items'})${suffix}`);
     } catch (error: any) {
