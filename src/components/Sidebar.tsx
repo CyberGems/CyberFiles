@@ -33,7 +33,7 @@ import {
   Home,
   ListChecks,
 } from 'lucide-react';
-import { ArchiveExtractionMode, DriveInfo, FileItem, FileType, QuickAccessItem, QuickAccessSortMode, SYSTEM_HOME_PATH } from '../types';
+import { ArchiveExtractionMode, DriveInfo, FileItem, FileType, QuickAccessItem, QuickAccessSortMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
 import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
@@ -80,6 +80,8 @@ interface SidebarProps {
   onPreviewSelectedFile: (item: FileItem) => void;
   supportsArchiveExtraction: boolean;
   onExtractSelected: (item: FileItem, mode: ArchiveExtractionMode) => void;
+  supportsArchiveCreation: boolean;
+  onCreateZipSelected: () => void;
   onCopySelectedPaths: (items: FileItem[]) => void;
   recycleBinSupported: boolean;
   recycleBinStatus: RecycleBinStatus | null;
@@ -121,6 +123,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onPreviewSelectedFile,
   supportsArchiveExtraction,
   onExtractSelected,
+  supportsArchiveCreation,
+  onCreateZipSelected,
   onCopySelectedPaths,
   recycleBinSupported,
   recycleBinStatus,
@@ -588,6 +592,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <Trash2 className="h-3.5 w-3.5 flex-shrink-0" /><span>{t.toolbar.delete}</span>
             </button>
           </div>
+
+          {supportsArchiveCreation && currentPath !== SYSTEM_HOME_PATH && currentPath !== RECYCLE_BIN_PATH && <Tooltip label={t.contextMenu.compressSelectionTooltip} placement="right">
+            <button type="button" onClick={onCreateZipSelected} className="flex w-full items-center gap-2 rounded-md border border-violet-900/60 bg-violet-950/20 px-2.5 py-2 text-left text-[11px] font-medium text-violet-100 transition-colors hover:border-violet-700 hover:bg-violet-950/50">
+              <Archive className="h-3.5 w-3.5 flex-shrink-0 text-violet-300" /><span>{t.contextMenu.compressSelectedToZip}</span>
+            </button>
+          </Tooltip>}
 
           <button type="button" onClick={() => onCopySelectedPaths(selectedItems)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[10px] text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-200">
             <Copy className="h-3.5 w-3.5" />{selectedItems.length === 1 ? t.sidebar.copySelectedPath : t.sidebar.copySelectedPaths}

@@ -16,7 +16,11 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 // UnRAR source code may be used in any software to handle RAR archives without limitations free of charge, but cannot be used to develop RAR (WinRAR) compatible archiver and to re-create RAR compression algorithm, which is proprietary. Distribution of modified UnRAR source code in separate form or as a part of other software is permitted, provided that full text of this paragraph, starting from "UnRAR source code" words, is included in license, or in documentation if license is not available, and in source code comments of resulting package.
 use unrar_rs::{sanitize_path as sanitize_rar_path, RarArchive};
-use zip::read::ZipArchive;
+use zip::{
+    read::ZipArchive,
+    write::{SimpleFileOptions, ZipWriter},
+    CompressionMethod,
+};
 
 mod windows_file_icons;
 
@@ -781,6 +785,287 @@ fn transfer_native_items_with_progress(
         }
     }
     NativeOperationResult { completed_paths, failures }
+}
+
+
+struct ZipSourceEntry {
+    source_path: PathBuf,
+    archive_name: String,
+    is_directory: bool,
+    size: u64,
+}
+
+fn scan_zip_source_tree(
+    root: &Path,
+    archive_root: &str,
+    control: &TransferJobControl,
+    tracker: &mut TransferProgressTracker,
+    entries: &mut Vec<ZipSourceEntry>,
+) -> Result<(), String> {
+    let mut pending = vec![(root.to_path_buf(), archive_root.to_string())];
+    while let Some((path, archive_name)) = pending.pop() {
+        wait_for_transfer_job(control)?;
+        if entries.len() >= MAX_ARCHIVE_MEMBERS {
+            return Err("ARCHIVE_SOURCE_TOO_MANY_ENTRIES".to_string());
+        }
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|error| format!("Cannot inspect {}: {error}", display_path(&path)))?;
+        if metadata.file_type().is_symlink() {
+            return Err("ARCHIVE_SOURCE_SYMLINK".to_string());
+        }
+        tracker.current_item = archive_name.clone();
+        tracker.total_items = tracker.total_items.saturating_add(1);
+        if metadata.is_dir() {
+            entries.push(ZipSourceEntry {
+                source_path: path.clone(),
+                archive_name: archive_name.clone(),
+                is_directory: true,
+                size: 0,
+            });
+            let mut children = fs::read_dir(&path)
+                .map_err(|error| format!("Cannot read {}: {error}", display_path(&path)))?
+                .map(|entry| entry.map_err(|error| error.to_string()))
+                .collect::<Result<Vec<_>, _>>()?;
+            children.sort_by_key(|entry| entry.file_name().to_string_lossy().to_lowercase());
+            for child in children.into_iter().rev() {
+                let child_name = child.file_name().to_string_lossy().into_owned();
+                pending.push((
+                    child.path(),
+                    format!("{archive_name}/{child_name}"),
+                ));
+            }
+        } else if metadata.is_file() {
+            tracker.total_bytes = tracker.total_bytes.saturating_add(metadata.len());
+            entries.push(ZipSourceEntry {
+                source_path: path,
+                archive_name,
+                is_directory: false,
+                size: metadata.len(),
+            });
+        } else {
+            return Err("ARCHIVE_UNSUPPORTED_SOURCE".to_string());
+        }
+        tracker.emit(false);
+    }
+    Ok(())
+}
+
+fn reserve_zip_output(target: &Path, requested_name: &str) -> Result<(PathBuf, fs::File), String> {
+    let requested = Path::new(requested_name);
+    let stem = requested.file_stem().unwrap_or_default().to_string_lossy();
+    let extension = requested
+        .extension()
+        .map(|value| format!(".{}", value.to_string_lossy()))
+        .unwrap_or_else(|| ".zip".to_string());
+    for index in 0..=1_000_000u32 {
+        let candidate_name = if index == 0 {
+            requested_name.to_string()
+        } else {
+            format!("{stem} ({index}){extension}")
+        };
+        let candidate = target.join(candidate_name);
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => return Ok((candidate, file)),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("Cannot create ZIP archive: {error}")),
+        }
+    }
+    Err("Cannot create a unique ZIP archive name.".to_string())
+}
+
+fn create_zip_with_progress(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+    target_path: &str,
+    archive_name: &str,
+    job_id: &str,
+    control: &TransferJobControl,
+) -> NativeOperationResult {
+    let target = match canonical_directory(target_path) {
+        Ok(target) => target,
+        Err(error) => return NativeOperationResult {
+            completed_paths: Vec::new(),
+            failures: vec![NativeOperationFailure { path: target_path.to_string(), error }],
+        },
+    };
+    let mut requested_name = archive_name.trim().to_string();
+    if requested_name.is_empty() {
+        return NativeOperationResult {
+            completed_paths: Vec::new(),
+            failures: vec![NativeOperationFailure { path: target_path.to_string(), error: "ARCHIVE_OUTPUT_NAME".to_string() }],
+        };
+    }
+    if !requested_name.to_lowercase().ends_with(".zip") {
+        requested_name.push_str(".zip");
+    }
+    if validate_child_name(&requested_name).is_err() {
+        return NativeOperationResult {
+            completed_paths: Vec::new(),
+            failures: vec![NativeOperationFailure { path: requested_name, error: "ARCHIVE_OUTPUT_NAME".to_string() }],
+        };
+    }
+
+    let mut roots: Vec<PathBuf> = Vec::new();
+    for path in &paths {
+        let source = match canonical_item(path) {
+            Ok(source) => source,
+            Err(error) => return NativeOperationResult {
+                completed_paths: Vec::new(),
+                failures: vec![NativeOperationFailure { path: path.clone(), error }],
+            },
+        };
+        if roots.iter().any(|existing| same_or_descendant_path(&source, existing)) {
+            continue;
+        }
+        roots.retain(|existing| !same_or_descendant_path(existing, &source));
+        roots.push(source);
+    }
+    if roots.is_empty() {
+        return NativeOperationResult {
+            completed_paths: Vec::new(),
+            failures: vec![NativeOperationFailure { path: target_path.to_string(), error: "ARCHIVE_NO_SOURCES".to_string() }],
+        };
+    }
+    if roots.iter().any(|source| same_or_descendant_path(&target, source)) {
+        return NativeOperationResult {
+            completed_paths: Vec::new(),
+            failures: roots.into_iter().map(|source| NativeOperationFailure {
+                path: display_path(&source),
+                error: "ARCHIVE_OUTPUT_INSIDE_SOURCE".to_string(),
+            }).collect(),
+        };
+    }
+
+    let mut tracker = TransferProgressTracker {
+        app,
+        job_id: job_id.to_string(),
+        phase: "scanning".to_string(),
+        current_item: String::new(),
+        bytes_copied: 0,
+        total_bytes: 0,
+        current_file_bytes: 0,
+        current_file_total: 0,
+        items_completed: 0,
+        total_items: 0,
+        last_emit: std::time::Instant::now() - std::time::Duration::from_secs(1),
+    };
+    let mut entries = Vec::new();
+    let mut used_archive_roots = std::collections::HashSet::new();
+    for source in roots {
+        let Some(name) = source.file_name() else {
+            return NativeOperationResult {
+                completed_paths: Vec::new(),
+                failures: vec![NativeOperationFailure { path: display_path(&source), error: "ARCHIVE_INVALID_SOURCE".to_string() }],
+            };
+        };
+        let base_name = name.to_string_lossy().replace('\\', "/");
+        let mut archive_root = base_name.clone();
+        let mut suffix = 2usize;
+        while !used_archive_roots.insert(archive_root.to_lowercase()) {
+            archive_root = format!("{base_name} ({suffix})");
+            suffix = suffix.saturating_add(1);
+        }
+        if let Err(error) = scan_zip_source_tree(&source, &archive_root, control, &mut tracker, &mut entries) {
+            return NativeOperationResult {
+                completed_paths: Vec::new(),
+                failures: vec![NativeOperationFailure { path: display_path(&source), error }],
+            };
+        }
+    }
+    tracker.emit(true);
+    if let Err(error) = wait_for_transfer_job(control) {
+        return NativeOperationResult {
+            completed_paths: Vec::new(),
+            failures: vec![NativeOperationFailure { path: target_path.to_string(), error }],
+        };
+    }
+
+    let (output_path, output_file) = match reserve_zip_output(&target, &requested_name) {
+        Ok(output) => output,
+        Err(error) => return NativeOperationResult {
+            completed_paths: Vec::new(),
+            failures: vec![NativeOperationFailure { path: requested_name, error }],
+        },
+    };
+    tracker.phase = "compressing".to_string();
+    tracker.current_item.clear();
+    tracker.emit(true);
+    let mut zip = ZipWriter::new(output_file);
+    let mut buffer = vec![0u8; 512 * 1024];
+    let result = (|| -> Result<(), String> {
+        for entry in entries {
+            wait_for_transfer_job(control)?;
+            tracker.current_item = entry.archive_name.clone();
+            tracker.current_file_bytes = 0;
+            tracker.current_file_total = entry.size;
+            if entry.is_directory {
+                zip.add_directory(
+                    format!("{}/", entry.archive_name.trim_end_matches('/')),
+                    SimpleFileOptions::default(),
+                ).map_err(|error| format!("Cannot add folder to ZIP: {error}"))?;
+            } else {
+                let metadata = fs::symlink_metadata(&entry.source_path)
+                    .map_err(|error| format!("Cannot inspect {}: {error}", display_path(&entry.source_path)))?;
+                if metadata.file_type().is_symlink() || !metadata.is_file() || metadata.len() != entry.size {
+                    return Err("ARCHIVE_SOURCE_CHANGED".to_string());
+                }
+                zip.start_file(
+                    entry.archive_name.clone(),
+                    SimpleFileOptions::default()
+                        .compression_method(CompressionMethod::Deflated)
+                        .large_file(true),
+                ).map_err(|error| format!("Cannot add file to ZIP: {error}"))?;
+                let mut input = fs::File::open(&entry.source_path)
+                    .map_err(|error| format!("Cannot open {}: {error}", display_path(&entry.source_path)))?;
+                loop {
+                    wait_for_transfer_job(control)?;
+                    let count = input.read(&mut buffer).map_err(|error| error.to_string())?;
+                    if count == 0 { break; }
+                    zip.write_all(&buffer[..count])
+                        .map_err(|error| format!("Cannot compress {}: {error}", display_path(&entry.source_path)))?;
+                    tracker.bytes_copied = tracker.bytes_copied.saturating_add(count as u64);
+                    tracker.current_file_bytes = tracker.current_file_bytes.saturating_add(count as u64);
+                    tracker.emit(false);
+                }
+                if tracker.current_file_bytes != entry.size {
+                    return Err("ARCHIVE_SOURCE_CHANGED".to_string());
+                }
+            }
+            tracker.items_completed = tracker.items_completed.saturating_add(1);
+            tracker.emit(false);
+        }
+        wait_for_transfer_job(control)?;
+        let output_file = zip.finish().map_err(|error| format!("Cannot finish ZIP archive: {error}"))?;
+        output_file.sync_all().map_err(|error| format!("Cannot flush ZIP archive: {error}"))?;
+        drop(output_file);
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => {
+            tracker.current_item.clear();
+            tracker.current_file_bytes = 0;
+            tracker.current_file_total = 0;
+            tracker.emit(true);
+            NativeOperationResult {
+                completed_paths: vec![display_path(&output_path)],
+                failures: Vec::new(),
+            }
+        }
+        Err(error) => {
+            let error = fs::remove_file(&output_path).err().map_or(error.clone(), |cleanup| {
+                format!("{error} Partial ZIP cleanup failed: {cleanup}")
+            });
+            NativeOperationResult {
+                completed_paths: Vec::new(),
+                failures: vec![NativeOperationFailure { path: display_path(&output_path), error }],
+            }
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -2838,6 +3123,58 @@ fn start_archive_extraction(
 ) -> Result<(), String> {
     start_native_archive_extraction_operation(app, archive_path, target_path, job_id, extraction_mode, password)
 }
+
+fn start_native_zip_compression_operation(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+    target_path: String,
+    archive_name: String,
+    job_id: String,
+) -> Result<(), String> {
+    let control = Arc::new(TransferJobControl {
+        state: Mutex::new(TransferJobState::default()),
+        changed: Condvar::new(),
+    });
+    {
+        let mut jobs = transfer_jobs()
+            .lock()
+            .map_err(|_| "File operation queue is unavailable.".to_string())?;
+        if jobs.contains_key(&job_id) {
+            return Err("A file operation with this identifier already exists.".to_string());
+        }
+        jobs.insert(job_id.clone(), Arc::clone(&control));
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = create_zip_with_progress(
+            app.clone(),
+            paths,
+            &target_path,
+            &archive_name,
+            &job_id,
+            &control,
+        );
+        if let Ok(mut jobs) = transfer_jobs().lock() {
+            jobs.remove(&job_id);
+        }
+        let _ = app.emit(
+            "transfer-operation-finished",
+            TransferOperationFinished { job_id, result },
+        );
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn start_zip_compression(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+    target_path: String,
+    archive_name: String,
+    job_id: String,
+) -> Result<(), String> {
+    start_native_zip_compression_operation(app, paths, target_path, archive_name, job_id)
+}
+
 #[tauri::command]
 async fn read_text_preview(path: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -4944,6 +5281,7 @@ fn main() {
             read_text_preview,
             read_archive_preview,
             start_archive_extraction,
+            start_zip_compression,
             prepare_pdf_preview,
             create_directory,
             create_text_file,

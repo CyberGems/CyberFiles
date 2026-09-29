@@ -6,7 +6,7 @@ import { Tooltip } from './Tooltip';
 import type { NativeTransferProgress } from '../utils/nativeFileSystem';
 import type { ArchiveExtractionMode } from '../types';
 
-export type TransferKind = 'copy' | 'move' | 'extract';
+export type TransferKind = 'copy' | 'move' | 'extract' | 'compress';
 export type TransferStatus = 'queued' | 'awaiting-password' | 'running' | 'paused' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 
 export interface TransferOperationView extends NativeTransferProgress {
@@ -19,6 +19,8 @@ export interface TransferOperationView extends NativeTransferProgress {
   selectionPane?: 'left' | 'right';
   clipboardSequence?: number;
   extractionMode?: ArchiveExtractionMode;
+  archiveName?: string;
+  resultPath?: string;
   error?: string;
 }
 
@@ -63,6 +65,7 @@ function operationActionLabel(operation: TransferOperationView, language: 'en' |
   const spanish = language === 'es';
   const count = operation.sourcePaths.length;
   if (operation.kind === 'extract') return spanish ? 'Extrayendo archivo' : 'Extracting archive';
+  if (operation.kind === 'compress') return spanish ? 'Creando archivo ZIP' : 'Creating ZIP archive';
   if (operation.kind === 'copy') return spanish
     ? `Copiando ${count} ${count === 1 ? 'elemento' : 'elementos'}`
     : `Copying ${count} ${count === 1 ? 'item' : 'items'}`;
@@ -75,6 +78,7 @@ function sourceLabel(operation: TransferOperationView, language: 'en' | 'es'): s
   if (operation.kind === 'extract') {
     return operation.sourcePaths[0]?.split(/[\\/]/).pop() || (language === 'es' ? 'Archivo comprimido' : 'Archive');
   }
+  if (operation.kind === 'compress') return operation.archiveName || (language === 'es' ? 'Archivo ZIP' : 'ZIP archive');
   return operation.sourcePaths.length === 1
     ? operation.sourcePaths[0].split(/[\\/]/).pop() || operation.sourcePaths[0]
     : (language === 'es' ? `${operation.sourcePaths.length} elementos seleccionados` : `${operation.sourcePaths.length} selected items`);
@@ -97,8 +101,10 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
   const queuedOperations = operations.filter(operation => operation.status === 'queued');
   const passwordOperations = operations.filter(operation => operation.status === 'awaiting-password');
   const recentOperations = operations.filter(operation => ['completed', 'failed', 'cancelled'].includes(operation.status)).slice(-5).reverse();
+  const latestRecentOperation = recentOperations[0];
   const firstPasswordOperation = passwordOperations[0];
   const previousPendingCount = useRef(pendingCount);
+  const title = isSpanish ? 'Operaciones de archivos' : 'File operations';
 
   useEffect(() => {
     if (!firstPasswordOperation) return;
@@ -112,6 +118,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
   }, [firstPasswordOperation?.jobId, firstPasswordOperation?.error, isExpanded]);
 
   useEffect(() => {
+    if (previousPendingCount.current === 0 && pendingCount > 0) setIsExpanded(true);
     if (previousPendingCount.current > 0 && pendingCount === 0 && !isPinned) setIsExpanded(false);
     previousPendingCount.current = pendingCount;
   }, [pendingCount, isPinned]);
@@ -144,7 +151,18 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
     }
   }, [activeOperation?.status, activeOperation?.bytesCopied]);
 
-  if (operations.length === 0) return null;
+  if (operations.length === 0 && !isExpanded) {
+    return createPortal(
+      <aside className="pointer-events-none fixed bottom-4 right-4 z-[120]" aria-label={title}>
+        <Tooltip label={isSpanish ? 'Abrir centro de operaciones' : 'Open activity center'} placement="left">
+          <button type="button" onClick={() => setIsExpanded(true)} aria-label={isSpanish ? 'Abrir centro de operaciones' : 'Open activity center'} className="pointer-events-auto grid h-11 w-11 place-items-center rounded-xl border border-neutral-700 bg-neutral-900 text-cyan-300 shadow-xl shadow-black/40 transition hover:border-cyan-700 hover:bg-neutral-800">
+            <ListChecks className="h-5 w-5" />
+          </button>
+        </Tooltip>
+      </aside>,
+      document.body,
+    );
+  }
 
   const progress = activeOperation?.totalBytes
     ? Math.min(1, activeOperation.bytesCopied / activeOperation.totalBytes)
@@ -160,8 +178,6 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
   }).join(' ');
   const currentItemLabel = activeOperation?.currentItem || activeOperation?.sourcePaths[0] || (isSpanish ? 'Preparando…' : 'Preparing…');
   const remainingLabel = remaining === null ? '—' : elapsedLabel(remaining, language);
-  const title = isSpanish ? 'Operaciones de archivos' : 'File operations';
-
   return createPortal(
     <aside className="pointer-events-none fixed bottom-4 right-4 z-[120] flex max-h-[min(80vh,800px)] w-[min(760px,calc(100vw-2rem))] flex-col items-end" aria-label={title}>
       <section className="pointer-events-auto flex max-h-[80vh] w-full flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 text-neutral-100 shadow-2xl shadow-black/50">
@@ -186,7 +202,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
         {isExpanded && <div className="min-h-0 space-y-3 overflow-y-auto p-4">
           {activeOperation && <>
             <div className="flex min-w-0 items-center gap-3 rounded-lg border border-cyan-900/50 bg-cyan-950/20 px-3 py-2.5">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-cyan-950/70 text-cyan-300">{activeOperation.kind === 'extract' ? <Archive className="h-4 w-4" /> : activeOperation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" />}</span>
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-cyan-950/70 text-cyan-300">{activeOperation.kind === 'extract' || activeOperation.kind === 'compress' ? <Archive className="h-4 w-4" /> : activeOperation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" />}</span>
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-semibold text-neutral-100">{operationActionLabel(activeOperation, language)}</div>
                 <div className="truncate text-xs text-neutral-300">{sourceLabel(activeOperation, language)}</div>
@@ -214,7 +230,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
                 <div className="h-1 overflow-hidden rounded-full bg-neutral-800"><div className="h-full bg-sky-400 transition-[width] duration-150" style={{ width: Math.min(100, activeOperation.currentFileBytes / activeOperation.currentFileTotal * 100) + '%' }} /></div>
               </div>}
               <div className="h-2.5 overflow-hidden rounded-full bg-neutral-800"><div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-sky-300 transition-[width] duration-200" style={{ width: percent + '%' }} /></div>
-              <div className="mt-1 flex justify-end font-mono text-[11px] text-neutral-400">{activeOperation.phase === 'scanning' ? (isSpanish ? 'Tamaño detectado: ' : 'Size found: ') + formatFileSize(activeOperation.totalBytes) : formatFileSize(activeOperation.bytesCopied) + ' / ' + formatFileSize(activeOperation.totalBytes)}</div>
+              <div className="mt-1 flex justify-end font-mono text-[11px] text-neutral-400">{activeOperation.phase === 'scanning' ? (isSpanish ? 'Tamaño detectado: ' : 'Size found: ') + formatFileSize(activeOperation.totalBytes) : (activeOperation.kind === 'compress' ? (isSpanish ? 'Datos procesados: ' : 'Data processed: ') : '') + formatFileSize(activeOperation.bytesCopied) + ' / ' + formatFileSize(activeOperation.totalBytes)}</div>
             </div>
 
             <div className="grid grid-cols-3 gap-2 text-xs">
@@ -259,9 +275,9 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
           {queuedOperations.length > 0 && <section className="space-y-2" aria-label={isSpanish ? 'Operaciones en cola' : 'Queued operations'}>
             <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{isSpanish ? 'En cola' : 'Queue'} ({queuedOperations.length})</h3>
             {queuedOperations.map(operation => <div key={operation.jobId} className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950/40 px-3 py-2">
-              <span className="text-cyan-300">{operation.kind === 'extract' ? <Archive className="h-4 w-4" /> : operation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" />}</span>
+              <span className="text-cyan-300">{operation.kind === 'extract' || operation.kind === 'compress' ? <Archive className="h-4 w-4" /> : operation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" />}</span>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm text-neutral-200">{operation.sourcePaths.length > 1 ? `${operation.sourcePaths.length} ${isSpanish ? 'elementos' : 'items'}` : displayPath(operation.sourcePaths[0])}</div>
+                <div className="truncate text-sm text-neutral-200">{operation.kind === 'compress' ? sourceLabel(operation, language) : operation.sourcePaths.length > 1 ? `${operation.sourcePaths.length} ${isSpanish ? 'elementos' : 'items'}` : displayPath(operation.sourcePaths[0])}</div>
                 <div className="truncate text-xs text-neutral-500">{(isSpanish ? 'Hacia ' : 'To ') + displayPath(operation.targetPath)}</div>
               </div>
               <span className="shrink-0 text-xs text-neutral-500">{statusLabel(operation, language)}</span>
@@ -272,9 +288,9 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
           {recentOperations.length > 0 && <section className="space-y-2" aria-label={isSpanish ? 'Operaciones recientes' : 'Recent operations'}>
             <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{isSpanish ? 'Recientes' : 'Recent'}</h3>
             {recentOperations.map(operation => <div key={operation.jobId} className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950/30 px-3 py-2">
-              <span className={operation.status === 'completed' ? 'text-emerald-400' : operation.status === 'failed' ? 'text-rose-400' : 'text-neutral-500'}>{operation.status === 'completed' ? <Check className="h-4 w-4" /> : operation.kind === 'extract' ? <Archive className="h-4 w-4" /> : operation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" />}</span>
+              <span className={operation.status === 'completed' ? 'text-emerald-400' : operation.status === 'failed' ? 'text-rose-400' : 'text-neutral-500'}>{operation.status === 'completed' ? <Check className="h-4 w-4" /> : operation.kind === 'extract' || operation.kind === 'compress' ? <Archive className="h-4 w-4" /> : operation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" />}</span>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm text-neutral-300">{operation.sourcePaths.length > 1 ? `${operation.sourcePaths.length} ${isSpanish ? 'elementos' : 'items'}` : displayPath(operation.sourcePaths[0])}</div>
+                <div className="truncate text-sm text-neutral-300">{operation.kind === 'compress' ? operation.resultPath ?? sourceLabel(operation, language) : operation.sourcePaths.length > 1 ? `${operation.sourcePaths.length} ${isSpanish ? 'elementos' : 'items'}` : displayPath(operation.sourcePaths[0])}</div>
                 <div className="truncate text-xs text-neutral-500">{statusLabel(operation, language)}{operation.error ? ': ' + operation.error : ''}</div>
               </div>
               <span className="shrink-0 font-mono text-xs text-neutral-500">{operation.totalBytes ? formatFileSize(operation.totalBytes) : ''}</span>
@@ -285,10 +301,11 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
         </div>}
 
         {!isExpanded && <button type="button" onClick={() => setIsExpanded(true)} className="flex w-full items-center gap-3 border-t border-neutral-800 px-4 py-3 text-left text-sm text-neutral-300 transition hover:bg-neutral-800/70">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-cyan-950/60 text-cyan-300">{activeOperation ? activeOperation.kind === 'extract' ? <Archive className="h-4 w-4" /> : activeOperation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</span>
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-cyan-950/60 text-cyan-300">{activeOperation ? activeOperation.kind === 'extract' || activeOperation.kind === 'compress' ? <Archive className="h-4 w-4" /> : activeOperation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate font-medium">{activeOperation ? operationActionLabel(activeOperation, language) : passwordOperations.length ? (isSpanish ? 'Contraseña requerida' : 'Password required') : queuedOperations.length ? (isSpanish ? `${queuedOperations.length} en cola` : `${queuedOperations.length} queued`) : (isSpanish ? 'Ver actividad reciente' : 'View recent activity')}</span>
+            <span className="block truncate font-medium">{activeOperation ? operationActionLabel(activeOperation, language) : passwordOperations.length ? (isSpanish ? 'Contraseña requerida' : 'Password required') : queuedOperations.length ? (isSpanish ? `${queuedOperations.length} en cola` : `${queuedOperations.length} queued`) : latestRecentOperation?.kind === 'compress' ? sourceLabel(latestRecentOperation, language) : (isSpanish ? 'Ver actividad reciente' : 'View recent activity')}</span>
             {activeOperation && <span className="block truncate text-xs text-neutral-500">{sourceLabel(activeOperation, language)} · {displayPath(activeOperation.targetPath)}</span>}
+            {!activeOperation && latestRecentOperation?.kind === 'compress' && latestRecentOperation.resultPath && <span className="block truncate text-xs text-neutral-500">{displayPath(latestRecentOperation.resultPath)}</span>}
           </span>
           {activeOperation && <span className="shrink-0 font-mono text-xs text-cyan-200">{percent}%</span>}
           <ChevronDown className="h-4 w-4 shrink-0" />

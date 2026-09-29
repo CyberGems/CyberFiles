@@ -128,7 +128,7 @@ export interface NativeOperationResult {
 
 export interface NativeTransferProgress {
   jobId: string;
-  phase: 'scanning' | 'copying';
+  phase: 'scanning' | 'copying' | 'compressing';
   currentItem: string;
   bytesCopied: number;
   totalBytes: number;
@@ -296,6 +296,10 @@ export async function startNativeTransferOperation(paths: string[], targetPath: 
 export async function startNativeArchiveExtractionOperation(archivePath: string, targetPath: string, jobId: string, extractionMode: 'here' | 'folder', password?: string): Promise<void> {
   return invoke<void>('start_archive_extraction', { archivePath, targetPath, jobId, extractionMode, password: password ?? null });
 }
+export async function startNativeZipCompressionOperation(paths: string[], targetPath: string, archiveName: string, jobId: string): Promise<void> {
+  return invoke<void>('start_zip_compression', { paths, targetPath, archiveName, jobId });
+}
+
 export async function pauseNativeTransferOperation(jobId: string): Promise<void> {
   return invoke<void>('pause_transfer_operation', { jobId });
 }

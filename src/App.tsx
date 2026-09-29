@@ -47,6 +47,7 @@ import { PreviewPane } from './components/PreviewPane';
 import { BottomStatusBar } from './components/BottomStatusBar';
 import { ContextMenu } from './components/ContextMenu';
 import { CreateItemModal, type NewItemKind } from './components/CreateItemModal';
+import { CreateZipModal } from './components/CreateZipModal';
 import { TextInputContextMenu } from './components/TextInputContextMenu';
 import { TooltipPreferenceContext } from './components/Tooltip';
 import { WorkspaceManagerModal } from './components/WorkspaceManagerModal';
@@ -77,7 +78,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
@@ -838,6 +839,7 @@ export default function App() {
   // Modals state
   const [isBatchRenameOpen, setIsBatchRenameOpen] = useState(false);
   const [pendingCreateItem, setPendingCreateItem] = useState<{ kind: NewItemKind; pane: 'left' | 'right'; parentPath: string; suggestedName?: string } | null>(null);
+  const [pendingZipCreation, setPendingZipCreation] = useState<{ sourcePaths: string[]; targetPath: string; pane: 'left' | 'right'; defaultName: string } | null>(null);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -2515,7 +2517,14 @@ export default function App() {
               ARCHIVE_ADDITIONAL_VOLUMES: actions.t.core.archiveRequiresVolumes,
               ARCHIVE_SIZE_LIMIT: actions.t.core.archiveSizeLimit,
               ARCHIVE_TOO_MANY_ENTRIES: actions.t.core.archiveTooManyEntries,
-              ARCHIVE_OUTPUT_NAME: actions.t.core.archiveOutputName,
+              ARCHIVE_OUTPUT_NAME: operation.kind === 'compress' ? actions.t.core.archiveZipOutputName : actions.t.core.archiveOutputName,
+              ARCHIVE_SOURCE_SYMLINK: actions.t.core.archiveSourceSymlink,
+              ARCHIVE_UNSUPPORTED_SOURCE: actions.t.core.archiveUnsupportedSource,
+              ARCHIVE_SOURCE_CHANGED: actions.t.core.archiveSourceChanged,
+              ARCHIVE_OUTPUT_INSIDE_SOURCE: actions.t.core.archiveOutputInsideSource,
+              ARCHIVE_INVALID_SOURCE: actions.t.core.archiveInvalidSource,
+              ARCHIVE_NO_SOURCES: actions.t.core.archiveNoSources,
+              ARCHIVE_SOURCE_TOO_MANY_ENTRIES: actions.t.core.archiveZipTooManyEntries,
             };
             const failureReason = result.failures[0]
               ? archiveFailureMessages[result.failures[0].error] ?? result.failures[0].error
@@ -2531,6 +2540,8 @@ export default function App() {
               if (operation.kind === 'extract') {
                 const archiveName = operation.sourcePaths[0]?.split(/[\\/]/).pop() ?? '';
                 actions.showToast(actions.t.core.archiveExtracted.replace('{archive}', archiveName).replace('{target}', result.completedPaths[0] ?? operation.targetPath));
+              } else if (operation.kind === 'compress') {
+                actions.showToast(actions.t.core.archiveCompressed.replace('{path}', result.completedPaths[0]));
               } else if (operation.kind === 'copy') {
                 actions.showToast(actions.t.core.copied.replace('{count}', String(result.completedPaths.length)).replace('{target}', operation.targetPath));
               } else if (operation.clipboardSequence) {
@@ -2539,7 +2550,7 @@ export default function App() {
                 actions.showToast(actions.t.core.moved.replace('{count}', String(result.completedPaths.length)).replace('{target}', operation.targetPath));
               }
             }
-            updateTransferOperation(operation.jobId, current => ({ ...current, status, error: failureReason }));
+            updateTransferOperation(operation.jobId, current => ({ ...current, status, error: failureReason, resultPath: operation.kind === 'compress' ? result.completedPaths[0] : current.resultPath }));
             if (activeTransferIdRef.current === operation.jobId) activeTransferIdRef.current = null;
           })();
         }),
@@ -2595,7 +2606,7 @@ export default function App() {
     };
   }, [language, showToast, t.core.operationFailedWithReason]);
 
-  const queueNativeTransfer = useCallback((kind: TransferKind, paths: string[], targetPath: string, options: { sourcePane?: 'left' | 'right'; selectionPane?: 'left' | 'right'; clipboardSequence?: number; extractionMode?: ArchiveExtractionMode } = {}) => {
+  const queueNativeTransfer = useCallback((kind: TransferKind, paths: string[], targetPath: string, options: { sourcePane?: 'left' | 'right'; selectionPane?: 'left' | 'right'; clipboardSequence?: number; extractionMode?: ArchiveExtractionMode; archiveName?: string } = {}) => {
     if (paths.length === 0) return;
     const operation: TransferOperationView = {
       jobId: createOperationId(kind),
@@ -2616,6 +2627,7 @@ export default function App() {
       selectionPane: options.selectionPane,
       clipboardSequence: options.clipboardSequence,
       extractionMode: options.extractionMode,
+      archiveName: options.archiveName,
     };
     const next = [...transferOperationsRef.current, operation];
     transferOperationsRef.current = next;
@@ -2630,7 +2642,9 @@ export default function App() {
     updateTransferOperation(nextOperation.jobId, operation => ({ ...operation, status: 'running', startedAt: Date.now() }));
     void (nextOperation.kind === 'extract'
       ? startNativeArchiveExtractionOperation(nextOperation.sourcePaths[0] ?? '', nextOperation.targetPath, nextOperation.jobId, nextOperation.extractionMode ?? 'folder', archivePasswordsRef.current.get(nextOperation.jobId))
-      : startNativeTransferOperation(nextOperation.sourcePaths, nextOperation.targetPath, nextOperation.jobId, nextOperation.kind === 'move'))
+      : nextOperation.kind === 'compress'
+        ? startNativeZipCompressionOperation(nextOperation.sourcePaths, nextOperation.targetPath, nextOperation.archiveName ?? 'Archive.zip', nextOperation.jobId)
+        : startNativeTransferOperation(nextOperation.sourcePaths, nextOperation.targetPath, nextOperation.jobId, nextOperation.kind === 'move'))
       .catch(error => {
         const reason = String(error);
         archivePasswordsRef.current.delete(nextOperation.jobId);
@@ -3063,6 +3077,59 @@ export default function App() {
     }
     setPendingCreateItem({ kind, pane, parentPath: activePath, suggestedName });
   }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, rightTabs, showToast, t.core.desktopFileOperationsOnly, t.pane.chooseRealFolderFirst, t.pane.noFolderOpen]);
+
+
+  const openZipCreation = useCallback((items: FileItem[], targetPath: string, pane: 'left' | 'right') => {
+    if (!isTauriDesktop()) {
+      showToast(t.core.desktopFileOperationsOnly);
+      return;
+    }
+    if (!targetPath || targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH) {
+      showToast(t.pane.chooseRealFolderFirst);
+      return;
+    }
+    if (items.some(item => item.recycleBinId)) {
+      showToast(t.core.recycleBinRestoreFirst);
+      return;
+    }
+    const roots = getRootItems(items, items.map(item => item.id));
+    if (roots.length === 0) {
+      showToast(t.core.noSelection);
+      return;
+    }
+    const singleStem = roots[0].isFolder ? roots[0].name : roots[0].name.replace(/\.[^.]+$/, '') || roots[0].name;
+    const defaultName = roots.length === 1 ? singleStem + '.zip' : t.contextMenu.zipDefaultName;
+    setPendingZipCreation({
+      sourcePaths: roots.map(item => item.path),
+      targetPath,
+      pane,
+      defaultName,
+    });
+  }, [showToast, t.contextMenu.zipDefaultName, t.core.desktopFileOperationsOnly, t.core.noSelection, t.core.recycleBinRestoreFirst, t.pane.chooseRealFolderFirst]);
+
+  const handleCreateZip = useCallback((archiveName: string, targetPath: string) => {
+    const request = pendingZipCreation;
+    if (!request) return;
+    if (!targetPath || targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH) {
+      showToast(t.pane.chooseRealFolderFirst);
+      return;
+    }
+    let name = archiveName.trim();
+    if (!isValidFileName(name)) {
+      showToast(t.core.invalidName);
+      return;
+    }
+    if (!name.toLowerCase().endsWith('.zip')) name += '.zip';
+    if (!isValidFileName(name)) {
+      showToast(t.core.invalidName);
+      return;
+    }
+    queueNativeTransfer('compress', request.sourcePaths, targetPath, {
+      selectionPane: request.pane,
+      archiveName: name,
+    });
+    setPendingZipCreation(null);
+  }, [pendingZipCreation, queueNativeTransfer, showToast, t.core.invalidName, t.pane.chooseRealFolderFirst]);
 
   const handleNewFolder = useCallback((suggestedName?: string, pane: 'left' | 'right' = activePane) => {
     openCreateItem('folder', pane, suggestedName);
@@ -3528,7 +3595,7 @@ export default function App() {
           isCloseDialogOpen || isSettingsOpen || isAboutOpen || isSearchOpen || isShortcutsOpen ||
           isBatchRenameOpen || isWorkspaceManagerOpen || isUnsavedWorkspaceChangesOpen ||
           isOnboardingOpen || isEmptyRecycleBinConfirmOpen || pendingDeleteItems.length > 0 ||
-          pendingCreateItem || renameRequest || contextMenuPos
+          pendingCreateItem || pendingZipCreation || renameRequest || contextMenuPos
         ) return;
         setIsCommandPaletteOpen(open => !open);
         return;
@@ -3698,6 +3765,7 @@ export default function App() {
     isOnboardingOpen,
     isEmptyRecycleBinConfirmOpen,
     pendingCreateItem,
+    pendingZipCreation,
     renameRequest,
     contextMenuPos,
     pendingDeleteItems.length,
@@ -4000,6 +4068,8 @@ export default function App() {
           onPreviewSelectedFile={handleSelectRecentFile}
           supportsArchiveExtraction={isTauriDesktop()}
           onExtractSelected={(item, mode) => queueNativeTransfer('extract', [item.path], getParentPath(item.path), { selectionPane: activePane, extractionMode: mode })}
+          supportsArchiveCreation={isTauriDesktop()}
+          onCreateZipSelected={() => openZipCreation(selectedItemsForDelete, currentTab.currentPath, activePane)}
           onCopySelectedPaths={handleCopySelectedPaths}
           recycleBinSupported={isTauriDesktop()}
           recycleBinStatus={recycleBinStatus}
@@ -4363,6 +4433,8 @@ export default function App() {
         }}
         supportsArchiveExtraction={isTauriDesktop()}
         onExtractArchive={(item, mode) => queueNativeTransfer('extract', [item.path], getParentPath(item.path), { selectionPane: contextPane, extractionMode: mode })}
+        supportsArchiveCreation={isTauriDesktop()}
+        onCompressToZip={item => openZipCreation([item], getParentPath(item.path), contextPane)}
         onCopyOpposite={() => handleCopySelected()}
         onMoveOpposite={() => handleMoveSelected()}
         onCopyToClipboard={item => { void handleFileClipboard(item, false, contextPane); }}
@@ -4400,6 +4472,7 @@ export default function App() {
           }}
         />
       )}
+      {pendingZipCreation && <CreateZipModal key={pendingZipCreation.targetPath + ':' + pendingZipCreation.sourcePaths.join('|')} defaultName={pendingZipCreation.defaultName} itemCount={pendingZipCreation.sourcePaths.length} targetPath={pendingZipCreation.targetPath} onClose={() => setPendingZipCreation(null)} onChooseTarget={async () => { try { return await chooseNativeFolder(t.contextMenu.chooseTargetFolder); } catch (error) { showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))); return null; } }} onSubmit={handleCreateZip} />}
       <FileOperationModal operations={transferOperations} language={language} onTogglePause={jobId => { void toggleTransferPause(jobId); }} onCancel={jobId => { void cancelTransfer(jobId); }} onSubmitPassword={submitArchivePassword} onClearHistory={clearTransferHistory} />
       <TextInputContextMenu />
 
