@@ -34,9 +34,9 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
   const [permanentlyDelete, setPermanentlyDelete] = useState(false);
   if (items.length === 0 && !title) return null;
 
-  const resolvedTitle = title ?? (permanentlyDelete ? t.core.deletePermanentlyTitle : t.core.deleteTitle);
+  const resolvedTitle = title ?? (allowPermanentDelete ? t.core.deleteItemsTitle : permanentlyDelete ? t.core.deletePermanentlyTitle : t.core.deleteTitle);
   const resolvedDescription = description ?? (permanentlyDelete ? t.core.deletePermanentlyMessage : t.core.deleteMessage);
-  const resolvedConfirmLabel = confirmLabel ?? (permanentlyDelete ? t.core.deletePermanently : t.core.delete);
+  const resolvedConfirmLabel = confirmLabel ?? (permanentlyDelete ? t.core.deleteNow : t.core.delete);
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onMouseDown={event => { if (!isBusy && event.target === event.currentTarget) onCancel(); }}>
@@ -58,7 +58,7 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
         <div className="p-4 space-y-3 text-sm">
           <p className={permanentlyDelete ? 'text-rose-200' : 'text-neutral-300'}>{resolvedDescription}</p>
           {allowPermanentDelete && (
-            <Tooltip label={t.core.deletePermanentlyMessage} placement="top">
+            <Tooltip label={t.core.permanentDeleteCheckboxTooltip} placement="top">
               <label className={`flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${permanentlyDelete ? 'border-rose-800/70 bg-rose-950/30 text-rose-200' : 'border-neutral-800 bg-neutral-950/40 text-neutral-300 hover:border-neutral-700'}`}>
                 <input
                   type="checkbox"
@@ -92,7 +92,7 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
 
         <div className="flex justify-end gap-2 px-4 py-3 border-t border-neutral-800 bg-neutral-950/50">
           <Tooltip label={t.core.cancel} placement="top"><span><DialogButton size="compact" disabled={isBusy} onClick={onCancel}>{t.core.cancel}</DialogButton></span></Tooltip>
-          <Tooltip label={permanentlyDelete ? t.core.deletePermanentlyMessage : resolvedDescription} placement="top">
+          <Tooltip label={permanentlyDelete ? t.core.permanentDeleteConfirmTooltip : allowPermanentDelete ? t.core.recycleBinDeleteConfirmTooltip : resolvedDescription} placement="top">
             <span><DialogButton size="compact" variant={permanentlyDelete ? 'danger' : confirmVariant} disabled={isBusy} onClick={() => onConfirm(permanentlyDelete)}>{isBusy ? busyLabel ?? t.core.operationInProgress : resolvedConfirmLabel}</DialogButton></span>
           </Tooltip>
         </div>

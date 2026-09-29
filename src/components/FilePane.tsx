@@ -1053,8 +1053,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const headerContent = columnHeadersRef.current?.querySelector<HTMLElement>(`[data-file-column-header="${column}"]`);
     const cells = viewportRef.current?.querySelectorAll<HTMLElement>(`[data-file-column-content="${column}"]`) ?? [];
     const headerWidth = headerContent ? headerContent.scrollWidth + 28 : 0;
-    const cellChrome = column === 'name' ? 56 : 16;
-    const widestCell = [...cells].reduce((widest, cell) => Math.max(widest, cell.scrollWidth + cellChrome), 0);
+    const widestCell = [...cells].reduce((widest, cell) => {
+      const hasColorLabel = column === 'name' && Boolean(cell.parentElement?.querySelector('[data-file-name-decoration="color-label"]'));
+      const cellPadding = column === 'name' ? 28 + (hasColorLabel ? 16 : 0) : 4;
+      return Math.max(widest, cell.scrollWidth + cellPadding);
+    }, 0);
     const fittedWidth = Math.max(headerWidth, widestCell);
 
     setColumnWidths(previous => {
@@ -2043,7 +2046,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                         <div key={column} className="flex min-w-0 items-center gap-2">
                           <span className="flex-shrink-0">{getDisplayFileIcon(item)}</span>
                           {item.colorLabel && (
-                            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                            <span data-file-name-decoration="color-label" className={`w-2 h-2 rounded-full flex-shrink-0 ${
                               item.colorLabel === 'red' ? 'bg-red-400' :
                               item.colorLabel === 'blue' ? 'bg-blue-400' :
                               item.colorLabel === 'green' ? 'bg-emerald-400' :
@@ -2071,12 +2074,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{formatFileSize(folderSize.size ?? 0)}</span>
                           ) : (
                             <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip} placement="top">
-                              <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="ml-auto inline-flex w-fit max-w-full items-center justify-end gap-1 rounded px-1 py-0.5 text-right text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
-                                <span data-file-column-content={column} className="inline-flex max-w-full items-center gap-1 whitespace-nowrap">
-                                  {folderSize?.status === 'loading' ? '' : folderSize?.status === 'error' ? '!' : t.pane.folderSizeCalculate}
-                                  {(!folderSize || folderSize.status === 'error') && <Calculator className="h-3 w-3 flex-shrink-0" />}
+                              <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="ml-auto inline-flex h-5 w-[44px] shrink-0 items-center justify-end gap-1 rounded px-1 py-0 text-right leading-none text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
+                                <span data-file-column-content={column} className="inline-flex items-center gap-1 whitespace-nowrap">
+                                  <span className={folderSize?.status === 'loading' ? 'invisible' : ''}>{folderSize?.status === 'error' ? '!' : t.pane.folderSizeCalculate}</span>
+                                  <span className="grid h-3 w-3 flex-shrink-0 place-items-center">
+                                    {folderSize?.status === 'loading'
+                                      ? <LoaderCircle className="h-3 w-3 animate-spin" />
+                                      : (!folderSize || folderSize.status === 'error') ? <Calculator className="h-3 w-3" /> : null}
+                                  </span>
                                 </span>
-                                {folderSize?.status === 'loading' && <LoaderCircle className="h-3 w-3 flex-shrink-0 animate-spin" />}
                               </button>
                             </Tooltip>
                           )
