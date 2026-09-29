@@ -95,7 +95,17 @@ jobs:
           $checksumPath = Join-Path $installer.DirectoryName 'SHA256SUMS.txt'
           [System.IO.File]::WriteAllText($checksumPath, "$installerHash  $($installer.Name)`n", [System.Text.UTF8Encoding]::new($false))
 
-          $tagObject = git cat-file -p "refs/tags/$($env:RELEASE_TAG)" | Out-String
+          $tagRef = "refs/tags/$($env:RELEASE_TAG)"
+          $tagRefSpec = "${tagRef}:${tagRef}"
+          git fetch --force origin $tagRefSpec
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not fetch release tag $($env:RELEASE_TAG) from origin."
+          }
+          $tagObjectType = (git cat-file -t $tagRef | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $tagObjectType -ne 'tag') {
+            throw "Release tag $($env:RELEASE_TAG) is not an annotated tag."
+          }
+          $tagObject = git cat-file -p $tagRef | Out-String
           if ($LASTEXITCODE -ne 0) {
             throw "Could not read annotated tag $($env:RELEASE_TAG)."
           }
@@ -116,8 +126,7 @@ jobs:
           $notes = $template.Replace('{{VERSION}}', $env:RELEASE_TAG).
             Replace('{{RELEASE_SUMMARY}}', $releaseSummary).
             Replace('{{VERSION_NUM}}', $versionNumber).
-            Replace('{{SETUP_SHA256}}', $installerHash).
-            Replace('{{VT_SCAN_STATUS}}', 'Pending automated VirusTotal analysis.')
+            Replace('{{SETUP_SHA256}}', $installerHash)
           [System.IO.File]::WriteAllText('release_notes.md', $notes, [System.Text.UTF8Encoding]::new($false))
           Write-Host "Installer: $($installer.Name)"
           Write-Host "SHA-256: $installerHash"
