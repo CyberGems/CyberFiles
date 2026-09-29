@@ -2459,6 +2459,11 @@ export default function App() {
     updateActiveTab(tab => ({ ...tab, selectedIds: visibleIds, focusedId: visibleIds[0] || null }));
   };
 
+  const handleSelectCurrentFolderItemsByType = (isFolder: boolean) => {
+    const matchingIds = activeDisplayFiles.filter(file => file.isFolder === isFolder).map(file => file.id);
+    updateActiveTab(tab => ({ ...tab, selectedIds: matchingIds, focusedId: matchingIds[0] || null }));
+  };
+
   const handleUnselectAll = () => {
     updateActiveTab(tab => ({ ...tab, selectedIds: [], focusedId: null }));
   };
@@ -4490,6 +4495,9 @@ export default function App() {
           selectedItems={selectedItemsForDelete}
           onClearSelection={() => updateActiveTab(tab => ({ ...tab, selectedIds: [], focusedId: null }))}
           onSelectAll={handleSelectAllVisible}
+          currentFolderItems={activeDisplayFiles}
+          onSelectCurrentFolderFiles={() => handleSelectCurrentFolderItemsByType(false)}
+          onSelectCurrentFolderFolders={() => handleSelectCurrentFolderItemsByType(true)}
           onUnselectAll={handleUnselectAll}
           onInvertSelection={handleInvertVisibleSelection}
           onTogglePropertiesPanel={() => setPreviewOpen(value => !value)}

@@ -71,6 +71,9 @@ interface SidebarProps {
   selectedItems: FileItem[];
   onClearSelection: () => void;
   onSelectAll: () => void;
+  currentFolderItems: FileItem[];
+  onSelectCurrentFolderFiles: () => void;
+  onSelectCurrentFolderFolders: () => void;
   onUnselectAll: () => void;
   onInvertSelection: () => void;
   onTogglePropertiesPanel: () => void;
@@ -122,6 +125,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   selectedItems,
   onClearSelection,
   onSelectAll,
+  currentFolderItems,
+  onSelectCurrentFolderFiles,
+  onSelectCurrentFolderFolders,
   onUnselectAll,
   onInvertSelection,
   onTogglePropertiesPanel,
@@ -159,6 +165,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [folderContextPath, setFolderContextPath] = useState(currentPath);
   const showSelectionContext = selectedItems.length > 0 && !showLauncherWithSelection;
   const currentFolderName = currentFolderItem?.name || currentPath.replace(/[\/]+$/, '').split(/[\/]/).pop() || currentPath;
+  const currentFolderFiles = currentFolderItems.filter(item => !item.isFolder);
+  const currentFolderFolders = currentFolderItems.filter(item => item.isFolder);
+  const selectedItemIds = new Set(selectedItems.map(item => item.id));
+  const allCurrentFilesSelected = currentFolderFiles.length > 0 && currentFolderFiles.every(item => selectedItemIds.has(item.id));
+  const allCurrentFoldersSelected = currentFolderFolders.length > 0 && currentFolderFolders.every(item => selectedItemIds.has(item.id));
+  const allCurrentItemsSelected = currentFolderItems.length > 0 && currentFolderItems.every(item => selectedItemIds.has(item.id));
   const [recentSearch, setRecentSearch] = useState('');
   const [recentCategory, setRecentCategory] = useState<'all' | 'code' | 'image' | 'document' | 'media'>('all');
   const [editingQuickAccessId, setEditingQuickAccessId] = useState<string | null>(null);
@@ -668,6 +680,46 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <p className="truncate text-[11px] font-medium text-neutral-200">{currentFolderName}</p>
               <Tooltip label={currentPath} placement="right">
                 <p className="truncate font-sans text-[9px] text-neutral-500">{currentPath}</p>
+              </Tooltip>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <h3 className="px-0.5 text-[9px] font-semibold uppercase tracking-wider text-neutral-500">{t.sidebar.currentFolderContents}</h3>
+            <div className={`grid gap-1.5 ${currentFolderFolders.length > 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              <Tooltip label={t.sidebar.selectCurrentFolderFiles.replace('{count}', String(currentFolderFiles.length))} placement="right">
+                <button
+                  type="button"
+                  onClick={onSelectCurrentFolderFiles}
+                  disabled={currentFolderFiles.length === 0}
+                  aria-pressed={allCurrentFilesSelected}
+                  className={`flex min-w-0 items-center justify-between gap-1 rounded-full border px-2 py-1.5 text-[9px] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${allCurrentFilesSelected ? 'border-cyan-700/70 bg-cyan-950/40 text-cyan-100' : 'border-neutral-800 bg-neutral-900/70 text-neutral-300 hover:border-cyan-800/70 hover:bg-neutral-800'}`}
+                >
+                  <span className="flex min-w-0 items-center gap-1"><FileText className="h-3 w-3 flex-shrink-0 text-cyan-300" /><span className="truncate">{t.sidebar.currentFolderFiles}</span></span>
+                  <span className="font-semibold tabular-nums text-neutral-100">{currentFolderFiles.length}</span>
+                </button>
+              </Tooltip>
+              {currentFolderFolders.length > 0 && <Tooltip label={t.sidebar.selectCurrentFolderFolders.replace('{count}', String(currentFolderFolders.length))} placement="right">
+                <button
+                  type="button"
+                  onClick={onSelectCurrentFolderFolders}
+                  aria-pressed={allCurrentFoldersSelected}
+                  className={`flex min-w-0 items-center justify-between gap-1 rounded-full border px-2 py-1.5 text-[9px] transition-colors ${allCurrentFoldersSelected ? 'border-cyan-700/70 bg-cyan-950/40 text-cyan-100' : 'border-neutral-800 bg-neutral-900/70 text-neutral-300 hover:border-cyan-800/70 hover:bg-neutral-800'}`}
+                >
+                  <span className="flex min-w-0 items-center gap-1"><FolderOpen className="h-3 w-3 flex-shrink-0 text-amber-300" /><span className="truncate">{t.sidebar.currentFolderFolders}</span></span>
+                  <span className="font-semibold tabular-nums text-neutral-100">{currentFolderFolders.length}</span>
+                </button>
+              </Tooltip>}
+              <Tooltip label={t.sidebar.selectCurrentFolderItems.replace('{count}', String(currentFolderItems.length))} placement="right">
+                <button
+                  type="button"
+                  onClick={onSelectAll}
+                  disabled={currentFolderItems.length === 0}
+                  aria-pressed={allCurrentItemsSelected}
+                  className={`flex min-w-0 items-center justify-between gap-1 rounded-full border px-2 py-1.5 text-[9px] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${allCurrentItemsSelected ? 'border-cyan-700/70 bg-cyan-950/40 text-cyan-100' : 'border-neutral-800 bg-neutral-900/70 text-neutral-300 hover:border-cyan-800/70 hover:bg-neutral-800'}`}
+                >
+                  <span className="flex min-w-0 items-center gap-1"><ListChecks className="h-3 w-3 flex-shrink-0 text-violet-300" /><span className="truncate">{t.sidebar.currentFolderTotal}</span></span>
+                  <span className="font-semibold tabular-nums text-neutral-100">{currentFolderItems.length}</span>
+                </button>
               </Tooltip>
             </div>
           </div>
