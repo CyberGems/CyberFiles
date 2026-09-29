@@ -26,6 +26,12 @@ interface TooltipProps {
   placement?: Placement;
   children: ReactElement;
   disabled?: boolean;
+  followPointer?: boolean;
+}
+
+interface PointerPoint {
+  x: number;
+  y: number;
 }
 
 interface TooltipPosition {
@@ -158,10 +164,11 @@ function getArrowStyle(position: TooltipPosition): CSSProperties {
 }
 
 /** A viewport-aware tooltip that does not alter the layout of its trigger. */
-export function Tooltip({ label, placement = 'bottom', children, disabled = false }: TooltipProps) {
+export function Tooltip({ label, placement = 'bottom', children, disabled = false, followPointer = false }: TooltipProps) {
   const preferenceEnabled = useContext(TooltipPreferenceContext);
   const isDisabled = disabled || !preferenceEnabled;
   const [anchorElement, setAnchorElement] = useState<HTMLElement | null>(null);
+  const [pointerPoint, setPointerPoint] = useState<PointerPoint | null>(null);
   const [position, setPosition] = useState<TooltipPosition | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const delayRef = useRef<number | null>(null);
@@ -182,13 +189,14 @@ export function Tooltip({ label, placement = 'bottom', children, disabled = fals
   const hide = () => {
     clearDelay();
     setAnchorElement(null);
+    setPointerPoint(null);
     if (activeTooltipOwner === tooltipOwnerRef.current) {
       activeTooltipOwner = null;
       dismissActiveTooltip = null;
     }
   };
 
-  const scheduleShow = (element: HTMLElement) => {
+  const scheduleShow = (element: HTMLElement, point: PointerPoint | null = null) => {
     clearDelay();
     const owner = tooltipOwnerRef.current;
 
@@ -211,6 +219,7 @@ export function Tooltip({ label, placement = 'bottom', children, disabled = fals
       activeTooltipOwner = owner;
       dismissActiveTooltip = hide;
       setAnchorElement(element);
+      setPointerPoint(point);
       delayRef.current = null;
     }, SHOW_DELAY_MS);
     pendingTooltipOwner = owner;
@@ -248,8 +257,11 @@ export function Tooltip({ label, placement = 'bottom', children, disabled = fals
       return;
     }
 
-    setPosition(getPosition(anchorElement.getBoundingClientRect(), cardRef.current.getBoundingClientRect(), placement));
-  }, [anchorElement, label, placement]);
+    const anchor = pointerPoint
+      ? new DOMRect(pointerPoint.x, pointerPoint.y, 0, 0)
+      : anchorElement.getBoundingClientRect();
+    setPosition(getPosition(anchor, cardRef.current.getBoundingClientRect(), placement));
+  }, [anchorElement, label, placement, pointerPoint]);
 
   useEffect(() => {
     if (!anchorElement) return;
@@ -270,7 +282,13 @@ export function Tooltip({ label, placement = 'bottom', children, disabled = fals
   const child = children as ReactElement<any>;
   const onMouseEnter = (event: ReactMouseEvent<HTMLElement>) => {
     child.props.onMouseEnter?.(event);
-    scheduleShow(event.currentTarget);
+    scheduleShow(event.currentTarget, followPointer ? { x: event.clientX, y: event.clientY } : null);
+  };
+  const onMouseMove = (event: ReactMouseEvent<HTMLElement>) => {
+    child.props.onMouseMove?.(event);
+    if (followPointer && anchorElement === event.currentTarget && activeTooltipOwner === tooltipOwnerRef.current) {
+      setPointerPoint({ x: event.clientX, y: event.clientY });
+    }
   };
   const onMouseLeave = (event: ReactMouseEvent<HTMLElement>) => {
     child.props.onMouseLeave?.(event);
@@ -291,6 +309,7 @@ export function Tooltip({ label, placement = 'bottom', children, disabled = fals
 
   const trigger = cloneElement(child, {
     onMouseEnter,
+    onMouseMove,
     onMouseLeave,
     onFocus,
     onBlur,

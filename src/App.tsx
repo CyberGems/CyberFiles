@@ -3280,6 +3280,16 @@ export default function App() {
     }
   }, [showToast, t.sidebar.copyPathFailure, t.sidebar.copyPathSuccess, t.sidebar.copyPathsFailure, t.sidebar.copyPathsSuccess]);
 
+  const handleCopyFolderPath = useCallback(async (path: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(path);
+      showToast(t.sidebar.copyPathSuccess);
+    } catch {
+      showToast(t.sidebar.copyPathFailure);
+    }
+  }, [showToast, t.sidebar.copyPathFailure, t.sidebar.copyPathSuccess]);
+
   const handleOpenWindowsProperties = useCallback(async (item: FileItem | null) => {
     if (!item || !isTauriDesktop()) return;
     try {
@@ -4471,6 +4481,7 @@ export default function App() {
           onRenameQuickAccess={handleRenameCustomQuickAccess}
           onRemoveQuickAccess={handleRemoveCustomQuickAccess}
           allFiles={allFiles}
+          currentFolderItem={activeFolderItem}
           currentPath={currentTab.currentPath}
           onNavigate={(path) => handleNavigate(path, activePane, false, sidebarLocationsOpenInNewTab)}
           onOpenDrive={handleOpenDrive}
@@ -4491,6 +4502,8 @@ export default function App() {
           supportsArchiveCreation={isTauriDesktop()}
           onCreateZipSelected={() => openZipCreation(selectedItemsForDelete, currentTab.currentPath, activePane)}
           onCopySelectedPaths={handleCopySelectedPaths}
+          onCopyFolderPath={handleCopyFolderPath}
+          onCreateZipFolder={item => openZipCreation([item], getParentPath(item.path), activePane)}
           recycleBinSupported={isTauriDesktop()}
           recycleBinStatus={recycleBinStatus}
           isDualPane={layout !== 'single'}

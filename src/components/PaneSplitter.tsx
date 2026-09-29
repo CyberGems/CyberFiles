@@ -128,7 +128,7 @@ export function PaneSplitter({ orientation, value, label, onChange, minPercent =
   const isVertical = orientation === 'vertical';
 
   return (
-    <Tooltip label={label} placement={isVertical ? 'top' : 'right'}>
+    <Tooltip label={label} placement={isVertical ? 'top' : 'right'} followPointer disabled={dragging}>
       <div
         role="separator"
         aria-label={label}

@@ -62,6 +62,7 @@ interface SidebarProps {
   onRenameQuickAccess: (id: string, name: string) => void;
   onRemoveQuickAccess: (id: string) => void;
   allFiles?: FileItem[];
+  currentFolderItem?: FileItem | null;
   currentPath: string;
   onNavigate: (path: string) => void;
   onOpenDrive?: (path: string) => void;
@@ -82,6 +83,8 @@ interface SidebarProps {
   supportsArchiveCreation: boolean;
   onCreateZipSelected: () => void;
   onCopySelectedPaths: (items: FileItem[]) => void;
+  onCopyFolderPath: (path: string) => void;
+  onCreateZipFolder?: (item: FileItem) => void;
   recycleBinSupported: boolean;
   recycleBinStatus: RecycleBinStatus | null;
   isDualPane: boolean;
@@ -110,6 +113,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onRenameQuickAccess,
   onRemoveQuickAccess,
   allFiles = [],
+  currentFolderItem = null,
   currentPath,
   onNavigate,
   onOpenDrive,
@@ -130,6 +134,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   supportsArchiveCreation,
   onCreateZipSelected,
   onCopySelectedPaths,
+  onCopyFolderPath,
+  onCreateZipFolder,
   recycleBinSupported,
   recycleBinStatus,
   isDualPane,
@@ -149,7 +155,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const BackwardPaneArrow = isHorizontalDual ? ArrowUp : ArrowLeft;
   const [activeTab, setActiveTab] = useState<'tree' | 'recent'>('tree');
   const [showLauncherWithSelection, setShowLauncherWithSelection] = useState(false);
+  const [showCurrentFolderContext, setShowCurrentFolderContext] = useState(() => currentPath !== SYSTEM_HOME_PATH && currentPath !== RECYCLE_BIN_PATH);
+  const [folderContextPath, setFolderContextPath] = useState(currentPath);
   const showSelectionContext = selectedItems.length > 0 && !showLauncherWithSelection;
+  const currentFolderName = currentFolderItem?.name || currentPath.replace(/[\/]+$/, '').split(/[\/]/).pop() || currentPath;
   const [recentSearch, setRecentSearch] = useState('');
   const [recentCategory, setRecentCategory] = useState<'all' | 'code' | 'image' | 'document' | 'media'>('all');
   const [editingQuickAccessId, setEditingQuickAccessId] = useState<string | null>(null);
@@ -310,6 +319,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, [selectedItems.length]);
 
   useEffect(() => {
+    if (folderContextPath === currentPath) return;
+    setFolderContextPath(currentPath);
+    if (currentPath === SYSTEM_HOME_PATH || currentPath === RECYCLE_BIN_PATH) {
+      setShowCurrentFolderContext(false);
+      return;
+    }
+    setActiveTab('tree');
+    setShowCurrentFolderContext(true);
+  }, [currentPath, folderContextPath]);
+
+  useEffect(() => {
     if (!quickAccessSortOpen) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
       if (!quickAccessSortRef.current?.contains(event.target as Node)) setQuickAccessSortOpen(false);
@@ -428,7 +448,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* 1. Header Tabs: Explorador vs Archivos Recientes */}
       <div className="p-2 border-b border-neutral-800/80 bg-neutral-900/60 flex items-center gap-1">
         <button
-          onClick={() => setActiveTab('tree')}
+          onClick={() => { setActiveTab('tree'); setShowCurrentFolderContext(false); }}
           className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md font-medium text-[11px] transition-all ${
             activeTab === 'tree'
               ? 'bg-neutral-800 text-cyan-300 shadow-sm border border-neutral-700/60 font-semibold'
@@ -624,6 +644,43 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Copy className="h-3.5 w-3.5" />{selectedItems.length === 1 ? t.sidebar.copySelectedPath : t.sidebar.copySelectedPaths}
           </button>
           </>}
+        </div>
+      ) : showCurrentFolderContext && activeTab === 'tree' ? (
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h2 className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.sidebar.currentFolderTitle}</h2>
+            </div>
+            <Tooltip label={t.sidebar.showLauncher} placement="right">
+              <button
+                type="button"
+                onClick={() => setShowCurrentFolderContext(false)}
+                aria-label={t.sidebar.showLauncher}
+                className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
+              >
+                <Home className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+          </div>
+          <div className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
+            <FolderOpen className="h-5 w-5 text-amber-300" />
+            <div className="min-w-0">
+              <p className="truncate text-[11px] font-medium text-neutral-200">{currentFolderName}</p>
+              <Tooltip label={currentPath} placement="right">
+                <p className="truncate font-sans text-[9px] text-neutral-500">{currentPath}</p>
+              </Tooltip>
+            </div>
+          </div>
+          <Tooltip label={t.sidebar.copyFolderPath} placement="right">
+            <button type="button" onClick={() => onCopyFolderPath(currentPath)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[10px] text-neutral-300 transition-colors hover:bg-neutral-900 hover:text-neutral-100">
+              <Copy className="h-3.5 w-3.5" />{t.sidebar.copyFolderPath}
+            </button>
+          </Tooltip>
+          {supportsArchiveCreation && currentFolderItem && currentPath !== SYSTEM_HOME_PATH && currentPath !== RECYCLE_BIN_PATH && <Tooltip label={t.contextMenu.compressCurrentFolderTooltip} placement="right">
+            <button type="button" onClick={() => onCreateZipFolder?.(currentFolderItem)} className="flex w-full items-center gap-2 rounded-md border border-violet-900/60 bg-violet-950/20 px-2.5 py-2 text-left text-[11px] font-medium text-violet-100 transition-colors hover:border-violet-700 hover:bg-violet-950/50">
+              <Archive className="h-3.5 w-3.5 flex-shrink-0 text-violet-300" /><span>{t.contextMenu.compressCurrentFolderToZip}</span>
+            </button>
+          </Tooltip>}
         </div>
       ) : activeTab === 'tree' ? (
         <div className="p-3 space-y-5 overflow-y-auto flex-1">
