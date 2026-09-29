@@ -34,6 +34,17 @@ public sealed partial class FilePaneView : UserControl
     private int _viewGeneration;
 
     public event EventHandler? PaneActivated;
+    public event EventHandler? SelectionUpdated;
+    public event EventHandler? DirectoryChanged;
+
+    public string CurrentPath => _currentPath;
+    public bool IsLoading => _isLoading;
+
+    public IReadOnlyList<string> SelectedPaths => EntryList.SelectedItems
+        .OfType<FileRowDisplay>()
+        .Where(row => !row.Unavailable)
+        .Select(row => row.FullPath)
+        .ToArray();
 
     public FilePaneView()
     {
@@ -49,6 +60,12 @@ public sealed partial class FilePaneView : UserControl
     }
 
     public Task LoadInitialPathAsync(string path) => LoadPathAsync(path, addHistory: false);
+
+    public Task RefreshCurrentPathAsync() => string.IsNullOrWhiteSpace(_currentPath)
+        ? Task.CompletedTask
+        : LoadPathAsync(_currentPath, addHistory: false);
+
+    public Task NavigateToPathAsync(string path) => LoadPathAsync(path, addHistory: true);
 
     private void ApplyLanguage()
     {
@@ -115,6 +132,8 @@ public sealed partial class FilePaneView : UserControl
 
         _isLoading = true;
         UpdateNavigationButtons();
+        EntryList.SelectedItems.Clear();
+        SelectionUpdated?.Invoke(this, EventArgs.Empty);
         CancelButton.IsEnabled = true;
         SetStatus(_isSpanish ? "Leyendo la carpeta..." : "Reading folder...");
         CountText.Text = _isSpanish ? "Contando elementos..." : "Counting items...";
@@ -127,6 +146,7 @@ public sealed partial class FilePaneView : UserControl
                 return;
 
             _currentPath = fullPath;
+            DirectoryChanged?.Invoke(this, EventArgs.Empty);
             var entries = result.Entries;
             _allEntries = entries;
             _totalCount = result.Total;
@@ -433,6 +453,7 @@ public sealed partial class FilePaneView : UserControl
         SelectionText.Text = _isSpanish
             ? selected.ToString("N0", _culture) + " seleccionados"
             : selected.ToString("N0", _culture) + " selected";
+        SelectionUpdated?.Invoke(this, EventArgs.Empty);
     }
 
     private void SetStatus(string value) => StatusText.Text = value;

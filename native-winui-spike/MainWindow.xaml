@@ -43,7 +43,16 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <TextBlock x:Name="LeftPaneHeader" Grid.Row="0" Text="PANEL IZQUIERDO" Foreground="#91EAF4" FontSize="12" FontWeight="SemiBold" Margin="3,0" />
+                <Grid Grid.Row="0" ColumnSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="LeftPaneHeader" Text="PANEL IZQUIERDO" Foreground="#91EAF4" FontSize="12" FontWeight="SemiBold" Margin="3,0" VerticalAlignment="Center" />
+                    <Button x:Name="LeftCopyButton" Grid.Column="1" Content="Copiar →" Click="LeftCopy_Click" IsEnabled="False" />
+                    <Button x:Name="LeftMoveButton" Grid.Column="2" Content="Mover →" Click="LeftMove_Click" IsEnabled="False" />
+                </Grid>
                 <local:FilePaneView x:Name="LeftPane" Grid.Row="1" />
             </Grid>
             <Border Grid.Column="1" Width="1" Margin="0,24,0,0" Background="#30343A" />
@@ -52,13 +61,40 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
-                <TextBlock x:Name="RightPaneHeader" Grid.Row="0" Text="PANEL DERECHO" Foreground="#A8ABB2" FontSize="12" FontWeight="SemiBold" Margin="3,0" />
+                <Grid Grid.Row="0" ColumnSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="RightCopyButton" Content="← Copiar" Click="RightCopy_Click" IsEnabled="False" />
+                    <Button x:Name="RightMoveButton" Grid.Column="1" Content="← Mover" Click="RightMove_Click" IsEnabled="False" />
+                    <TextBlock x:Name="RightPaneHeader" Grid.Column="2" Text="PANEL DERECHO" Foreground="#A8ABB2" FontSize="12" FontWeight="SemiBold" Margin="3,0" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                </Grid>
                 <local:FilePaneView x:Name="RightPane" Grid.Row="1" />
             </Grid>
         </Grid>
 
         <Border Grid.Row="2" Padding="12,8" CornerRadius="8" Background="#191B1F" BorderBrush="#30343A" BorderThickness="1">
-            <TextBlock x:Name="PrototypeStatus" Text="Navegación independiente en ambos paneles" Foreground="#A8ABB2" />
+            <Grid RowSpacing="6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="PrototypeStatus" Text="Navegación independiente en ambos paneles" Foreground="#A8ABB2" VerticalAlignment="Center" />
+                    <TextBlock x:Name="OperationStatus" Grid.Column="1" Text="" Foreground="#91EAF4" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="600" />
+                    <Button x:Name="CancelOperationButton" Grid.Column="2" Content="Cancelar actual" Click="CancelOperation_Click" Visibility="Collapsed" />
+                    <Button x:Name="CancelQueueButton" Grid.Column="3" Content="Cancelar cola" Click="CancelQueue_Click" Visibility="Collapsed" />
+                </Grid>
+                <ProgressBar x:Name="OperationProgress" Grid.Row="1" Height="4" Minimum="0" Maximum="1" Value="0" Visibility="Collapsed" />
+            </Grid>
         </Border>
     </Grid>
 </Window>
