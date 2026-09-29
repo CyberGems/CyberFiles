@@ -1540,8 +1540,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
         type="button"
         data-file-item="true"
         data-file-id={item.id}
-        onMouseEnter={() => handleFolderTooltipMouseEnter(item)}
-        onMouseLeave={() => handleFolderTooltipMouseLeave(item)}
         onClick={event => { handleItemClick(event, item, index); handleConfiguredSingleClick(event, item); }}
         onDoubleClick={() => handleConfiguredDoubleClick(item)}
         onContextMenu={event => handleFileItemContextMenu(event, item)}
@@ -1566,7 +1564,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           {icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs text-neutral-100 font-medium" style={getRecentNameStyle(item, selected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+          <span onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate text-xs text-neutral-100 font-medium" style={getRecentNameStyle(item, selected)}>{getDisplayItemName(item, showFileExtensions)}</span>
           {category === 'folder' ? (
             <span className="mt-1 block truncate text-[10px] text-neutral-500">{item.path}</span>
           ) : hasCapacity && drive ? (
@@ -2017,8 +2015,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   data-file-id={item.id}
                   draggable={!item.recycleBinId}
                   onDragStart={(e) => handleDragStart(e, item)}
-                  onMouseEnter={() => handleFolderTooltipMouseEnter(item)}
-                  onMouseLeave={() => handleFolderTooltipMouseLeave(item)}
                   onDrop={(e) => {
                     if (item.isFolder && !item.recycleBinId) {
                       e.stopPropagation();
@@ -2029,7 +2025,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth}px`, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
-                  className={`grid items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors ${
+                  className={`grid min-h-[30px] items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-700/60 text-neutral-100 font-medium'
                       : isZebra
@@ -2057,7 +2053,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             renderInlineRenameInput(item, 'min-w-0 flex-1')
                           ) : (
                             <Tooltip label={renderItemTooltip(item)} placement="top">
-                              <span data-file-column-content={column} className="truncate text-[11.5px] font-medium" style={getRecentNameStyle(item, isSelected)} >{getDisplayItemName(item, showFileExtensions)}</span>
+                              <span data-file-column-content={column} onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="truncate text-[11.5px] font-medium" style={getRecentNameStyle(item, isSelected)} >{getDisplayItemName(item, showFileExtensions)}</span>
                             </Tooltip>
                           )}
                         </div>
@@ -2071,7 +2067,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.size, 'size')}>{item.isFolder ? (
                         isTauriDesktop() && !isRecycleBin && !item.recycleBinId ? (
                           folderSize?.status === 'done' ? (
-                            <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{formatFileSize(folderSize.size ?? 0)}</span>
+                            <span data-file-column-content={column} className="inline-flex h-5 min-w-[44px] items-center justify-end whitespace-nowrap leading-none">{formatFileSize(folderSize.size ?? 0)}</span>
                           ) : (
                             <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip} placement="top">
                               <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="ml-auto inline-flex h-5 w-[44px] shrink-0 items-center justify-end gap-1 rounded px-1 py-0 text-right leading-none text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
@@ -2120,8 +2116,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   data-file-id={item.id}
                   draggable={!item.recycleBinId}
                   onDragStart={event => handleDragStart(event, item)}
-                  onMouseEnter={() => handleFolderTooltipMouseEnter(item)}
-                  onMouseLeave={() => handleFolderTooltipMouseLeave(item)}
                   onDrop={event => {
                     if (item.isFolder && !item.recycleBinId) {
                       event.stopPropagation();
@@ -2143,7 +2137,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     renderInlineRenameInput(item, 'min-w-0 flex-1')
                   ) : (
                     <Tooltip label={renderItemTooltip(item)} placement="top">
-                      <span className="min-w-0 flex-1 truncate" style={getRecentNameStyle(item, isSelected)} >{getDisplayItemName(item, showFileExtensions)}</span>
+                      <span className="min-w-0 flex-1">
+                        <span onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate" style={getRecentNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+                      </span>
                     </Tooltip>
                   )}
                   {!item.isFolder && <span className="flex-shrink-0 font-sans text-[10px] text-neutral-500">{formatFileSize(item.size)}</span>}
@@ -2172,8 +2168,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   data-file-id={item.id}
                   draggable={!item.recycleBinId}
                   onDragStart={(e) => handleDragStart(e, item)}
-                  onMouseEnter={() => handleFolderTooltipMouseEnter(item)}
-                  onMouseLeave={() => handleFolderTooltipMouseLeave(item)}
                   onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
@@ -2197,7 +2191,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     renderInlineRenameInput(item, 'w-full min-w-0', 'text-center')
                   ) : (
                     <Tooltip label={renderItemTooltip(item)} placement="top">
-                      <span className="w-full truncate px-1 text-[11px] font-medium" style={getRecentNameStyle(item, isSelected)} >{getDisplayItemName(item, showFileExtensions)}</span>
+                      <span className="w-full min-w-0 px-1">
+                        <span onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate text-[11px] font-medium" style={getRecentNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+                      </span>
                     </Tooltip>
                   )}
                   <span className="mt-0.5 text-[9px] font-sans text-neutral-400">
