@@ -134,8 +134,15 @@ interface FileColumnWidths {
 interface ColumnResizeDrag {
   pointerId: number;
   startX: number;
+  guideStartX: number;
   column: ResizableColumn;
   widths: FileColumnWidths;
+}
+
+interface ColumnResizeGuide {
+  left: number;
+  top: number;
+  height: number;
 }
 
 interface MarqueeBounds {
@@ -343,6 +350,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [columnWidths, setColumnWidths] = useState(() => columnPreferences.widths);
   const [columnLayout, setColumnLayout] = useState(() => columnPreferences.layout);
   const [columnMenuPosition, setColumnMenuPosition] = useState<{ left: number; top: number } | null>(null);
+  const [columnResizeGuide, setColumnResizeGuide] = useState<ColumnResizeGuide | null>(null);
   const [columnDropTarget, setColumnDropTarget] = useState<FileColumn | null>(null);
   const lastSingleClickOpenRef = useRef<{ itemId: string; timestamp: number } | null>(null);
   const pendingDeselectionRef = useRef<number | null>(null);
@@ -896,23 +904,42 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const dragWidths = column === 'name' && columnWidths.name === null
       ? { ...columnWidths, name: measuredNameWidth }
       : columnWidths;
+    const separatorRect = event.currentTarget.getBoundingClientRect();
+    const headerRect = columnHeadersRef.current?.getBoundingClientRect();
+    const viewportRect = viewportRef.current?.getBoundingClientRect();
+    const guideStartX = separatorRect.left + separatorRect.width / 2;
     columnResizeDragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
+      guideStartX,
       column,
       widths: dragWidths,
     };
+    if (headerRect && viewportRect) {
+      setColumnResizeGuide({
+        left: guideStartX,
+        top: headerRect.top,
+        height: Math.max(0, viewportRect.bottom - headerRect.top),
+      });
+    }
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const moveColumnResize = (event: React.PointerEvent<HTMLButtonElement>) => {
     const drag = columnResizeDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    setColumnWidths(resizeFileColumns(drag.widths, drag.column, event.clientX - drag.startX));
+    const resizedWidths = resizeFileColumns(drag.widths, drag.column, event.clientX - drag.startX);
+    const initialWidth = drag.column === 'name' ? drag.widths.name ?? MIN_NAME_COLUMN_WIDTH : drag.widths[drag.column];
+    const resizedWidth = drag.column === 'name' ? resizedWidths.name ?? MIN_NAME_COLUMN_WIDTH : resizedWidths[drag.column];
+    setColumnWidths(resizedWidths);
+    setColumnResizeGuide(previous => previous ? { ...previous, left: drag.guideStartX + resizedWidth - initialWidth } : previous);
   };
 
   const finishColumnResize = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (columnResizeDragRef.current?.pointerId === event.pointerId) columnResizeDragRef.current = null;
+    if (columnResizeDragRef.current?.pointerId === event.pointerId) {
+      columnResizeDragRef.current = null;
+      setColumnResizeGuide(null);
+    }
   };
 
   const autoFitColumn = (column: ResizableColumn) => {
@@ -1757,6 +1784,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </div>,
           document.body,
         )
+      )}
+
+      {columnResizeGuide && createPortal(
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed z-[80] w-0.5 rounded-full bg-cyan-300/90 shadow-[0_0_7px_2px_rgba(34,211,238,0.42)]"
+          style={{
+            left: columnResizeGuide.left,
+            top: columnResizeGuide.top,
+            height: columnResizeGuide.height,
+            transform: 'translateX(-50%)',
+          }}
+        />,
+        document.body,
       )}
 
       {/* 5. File Items Viewport */}
