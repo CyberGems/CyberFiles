@@ -1,7 +1,9 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.System;
 
 namespace CyberFiles.WinUIPrototype;
@@ -10,12 +12,26 @@ public sealed partial class FilePaneView : UserControl
 {
     private readonly Stack<string> _backHistory = new();
     private readonly CultureInfo _culture = CultureInfo.CurrentCulture;
+    private List<FileEntryDescriptor> _allEntries = [];
     private List<FileRow> _allRows = [];
+    private IReadOnlyList<FileEntryDescriptor> _filteredEntries = [];
+    private ObservableCollection<FileRowDisplay> _visibleRows = [];
+    private ScrollViewer? _listScrollViewer;
     private CancellationTokenSource? _loadCancellation;
     private string _currentPath = string.Empty;
     private bool _isSpanish = true;
     private bool _isLoading;
     private bool _uiReady;
+    private bool _suppressSortSelectionChanged;
+    private bool _hasLoadedDirectory;
+    private bool _isPagedView;
+    private bool _isLoadingPage;
+    private int _nextEntryIndex;
+    private int _totalCount;
+    private int _fileCount;
+    private int _folderCount;
+    private int _unclassifiedCount;
+    private int _viewGeneration;
 
     public event EventHandler? PaneActivated;
 
@@ -47,15 +63,17 @@ public sealed partial class FilePaneView : UserControl
         SizeHeader.Text = _isSpanish ? "TAMAÑO" : "SIZE";
         ModifiedHeader.Text = _isSpanish ? "MODIFICADO" : "MODIFIED";
 
+        _suppressSortSelectionChanged = true;
         SortBox.Items.Clear();
         SortBox.Items.Add(_isSpanish ? "Nombre: A-Z" : "Name: A-Z");
         SortBox.Items.Add(_isSpanish ? "Nombre: Z-A" : "Name: Z-A");
         SortBox.Items.Add(_isSpanish ? "Tamaño: mayor primero" : "Size: largest first");
         SortBox.Items.Add(_isSpanish ? "Modificado: reciente" : "Modified: newest");
         SortBox.SelectedIndex = Math.Clamp(sortIndex, 0, SortBox.Items.Count - 1);
+        _suppressSortSelectionChanged = false;
 
-        if (_allRows.Count > 0)
-            ApplyView();
+        if (_hasLoadedDirectory)
+            _ = ApplyViewAsync();
         UpdateSelectionCount();
     }
 
@@ -93,6 +111,7 @@ public sealed partial class FilePaneView : UserControl
         _loadCancellation?.Dispose();
         _loadCancellation = new CancellationTokenSource();
         var cancellation = _loadCancellation;
+        _isPagedView = false;
 
         _isLoading = true;
         UpdateNavigationButtons();
@@ -103,26 +122,40 @@ public sealed partial class FilePaneView : UserControl
 
         try
         {
-            var result = await Task.Run(() => ReadDirectory(fullPath, cancellation.Token), cancellation.Token);
+            var result = await Task.Run(() => ReadDirectoryIndex(fullPath, cancellation.Token), cancellation.Token);
             if (cancellation.IsCancellationRequested)
                 return;
 
             _currentPath = fullPath;
-            _allRows = result.Rows;
-            ApplyView();
-            CountText.Text = _isSpanish
-                ? result.Total.ToString("N0", _culture) + " elementos (" +
-                  result.Files.ToString("N0", _culture) + " archivos · " +
-                  result.Folders.ToString("N0", _culture) + " carpetas)"
-                : result.Total.ToString("N0", _culture) + " items (" +
-                  result.Files.ToString("N0", _culture) + " files · " +
-                  result.Folders.ToString("N0", _culture) + " folders)";
+            var entries = result.Entries;
+            _allEntries = entries;
+            _totalCount = result.Total;
+            _fileCount = result.Files;
+            _folderCount = result.Folders;
+            _unclassifiedCount = result.Unclassified;
+            _allRows = [];
+            _hasLoadedDirectory = true;
 
-            if (result.Unclassified > 0)
+            if (SortBox.SelectedIndex >= 2)
+                _allRows = await Task.Run(() => ReadRows(fullPath, entries, cancellation.Token), cancellation.Token);
+
+            if (cancellation.IsCancellationRequested)
+                return;
+
+            await ApplyViewAsync();
+            CountText.Text = _isSpanish
+                ? _totalCount.ToString("N0", _culture) + " elementos (" +
+                  _fileCount.ToString("N0", _culture) + " archivos · " +
+                  _folderCount.ToString("N0", _culture) + " carpetas)"
+                : _totalCount.ToString("N0", _culture) + " items (" +
+                  _fileCount.ToString("N0", _culture) + " files · " +
+                  _folderCount.ToString("N0", _culture) + " folders)";
+
+            if (_unclassifiedCount > 0)
             {
                 SetStatus(_isSpanish
-                    ? result.Unclassified.ToString("N0", _culture) + " elementos no permitieron leer sus atributos."
-                    : result.Unclassified.ToString("N0", _culture) + " items could not expose their attributes.");
+                    ? _unclassifiedCount.ToString("N0", _culture) + " elementos no permitieron leer sus atributos."
+                    : _unclassifiedCount.ToString("N0", _culture) + " items could not expose their attributes.");
             }
             else
             {
@@ -139,7 +172,13 @@ public sealed partial class FilePaneView : UserControl
             if (!ReferenceEquals(_loadCancellation, cancellation))
                 return;
 
+            _allEntries = [];
             _allRows = [];
+            _hasLoadedDirectory = false;
+            _totalCount = 0;
+            _fileCount = 0;
+            _folderCount = 0;
+            _unclassifiedCount = 0;
             EntryList.ItemsSource = null;
             CountText.Text = _isSpanish ? "No se pudo obtener el conteo." : "Could not count items.";
             SetStatus(ex.Message);
@@ -156,9 +195,9 @@ public sealed partial class FilePaneView : UserControl
         }
     }
 
-    private static DirectoryReadResult ReadDirectory(string path, CancellationToken cancellationToken)
+    private static DirectoryIndexResult ReadDirectoryIndex(string path, CancellationToken cancellationToken)
     {
-        var rows = new List<FileRow>();
+        var entries = new List<FileEntryDescriptor>();
         var fileCount = 0;
         var folderCount = 0;
         var unclassifiedCount = 0;
@@ -181,48 +220,200 @@ public sealed partial class FilePaneView : UserControl
             catch
             {
                 unclassifiedCount++;
-                rows.Add(FileRow.CreateUnavailable(entryPath));
+                entries.Add(new FileEntryDescriptor(Path.GetFileName(entryPath), false, true));
                 continue;
             }
 
-            long? size = null;
-            DateTime? modified = null;
-            try
-            {
-                var info = isFolder ? (FileSystemInfo)new DirectoryInfo(entryPath) : new FileInfo(entryPath);
-                modified = info.LastWriteTime;
-                if (!isFolder)
-                    size = ((FileInfo)info).Length;
-            }
-            catch
-            {
-                // Keep the row and direct-child count when optional metadata is unavailable.
-            }
-
-            rows.Add(new FileRow(entryPath, isFolder, size, modified, unavailable: false));
+            entries.Add(new FileEntryDescriptor(Path.GetFileName(entryPath), isFolder, false));
         }
 
-        return new DirectoryReadResult(rows, totalCount, fileCount, folderCount, unclassifiedCount);
+        return new DirectoryIndexResult(entries, totalCount, fileCount, folderCount, unclassifiedCount);
     }
 
-    private void ApplyView()
+    private static List<FileRow> ReadRows(
+        string directory,
+        IReadOnlyList<FileEntryDescriptor> entries,
+        CancellationToken cancellationToken)
     {
-        var query = FilterBox.Text?.Trim();
-        IEnumerable<FileRow> filtered = _allRows;
-
-        if (!string.IsNullOrEmpty(query))
-            filtered = filtered.Where(row => row.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase));
-
-        filtered = SortBox.SelectedIndex switch
+        var rows = new List<FileRow>(entries.Count);
+        foreach (var entry in entries)
         {
-            1 => filtered.OrderByDescending(row => row.IsFolder).ThenByDescending(row => row.Name, StringComparer.CurrentCultureIgnoreCase),
-            2 => filtered.OrderByDescending(row => row.IsFolder).ThenByDescending(row => row.SortSize),
-            3 => filtered.OrderByDescending(row => row.IsFolder).ThenByDescending(row => row.SortModified),
-            _ => filtered.OrderByDescending(row => row.IsFolder).ThenBy(row => row.Name, StringComparer.CurrentCultureIgnoreCase),
-        };
+            cancellationToken.ThrowIfCancellationRequested();
+            rows.Add(ReadRow(directory, entry));
+        }
 
-        EntryList.ItemsSource = filtered.Select(row => row.ToDisplay(_isSpanish, _culture)).ToList();
+        return rows;
+    }
+
+    internal static FileRow ReadRow(string directory, FileEntryDescriptor entry)
+    {
+        var fullPath = Path.Combine(directory, entry.Name);
+        if (entry.Unavailable)
+            return FileRow.CreateUnavailable(fullPath);
+
+        long? size = null;
+        DateTime? modified = null;
+        try
+        {
+            var info = entry.IsFolder ? (FileSystemInfo)new DirectoryInfo(fullPath) : new FileInfo(fullPath);
+            modified = info.LastWriteTime;
+            if (!entry.IsFolder)
+                size = ((FileInfo)info).Length;
+        }
+        catch
+        {
+            // Keep the indexed entry when optional metadata is unavailable.
+        }
+
+        return new FileRow(fullPath, entry.IsFolder, size, modified, unavailable: false);
+    }
+
+    private async Task ApplyViewAsync()
+    {
+        if (!_hasLoadedDirectory)
+            return;
+
+        var generation = Interlocked.Increment(ref _viewGeneration);
+        var query = FilterBox.Text?.Trim() ?? string.Empty;
+        var sortIndex = SortBox.SelectedIndex;
+        var isSpanish = _isSpanish;
+        var culture = _culture;
+
+        if (SortBox.SelectedIndex >= 2)
+        {
+            var materializedRows = _allRows;
+            var displayRows = await Task.Run(() =>
+            {
+                IEnumerable<FileRow> rows = materializedRows;
+                if (!string.IsNullOrEmpty(query))
+                    rows = rows.Where(row => row.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase));
+
+                rows = sortIndex switch
+                {
+                    2 => rows.OrderByDescending(row => row.IsFolder).ThenByDescending(row => row.SortSize),
+                    _ => rows.OrderByDescending(row => row.IsFolder).ThenByDescending(row => row.SortModified),
+                };
+                return rows.Select(row => row.ToDisplay(isSpanish, culture)).ToList();
+            });
+
+            if (generation != _viewGeneration)
+                return;
+
+            _isPagedView = false;
+            EntryList.ItemsSource = displayRows;
+            UpdateSelectionCount();
+            return;
+        }
+
+        var allEntries = _allEntries;
+        var filteredEntries = await Task.Run(() =>
+        {
+            IEnumerable<FileEntryDescriptor> filtered = allEntries;
+            if (!string.IsNullOrEmpty(query))
+                filtered = filtered.Where(entry => entry.Name.Contains(query, StringComparison.CurrentCultureIgnoreCase));
+
+            filtered = sortIndex switch
+            {
+                1 => filtered.OrderByDescending(entry => entry.IsFolder).ThenBy(entry => entry.Unavailable).ThenByDescending(entry => entry.Name, StringComparer.CurrentCultureIgnoreCase),
+                _ => filtered.OrderByDescending(entry => entry.IsFolder).ThenBy(entry => entry.Unavailable).ThenBy(entry => entry.Name, StringComparer.CurrentCultureIgnoreCase),
+            };
+
+            return filtered.ToList();
+        });
+
+        if (generation != _viewGeneration)
+            return;
+
+        _filteredEntries = filteredEntries;
+        _visibleRows = [];
+        _nextEntryIndex = 0;
+        _isPagedView = true;
+        EntryList.ItemsSource = _visibleRows;
+        if (_listScrollViewer is not null)
+            _ = LoadNextPageAsync();
         UpdateSelectionCount();
+    }
+
+    private void EntryList_Loaded(object sender, RoutedEventArgs e)
+    {
+        _listScrollViewer ??= FindScrollViewer(EntryList);
+        if (_listScrollViewer is not null)
+        {
+            _listScrollViewer.ViewChanged -= ListScrollViewer_ViewChanged;
+            _listScrollViewer.ViewChanged += ListScrollViewer_ViewChanged;
+        }
+
+        if (_isPagedView)
+            _ = LoadNextPageAsync();
+    }
+
+    private async void ListScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (_listScrollViewer is null || !_isPagedView)
+            return;
+
+        var remainingContent = _listScrollViewer.ExtentHeight -
+            (_listScrollViewer.VerticalOffset + _listScrollViewer.ViewportHeight);
+        if (remainingContent < 280)
+            await LoadNextPageAsync();
+    }
+
+    private async Task LoadNextPageAsync()
+    {
+        if (!_isPagedView || _isLoadingPage || _nextEntryIndex >= _filteredEntries.Count)
+            return;
+
+        _isLoadingPage = true;
+        var targetRows = _visibleRows;
+        var targetEntries = _filteredEntries;
+        var directory = _currentPath;
+        var isSpanish = _isSpanish;
+        var culture = _culture;
+        var firstIndex = _nextEntryIndex;
+        var pageEntries = targetEntries.Skip(firstIndex).Take(72).ToArray();
+        var cancellationToken = _loadCancellation?.Token ?? CancellationToken.None;
+
+        try
+        {
+            var pageRows = await Task.Run(() => pageEntries
+                .Select(entry => FilePaneView.ReadRow(directory, entry).ToDisplay(isSpanish, culture))
+                .ToList(), cancellationToken);
+
+            if (cancellationToken.IsCancellationRequested || !ReferenceEquals(targetRows, _visibleRows))
+                return;
+
+            foreach (var row in pageRows)
+                targetRows.Add(row);
+
+            _nextEntryIndex += pageEntries.Length;
+        }
+        catch (OperationCanceledException)
+        {
+            // A new navigation or refresh replaced this page request.
+        }
+        finally
+        {
+            _isLoadingPage = false;
+            if (_isPagedView && !ReferenceEquals(targetRows, _visibleRows))
+                _ = LoadNextPageAsync();
+        }
+    }
+
+    private static ScrollViewer? FindScrollViewer(DependencyObject parent)
+    {
+        var childCount = VisualTreeHelper.GetChildrenCount(parent);
+        for (var index = 0; index < childCount; index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is ScrollViewer scrollViewer)
+                return scrollViewer;
+
+            var nestedScrollViewer = FindScrollViewer(child);
+            if (nestedScrollViewer is not null)
+                return nestedScrollViewer;
+        }
+
+        return null;
     }
 
     private async Task NavigateAsync(string path) => await LoadPathAsync(path, addHistory: true);
@@ -233,6 +424,7 @@ public sealed partial class FilePaneView : UserControl
         UpButton.IsEnabled = !_isLoading && Directory.GetParent(_currentPath) is not null;
         OpenButton.IsEnabled = !_isLoading;
         RefreshButton.IsEnabled = !_isLoading;
+        SortBox.IsEnabled = !_isLoading;
     }
 
     private void UpdateSelectionCount()
@@ -298,13 +490,18 @@ public sealed partial class FilePaneView : UserControl
     private void FilterBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         if (_uiReady)
-            ApplyView();
+            _ = ApplyViewAsync();
     }
 
     private void SortBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_uiReady && SortBox.SelectedIndex >= 0)
-            ApplyView();
+        if (!_uiReady || _suppressSortSelectionChanged || SortBox.SelectedIndex < 0)
+            return;
+
+        if (_hasLoadedDirectory && SortBox.SelectedIndex >= 2)
+            _ = LoadPathAsync(_currentPath, addHistory: false);
+        else
+            _ = ApplyViewAsync();
     }
 
     private void Pane_GotFocus(object sender, RoutedEventArgs e) => ActivatePane();
@@ -396,4 +593,11 @@ public sealed record FileRowDisplay(FileRow Source, string Kind, string Size, st
     public long SortModified => Source.SortModified;
 }
 
-public sealed record DirectoryReadResult(List<FileRow> Rows, int Total, int Files, int Folders, int Unclassified);
+public sealed record FileEntryDescriptor(string Name, bool IsFolder, bool Unavailable);
+
+public sealed record DirectoryIndexResult(
+    List<FileEntryDescriptor> Entries,
+    int Total,
+    int Files,
+    int Folders,
+    int Unclassified);

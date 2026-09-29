@@ -62,7 +62,10 @@
                 <ListView
                     x:Name="EntryList"
                     Grid.Row="1"
-                    SelectionMode="Multiple"
+                    Loaded="EntryList_Loaded"
+                    SelectionMode="Extended"
+                    IncrementalLoadingTrigger="Edge"
+                    IncrementalLoadingThreshold="3"
                     IsItemClickEnabled="False"
                     DoubleTapped="EntryList_DoubleTapped"
                     SelectionChanged="EntryList_SelectionChanged"
@@ -84,11 +87,11 @@
                                         <ColumnDefinition Width="100" />
                                         <ColumnDefinition Width="150" />
                                     </Grid.ColumnDefinitions>
-                                    <FontIcon Grid.Column="0" Glyph="{Binding Glyph}" FontFamily="Segoe Fluent Icons" FontSize="15" Foreground="{Binding IconBrush}" VerticalAlignment="Center" />
+                                    <FontIcon Grid.Column="0" Glyph="{Binding Glyph}" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{Binding IconBrush}" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                     <TextBlock Grid.Column="2" Text="{Binding Kind}" VerticalAlignment="Center" Foreground="#A8ABB2" TextTrimming="CharacterEllipsis" />
                                     <TextBlock Grid.Column="3" Text="{Binding Size}" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="#BFC3CA" />
-                                    <TextBlock Grid.Column="4" Text="{Binding Modified}" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="#A8ABB2" />
+                                    <TextBlock Grid.Column="4" Text="{Binding Modified}" VerticalAlignment="Center" HorizontalAlignment="Left" Foreground="#A8ABB2" TextTrimming="CharacterEllipsis" />
                                 </Grid>
                             </Border>
                         </DataTemplate>
