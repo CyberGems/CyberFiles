@@ -13,12 +13,15 @@
 ### Key features
 
 - **Flexible navigation:** dual vertical, dual horizontal, and single-pane layouts with independent tabs and history.
-- **File management:** copy, move, rename, create folders, and send selected items to the Windows Recycle Bin.
+- **File management:** copy, move, rename, create folders, and send selected items to the Windows Recycle Bin. Queued operations show progress and can be paused or canceled.
+- **Archive tools:** preview ZIP and RAR contents, extract password-protected archives, and create ZIP files.
+- **Undo history:** reverse recent supported file operations from a ten-action history.
+- **Command palette:** find commands and navigate to locations with Ctrl+K.
 - **Useful previews:** view common text, Markdown, HTML, and image files in the preview pane.
-- **Personal Quick Access:** pin folders from the sidebar or their context menu, rename and remove shortcuts, sort A–Z, or arrange them manually by drag and drop.
+- **Personal Quick Access:** pin folders from the sidebar or their context menu, rename and remove shortcuts, sort A–Z or Z–A, or arrange them manually by drag and drop.
 - **Recent-item cues:** files and folders changed in the last 24 hours receive a subtle amber accent, with details available in their tooltips.
 - **Customizable workspace:** details, compact, and icon views; adjustable columns; three themes; English and Spanish UI.
-- **System integration:** tray controls and a configurable global shortcut.
+- **System integration:** Windows-associated file icons, tray controls, and a configurable global shortcut.
 
 ### Windows download
 

@@ -17,10 +17,14 @@ Download the Windows installer and release notes from the [GitHub Releases page]
 - Browse real Windows drives and common user folders from a unified This PC view.
 - Use dual vertical, dual horizontal, or single-pane layouts, with independent tabs and navigation history.
 - Switch between details, compact, and icon-grid views. Resize details columns and optionally keep the current view style while navigating.
-- Preview common text, Markdown, HTML, and image files.
-- Pin folders to personal Quick Access from the sidebar or folder context menu. Rename or remove shortcuts, sort A–Z, or arrange them manually with drag and drop or Alt+Up and Alt+Down.
+- Preview common text, Markdown, HTML, and image files, plus the contents of ZIP and RAR archives.
+- Extract ZIP and RAR archives, including password-protected archives, or create ZIP files from selected items.
+- Pin folders to personal Quick Access from the sidebar or folder context menu. Rename or remove shortcuts, sort A–Z or Z–A, or arrange them manually with drag and drop or Alt+Up and Alt+Down. The sidebar also keeps the current folder in context while browsing.
 - Recognize files and folders changed in the last 24 hours with a subtle amber accent and tooltip details. This option is enabled by default.
-- Copy, move, rename, and create folders in the Windows desktop app. Confirmed deletions go to the Windows Recycle Bin.
+- Copy, move, rename, and create folders in the Windows desktop app. Confirmed deletions go to the Windows Recycle Bin. A queued operations center shows progress and provides pause and cancel controls.
+- Undo recent supported file operations from the ten-entry action history.
+- Open the command palette with Ctrl+K to find commands and navigate to locations.
+- View file icons from their Windows-associated applications, and calculate folder sizes by hovering over the folder name.
 - Choose CyberFiles, grayscale, or light appearance, and English or Spanish UI language.
 - Use the system tray and configurable global shortcut. Window size, position, and maximized state are restored on the next launch.
 
@@ -57,7 +61,7 @@ The debug executable is produced at <code>src-tauri/target/debug/cyberfiles.exe<
 
 ## Project status
 
-CyberFiles is Windows-first. The first prerelease is intended to validate the packaged installer and early workflow. Other desktop platforms have not been validated.
+CyberFiles is an early Windows-first prerelease. This release is intended to validate the packaged installer and expanded file-management workflows. Other desktop platforms have not been validated.
 
 ## License
 

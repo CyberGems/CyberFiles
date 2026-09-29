@@ -1,6 +1,6 @@
 [package]
 name = "cyberfiles"
-version = "0.1.0"
+version = "0.2.0"
 description = "CyberFiles desktop development shell"
 authors = ["CyberGems"]
 edition = "2021"
