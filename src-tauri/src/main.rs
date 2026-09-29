@@ -654,6 +654,7 @@ fn transfer_native_items_with_progress(
     target_path: &str,
     job_id: &str,
     move_items: bool,
+    preserve_names: bool,
     control: &TransferJobControl,
 ) -> NativeOperationResult {
     let mut failures = Vec::new();
@@ -699,7 +700,22 @@ fn transfer_native_items_with_progress(
             failures.push(NativeOperationFailure { path: original_path, error: "A filesystem root cannot be transferred as an item.".to_string() });
             continue;
         };
-        let destination = unique_child_path(&target, &name.to_string_lossy());
+        let requested_destination = target.join(name);
+        if preserve_names
+            && (requested_destination.exists()
+                || valid_sources.iter().any(|(_, _, destination, _, _)| destination == &requested_destination))
+        {
+            failures.push(NativeOperationFailure {
+                path: original_path,
+                error: "UNDO_DESTINATION_CONFLICT".to_string(),
+            });
+            continue;
+        }
+        let destination = if preserve_names {
+            requested_destination
+        } else {
+            unique_child_path(&target, &name.to_string_lossy())
+        };
         let previous_bytes = tracker.total_bytes;
         let previous_items = tracker.total_items;
         match count_copy_tree(&source, control, &mut tracker) {
@@ -1390,6 +1406,7 @@ fn start_native_transfer_operation(
     target_path: String,
     job_id: String,
     move_items: bool,
+    preserve_names: bool,
 ) -> Result<(), String> {
     let control = Arc::new(TransferJobControl {
         state: Mutex::new(TransferJobState::default()),
@@ -1403,7 +1420,7 @@ fn start_native_transfer_operation(
         jobs.insert(job_id.clone(), Arc::clone(&control));
     }
     tauri::async_runtime::spawn_blocking(move || {
-        let result = transfer_native_items_with_progress(app.clone(), paths, &target_path, &job_id, move_items, &control);
+        let result = transfer_native_items_with_progress(app.clone(), paths, &target_path, &job_id, move_items, preserve_names, &control);
         if let Ok(mut jobs) = transfer_jobs().lock() {
             jobs.remove(&job_id);
         }
@@ -1413,13 +1430,13 @@ fn start_native_transfer_operation(
 }
 
 #[tauri::command]
-fn start_copy_operation(app: tauri::AppHandle, paths: Vec<String>, target_path: String, job_id: String) -> Result<(), String> {
-    start_native_transfer_operation(app, paths, target_path, job_id, false)
+fn start_copy_operation(app: tauri::AppHandle, paths: Vec<String>, target_path: String, job_id: String, preserve_names: bool) -> Result<(), String> {
+    start_native_transfer_operation(app, paths, target_path, job_id, false, preserve_names)
 }
 
 #[tauri::command]
-fn start_move_operation(app: tauri::AppHandle, paths: Vec<String>, target_path: String, job_id: String) -> Result<(), String> {
-    start_native_transfer_operation(app, paths, target_path, job_id, true)
+fn start_move_operation(app: tauri::AppHandle, paths: Vec<String>, target_path: String, job_id: String, preserve_names: bool) -> Result<(), String> {
+    start_native_transfer_operation(app, paths, target_path, job_id, true, preserve_names)
 }
 
 #[tauri::command]

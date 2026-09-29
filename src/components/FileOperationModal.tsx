@@ -20,6 +20,8 @@ export interface TransferOperationView extends NativeTransferProgress {
   clipboardSequence?: number;
   extractionMode?: ArchiveExtractionMode;
   archiveName?: string;
+  undoActionId?: string;
+  preserveNames?: boolean;
   resultPath?: string;
   error?: string;
 }

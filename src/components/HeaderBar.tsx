@@ -28,6 +28,7 @@ import { RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, ViewLayout, ViewMode } from '../typ
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 import type { WindowsSpecialFolder, WindowsTerminalOption } from '../utils/nativeFileSystem';
+import { UndoHistoryMenu, type UndoHistoryItem } from './UndoHistoryMenu';
 
 interface HeaderBarProps {
   layout: ViewLayout;
@@ -56,6 +57,9 @@ interface HeaderBarProps {
   onCopySelected: () => void;
   onMoveSelected: () => void;
   onDeleteSelected: () => void;
+  undoHistory: UndoHistoryItem[];
+  onUndoAction: (id: string) => void;
+  undoBusy: boolean;
   selectedCount: number;
   onOpenSearch: () => void;
   onOpenCommandPalette: () => void;
@@ -90,6 +94,9 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onCopySelected,
   onMoveSelected,
   onDeleteSelected,
+  undoHistory,
+  onUndoAction,
+  undoBusy,
   selectedCount,
   onOpenSearch,
   onOpenCommandPalette,
@@ -169,6 +176,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         </Tooltip>
 
         <div className="header-actions flex items-center gap-1 overflow-x-auto min-w-0">
+          <UndoHistoryMenu items={undoHistory} onUndo={onUndoAction} disabled={undoBusy} />
           <Tooltip label={copyTooltip} disabled={disabled}><button onClick={onCopySelected} disabled={disabled} className="header-action"><Copy className="w-3.5 h-3.5 text-cyan-400" /><span className="core-action-label">{language === 'es' ? 'Copiar' : 'Copy'}</span><span className="shortcut">F5</span></button></Tooltip>
           <Tooltip label={moveTooltip} disabled={disabled}><button onClick={onMoveSelected} disabled={disabled} className="header-action"><MoveRight className="w-3.5 h-3.5 text-blue-400" /><span className="core-action-label">{language === 'es' ? 'Mover' : 'Move'}</span><span className="shortcut">F6</span></button></Tooltip>
           <Tooltip label={t.toolbar.rename} disabled={disabled}><button onClick={onRenameSelected} disabled={disabled} className="header-action"><Edit3 className="w-3.5 h-3.5 text-amber-400" /><span className="core-action-label">{language === 'es' ? 'Renombrar' : 'Rename'}</span><span className="shortcut">F2</span></button></Tooltip>

@@ -288,9 +288,9 @@ export async function renameNativeItem(path: string, newName: string): Promise<s
   return invoke<string>('rename_item', { path, newName });
 }
 
-export async function startNativeTransferOperation(paths: string[], targetPath: string, jobId: string, moveItems: boolean): Promise<void> {
-  if (moveItems) return invoke<void>('start_move_operation', { paths, targetPath, jobId });
-  return invoke<void>('start_copy_operation', { paths, targetPath, jobId });
+export async function startNativeTransferOperation(paths: string[], targetPath: string, jobId: string, moveItems: boolean, preserveNames = false): Promise<void> {
+  if (moveItems) return invoke<void>('start_move_operation', { paths, targetPath, jobId, preserveNames });
+  return invoke<void>('start_copy_operation', { paths, targetPath, jobId, preserveNames });
 }
 
 export async function startNativeArchiveExtractionOperation(archivePath: string, targetPath: string, jobId: string, extractionMode: 'here' | 'folder', password?: string): Promise<void> {

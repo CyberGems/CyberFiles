@@ -53,6 +53,7 @@ import { TooltipPreferenceContext } from './components/Tooltip';
 import { WorkspaceManagerModal } from './components/WorkspaceManagerModal';
 import { UnsavedWorkspaceChangesModal, type WorkspaceChangesSaveNames } from './components/UnsavedWorkspaceChangesModal';
 import { FileOperationModal, type TransferOperationView, type TransferKind } from './components/FileOperationModal';
+import type { UndoHistoryItem } from './components/UndoHistoryMenu';
 
 
 import { useLanguage } from './locales/LanguageContext';
@@ -163,6 +164,17 @@ type PendingWorkspaceAction =
   | { type: 'layout'; id: string }
   | { type: 'session'; id: string }
   | { type: 'workspace'; id: string };
+
+type UndoDescriptor =
+  | { type: 'rename'; pairs: Array<{ before: string; after: string }> }
+  | { type: 'remove'; paths: string[] }
+  | { type: 'restore'; items: Array<{ id: string; originalPath: string }> }
+  | { type: 'move'; pairs: Array<{ from: string; to: string }> }
+  | { type: 'remove-virtual'; paths: string[] };
+
+interface UndoRecord extends UndoHistoryItem {
+  undo: UndoDescriptor | null;
+}
 
 const DEFAULT_PANEL_VIEW_PREFERENCES: PanelViewPreferences = {
   layout: 'dual-vertical',
@@ -483,6 +495,23 @@ const DIRECTORY_PAGE_SIZE = 400;
 const MAX_TAB_HISTORY_ENTRIES = 200;
 
 const getPathKey = (path: string) => normalizeWindowsPath(path).replace(/[\\/]+$/, '').toLowerCase();
+const createOperationId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+async function findRecentRecycleBinItems(paths: string[], startedAtMs: number, previousIds: Set<string> | null): Promise<FileItem[]> {
+  if (!previousIds) return [];
+  const wanted = new Set(paths.map(getPathKey));
+  const newestByPath = new Map<string, FileItem>();
+  // Recycle Bin paging re-enumerates earlier Shell entries, so keep this lookup bounded.
+  const page = await listNativeRecycleBin(0);
+  for (const item of page.entries) {
+    const originalPath = item.originalPath ?? item.path;
+    const key = getPathKey(originalPath);
+    if (!item.recycleBinId || previousIds.has(item.recycleBinId) || !wanted.has(key) || (item.modifiedAtMs ?? 0) < startedAtMs - 2_000) continue;
+    const previous = newestByPath.get(key);
+    if (!previous || (item.modifiedAtMs ?? 0) > (previous.modifiedAtMs ?? 0)) newestByPath.set(key, item);
+  }
+  return [...newestByPath.values()];
+}
 
 const createEmptyTab = (
   id: string,
@@ -879,6 +908,10 @@ export default function App() {
   const [isFileOperationBusy, setIsFileOperationBusy] = useState(false);
   const [transferOperations, setTransferOperations] = useState<TransferOperationView[]>([]);
   const transferOperationsRef = useRef<TransferOperationView[]>([]);
+  const [undoHistory, setUndoHistory] = useState<UndoRecord[]>([]);
+  const undoHistoryRef = useRef<UndoRecord[]>([]);
+  const undoPendingIdsRef = useRef(new Set<string>());
+  const [undoBusy, setUndoBusy] = useState(false);
   const archivePasswordsRef = useRef(new Map<string, string>());
   const activeTransferIdRef = useRef<string | null>(null);
   const [transferEventsReady, setTransferEventsReady] = useState(!isTauriDesktop());
@@ -897,6 +930,33 @@ export default function App() {
   );
   const [isRecycleBinBusy, setIsRecycleBinBusy] = useState(false);
   const recycleBinRestoreInFlight = useRef(false);
+
+  const pushUndoAction = useCallback((action: Omit<UndoRecord, 'id' | 'timestamp'> & { id?: string; timestamp?: number }) => {
+    const record: UndoRecord = {
+      ...action,
+      id: action.id ?? createOperationId('undo'),
+      timestamp: action.timestamp ?? Date.now(),
+    };
+    const next = [record, ...undoHistoryRef.current].slice(0, 10);
+    undoHistoryRef.current = next;
+    setUndoHistory(next);
+  }, []);
+
+  const updateUndoAction = useCallback((id: string, update: (action: UndoRecord) => UndoRecord | null) => {
+    const current = undoHistoryRef.current;
+    const index = current.findIndex(action => action.id === id);
+    if (index < 0) return;
+    const updated = update(current[index]);
+    const next = updated
+      ? current.map(action => action.id === id ? updated : action)
+      : current.filter(action => action.id !== id);
+    undoHistoryRef.current = next;
+    setUndoHistory(next);
+  }, []);
+
+  const removeUndoAction = useCallback((id: string) => {
+    updateUndoAction(id, () => null);
+  }, [updateUndoAction]);
 
   useEffect(() => {
     void refreshSystemHome();
@@ -2430,8 +2490,6 @@ export default function App() {
     }
   };
 
-  const createOperationId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-
   const updateTransferOperation = useCallback((jobId: string, update: (operation: TransferOperationView) => TransferOperationView) => {
     const current = transferOperationsRef.current;
     const index = current.findIndex(operation => operation.jobId === jobId);
@@ -2448,8 +2506,8 @@ export default function App() {
     setTransferOperations(next);
   }, []);
 
-  const transferCompletionActionsRef = useRef({ refreshChangedDirectories, updatePaneTab, showToast, t, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex });
-  transferCompletionActionsRef.current = { refreshChangedDirectories, updatePaneTab, showToast, t, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex };
+  const transferCompletionActionsRef = useRef({ refreshChangedDirectories, updatePaneTab, showToast, t, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, pushUndoAction, updateUndoAction, removeUndoAction });
+  transferCompletionActionsRef.current = { refreshChangedDirectories, updatePaneTab, showToast, t, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, pushUndoAction, updateUndoAction, removeUndoAction };
 
   useEffect(() => {
     if (!isTauriDesktop()) {
@@ -2525,13 +2583,81 @@ export default function App() {
               ARCHIVE_INVALID_SOURCE: actions.t.core.archiveInvalidSource,
               ARCHIVE_NO_SOURCES: actions.t.core.archiveNoSources,
               ARCHIVE_SOURCE_TOO_MANY_ENTRIES: actions.t.core.archiveZipTooManyEntries,
+              UNDO_DESTINATION_CONFLICT: actions.t.toolbar.undoMoveConflict,
             };
             const failureReason = result.failures[0]
               ? archiveFailureMessages[result.failures[0].error] ?? result.failures[0].error
               : undefined;
             const wasCancelled = result.failures.some(failure => failure.error.toLowerCase().includes('cancelled'));
             const status = wasCancelled ? 'cancelled' : result.failures.length > 0 ? 'failed' : 'completed';
-            if (result.failures.length > 0) {
+            if (operation.undoActionId) {
+              undoPendingIdsRef.current.delete(operation.undoActionId);
+              setUndoBusy(undoPendingIdsRef.current.size > 0);
+              if (status === 'completed' && result.completedPaths.length === operation.sourcePaths.length) {
+                actions.removeUndoAction(operation.undoActionId);
+              } else {
+                if (result.completedPaths.length > 0) {
+                  const completedTargetKeys = new Set(result.completedPaths.map(getPathKey));
+                  actions.updateUndoAction(operation.undoActionId, current => {
+                    if (current.undo?.type !== 'move') return current;
+                    const remainingPairs = current.undo.pairs.filter(pair => !completedTargetKeys.has(getPathKey(pair.to)));
+                    if (remainingPairs.length === 0) return null;
+                    return { ...current, count: remainingPairs.length, undo: { type: 'move', pairs: remainingPairs } };
+                  });
+                }
+              }
+            } else if (result.completedPaths.length > 0) {
+              const leafName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+              if (operation.kind === 'copy') {
+                actions.pushUndoAction({
+                  kind: 'copy',
+                  name: leafName(result.completedPaths[0]),
+                  count: result.completedPaths.length,
+                  canUndo: true,
+                  undo: { type: 'remove', paths: result.completedPaths },
+                });
+              } else if (operation.kind === 'move') {
+                const allSucceeded = result.failures.length === 0 && result.completedPaths.length === operation.sourcePaths.length;
+                const sourceParents = new Set(operation.sourcePaths.map(path => getPathKey(getParentPath(path))));
+                const sameParent = sourceParents.size === 1;
+                const isNoOp = allSucceeded && result.completedPaths.every((path, index) => getPathKey(path) === getPathKey(operation.sourcePaths[index]));
+                if (!isNoOp) {
+                  const reversible = allSucceeded && sameParent;
+                  actions.pushUndoAction({
+                    kind: 'move',
+                    name: leafName(operation.sourcePaths[0] ?? ''),
+                    count: result.completedPaths.length,
+                    canUndo: reversible,
+                    blockedReason: reversible ? undefined : actions.t.toolbar.undoMoveUnavailable,
+                    undo: reversible ? {
+                      type: 'move',
+                      pairs: result.completedPaths.map((from, index) => ({ from, to: operation.sourcePaths[index] })),
+                    } : null,
+                  });
+                }
+              } else if (operation.kind === 'extract') {
+                actions.pushUndoAction({
+                  kind: 'extract',
+                  name: leafName(operation.sourcePaths[0] ?? ''),
+                  count: 1,
+                  canUndo: true,
+                  undo: { type: 'remove', paths: result.completedPaths },
+                });
+              } else {
+                actions.pushUndoAction({
+                  kind: 'compress',
+                  name: leafName(result.completedPaths[0]),
+                  count: 1,
+                  canUndo: true,
+                  undo: { type: 'remove', paths: result.completedPaths },
+                });
+              }
+            }
+            if (operation.undoActionId && status === 'completed') {
+              actions.showToast(actions.t.toolbar.undoCompleted);
+            } else if (operation.undoActionId && result.failures.length === 0) {
+              actions.showToast(actions.t.toolbar.undoFailed);
+            } else if (result.failures.length > 0) {
               actions.showToast(actions.t.core.operationPartial
                 .replace('{completed}', String(result.completedPaths.length))
                 .replace('{failed}', String(result.failures.length))
@@ -2606,7 +2732,7 @@ export default function App() {
     };
   }, [language, showToast, t.core.operationFailedWithReason]);
 
-  const queueNativeTransfer = useCallback((kind: TransferKind, paths: string[], targetPath: string, options: { sourcePane?: 'left' | 'right'; selectionPane?: 'left' | 'right'; clipboardSequence?: number; extractionMode?: ArchiveExtractionMode; archiveName?: string } = {}) => {
+  const queueNativeTransfer = useCallback((kind: TransferKind, paths: string[], targetPath: string, options: { sourcePane?: 'left' | 'right'; selectionPane?: 'left' | 'right'; clipboardSequence?: number; extractionMode?: ArchiveExtractionMode; archiveName?: string; undoActionId?: string; preserveNames?: boolean } = {}) => {
     if (paths.length === 0) return;
     const operation: TransferOperationView = {
       jobId: createOperationId(kind),
@@ -2628,6 +2754,8 @@ export default function App() {
       clipboardSequence: options.clipboardSequence,
       extractionMode: options.extractionMode,
       archiveName: options.archiveName,
+      undoActionId: options.undoActionId,
+      preserveNames: options.preserveNames,
     };
     const next = [...transferOperationsRef.current, operation];
     transferOperationsRef.current = next;
@@ -2644,15 +2772,21 @@ export default function App() {
       ? startNativeArchiveExtractionOperation(nextOperation.sourcePaths[0] ?? '', nextOperation.targetPath, nextOperation.jobId, nextOperation.extractionMode ?? 'folder', archivePasswordsRef.current.get(nextOperation.jobId))
       : nextOperation.kind === 'compress'
         ? startNativeZipCompressionOperation(nextOperation.sourcePaths, nextOperation.targetPath, nextOperation.archiveName ?? 'Archive.zip', nextOperation.jobId)
-        : startNativeTransferOperation(nextOperation.sourcePaths, nextOperation.targetPath, nextOperation.jobId, nextOperation.kind === 'move'))
+        : startNativeTransferOperation(nextOperation.sourcePaths, nextOperation.targetPath, nextOperation.jobId, nextOperation.kind === 'move', nextOperation.preserveNames ?? false))
       .catch(error => {
         const reason = String(error);
         archivePasswordsRef.current.delete(nextOperation.jobId);
         updateTransferOperation(nextOperation.jobId, operation => ({ ...operation, status: 'failed', error: reason }));
         if (activeTransferIdRef.current === nextOperation.jobId) activeTransferIdRef.current = null;
-        showToast(t.core.operationFailedWithReason.replace('{reason}', reason));
+        if (nextOperation.undoActionId) {
+          undoPendingIdsRef.current.delete(nextOperation.undoActionId);
+          setUndoBusy(undoPendingIdsRef.current.size > 0);
+          showToast(t.toolbar.undoFailed);
+        } else {
+          showToast(t.core.operationFailedWithReason.replace('{reason}', reason));
+        }
       });
-  }, [showToast, t.core.operationFailedWithReason, transferEventsReady, transferOperations, updateTransferOperation]);
+  }, [showToast, t.core.operationFailedWithReason, t.toolbar.undoFailed, transferEventsReady, transferOperations, updateTransferOperation]);
 
   const toggleTransferPause = useCallback(async (jobId: string) => {
     const operation = transferOperationsRef.current.find(item => item.jobId === jobId);
@@ -2673,6 +2807,10 @@ export default function App() {
     if (operation.status === 'queued' || operation.status === 'awaiting-password') {
       archivePasswordsRef.current.delete(jobId);
       updateTransferOperation(jobId, current => ({ ...current, status: 'cancelled', error: undefined }));
+      if (operation.undoActionId) {
+        undoPendingIdsRef.current.delete(operation.undoActionId);
+        setUndoBusy(undoPendingIdsRef.current.size > 0);
+      }
       return;
     }
     updateTransferOperation(jobId, current => ({ ...current, status: 'cancelling' }));
@@ -2689,6 +2827,129 @@ export default function App() {
     archivePasswordsRef.current.set(jobId, password);
     updateTransferOperation(jobId, operation => ({ ...operation, status: 'queued', error: undefined }));
   }, [updateTransferOperation]);
+
+  const handleUndoAction = useCallback(async (id: string) => {
+    const action = undoHistoryRef.current.find(entry => entry.id === id);
+    const hasActiveTransfer = transferOperationsRef.current.some(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status));
+    if (!action || !action.canUndo || !action.undo || undoPendingIdsRef.current.has(id) || isFileOperationBusy || hasActiveTransfer) return;
+    undoPendingIdsRef.current.add(id);
+    setUndoBusy(true);
+    let queued = false;
+    try {
+      const descriptor = action.undo;
+      if (descriptor.type === 'move') {
+        const targetPath = getParentPath(descriptor.pairs[0]?.to ?? '');
+        if (!isTauriDesktop() || !targetPath || descriptor.pairs.some(pair => getPathKey(getParentPath(pair.to)) !== getPathKey(targetPath))) {
+          throw new Error(t.toolbar.undoMoveUnavailable);
+        }
+        queueNativeTransfer('move', descriptor.pairs.map(pair => pair.from), targetPath, {
+          undoActionId: id,
+          preserveNames: true,
+        });
+        queued = true;
+        return;
+      }
+
+      if (descriptor.type === 'rename') {
+        const remaining: typeof descriptor.pairs = [];
+        let completed = 0;
+        if (isTauriDesktop()) {
+          for (const pair of [...descriptor.pairs].reverse()) {
+            try {
+              const originalName = pair.before.split(/[\\/]/).filter(Boolean).pop();
+              if (!originalName) throw new Error(t.toolbar.undoFailed);
+              await renameNativeItem(pair.after, originalName);
+              completed += 1;
+            } catch {
+              remaining.unshift(pair);
+            }
+          }
+          const changedParents = descriptor.pairs.flatMap(pair => [getParentPath(pair.before), getParentPath(pair.after)]);
+          if (completed > 0) await refreshChangedDirectories(changedParents);
+        } else {
+          const pairs = [...descriptor.pairs].reverse();
+          setAllFiles(previous => previous.map(item => {
+            let next = item;
+            for (const pair of pairs) {
+              if (!isSameOrDescendantPath(next.path, pair.after)) continue;
+              const isRoot = getPathKey(next.path) === getPathKey(pair.after);
+              next = {
+                ...next,
+                name: isRoot ? pair.before.split(/[\\/]/).filter(Boolean).pop() ?? next.name : next.name,
+                path: rewritePathPrefix(next.path, pair.after, pair.before),
+                extension: isRoot && !next.isFolder ? getFileExtension(pair.before) : next.extension,
+                type: isRoot ? detectFileType(pair.before, next.isFolder) : next.type,
+              };
+            }
+            return next;
+          }));
+          completed = descriptor.pairs.length;
+        }
+        if (remaining.length > 0) {
+          updateUndoAction(id, current => ({ ...current, count: remaining.length, undo: { type: 'rename', pairs: remaining } }));
+          showToast(t.toolbar.undoPartial.replace('{completed}', String(completed)).replace('{failed}', String(remaining.length)));
+        } else {
+          removeUndoAction(id);
+          showToast(t.toolbar.undoCompleted);
+        }
+        return;
+      }
+
+      if (descriptor.type === 'restore') {
+        if (!isTauriDesktop()) throw new Error(t.toolbar.undoFailed);
+        const result = await restoreNativeRecycleBinItems(descriptor.items.map(item => ({ id: item.id })));
+        const restoredIds = new Set(result.restoredIds);
+        const remaining = descriptor.items.filter(item => !restoredIds.has(item.id));
+        if (restoredIds.size > 0) {
+          await refreshChangedDirectories(descriptor.items.filter(item => restoredIds.has(item.id)).map(item => getParentPath(item.originalPath)));
+          void refreshRecycleBinStatus();
+          void refreshRecycleBinContents();
+        }
+        if (remaining.length > 0) {
+          updateUndoAction(id, current => ({ ...current, count: remaining.length, undo: { type: 'restore', items: remaining } }));
+          showToast(t.toolbar.undoPartial.replace('{completed}', String(restoredIds.size)).replace('{failed}', String(remaining.length)));
+        } else {
+          removeUndoAction(id);
+          showToast(t.toolbar.undoCompleted);
+        }
+        return;
+      }
+
+      if (descriptor.type === 'remove-virtual') {
+        const removedKeys = new Set(descriptor.paths.map(getPathKey));
+        setAllFiles(previous => previous.filter(item => !removedKeys.has(getPathKey(item.path))));
+        removeUndoAction(id);
+        showToast(t.toolbar.undoCompleted);
+        return;
+      }
+
+      if (descriptor.type === 'remove') {
+        if (!isTauriDesktop()) throw new Error(t.toolbar.undoFailed);
+        const result = await moveNativeItemsToRecycleBin(descriptor.paths);
+        const completedKeys = new Set(result.recycledPaths.map(getPathKey));
+        const remaining = descriptor.paths.filter(path => !completedKeys.has(getPathKey(path)));
+        if (completedKeys.size > 0) {
+          await refreshChangedDirectories(result.recycledPaths.map(getParentPath));
+          void refreshRecycleBinStatus();
+          void refreshRecycleBinContents();
+        }
+        if (remaining.length > 0) {
+          updateUndoAction(id, current => ({ ...current, count: remaining.length, undo: { type: 'remove', paths: remaining } }));
+          showToast(t.toolbar.undoPartial.replace('{completed}', String(completedKeys.size)).replace('{failed}', String(remaining.length)));
+        } else {
+          removeUndoAction(id);
+          showToast(t.toolbar.undoCompleted);
+        }
+      }
+    } catch {
+      showToast(t.toolbar.undoFailed);
+    } finally {
+      if (!queued) {
+        undoPendingIdsRef.current.delete(id);
+        setUndoBusy(undoPendingIdsRef.current.size > 0);
+      }
+    }
+  }, [isFileOperationBusy, queueNativeTransfer, refreshChangedDirectories, refreshRecycleBinContents, refreshRecycleBinStatus, removeUndoAction, setAllFiles, showToast, t.toolbar.undoCompleted, t.toolbar.undoFailed, t.toolbar.undoMoveUnavailable, t.toolbar.undoPartial, updateUndoAction]);
 
   const startCopyWithProgress = useCallback((paths: string[], targetPath: string, selectionPane?: 'left' | 'right') => {
     queueNativeTransfer('copy', paths, targetPath, { selectionPane });
@@ -2737,9 +2998,23 @@ export default function App() {
       };
     }));
 
+    const changedDestinations = destinations.filter(({ root, destination }) => root.path !== destination);
+    if (changedDestinations.length > 0) {
+      pushUndoAction({
+        kind: 'move',
+        name: changedDestinations.length === 1 ? changedDestinations[0].root.name : '',
+        count: changedDestinations.length,
+        canUndo: true,
+        undo: {
+          type: 'rename',
+          pairs: changedDestinations.map(({ root, destination }) => ({ before: root.path, after: destination })),
+        },
+      });
+    }
+
     updatePaneTab(sourcePane, tab => ({ ...tab, selectedIds: [], focusedId: null }));
     showToast(t.core.moved.replace('{count}', String(roots.length)).replace('{target}', targetPath));
-  }, [activePane, allFiles, queueNativeTransfer, t.core.cannotMoveIntoSelf, t.core.moved, t.pane.chooseRealDestinationFolder, showToast, updatePaneTab]);
+  }, [activePane, allFiles, pushUndoAction, queueNativeTransfer, t.core.cannotMoveIntoSelf, t.core.moved, t.pane.chooseRealDestinationFolder, showToast, updatePaneTab]);
 
   const handleCopySelected = useCallback(() => {
     const roots = getRootItems(allFiles, currentTab.selectedIds);
@@ -2834,6 +3109,13 @@ export default function App() {
           showToast(t.core.fileClipboardEmpty);
           return;
         }
+        pushUndoAction({
+          kind: 'create',
+          name: pastedImage.name,
+          count: 1,
+          canUndo: true,
+          undo: { type: 'remove', paths: [pastedImage.path] },
+        });
         await refreshChangedDirectories([targetPath]);
         const createdAtMs = pastedImage.createdMs ?? pastedImage.modifiedMs ?? Date.now();
         const modifiedAtMs = pastedImage.modifiedMs ?? createdAtMs;
@@ -2863,7 +3145,7 @@ export default function App() {
     } catch (error) {
       showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
     }
-  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, queueNativeTransfer, refreshChangedDirectories, rightTabs, showToast, t.core.clipboardImageFileBaseName, t.core.desktopFileOperationsOnly, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.pastedImage, t.pane.chooseRealFolderFirst, updatePaneTab]);
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, pushUndoAction, queueNativeTransfer, refreshChangedDirectories, rightTabs, showToast, t.core.clipboardImageFileBaseName, t.core.desktopFileOperationsOnly, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.pastedImage, t.pane.chooseRealFolderFirst, updatePaneTab]);
   const handleDropFiles = useCallback((droppedIds: string[], targetFolderPath?: string, sourcePane?: 'left' | 'right') => {
     moveItemsToPath(droppedIds, targetFolderPath || currentTab.currentPath, sourcePane);
   }, [currentTab.currentPath, moveItemsToPath]);
@@ -2888,6 +3170,15 @@ export default function App() {
       setIsFileOperationBusy(true);
       try {
         const renamedPath = await renameNativeItem(item.path, newName);
+        if (renamedPath !== item.path) {
+          pushUndoAction({
+            kind: 'rename',
+            name: newName,
+            count: 1,
+            canUndo: true,
+            undo: { type: 'rename', pairs: [{ before: item.path, after: renamedPath }] },
+          });
+        }
         await refreshChangedDirectories([getParentPath(item.path)]);
         const renamedId = `native-${encodeURIComponent(renamedPath.toLowerCase())}`;
         const renamedEntry: FileItem = {
@@ -2926,8 +3217,17 @@ export default function App() {
         lastAccessed: now,
       };
     }));
+    if (destination !== item.path) {
+      pushUndoAction({
+        kind: 'rename',
+        name: newName,
+        count: 1,
+        canUndo: true,
+        undo: { type: 'rename', pairs: [{ before: item.path, after: destination }] },
+      });
+    }
     showToast(t.core.renamed.replace('{name}', newName));
-  }, [activePane, allFiles, isFileOperationBusy, refreshChangedDirectories, showToast, t.core.conflict, t.core.invalidName, t.core.operationFailedWithReason, t.core.renamed, updatePaneTab]);
+  }, [activePane, allFiles, isFileOperationBusy, pushUndoAction, refreshChangedDirectories, showToast, t.core.conflict, t.core.invalidName, t.core.operationFailedWithReason, t.core.renamed, updatePaneTab]);
 
   const beginInlineRename = useCallback((item: FileItem, paneId: 'left' | 'right') => {
     if (item.recycleBinId) {
@@ -2999,6 +3299,7 @@ export default function App() {
       if (changedRoots.length === 0) return;
       setIsFileOperationBusy(true);
       const renamedPaths: string[] = [];
+      const undoPairs: Array<{ before: string; after: string }> = [];
       const renamedEntries: FileItem[] = [];
       const failures: string[] = [];
       try {
@@ -3008,6 +3309,7 @@ export default function App() {
             const path = await renameNativeItem(root.path, newName);
             const id = `native-${encodeURIComponent(path.toLowerCase())}`;
             renamedPaths.push(path);
+            if (path !== root.path) undoPairs.push({ before: root.path, after: path });
             renamedEntries.push({
               ...root,
               id,
@@ -3019,6 +3321,15 @@ export default function App() {
           } catch (error) {
             failures.push(String(error));
           }
+        }
+        if (undoPairs.length > 0) {
+          pushUndoAction({
+            kind: 'rename',
+            name: undoPairs.length === 1 ? undoPairs[0].after.split(/[\\/]/).filter(Boolean).pop() ?? '' : '',
+            count: undoPairs.length,
+            canUndo: true,
+            undo: { type: 'rename', pairs: undoPairs },
+          });
         }
         await refreshChangedDirectories(changedRoots.map(root => getParentPath(root.path)));
         setAllFiles(previous => [
@@ -3042,6 +3353,9 @@ export default function App() {
     }
 
     const now = new Date().toISOString();
+    const undoPairs = roots
+      .filter(root => destinations.has(root.id))
+      .map(root => ({ before: root.path, after: destinations.get(root.id)! }));
     setAllFiles(prev => prev.map(candidate => {
       const root = roots.find(item => isSameOrDescendantPath(candidate.path, item.path));
       if (!root || !destinations.has(root.id)) return candidate;
@@ -3056,8 +3370,17 @@ export default function App() {
         lastAccessed: now,
       };
     }));
+    if (undoPairs.length > 0) {
+      pushUndoAction({
+        kind: 'rename',
+        name: undoPairs.length === 1 ? undoPairs[0].after.split(/[\\/]/).filter(Boolean).pop() ?? '' : '',
+        count: undoPairs.length,
+        canUndo: true,
+        undo: { type: 'rename', pairs: undoPairs },
+      });
+    }
     showToast(`${renames.length} ${language === 'es' ? 'elementos renombrados.' : 'items renamed.'}`);
-  }, [allFiles, isFileOperationBusy, language, refreshChangedDirectories, showToast, t.core.conflict, t.core.invalidName, t.core.operationPartial, updateActiveTab]);
+  }, [allFiles, isFileOperationBusy, language, pushUndoAction, refreshChangedDirectories, showToast, t.core.conflict, t.core.invalidName, t.core.operationPartial, updateActiveTab]);
 
   const openCreateItem = useCallback((kind: NewItemKind, pane: 'left' | 'right' = activePane, suggestedName?: string) => {
     const paneTab = pane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
@@ -3170,6 +3493,13 @@ export default function App() {
           : request.kind === 'text-file'
             ? await createNativeTextFile(request.parentPath, uniqueName)
             : await createNativeShortcut(request.parentPath, uniqueName, targetPath.trim());
+        pushUndoAction({
+          kind: 'create',
+          name: created.name,
+          count: 1,
+          canUndo: true,
+          undo: { type: 'remove', paths: [created.path] },
+        });
         await refreshChangedDirectories([request.parentPath]);
         const refreshedListing = await listNativeDirectory(request.parentPath);
         refreshedEntry = refreshedListing.entries.find(item => getPathKey(item.path) === getPathKey(created.path));
@@ -3192,6 +3522,13 @@ export default function App() {
         };
         setAllFiles(previous => [...previous, virtualEntry]);
         updatePaneTab(request.pane, tab => ({ ...tab, selectedIds: [virtualEntry.id], focusedId: virtualEntry.id }));
+        pushUndoAction({
+          kind: 'create',
+          name: uniqueName,
+          count: 1,
+          canUndo: true,
+          undo: { type: 'remove-virtual', paths: [virtualEntry.path] },
+        });
         setPendingCreateItem(null);
         showToast(t.core.createdFolder.replace('{name}', uniqueName));
         return;
@@ -3230,7 +3567,7 @@ export default function App() {
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [allFiles, isFileOperationBusy, pendingCreateItem, refreshChangedDirectories, showToast, t.core.createdFile, t.core.createdFolder, t.core.createdShortcut, t.core.desktopFileOperationsOnly, t.core.invalidName, t.core.operationFailedWithReason, t.core.shortcutTargetRequired, updatePaneTab]);
+  }, [allFiles, isFileOperationBusy, pendingCreateItem, pushUndoAction, refreshChangedDirectories, showToast, t.core.createdFile, t.core.createdFolder, t.core.createdShortcut, t.core.desktopFileOperationsOnly, t.core.invalidName, t.core.operationFailedWithReason, t.core.shortcutTargetRequired, updatePaneTab]);
 
   const handleDeleteSelected = useCallback((itemsToDelete?: FileItem[]) => {
     if (!isTauriDesktop()) {
@@ -3257,6 +3594,16 @@ export default function App() {
     setIsFileOperationBusy(true);
     try {
       const paths = pendingDeleteItems.map(item => item.path);
+      let previousRecycleBinIds: Set<string> | null = null;
+      if (!permanentlyDelete) {
+        try {
+          const page = await listNativeRecycleBin(0);
+          previousRecycleBinIds = new Set(page.entries.flatMap(item => item.recycleBinId ? [item.recycleBinId] : []));
+        } catch {
+          previousRecycleBinIds = null;
+        }
+      }
+      const operationStartedAt = Date.now();
       const { removedPaths, failures } = permanentlyDelete
         ? await permanentlyDeleteNativeItems(paths).then(result => ({
           removedPaths: result.completedPaths,
@@ -3282,6 +3629,38 @@ export default function App() {
         setRightTabs(clearRemovedSelections);
       }
 
+      if (removedPaths.length > 0) {
+        if (permanentlyDelete) {
+          pushUndoAction({
+            kind: 'permanent-delete',
+            name: removedPaths[0].split(/[\\/]/).filter(Boolean).pop() ?? '',
+            count: removedPaths.length,
+            canUndo: false,
+            blockedReason: t.toolbar.undoUnavailable,
+            undo: null,
+          });
+        } else {
+          let recycledItems: FileItem[] = [];
+          try {
+            recycledItems = await findRecentRecycleBinItems(removedPaths, operationStartedAt, previousRecycleBinIds);
+          } catch {
+            recycledItems = [];
+          }
+          const allIdsFound = recycledItems.length === removedPaths.length;
+          pushUndoAction({
+            kind: 'recycle',
+            name: '',
+            count: removedPaths.length,
+            canUndo: allIdsFound,
+            blockedReason: allIdsFound ? undefined : t.toolbar.undoRecycleUnavailable,
+            undo: allIdsFound ? {
+              type: 'restore',
+              items: recycledItems.map(item => ({ id: item.recycleBinId!, originalPath: item.originalPath ?? item.path })),
+            } : null,
+          });
+        }
+      }
+
       if (failures.length > 0) {
         showToast(permanentlyDelete
           ? t.core.permanentDeletePartial
@@ -3305,7 +3684,7 @@ export default function App() {
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [allFiles, isFileOperationBusy, pendingDeleteItems, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount]);
+  }, [allFiles, isFileOperationBusy, pendingDeleteItems, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecycleUnavailable, t.toolbar.undoUnavailable]);
   const handleRequestEmptyRecycleBin = useCallback(() => {
     if (!recycleBinStatus?.available || recycleBinStatus.itemCount === 0) return;
     setIsEmptyRecycleBinConfirmOpen(true);
@@ -3315,7 +3694,18 @@ export default function App() {
     if (isRecycleBinBusy) return;
     setIsRecycleBinBusy(true);
     try {
+      const emptiedCount = recycleBinStatus?.itemCount ?? 0;
       await emptyNativeRecycleBin();
+      if (emptiedCount > 0) {
+        pushUndoAction({
+          kind: 'permanent-delete',
+          name: '',
+          count: emptiedCount,
+          canUndo: false,
+          blockedReason: t.toolbar.undoUnavailable,
+          undo: null,
+        });
+      }
       setIsEmptyRecycleBinConfirmOpen(false);
       showToast(t.core.recycleBinEmptied);
       void refreshRecycleBinStatus();
@@ -3327,7 +3717,7 @@ export default function App() {
     } finally {
       setIsRecycleBinBusy(false);
     }
-  }, [isRecycleBinBusy, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.recycleBinEmptied, t.core.recycleBinEmptyFailed]);
+  }, [isRecycleBinBusy, pushUndoAction, recycleBinStatus?.itemCount, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.recycleBinEmptied, t.core.recycleBinEmptyFailed, t.toolbar.undoUnavailable]);
 
   const handleRestoreRecycleBinItems = useCallback(async (items: FileItem[]) => {
     if (recycleBinRestoreInFlight.current || recycleBinListingInFlight.current) return;
@@ -3344,6 +3734,16 @@ export default function App() {
     try {
       const result = await restoreNativeRecycleBinItems(requests);
       const restoredIds = new Set(result.restoredIds);
+      const restoredItems = items.filter(item => item.recycleBinId && restoredIds.has(item.recycleBinId));
+      if (restoredItems.length > 0) {
+        pushUndoAction({
+          kind: 'restore',
+          name: restoredItems.length === 1 ? restoredItems[0].name : '',
+          count: restoredItems.length,
+          canUndo: true,
+          undo: { type: 'remove', paths: restoredItems.map(item => item.originalPath ?? item.path) },
+        });
+      }
       const restoredFrontendIds = new Set(items
         .filter(item => item.recycleBinId && restoredIds.has(item.recycleBinId))
         .map(item => item.id));
@@ -3392,7 +3792,7 @@ export default function App() {
     } finally {
       recycleBinRestoreInFlight.current = false;
     }
-  }, [activeLeftTabIndex, activePane, activeRightTabIndex, handleNavigate, layout, leftTabs, refreshRecycleBinContents, refreshRecycleBinStatus, rightTabs, showToast, t.core.recycleBinRestoreFailed, t.core.recycleBinRestorePartial, t.core.recycleBinRestored]);
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, handleNavigate, layout, leftTabs, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, rightTabs, showToast, t.core.recycleBinRestoreFailed, t.core.recycleBinRestorePartial, t.core.recycleBinRestored]);
 
   const handleOpenRecycleBin = useCallback(async () => {
     await handleNavigate(RECYCLE_BIN_PATH, activePane);
@@ -4029,6 +4429,9 @@ export default function App() {
         onCopySelected={handleCopySelected}
         onMoveSelected={handleMoveSelected}
         onDeleteSelected={() => handleDeleteSelected(selectedItemsForDelete)}
+        undoHistory={undoHistory}
+        onUndoAction={handleUndoAction}
+        undoBusy={undoBusy || isFileOperationBusy || transferOperations.some(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status))}
         selectedCount={selectedCount}
         onOpenSearch={() => setIsSearchOpen(true)}
       />
