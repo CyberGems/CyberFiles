@@ -22,6 +22,7 @@ import {
   FileText,
   FolderOpen,
   Terminal,
+  Keyboard,
 } from 'lucide-react';
 import { RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, ViewLayout, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
@@ -57,6 +58,7 @@ interface HeaderBarProps {
   onDeleteSelected: () => void;
   selectedCount: number;
   onOpenSearch: () => void;
+  onOpenCommandPalette: () => void;
   onOpenWorkspaceManager: () => void;
   workspaceChangesPending: boolean;
 }
@@ -90,6 +92,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onDeleteSelected,
   selectedCount,
   onOpenSearch,
+  onOpenCommandPalette,
   onOpenWorkspaceManager,
   workspaceChangesPending,
 }) => {
@@ -152,6 +155,16 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             <Search className="w-3.5 h-3.5 text-cyan-400" />
             <span className="text-xs font-medium">{language === 'es' ? 'Buscar' : 'Search'}</span>
             <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-sans text-[10px] border border-neutral-700">Ctrl+F</kbd>
+          </button>
+        </Tooltip>
+        <Tooltip label={t.commandPalette.openTooltip} placement="bottom">
+          <button
+            type="button"
+            aria-label={t.commandPalette.open}
+            onClick={onOpenCommandPalette}
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-300 transition-colors hover:border-cyan-700 hover:bg-neutral-800 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70"
+          >
+            <Keyboard aria-hidden="true" className="h-4 w-4" />
           </button>
         </Tooltip>
 

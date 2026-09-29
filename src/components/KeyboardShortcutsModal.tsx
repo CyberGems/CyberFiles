@@ -28,6 +28,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
     { key: 'Espacio / F3', desc: isSpanish ? 'Mostrar u ocultar el panel de propiedades' : 'Show or hide the properties panel' },
     { key: 'F7', desc: isSpanish ? 'Crear una carpeta en la ruta actual' : 'Create a folder in the current path' },
     { key: 'Ctrl + F', desc: isSpanish ? 'Buscar por nombre, ruta o contenido disponible' : 'Search by name, path, or available content' },
+    { key: 'Ctrl + K', desc: isSpanish ? 'Abrir la paleta de comandos y ubicaciones' : 'Open the command and location palette' },
     { key: 'Ctrl + A', desc: isSpanish ? 'Seleccionar todos los elementos visibles' : 'Select all visible items' },
     { key: 'Ctrl + T', desc: isSpanish ? 'Abrir una pestaña en el panel activo' : 'Open a tab in the active pane' },
     { key: 'Ctrl + W', desc: isSpanish ? 'Cerrar la pestaña activa' : 'Close the active tab' },

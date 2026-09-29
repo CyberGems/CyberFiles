@@ -38,6 +38,7 @@ import {
   normalizeWindowsPath,
 } from './utils/fileSystem';
 import { HeaderBar } from './components/HeaderBar';
+import type { CommandPaletteCommand } from './components/CommandPalette';
 import { WindowTitleBar } from './components/WindowTitleBar';
 import { Sidebar } from './components/Sidebar';
 import { PaneSplitter } from './components/PaneSplitter';
@@ -82,6 +83,7 @@ const AboutModal = lazy(() => import('./components/AboutModal').then(module => (
 const FindFilesModal = lazy(() => import('./components/FindFilesModal').then(module => ({ default: module.FindFilesModal })));
 const BatchRenameModal = lazy(() => import('./components/BatchRenameModal').then(module => ({ default: module.BatchRenameModal })));
 const KeyboardShortcutsModal = lazy(() => import('./components/KeyboardShortcutsModal').then(module => ({ default: module.KeyboardShortcutsModal })));
+const CommandPalette = lazy(() => import('./components/CommandPalette').then(module => ({ default: module.CommandPalette })));
 const ConfirmActionModal = lazy(() => import('./components/ConfirmActionModal').then(module => ({ default: module.ConfirmActionModal })));
 const CloseWindowModal = lazy(() => import('./components/CloseWindowModal').then(module => ({ default: module.CloseWindowModal })));
 const SettingsModal = lazy(() => import('./components/SettingsModal').then(module => ({ default: module.SettingsModal })));
@@ -836,6 +838,7 @@ export default function App() {
   const [isBatchRenameOpen, setIsBatchRenameOpen] = useState(false);
   const [pendingCreateItem, setPendingCreateItem] = useState<{ kind: NewItemKind; pane: 'left' | 'right'; parentPath: string; suggestedName?: string } | null>(null);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
@@ -3337,7 +3340,7 @@ export default function App() {
     }
   };
 
-  const handleOpenDrive = useCallback((path: string) => {
+  const handleOpenDrive = useCallback((path: string, openInNewTab = sidebarLocationsOpenInNewTab) => {
     if (isTauriDesktop()) {
       // Opening a drive from the sidebar is an explicit request to leave a
       // previously selected-folder scope, but it should still be normal tab
@@ -3346,7 +3349,7 @@ export default function App() {
       nativeRootPath.current = SYSTEM_HOME_PATH;
       browserRootPath.current = '';
     }
-    void handleNavigate(path, activePane, false, sidebarLocationsOpenInNewTab);
+    void handleNavigate(path, activePane, false, openInNewTab);
   }, [activePane, handleNavigate, sidebarLocationsOpenInNewTab]);
 
   const addCustomQuickAccessPath = useCallback((path: string, name: string) => {
@@ -3410,13 +3413,13 @@ export default function App() {
   const handleAddFolderToQuickAccess = useCallback((item: FileItem) => {
     if (item.isFolder) addCustomQuickAccessPath(item.path, item.name);
   }, [addCustomQuickAccessPath]);
-  const handleOpenCustomQuickAccess = useCallback((item: QuickAccessItem) => {
+  const handleOpenCustomQuickAccess = useCallback((item: QuickAccessItem, openInNewTab = sidebarLocationsOpenInNewTab) => {
     if (item.path === SYSTEM_HOME_PATH) {
       if (!isTauriDesktop()) return;
       systemHomeWorkspace.current = true;
       nativeRootPath.current = SYSTEM_HOME_PATH;
       browserRootPath.current = '';
-      void handleNavigate(item.path, activePane, false, sidebarLocationsOpenInNewTab);
+      void handleNavigate(item.path, activePane, false, openInNewTab);
       return;
     }
 
@@ -3426,7 +3429,7 @@ export default function App() {
         nativeRootPath.current = SYSTEM_HOME_PATH;
         browserRootPath.current = '';
       }
-      void handleNavigate(item.path, activePane, false, sidebarLocationsOpenInNewTab);
+      void handleNavigate(item.path, activePane, false, openInNewTab);
       return;
     }
 
@@ -3434,7 +3437,7 @@ export default function App() {
       showToast(t.sidebar.quickAccessReopenRoot.replace('{name}', item.name));
       return;
     }
-    void handleNavigate(item.path, activePane, false, sidebarLocationsOpenInNewTab);
+    void handleNavigate(item.path, activePane, false, openInNewTab);
   }, [activePane, handleNavigate, showToast, sidebarLocationsOpenInNewTab, t.sidebar.quickAccessReopenRoot]);
 
   const handleRenameCustomQuickAccess = useCallback((id: string, name: string) => {
@@ -3471,6 +3474,28 @@ export default function App() {
   // Keyboard Shortcuts listener
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        if (isCommandPaletteOpen) {
+          setIsCommandPaletteOpen(false);
+          return;
+        }
+        const activeElement = document.activeElement;
+        const isEditingText = activeElement instanceof HTMLInputElement ||
+          activeElement instanceof HTMLTextAreaElement ||
+          (activeElement instanceof HTMLElement && activeElement.isContentEditable);
+        if (isEditingText) return;
+        if (
+          isCloseDialogOpen || isSettingsOpen || isAboutOpen || isSearchOpen || isShortcutsOpen ||
+          isBatchRenameOpen || isWorkspaceManagerOpen || isUnsavedWorkspaceChangesOpen ||
+          isOnboardingOpen || isEmptyRecycleBinConfirmOpen || pendingDeleteItems.length > 0 ||
+          pendingCreateItem || renameRequest || contextMenuPos
+        ) return;
+        setIsCommandPaletteOpen(open => !open);
+        return;
+      }
+
+      if (isCommandPaletteOpen) return;
       if (isCloseDialogOpen || isSettingsOpen || isAboutOpen || isSearchOpen || isShortcutsOpen || isBatchRenameOpen || pendingDeleteItems.length > 0 || isFileOperationBusy) return;
 
       // If typing inside an input/textarea, don't hijack keys
@@ -3627,7 +3652,15 @@ export default function App() {
     isAboutOpen,
     isSearchOpen,
     isShortcutsOpen,
+    isCommandPaletteOpen,
     isBatchRenameOpen,
+    isWorkspaceManagerOpen,
+    isUnsavedWorkspaceChangesOpen,
+    isOnboardingOpen,
+    isEmptyRecycleBinConfirmOpen,
+    pendingCreateItem,
+    renameRequest,
+    contextMenuPos,
     pendingDeleteItems.length,
     isFileOperationBusy,
   ]);
@@ -3680,6 +3713,158 @@ export default function App() {
     ? leftTabs[activeLeftTabIndex]
     : rightTabs[activeRightTabIndex];
 
+  const isCommandLocation = (path: string) => Boolean(path) && path !== SYSTEM_HOME_PATH && path !== RECYCLE_BIN_PATH && !path.startsWith('::');
+  const currentParentPath = isCommandLocation(currentTab.currentPath) ? getParentPath(currentTab.currentPath) : '';
+  const activeWorkspaceRoot = isTauriDesktop() ? nativeRootPath.current : browserRootPath.current;
+  const canNavigateUpFromCurrent = currentTab.currentPath === RECYCLE_BIN_PATH
+    ? currentTab.historyIndex > 0 || systemHomeWorkspace.current
+    : currentTab.currentPath !== SYSTEM_HOME_PATH && (
+      (isWindowsDriveRoot(currentTab.currentPath) && (systemHomeWorkspace.current || currentTab.history.includes(SYSTEM_HOME_PATH))) ||
+      (Boolean(currentParentPath) && currentParentPath !== currentTab.currentPath && (
+        systemHomeWorkspace.current || !activeWorkspaceRoot || isSameOrDescendantPath(currentParentPath, activeWorkspaceRoot)
+      ))
+    );
+  const currentFolderIsReal = isCommandLocation(currentTab.currentPath);
+  const oppositeFolderIsReal = isCommandLocation(inactiveTab.currentPath);
+  const selectionDisabledReason = isFileOperationBusy
+    ? t.commandPalette.disabled.operationBusy
+    : selectedCount === 0 ? t.commandPalette.disabled.selectionRequired : undefined;
+  const copyMoveDisabledReason = selectionDisabledReason ?? (
+    oppositeFolderIsReal ? undefined : t.commandPalette.disabled.destinationRequired
+  );
+  const currentFolderDisabledReason = isFileOperationBusy
+    ? t.commandPalette.disabled.operationBusy
+    : currentFolderIsReal ? undefined : t.commandPalette.disabled.realFolderRequired;
+
+  const handleShowCurrentFolderInExplorer = () => {
+    void openFolderInWindowsExplorer(currentTab.currentPath)
+      .catch(error => showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))));
+  };
+  const handleLaunchWindowsTerminal = (terminal: WindowsTerminalOption) => {
+    setLastTerminalOption(terminal);
+    void openWindowsTerminalHere(currentTab.currentPath, terminal)
+      .catch(error => showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))));
+  };
+  const handleOpenWindowsSpecialFolder = (folder: WindowsSpecialFolder) => {
+    if (folder.id === 'editHosts') {
+      void editWindowsHostsFile()
+        .catch(error => showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))));
+      return;
+    }
+    systemHomeWorkspace.current = true;
+    nativeRootPath.current = SYSTEM_HOME_PATH;
+    browserRootPath.current = '';
+    void handleNavigate(folder.path, activePane);
+  };
+
+  const paletteActions: CommandPaletteCommand[] = [
+    { id: 'search-files', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.searchFiles, shortcut: 'Ctrl+F', keywords: 'find search files folders', onSelect: () => setIsSearchOpen(true) },
+    { id: 'shortcuts', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.shortcuts, shortcut: 'F1', keywords: 'keyboard help keys', onSelect: () => setIsShortcutsOpen(true) },
+    { id: 'settings', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.settings, keywords: 'preferences options', onSelect: () => setIsSettingsOpen(true) },
+    { id: 'workspaces', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.workspaces, keywords: 'workspace profiles sessions layouts', onSelect: () => setIsWorkspaceManagerOpen(true) },
+    { id: 'new-tab', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.newTab, shortcut: 'Ctrl+T', keywords: 'tab add create', onSelect: () => handleAddTab(activePane) },
+    { id: 'close-tab', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.closeTab, shortcut: 'Ctrl+W', disabled: activeTabs.length <= 1, disabledReason: activeTabs.length <= 1 ? t.commandPalette.disabled.lastTab : undefined, keywords: 'tab remove', onSelect: () => handleCloseTab(activePane, activeTabIndex) },
+    { id: 'navigate-up', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.goUp, shortcut: 'Backspace', disabled: !canNavigateUpFromCurrent, disabledReason: canNavigateUpFromCurrent ? undefined : t.commandPalette.disabled.noParentFolder, keywords: 'parent folder back up', onSelect: () => handleNavigateUp(activePane) },
+    { id: 'switch-pane', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.switchPane, shortcut: 'Tab', keywords: 'left right panel', onSelect: () => setActivePane(pane => pane === 'left' ? 'right' : 'left') },
+    { id: 'select-all', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.selectAll, shortcut: 'Ctrl+A', disabled: activeDisplayFiles.length === 0, disabledReason: activeDisplayFiles.length === 0 ? t.commandPalette.disabled.noVisibleItems : undefined, keywords: 'select everything', onSelect: () => updateActiveTab(tab => ({ ...tab, selectedIds: activeDisplayFiles.map(file => file.id), focusedId: activeDisplayFiles[0]?.id ?? null })) },
+    { id: 'new-folder', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.newFolder, shortcut: 'F7', disabled: Boolean(currentFolderDisabledReason), disabledReason: currentFolderDisabledReason, keywords: 'create directory', onSelect: () => handleNewFolder() },
+    { id: 'copy-opposite', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.copyToOther, shortcut: 'F5', disabled: Boolean(copyMoveDisabledReason), disabledReason: copyMoveDisabledReason, keywords: 'duplicate copy files', onSelect: handleCopySelected },
+    { id: 'move-opposite', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.moveToOther, shortcut: 'F6', disabled: Boolean(copyMoveDisabledReason), disabledReason: copyMoveDisabledReason, keywords: 'move files transfer', onSelect: handleMoveSelected },
+    { id: 'rename-selection', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.rename, shortcut: 'F2', disabled: Boolean(selectionDisabledReason), disabledReason: selectionDisabledReason, keywords: 'change name', onSelect: handleRenameSelected },
+    { id: 'batch-rename', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.batchRename, shortcut: 'Ctrl+R', disabled: Boolean(selectionDisabledReason), disabledReason: selectionDisabledReason, keywords: 'multiple names', onSelect: () => setIsBatchRenameOpen(true) },
+    { id: 'delete-selection', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.delete, shortcut: 'Delete', disabled: Boolean(selectionDisabledReason) || !isTauriDesktop(), disabledReason: !isTauriDesktop() ? t.core.desktopFileOperationsOnly : selectionDisabledReason, keywords: 'remove recycle bin', onSelect: () => handleDeleteSelected(selectedItemsForDelete) },
+    { id: 'show-preview', group: t.commandPalette.groups.actions, label: previewOpen ? t.commandPalette.commands.hidePreview : t.commandPalette.commands.showPreview, shortcut: 'F3 / Space', keywords: 'properties preview pane', onSelect: () => setPreviewOpen(value => !value) },
+    { id: 'show-hidden', group: t.commandPalette.groups.actions, label: showHiddenFiles ? t.commandPalette.commands.hideHidden : t.commandPalette.commands.showHidden, keywords: 'hidden files folders', onSelect: () => setShowHiddenFiles(value => !value) },
+    { id: 'show-extensions', group: t.commandPalette.groups.actions, label: showFileExtensions ? t.commandPalette.commands.hideExtensions : t.commandPalette.commands.showExtensions, keywords: 'file suffix type', onSelect: () => setShowFileExtensions(value => !value) },
+    { id: 'relative-graphs', group: t.commandPalette.groups.actions, label: relativeGraphsEnabled ? t.commandPalette.commands.hideGraphs : t.commandPalette.commands.showGraphs, keywords: 'relative size date bars', onSelect: () => setRelativeGraphsEnabled(value => !value) },
+  ];
+
+  const paletteViewCommands: CommandPaletteCommand[] = [
+    { id: 'view-details', group: t.commandPalette.groups.view, label: t.commandPalette.commands.viewDetails, keywords: 'list table', onSelect: () => handleViewModeChange('details') },
+    { id: 'view-compact', group: t.commandPalette.groups.view, label: t.commandPalette.commands.viewCompact, keywords: 'dense rows', onSelect: () => handleViewModeChange('compact') },
+    { id: 'view-icons', group: t.commandPalette.groups.view, label: t.commandPalette.commands.viewIcons, keywords: 'large icons grid', onSelect: () => handleViewModeChange('icons') },
+    { id: 'layout-dual-vertical', group: t.commandPalette.groups.view, label: t.commandPalette.commands.layoutDualVertical, keywords: 'two panes columns', onSelect: () => setLayout('dual-vertical') },
+    { id: 'layout-dual-horizontal', group: t.commandPalette.groups.view, label: t.commandPalette.commands.layoutDualHorizontal, keywords: 'two panes rows', onSelect: () => setLayout('dual-horizontal') },
+    { id: 'layout-single', group: t.commandPalette.groups.view, label: t.commandPalette.commands.layoutSingle, keywords: 'one pane', onSelect: () => setLayout('single') },
+  ];
+
+  const quickAccessPaths = new Set(sidebarQuickAccess.map(item => getPathKey(item.path)));
+  const paletteQuickAccess: CommandPaletteCommand[] = sidebarQuickAccess.map(item => ({
+    id: `quick-access-${item.id}`,
+    group: t.commandPalette.groups.quickAccess,
+    label: item.path === SYSTEM_HOME_PATH ? t.commandPalette.commands.thisPc : item.name,
+    description: item.path === SYSTEM_HOME_PATH ? undefined : item.path,
+    keywords: item.path,
+    onSelect: () => handleOpenCustomQuickAccess(item, false),
+  }));
+  const paletteDrives: CommandPaletteCommand[] = drives
+    .filter(drive => !quickAccessPaths.has(getPathKey(`${drive.letter}\\`)))
+    .map(drive => ({
+      id: `drive-${drive.id}`,
+      group: t.commandPalette.groups.drives,
+      label: drive.label && drive.label.toLowerCase() !== drive.letter.toLowerCase() ? `${drive.label} (${drive.letter})` : drive.letter,
+      description: `${drive.letter}\\`,
+      keywords: `${drive.label} ${drive.letter} ${drive.type}`,
+      onSelect: () => handleOpenDrive(`${drive.letter}\\`, false),
+    }));
+  const recentCommandPaths = new Set<string>(quickAccessPaths);
+  for (const drive of drives) recentCommandPaths.add(getPathKey(`${drive.letter}\\`));
+  const paletteRecentFolders: CommandPaletteCommand[] = recentFolderPaths
+    .filter(path => {
+      const pathKey = getPathKey(path);
+      if (recentCommandPaths.has(pathKey) || pathKey === getPathKey(currentTab.currentPath)) return false;
+      recentCommandPaths.add(pathKey);
+      return true;
+    })
+    .map((path, index) => {
+      const name = path.split(/\\|\//).filter(Boolean).pop() || path;
+      return {
+        id: `recent-folder-${index}`,
+        group: t.commandPalette.groups.recent,
+        label: name,
+        description: path,
+        keywords: path,
+        onSelect: () => handleOpenCustomQuickAccess({ id: `recent-${index}`, name, path, icon: 'folder', isCustom: true }, false),
+      };
+    });
+
+  const lastTerminalLabel: Record<WindowsTerminalOption, string> = {
+    cmd: t.toolbar.commandPromptHere,
+    'cmd-admin': t.toolbar.commandPromptAdminHere,
+    powershell: t.toolbar.powerShellHere,
+    'powershell-admin': t.toolbar.powerShellAdminHere,
+  };
+  const paletteWindowsCommands: CommandPaletteCommand[] = isTauriDesktop() && currentFolderIsReal
+    ? [
+      { id: 'show-in-explorer', group: t.commandPalette.groups.windows, label: t.commandPalette.commands.showInExplorer, keywords: 'windows explorer open folder', onSelect: handleShowCurrentFolderInExplorer },
+      { id: 'open-terminal', group: t.commandPalette.groups.windows, label: t.commandPalette.commands.openTerminal, description: lastTerminalLabel[lastTerminalOption], keywords: 'cmd command prompt powershell shell console', onSelect: () => handleLaunchWindowsTerminal(lastTerminalOption) },
+      ...windowsSpecialFolders.map(folder => ({
+        id: `windows-folder-${folder.id}`,
+        group: t.commandPalette.groups.windows,
+        label: folder.id === 'editHosts' ? t.toolbar.editHostsFile : folder.name,
+        description: folder.path,
+        keywords: `${folder.name} ${folder.path} ${t.toolbar.advancedWindowsFolders}`,
+        onSelect: () => handleOpenWindowsSpecialFolder(folder),
+      })),
+    ]
+    : [];
+
+  const commandPaletteCommands: CommandPaletteCommand[] = [
+    ...paletteActions,
+    ...paletteViewCommands,
+    ...(isTauriDesktop() ? [{
+      id: 'recycle-bin',
+      group: t.commandPalette.groups.navigation,
+      label: t.commandPalette.commands.recycleBin,
+      keywords: 'trash deleted restore',
+      onSelect: () => { void handleNavigate(RECYCLE_BIN_PATH, activePane); },
+    }] : []),
+    ...paletteQuickAccess,
+    ...paletteDrives,
+    ...paletteRecentFolders,
+    ...paletteWindowsCommands,
+  ];
+
   return (
     <TooltipPreferenceContext.Provider value={tooltipsEnabled}>
       <div
@@ -3700,6 +3885,7 @@ export default function App() {
         onLayoutChange={setLayout}
         onOpenWorkspaceManager={() => setIsWorkspaceManagerOpen(true)}
         workspaceChangesPending={layoutDirty || sessionDirty}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         viewMode={currentTab.viewMode}
         onViewModeChange={handleViewModeChange}
         relativeGraphsEnabled={relativeGraphsEnabled}
@@ -3714,24 +3900,9 @@ export default function App() {
         windowsSpecialFolders={windowsSpecialFolders}
         lastTerminalOption={lastTerminalOption}
         onLastTerminalOptionChange={setLastTerminalOption}
-        onShowInWindowsExplorer={() => {
-          void openFolderInWindowsExplorer(currentTab.currentPath).catch(error => showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))));
-        }}
-        onLaunchTerminal={(terminal: WindowsTerminalOption) => {
-          setLastTerminalOption(terminal);
-          void openWindowsTerminalHere(currentTab.currentPath, terminal).catch(error => showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))));
-        }}
-        onOpenWindowsSpecialFolder={(folder: WindowsSpecialFolder) => {
-          if (folder.id === 'editHosts') {
-            void editWindowsHostsFile().catch(error => showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))));
-          } else {
-            // Choosing a Windows system location explicitly leaves a folder-only scope.
-            systemHomeWorkspace.current = true;
-            nativeRootPath.current = SYSTEM_HOME_PATH;
-            browserRootPath.current = '';
-            void handleNavigate(folder.path, activePane);
-          }
-        }}
+        onShowInWindowsExplorer={handleShowCurrentFolderInExplorer}
+        onLaunchTerminal={handleLaunchWindowsTerminal}
+        onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
         propertiesPanelOpen={previewOpen}
         onTogglePropertiesPanel={() => setPreviewOpen(value => !value)}
         onRenameSelected={handleRenameSelected}
@@ -4252,6 +4423,18 @@ export default function App() {
             dateFormat={dateFormat}
             onNavigateToFile={handleNavigateToFile}
             onPreviewFile={handlePreviewFileFromSearch}
+          />
+        </Suspense>
+      )}
+
+      {isCommandPaletteOpen && (
+        <Suspense fallback={null}>
+          <CommandPalette
+            label={t.commandPalette.title}
+            placeholder={t.commandPalette.placeholder}
+            noResults={t.commandPalette.noResults}
+            commands={commandPaletteCommands}
+            onClose={() => setIsCommandPaletteOpen(false)}
           />
         </Suspense>
       )}
