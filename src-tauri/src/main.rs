@@ -2376,9 +2376,9 @@ fn collect_archive_members(path: &Path, password: Option<&str>) -> Result<Vec<Ar
     }
 }
 
-fn read_archive_preview_blocking(path: &str) -> Result<ArchivePreview, String> {
+fn read_archive_preview_blocking(path: &str, password: Option<&str>) -> Result<ArchivePreview, String> {
     let source = Path::new(path);
-    let members = collect_archive_members(source, None)?;
+    let members = collect_archive_members(source, password)?;
     let total_entries = members.len();
     let total_bytes = members
         .iter()
@@ -2405,8 +2405,8 @@ fn read_archive_preview_blocking(path: &str) -> Result<ArchivePreview, String> {
 }
 
 #[tauri::command]
-async fn read_archive_preview(path: String) -> Result<ArchivePreview, String> {
-    tauri::async_runtime::spawn_blocking(move || read_archive_preview_blocking(&path))
+async fn read_archive_preview(path: String, password: Option<String>) -> Result<ArchivePreview, String> {
+    tauri::async_runtime::spawn_blocking(move || read_archive_preview_blocking(&path, password.as_deref()))
         .await
         .map_err(|error| format!("Archive preview worker failed: {error}"))?
 }

@@ -148,7 +148,9 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
   const [pdfPreviewSource, setPdfPreviewSource] = useState<{ itemId: string; url: string } | null>(null);
   const [pdfPreviewState, setPdfPreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable' | 'too-large'>('idle');
   const [archivePreview, setArchivePreview] = useState<{ itemId: string; data: NativeArchivePreview } | null>(null);
-  const [archivePreviewState, setArchivePreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable' | 'desktop-only' | 'too-many-entries'>('idle');
+  const [archivePreviewState, setArchivePreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable' | 'password-required' | 'desktop-only' | 'too-many-entries'>('idle');
+  const [archivePassword, setArchivePassword] = useState('');
+  const [archivePasswordError, setArchivePasswordError] = useState(false);
   const { t, language } = useLanguage();
 
   useEffect(() => {
@@ -250,6 +252,8 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
     }
     let cancelled = false;
     setArchivePreview(null);
+    setArchivePassword('');
+    setArchivePasswordError(false);
     setArchivePreviewState('loading');
     void loadNativeArchivePreview(item.path).then(data => {
       if (cancelled) return;
@@ -257,7 +261,8 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
       setArchivePreviewState('ready');
     }).catch(error => {
       if (!cancelled) {
-        setArchivePreviewState(String(error).includes('ARCHIVE_TOO_MANY_ENTRIES') ? 'too-many-entries' : 'unavailable');
+        const reason = String(error);
+        setArchivePreviewState(reason.includes('ARCHIVE_TOO_MANY_ENTRIES') ? 'too-many-entries' : reason.includes('ARCHIVE_PASSWORD_REQUIRED') ? 'password-required' : 'unavailable');
       }
     });
     return () => { cancelled = true; };
@@ -298,6 +303,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
       if (archivePreviewState === 'desktop-only') return <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400"><Archive className="h-10 w-10 text-violet-400" /><span className="text-[11px]">{t.preview.archivePreviewDesktopOnly}</span></div>;
       if (archivePreviewState === 'loading') return <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400"><Archive className="h-10 w-10 text-violet-400" /><span className="text-[11px]">{t.preview.archiveLoading}</span></div>;
       if (archivePreviewState === 'too-many-entries') return <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400"><TriangleAlert className="h-10 w-10 text-amber-400" /><span className="text-[11px]">{t.core.archiveTooManyEntries}</span></div>;
+      if (archivePreviewState === 'password-required') return <div className="flex flex-col items-center justify-center gap-3 p-5 text-center text-neutral-300"><Archive className="h-9 w-9 text-violet-400" /><div className="text-xs font-medium">{t.preview.archivePasswordRequired}</div><form className="flex w-full max-w-xs flex-col gap-2" onSubmit={event => { event.preventDefault(); const password = archivePassword; if (!password) return; setArchivePassword(''); setArchivePasswordError(false); setArchivePreviewState('loading'); void loadNativeArchivePreview(item.path, password).then(data => { setArchivePreview({ itemId: item.id, data }); setArchivePreviewState('ready'); }).catch(error => { const reason = String(error); if (reason.includes('ARCHIVE_INVALID_PASSWORD') || reason.includes('ARCHIVE_PASSWORD_REQUIRED')) { setArchivePasswordError(true); setArchivePreviewState('password-required'); } else { setArchivePreviewState('unavailable'); } }); }}><input type="password" autoComplete="new-password" value={archivePassword} onChange={event => setArchivePassword(event.target.value)} placeholder={t.preview.archivePasswordPlaceholder} aria-label={t.preview.archivePasswordRequired} className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-left text-xs text-neutral-100 outline-none focus:border-cyan-500" />{archivePasswordError && <span className="text-left text-[10px] text-amber-300">{t.preview.archivePasswordIncorrect}</span>}<button type="submit" disabled={!archivePassword} className="rounded-md bg-cyan-800 px-3 py-2 text-xs font-semibold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50">{t.preview.archivePasswordContinue}</button></form></div>;
       const preview = archivePreview?.itemId === item.id ? archivePreview.data : null;
       if (!preview || archivePreviewState === 'unavailable') return <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400"><Archive className="h-10 w-10 text-violet-400" /><span className="text-[11px]">{t.preview.archivePreviewUnavailable}</span></div>;
       return (
