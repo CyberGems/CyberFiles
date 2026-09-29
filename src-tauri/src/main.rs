@@ -2211,6 +2211,14 @@ struct ArchiveMember {
     compressed_size: u64,
     is_link: bool,
     extractable: bool,
+    encrypted: bool,
+}
+
+#[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+enum ArchiveExtractionMode {
+    Here,
+    Folder,
 }
 
 fn archive_extension(path: &Path) -> Result<&str, String> {
@@ -2286,7 +2294,7 @@ fn safe_archive_relative_path(raw_name: &str, is_rar: bool) -> Option<PathBuf> {
     Some(relative)
 }
 
-fn collect_archive_members(path: &Path) -> Result<Vec<ArchiveMember>, String> {
+fn collect_archive_members(path: &Path, password: Option<&str>) -> Result<Vec<ArchiveMember>, String> {
     let extension = archive_extension(path)?;
     let metadata =
         fs::symlink_metadata(path).map_err(|error| format!("Cannot inspect archive: {error}"))?;
@@ -2307,9 +2315,10 @@ fn collect_archive_members(path: &Path) -> Result<Vec<ArchiveMember>, String> {
         let mut members = Vec::with_capacity(archive.len());
         for index in 0..archive.len() {
             let entry = archive
-                .by_index(index)
+                .by_index_raw(index)
                 .map_err(|error| format!("Cannot read ZIP entry: {error}"))?;
             let name = entry.name().to_string();
+            let encrypted = entry.encrypted();
             let mode = entry.unix_mode().unwrap_or(0);
             let file_type = mode & 0o170000;
             let is_link = file_type == 0o120000
@@ -2323,14 +2332,24 @@ fn collect_archive_members(path: &Path) -> Result<Vec<ArchiveMember>, String> {
                 compressed_size: entry.compressed_size(),
                 is_link,
                 extractable: true,
+                encrypted,
             });
         }
         Ok(members)
     } else {
         let file =
             fs::File::open(&resolved).map_err(|error| format!("Cannot open archive: {error}"))?;
-        let archive =
-            RarArchive::open(file).map_err(|error| format!("Cannot read RAR archive: {error}"))?;
+        let archive = match password {
+            Some(password) => RarArchive::open_with_password(file, password).map_err(|error| match error {
+                unrar_rs::RarError::InvalidPassword | unrar_rs::RarError::WrongPassword { .. } => "ARCHIVE_INVALID_PASSWORD".to_string(),
+                unrar_rs::RarError::EncryptedArchive => "ARCHIVE_PASSWORD_REQUIRED".to_string(),
+                other => format!("Cannot read RAR archive: {other}"),
+            })?,
+            None => RarArchive::open(file).map_err(|error| match error {
+                unrar_rs::RarError::EncryptedArchive => "ARCHIVE_PASSWORD_REQUIRED".to_string(),
+                other => format!("Cannot read RAR archive: {other}"),
+            })?,
+        };
         let has_complete_volume_set = !archive.more_volumes();
         let indexed_members = archive.indexed_member_infos();
         if indexed_members.len() > MAX_ARCHIVE_MEMBERS {
@@ -2350,6 +2369,7 @@ fn collect_archive_members(path: &Path) -> Result<Vec<ArchiveMember>, String> {
                     compressed_size: info.compressed_size,
                     is_link: info.is_symlink || info.is_hardlink || info.is_file_copy,
                     extractable: entry.extractable && has_complete_volume_set,
+                    encrypted: info.is_encrypted,
                 }
             })
             .collect())
@@ -2358,7 +2378,7 @@ fn collect_archive_members(path: &Path) -> Result<Vec<ArchiveMember>, String> {
 
 fn read_archive_preview_blocking(path: &str) -> Result<ArchivePreview, String> {
     let source = Path::new(path);
-    let members = collect_archive_members(source)?;
+    let members = collect_archive_members(source, None)?;
     let total_entries = members.len();
     let total_bytes = members
         .iter()
@@ -2428,7 +2448,10 @@ impl Write for ArchiveProgressWriter<'_> {
     }
 }
 
-fn create_archive_output_root(parent: &Path, archive_path: &Path) -> Result<PathBuf, String> {
+fn create_archive_output_root(parent: &Path, archive_path: &Path, mode: ArchiveExtractionMode) -> Result<PathBuf, String> {
+    if mode == ArchiveExtractionMode::Here {
+        return Ok(parent.to_path_buf());
+    }
     let base = archive_path
         .file_stem()
         .and_then(|value| value.to_str())
@@ -2453,10 +2476,12 @@ fn create_archive_output_root(parent: &Path, archive_path: &Path) -> Result<Path
     Err("Could not find an unused extraction folder name.".to_string())
 }
 
-fn archive_entry_extraction_error(member_name: &str, error: impl std::fmt::Display) -> String {
+fn archive_entry_extraction_error(member_name: &str, error: impl std::fmt::Display, encrypted: bool) -> String {
     let error = error.to_string();
     if error.contains("ARCHIVE_SIZE_LIMIT") {
         "ARCHIVE_SIZE_LIMIT".to_string()
+    } else if encrypted && (error.to_ascii_lowercase().contains("password") || error.to_ascii_lowercase().contains("crc")) {
+        "ARCHIVE_INVALID_PASSWORD".to_string()
     } else {
         format!("Cannot extract {member_name}: {error}")
     }
@@ -2472,11 +2497,75 @@ fn archive_failure(path: &str, error: String) -> NativeOperationResult {
     }
 }
 
+fn ensure_archive_directory(root: &Path, directory: &Path, created: &mut Vec<PathBuf>) -> Result<(), String> {
+    let relative = directory.strip_prefix(root).map_err(|_| "ARCHIVE_UNSAFE_ENTRY".to_string())?;
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        let std::path::Component::Normal(part) = component else {
+            return Err("ARCHIVE_UNSAFE_ENTRY".to_string());
+        };
+        current.push(part);
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) => {
+                if !metadata.is_dir() || metadata.file_type().is_symlink() {
+                    return Err("ARCHIVE_UNSAFE_ENTRY".to_string());
+                }
+                let resolved = fs::canonicalize(&current).map_err(|_| "ARCHIVE_UNSAFE_ENTRY".to_string())?;
+                if !same_or_descendant_path(&resolved, root) {
+                    return Err("ARCHIVE_UNSAFE_ENTRY".to_string());
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => match fs::create_dir(&current) {
+                Ok(()) => created.push(current.clone()),
+                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                    let metadata = fs::symlink_metadata(&current).map_err(|_| "ARCHIVE_UNSAFE_ENTRY".to_string())?;
+                    let resolved = fs::canonicalize(&current).map_err(|_| "ARCHIVE_UNSAFE_ENTRY".to_string())?;
+                    if !metadata.is_dir() || metadata.file_type().is_symlink() || !same_or_descendant_path(&resolved, root) {
+                        return Err("ARCHIVE_UNSAFE_ENTRY".to_string());
+                    }
+                }
+                Err(error) => return Err(format!("Cannot create folder {}: {error}", display_path(&current))),
+            },
+            Err(error) => return Err(format!("Cannot inspect folder {}: {error}", display_path(&current))),
+        }
+    }
+    Ok(())
+}
+
+fn cleanup_archive_extraction_artifacts(files: &[PathBuf], directories: &[PathBuf]) -> Result<(), String> {
+    let mut first_error = None;
+    for path in files.iter().rev() {
+        match fs::symlink_metadata(path) {
+            Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => {
+                if let Err(error) = fs::remove_file(path) { first_error.get_or_insert(error.to_string()); }
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => { first_error.get_or_insert(error.to_string()); }
+        }
+    }
+    for path in directories.iter().rev() {
+        match fs::symlink_metadata(path) {
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
+                if let Err(error) = fs::remove_dir(path) {
+                    if error.kind() != io::ErrorKind::DirectoryNotEmpty { first_error.get_or_insert(error.to_string()); }
+                }
+            }
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => { first_error.get_or_insert(error.to_string()); }
+        }
+    }
+    first_error.map_or(Ok(()), |error| Err(error))
+}
+
 fn extract_archive_with_progress(
     app: tauri::AppHandle,
     archive_path: &str,
     target_path: &str,
     job_id: &str,
+    extraction_mode: ArchiveExtractionMode,
+    password: Option<String>,
     control: &TransferJobControl,
 ) -> NativeOperationResult {
     let source = match canonical_item(archive_path) {
@@ -2487,7 +2576,7 @@ fn extract_archive_with_progress(
         Ok(target) => target,
         Err(error) => return archive_failure(archive_path, error),
     };
-    let members = match collect_archive_members(&source) {
+    let members = match collect_archive_members(&source, password.as_deref()) {
         Ok(members) => members,
         Err(error) => return archive_failure(archive_path, error),
     };
@@ -2499,6 +2588,9 @@ fn extract_archive_with_progress(
     }
     if members.iter().any(|member| !member.extractable) {
         return archive_failure(archive_path, "ARCHIVE_ADDITIONAL_VOLUMES".to_string());
+    }
+    if password.is_none() && members.iter().any(|member| member.encrypted) {
+        return archive_failure(archive_path, "ARCHIVE_PASSWORD_REQUIRED".to_string());
     }
     let total_bytes = members
         .iter()
@@ -2513,10 +2605,13 @@ fn extract_archive_with_progress(
     if let Err(error) = wait_for_transfer_job(control) {
         return archive_failure(archive_path, error);
     }
-    let output_root = match create_archive_output_root(&target, &source) {
+    let output_root = match create_archive_output_root(&target, &source, extraction_mode) {
         Ok(path) => path,
         Err(error) => return archive_failure(archive_path, error),
     };
+    let mut created_files = Vec::new();
+    let mut created_directories = Vec::new();
+    let has_dedicated_output_root = extraction_mode == ArchiveExtractionMode::Folder;
     let mut tracker = TransferProgressTracker {
         app,
         job_id: job_id.to_string(),
@@ -2550,16 +2645,12 @@ fn extract_archive_with_progress(
                     tracker.current_file_bytes = 0;
                     tracker.current_file_total = member.size;
                     if member.is_directory {
-                        fs::create_dir_all(&output).map_err(|error| {
-                            format!("Cannot create folder {}: {error}", display_path(&output))
-                        })?;
+                        ensure_archive_directory(&output_root, &output, &mut created_directories)?;
                     } else {
                         let parent = output
                             .parent()
                             .ok_or_else(|| "Archive entry has no parent folder.".to_string())?;
-                        fs::create_dir_all(parent).map_err(|error| {
-                            format!("Cannot create folder {}: {error}", display_path(parent))
-                        })?;
+                        ensure_archive_directory(&output_root, parent, &mut created_directories)?;
                         let output_file = fs::OpenOptions::new()
                             .write(true)
                             .create_new(true)
@@ -2567,9 +2658,16 @@ fn extract_archive_with_progress(
                             .map_err(|error| {
                                 format!("Cannot create {}: {error}", display_path(&output))
                             })?;
-                        let mut entry = archive.by_index(member.index).map_err(|error| {
-                            format!("Cannot open ZIP entry {}: {error}", member.name)
-                        })?;
+                        created_files.push(output.clone());
+                        let mut entry = if member.encrypted {
+                            let password = password.as_deref().ok_or_else(|| "ARCHIVE_PASSWORD_REQUIRED".to_string())?;
+                            archive.by_index_decrypt(member.index, password.as_bytes()).map_err(|error| match error {
+                                zip::result::ZipError::InvalidPassword => "ARCHIVE_INVALID_PASSWORD".to_string(),
+                                other => format!("Cannot open ZIP entry {}: {other}", member.name),
+                            })?
+                        } else {
+                            archive.by_index(member.index).map_err(|error| format!("Cannot open ZIP entry {}: {error}", member.name))?
+                        };
                         if entry.is_dir() || entry.unix_mode().unwrap_or(0) & 0o170000 == 0o120000 {
                             return Err("ARCHIVE_UNSAFE_ENTRY".to_string());
                         }
@@ -2582,7 +2680,7 @@ fn extract_archive_with_progress(
                             file_bytes: 0,
                         };
                         io::copy(&mut entry, &mut writer)
-                            .map_err(|error| archive_entry_extraction_error(&member.name, error))?;
+                            .map_err(|error| archive_entry_extraction_error(&member.name, error, member.encrypted))?;
                         writer
                             .flush()
                             .map_err(|error| format!("Cannot flush {}: {error}", member.name))?;
@@ -2594,8 +2692,17 @@ fn extract_archive_with_progress(
             "rar" => {
                 let file = fs::File::open(&source)
                     .map_err(|error| format!("Cannot open RAR archive: {error}"))?;
-                let mut archive = RarArchive::open(file)
-                    .map_err(|error| format!("Cannot read RAR archive: {error}"))?;
+                let mut archive = match password.as_deref() {
+                    Some(password) => RarArchive::open_with_password(file, password).map_err(|error| match error {
+                        unrar_rs::RarError::InvalidPassword | unrar_rs::RarError::WrongPassword { .. } => "ARCHIVE_INVALID_PASSWORD".to_string(),
+                        unrar_rs::RarError::EncryptedArchive => "ARCHIVE_PASSWORD_REQUIRED".to_string(),
+                        other => format!("Cannot read RAR archive: {other}"),
+                    })?,
+                    None => RarArchive::open(file).map_err(|error| match error {
+                        unrar_rs::RarError::EncryptedArchive => "ARCHIVE_PASSWORD_REQUIRED".to_string(),
+                        other => format!("Cannot read RAR archive: {other}"),
+                    })?,
+                };
                 let volume_provider =
                     unrar_rs::volume::StaticVolumeProvider::from_ordered(vec![source.clone()]);
                 for member in &members {
@@ -2609,16 +2716,12 @@ fn extract_archive_with_progress(
                     tracker.current_file_bytes = 0;
                     tracker.current_file_total = member.size;
                     if member.is_directory {
-                        fs::create_dir_all(&output).map_err(|error| {
-                            format!("Cannot create folder {}: {error}", display_path(&output))
-                        })?;
+                        ensure_archive_directory(&output_root, &output, &mut created_directories)?;
                     } else {
                         let parent = output
                             .parent()
                             .ok_or_else(|| "Archive entry has no parent folder.".to_string())?;
-                        fs::create_dir_all(parent).map_err(|error| {
-                            format!("Cannot create folder {}: {error}", display_path(parent))
-                        })?;
+                        ensure_archive_directory(&output_root, parent, &mut created_directories)?;
                         let output_file = fs::OpenOptions::new()
                             .write(true)
                             .create_new(true)
@@ -2626,6 +2729,7 @@ fn extract_archive_with_progress(
                             .map_err(|error| {
                                 format!("Cannot create {}: {error}", display_path(&output))
                             })?;
+                        created_files.push(output.clone());
                         let start_bytes = tracker.bytes_copied;
                         let mut writer = ArchiveProgressWriter {
                             file: output_file,
@@ -2637,11 +2741,11 @@ fn extract_archive_with_progress(
                         archive
                             .extract_member_streaming(
                                 member.index,
-                                &unrar_rs::ExtractOptions::default(),
+                                &unrar_rs::ExtractOptions { password: password.clone(), ..unrar_rs::ExtractOptions::default() },
                                 &volume_provider,
                                 &mut writer,
                             )
-                            .map_err(|error| archive_entry_extraction_error(&member.name, error))?;
+                            .map_err(|error| archive_entry_extraction_error(&member.name, error, member.encrypted))?;
                         writer
                             .flush()
                             .map_err(|error| format!("Cannot flush {}: {error}", member.name))?;
@@ -2668,7 +2772,11 @@ fn extract_archive_with_progress(
             }
         }
         Err(error) => {
-            let cleanup_error = remove_path_without_following_links(&output_root).err();
+            let cleanup_error = if has_dedicated_output_root {
+                remove_path_without_following_links(&output_root).err()
+            } else {
+                cleanup_archive_extraction_artifacts(&created_files, &created_directories).err()
+            };
             let error = cleanup_error.map_or(error.clone(), |cleanup| {
                 format!("{error} Partial extraction cleanup failed: {cleanup}")
             });
@@ -2682,6 +2790,8 @@ fn start_native_archive_extraction_operation(
     archive_path: String,
     target_path: String,
     job_id: String,
+    extraction_mode: ArchiveExtractionMode,
+    password: Option<String>,
 ) -> Result<(), String> {
     let control = Arc::new(TransferJobControl {
         state: Mutex::new(TransferJobState::default()),
@@ -2702,6 +2812,8 @@ fn start_native_archive_extraction_operation(
             &archive_path,
             &target_path,
             &job_id,
+            extraction_mode,
+            password,
             &control,
         );
         if let Ok(mut jobs) = transfer_jobs().lock() {
@@ -2721,8 +2833,10 @@ fn start_archive_extraction(
     archive_path: String,
     target_path: String,
     job_id: String,
+    extraction_mode: ArchiveExtractionMode,
+    password: Option<String>,
 ) -> Result<(), String> {
-    start_native_archive_extraction_operation(app, archive_path, target_path, job_id)
+    start_native_archive_extraction_operation(app, archive_path, target_path, job_id, extraction_mode, password)
 }
 #[tauri::command]
 async fn read_text_preview(path: String) -> Result<String, String> {

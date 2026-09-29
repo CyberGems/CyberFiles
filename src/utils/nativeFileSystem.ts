@@ -293,8 +293,8 @@ export async function startNativeTransferOperation(paths: string[], targetPath: 
   return invoke<void>('start_copy_operation', { paths, targetPath, jobId });
 }
 
-export async function startNativeArchiveExtractionOperation(archivePath: string, targetPath: string, jobId: string): Promise<void> {
-  return invoke<void>('start_archive_extraction', { archivePath, targetPath, jobId });
+export async function startNativeArchiveExtractionOperation(archivePath: string, targetPath: string, jobId: string, extractionMode: 'here' | 'folder', password?: string): Promise<void> {
+  return invoke<void>('start_archive_extraction', { archivePath, targetPath, jobId, extractionMode, password: password ?? null });
 }
 export async function pauseNativeTransferOperation(jobId: string): Promise<void> {
   return invoke<void>('pause_transfer_operation', { jobId });

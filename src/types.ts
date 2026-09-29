@@ -49,6 +49,7 @@ export type SortField = 'name' | 'size' | 'type' | 'createdDate' | 'modifiedDate
 export type GroupByField = 'none' | 'name' | 'modifiedDate' | 'type' | 'size';
 export type SortOrder = 'asc' | 'desc';
 export type QuickAccessSortMode = 'manual' | 'name';
+export type ArchiveExtractionMode = 'here' | 'folder';
 
 export type ViewLayout = 'dual-vertical' | 'dual-horizontal' | 'single';
 export type ViewMode = 'details' | 'compact' | 'icons';

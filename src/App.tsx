@@ -17,6 +17,7 @@ import {
   QuickAccessSortMode,
   RecentItemStyle,
   GroupByField,
+  ArchiveExtractionMode,
 } from './types';
 import {
   getChildItems, 
@@ -876,6 +877,7 @@ export default function App() {
   const [isFileOperationBusy, setIsFileOperationBusy] = useState(false);
   const [transferOperations, setTransferOperations] = useState<TransferOperationView[]>([]);
   const transferOperationsRef = useRef<TransferOperationView[]>([]);
+  const archivePasswordsRef = useRef(new Map<string, string>());
   const activeTransferIdRef = useRef<string | null>(null);
   const [transferEventsReady, setTransferEventsReady] = useState(!isTauriDesktop());
   const [renameRequest, setRenameRequest] = useState<{ requestId: number; itemId: string; paneId: 'left' | 'right' } | null>(null);
@@ -970,7 +972,7 @@ export default function App() {
   }, [t.settings.instancePreferencesDesktopOnly, t.settings.instancePreferencesSaveError]);
 
   const runCloseAction = useCallback(async (choice: 'hide' | 'quit', remember = rememberCloseChoice) => {
-    if (choice === 'quit' && transferOperationsRef.current.some(operation => ['queued', 'running', 'paused', 'cancelling'].includes(operation.status))) {
+    if (choice === 'quit' && transferOperationsRef.current.some(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status))) {
       showToast(language === 'es' ? 'Espera a que terminen las transferencias antes de salir.' : 'Wait for transfers to finish before quitting.');
       return;
     }
@@ -2439,7 +2441,7 @@ export default function App() {
   }, []);
 
   const clearTransferHistory = useCallback(() => {
-    const next = transferOperationsRef.current.filter(operation => ['queued', 'running', 'paused', 'cancelling'].includes(operation.status));
+    const next = transferOperationsRef.current.filter(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status));
     transferOperationsRef.current = next;
     setTransferOperations(next);
   }, []);
@@ -2464,8 +2466,21 @@ export default function App() {
           const operation = transferOperationsRef.current.find(item => item.jobId === event.payload.jobId);
           if (!operation) return;
           void (async () => {
-            const actions = transferCompletionActionsRef.current;
             const result = event.payload.result;
+            const passwordFailure = result.failures[0]?.error;
+            if (operation.kind === 'extract' && (passwordFailure === 'ARCHIVE_PASSWORD_REQUIRED' || passwordFailure === 'ARCHIVE_INVALID_PASSWORD')) {
+              archivePasswordsRef.current.delete(operation.jobId);
+              const actions = transferCompletionActionsRef.current;
+              updateTransferOperation(operation.jobId, current => ({
+                ...current,
+                status: 'awaiting-password',
+                error: passwordFailure === 'ARCHIVE_INVALID_PASSWORD' ? actions.t.core.archivePasswordIncorrect : undefined,
+              }));
+              if (activeTransferIdRef.current === operation.jobId) activeTransferIdRef.current = null;
+              return;
+            }
+            archivePasswordsRef.current.delete(operation.jobId);
+            const actions = transferCompletionActionsRef.current;
             const changedDirectories = [operation.targetPath];
             if (operation.kind === 'move') changedDirectories.push(...operation.sourcePaths.map(getParentPath));
             try {
@@ -2473,7 +2488,7 @@ export default function App() {
             } catch (error) {
               actions.showToast(actions.t.core.operationFailedWithReason.replace('{reason}', String(error)));
             }
-            if (result.completedPaths.length > 0 && operation.selectionPane) {
+            if (result.completedPaths.length > 0 && operation.selectionPane && operation.kind !== 'extract') {
               const paneTabs = operation.selectionPane === 'left' ? actions.leftTabs : actions.rightTabs;
               const activeIndex = operation.selectionPane === 'left' ? actions.activeLeftTabIndex : actions.activeRightTabIndex;
               if (getPathKey(paneTabs[activeIndex]?.currentPath || '') === getPathKey(operation.targetPath)) {
@@ -2555,7 +2570,7 @@ export default function App() {
     void listen('tray-quit-requested', () => {
       void (async () => {
         try {
-          const hasPendingTransfers = transferOperationsRef.current.some(operation => ['queued', 'running', 'paused', 'cancelling'].includes(operation.status));
+          const hasPendingTransfers = transferOperationsRef.current.some(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status));
           if (hasPendingTransfers) {
             const window = getCurrentWindow();
             await window.show();
@@ -2580,7 +2595,7 @@ export default function App() {
     };
   }, [language, showToast, t.core.operationFailedWithReason]);
 
-  const queueNativeTransfer = useCallback((kind: TransferKind, paths: string[], targetPath: string, options: { sourcePane?: 'left' | 'right'; selectionPane?: 'left' | 'right'; clipboardSequence?: number } = {}) => {
+  const queueNativeTransfer = useCallback((kind: TransferKind, paths: string[], targetPath: string, options: { sourcePane?: 'left' | 'right'; selectionPane?: 'left' | 'right'; clipboardSequence?: number; extractionMode?: ArchiveExtractionMode } = {}) => {
     if (paths.length === 0) return;
     const operation: TransferOperationView = {
       jobId: createOperationId(kind),
@@ -2600,6 +2615,7 @@ export default function App() {
       sourcePane: options.sourcePane,
       selectionPane: options.selectionPane,
       clipboardSequence: options.clipboardSequence,
+      extractionMode: options.extractionMode,
     };
     const next = [...transferOperationsRef.current, operation];
     transferOperationsRef.current = next;
@@ -2613,10 +2629,11 @@ export default function App() {
     activeTransferIdRef.current = nextOperation.jobId;
     updateTransferOperation(nextOperation.jobId, operation => ({ ...operation, status: 'running', startedAt: Date.now() }));
     void (nextOperation.kind === 'extract'
-      ? startNativeArchiveExtractionOperation(nextOperation.sourcePaths[0] ?? '', nextOperation.targetPath, nextOperation.jobId)
+      ? startNativeArchiveExtractionOperation(nextOperation.sourcePaths[0] ?? '', nextOperation.targetPath, nextOperation.jobId, nextOperation.extractionMode ?? 'folder', archivePasswordsRef.current.get(nextOperation.jobId))
       : startNativeTransferOperation(nextOperation.sourcePaths, nextOperation.targetPath, nextOperation.jobId, nextOperation.kind === 'move'))
       .catch(error => {
         const reason = String(error);
+        archivePasswordsRef.current.delete(nextOperation.jobId);
         updateTransferOperation(nextOperation.jobId, operation => ({ ...operation, status: 'failed', error: reason }));
         if (activeTransferIdRef.current === nextOperation.jobId) activeTransferIdRef.current = null;
         showToast(t.core.operationFailedWithReason.replace('{reason}', reason));
@@ -2639,8 +2656,9 @@ export default function App() {
   const cancelTransfer = useCallback(async (jobId: string) => {
     const operation = transferOperationsRef.current.find(item => item.jobId === jobId);
     if (!operation || ['cancelling', 'cancelled', 'completed', 'failed'].includes(operation.status)) return;
-    if (operation.status === 'queued') {
-      updateTransferOperation(jobId, current => ({ ...current, status: 'cancelled' }));
+    if (operation.status === 'queued' || operation.status === 'awaiting-password') {
+      archivePasswordsRef.current.delete(jobId);
+      updateTransferOperation(jobId, current => ({ ...current, status: 'cancelled', error: undefined }));
       return;
     }
     updateTransferOperation(jobId, current => ({ ...current, status: 'cancelling' }));
@@ -2651,6 +2669,12 @@ export default function App() {
       showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
     }
   }, [showToast, t.core.operationFailedWithReason, updateTransferOperation]);
+
+  const submitArchivePassword = useCallback((jobId: string, password: string) => {
+    if (!password) return;
+    archivePasswordsRef.current.set(jobId, password);
+    updateTransferOperation(jobId, operation => ({ ...operation, status: 'queued', error: undefined }));
+  }, [updateTransferOperation]);
 
   const startCopyWithProgress = useCallback((paths: string[], targetPath: string, selectionPane?: 'left' | 'right') => {
     queueNativeTransfer('copy', paths, targetPath, { selectionPane });
@@ -3974,6 +3998,8 @@ export default function App() {
           onDeleteSelected={() => handleDeleteSelected(selectedItemsForDelete)}
           onOpenSelectedFolder={item => { void handleNavigate(item.path, activePane); }}
           onPreviewSelectedFile={handleSelectRecentFile}
+          supportsArchiveExtraction={isTauriDesktop()}
+          onExtractSelected={(item, mode) => queueNativeTransfer('extract', [item.path], getParentPath(item.path), { selectionPane: activePane, extractionMode: mode })}
           onCopySelectedPaths={handleCopySelectedPaths}
           recycleBinSupported={isTauriDesktop()}
           recycleBinStatus={recycleBinStatus}
@@ -4336,7 +4362,7 @@ export default function App() {
           setPreviewOpen(true);
         }}
         supportsArchiveExtraction={isTauriDesktop()}
-        onExtractArchive={item => queueNativeTransfer('extract', [item.path], getParentPath(item.path), { selectionPane: contextPane })}
+        onExtractArchive={(item, mode) => queueNativeTransfer('extract', [item.path], getParentPath(item.path), { selectionPane: contextPane, extractionMode: mode })}
         onCopyOpposite={() => handleCopySelected()}
         onMoveOpposite={() => handleMoveSelected()}
         onCopyToClipboard={item => { void handleFileClipboard(item, false, contextPane); }}
@@ -4374,7 +4400,7 @@ export default function App() {
           }}
         />
       )}
-      <FileOperationModal operations={transferOperations} language={language} onTogglePause={jobId => { void toggleTransferPause(jobId); }} onCancel={jobId => { void cancelTransfer(jobId); }} onClearHistory={clearTransferHistory} />
+      <FileOperationModal operations={transferOperations} language={language} onTogglePause={jobId => { void toggleTransferPause(jobId); }} onCancel={jobId => { void cancelTransfer(jobId); }} onSubmitPassword={submitArchivePassword} onClearHistory={clearTransferHistory} />
       <TextInputContextMenu />
 
       <WorkspaceManagerModal

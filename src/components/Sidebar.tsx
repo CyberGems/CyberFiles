@@ -33,7 +33,7 @@ import {
   Home,
   ListChecks,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, QuickAccessItem, QuickAccessSortMode, SYSTEM_HOME_PATH } from '../types';
+import { ArchiveExtractionMode, DriveInfo, FileItem, FileType, QuickAccessItem, QuickAccessSortMode, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
 import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
@@ -78,6 +78,8 @@ interface SidebarProps {
   onDeleteSelected: () => void;
   onOpenSelectedFolder: (item: FileItem) => void;
   onPreviewSelectedFile: (item: FileItem) => void;
+  supportsArchiveExtraction: boolean;
+  onExtractSelected: (item: FileItem, mode: ArchiveExtractionMode) => void;
   onCopySelectedPaths: (items: FileItem[]) => void;
   recycleBinSupported: boolean;
   recycleBinStatus: RecycleBinStatus | null;
@@ -117,6 +119,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onDeleteSelected,
   onOpenSelectedFolder,
   onPreviewSelectedFile,
+  supportsArchiveExtraction,
+  onExtractSelected,
   onCopySelectedPaths,
   recycleBinSupported,
   recycleBinStatus,
@@ -556,6 +560,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {selectedItems[0].isFolder ? <FolderOpen className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
               <span>{selectedItems[0].isFolder ? t.sidebar.openSelected : t.sidebar.previewSelected}</span>
             </button>
+          )}
+
+          {!hasRecycleBinSelection && supportsArchiveExtraction && selectedItems.length === 1 && !selectedItems[0].isFolder && ['zip', 'rar'].includes(selectedItems[0].extension.toLowerCase()) && (
+            <div className="grid grid-cols-2 gap-1.5">
+              <button type="button" onClick={() => onExtractSelected(selectedItems[0], 'here')} className="flex min-w-0 items-center gap-1.5 rounded-md border border-violet-900/60 bg-violet-950/20 px-2 py-2 text-left text-[10px] text-violet-100 transition-colors hover:border-violet-700 hover:bg-violet-950/50">
+                <Archive className="h-3.5 w-3.5 flex-shrink-0 text-violet-300" /><span className="truncate">{t.contextMenu.extractArchiveHere}</span>
+              </button>
+              <button type="button" onClick={() => onExtractSelected(selectedItems[0], 'folder')} className="flex min-w-0 items-center gap-1.5 rounded-md border border-violet-900/60 bg-violet-950/20 px-2 py-2 text-left text-[10px] text-violet-100 transition-colors hover:border-violet-700 hover:bg-violet-950/50">
+                <FolderOpen className="h-3.5 w-3.5 flex-shrink-0 text-violet-300" /><span className="truncate">{t.contextMenu.extractArchiveFolderShort}</span>
+              </button>
+            </div>
           )}
 
           {!hasRecycleBinSelection && <>

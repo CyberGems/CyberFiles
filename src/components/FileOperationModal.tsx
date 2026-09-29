@@ -4,9 +4,10 @@ import { Archive, Check, ChevronDown, Copy, Gauge, ListChecks, Maximize2, Minimi
 import { formatFileSize } from '../utils/fileSystem';
 import { Tooltip } from './Tooltip';
 import type { NativeTransferProgress } from '../utils/nativeFileSystem';
+import type { ArchiveExtractionMode } from '../types';
 
 export type TransferKind = 'copy' | 'move' | 'extract';
-export type TransferStatus = 'queued' | 'running' | 'paused' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
+export type TransferStatus = 'queued' | 'awaiting-password' | 'running' | 'paused' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 
 export interface TransferOperationView extends NativeTransferProgress {
   kind: TransferKind;
@@ -17,6 +18,7 @@ export interface TransferOperationView extends NativeTransferProgress {
   sourcePane?: 'left' | 'right';
   selectionPane?: 'left' | 'right';
   clipboardSequence?: number;
+  extractionMode?: ArchiveExtractionMode;
   error?: string;
 }
 
@@ -25,6 +27,7 @@ interface FileOperationModalProps {
   language: 'en' | 'es';
   onTogglePause: (jobId: string) => void;
   onCancel: (jobId: string) => void;
+  onSubmitPassword: (jobId: string, password: string) => void;
   onClearHistory: () => void;
 }
 
@@ -46,6 +49,7 @@ function statusLabel(operation: TransferOperationView, language: 'en' | 'es'): s
   const spanish = language === 'es';
   switch (operation.status) {
     case 'queued': return spanish ? 'En cola' : 'Queued';
+    case 'awaiting-password': return spanish ? 'Contraseña requerida' : 'Password required';
     case 'running': return spanish ? 'En curso' : 'In progress';
     case 'paused': return spanish ? 'En pausa' : 'Paused';
     case 'cancelling': return spanish ? 'Cancelando…' : 'Cancelling…';
@@ -69,18 +73,20 @@ function operationName(operation: TransferOperationView, language: 'en' | 'es'):
     ? (spanish ? 'Copiando archivos' : 'Copying files')
     : (spanish ? 'Moviendo archivos' : 'Moving files');
 }
-export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operations, language, onTogglePause, onCancel, onClearHistory }) => {
+export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operations, language, onTogglePause, onCancel, onSubmitPassword, onClearHistory }) => {
   const [isExpanded, setIsExpanded] = useState(true);
   const [elapsed, setElapsed] = useState(0);
   const [speed, setSpeed] = useState(0);
   const [speedHistory, setSpeedHistory] = useState<number[]>([]);
+  const [passwordValues, setPasswordValues] = useState<Record<string, string>>({});
   const lastSample = useRef<{ time: number; bytes: number } | null>(null);
   const activeOperation = operations.find(operation => ['running', 'paused', 'cancelling'].includes(operation.status));
   const activeRef = useRef(activeOperation);
   activeRef.current = activeOperation;
   const isSpanish = language === 'es';
-  const pendingCount = operations.filter(operation => ['queued', 'running', 'paused', 'cancelling'].includes(operation.status)).length;
+  const pendingCount = operations.filter(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status)).length;
   const queuedOperations = operations.filter(operation => operation.status === 'queued');
+  const passwordOperations = operations.filter(operation => operation.status === 'awaiting-password');
   const recentOperations = operations.filter(operation => ['completed', 'failed', 'cancelled'].includes(operation.status)).slice(-5).reverse();
 
   useEffect(() => {
@@ -201,6 +207,17 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
             </footer>
           </>}
 
+          {passwordOperations.map(operation => <section key={operation.jobId} className="space-y-2 rounded-lg border border-amber-800/70 bg-amber-950/20 p-3" aria-label={isSpanish ? 'Contraseña requerida' : 'Password required'}>
+            <div className="text-sm font-medium text-neutral-100">{isSpanish ? 'Introduce la contraseña del archivo' : 'Enter the archive password'}</div>
+            <div className="truncate text-xs text-neutral-400">{displayPath(operation.sourcePaths[0] ?? '')}</div>
+            <p className="text-xs text-amber-200">{operation.error ?? (isSpanish ? 'El archivo está protegido con contraseña.' : 'This archive is password protected.')}</p>
+            <form className="flex gap-2" onSubmit={event => { event.preventDefault(); const password = passwordValues[operation.jobId] ?? ''; if (!password) return; onSubmitPassword(operation.jobId, password); setPasswordValues(previous => ({ ...previous, [operation.jobId]: '' })); }}>
+              <input type="password" autoComplete="new-password" value={passwordValues[operation.jobId] ?? ''} onChange={event => setPasswordValues(previous => ({ ...previous, [operation.jobId]: event.target.value }))} placeholder={isSpanish ? 'Contraseña' : 'Password'} aria-label={isSpanish ? 'Contraseña del archivo' : 'Archive password'} className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-cyan-500" />
+              <button type="submit" disabled={!(passwordValues[operation.jobId] ?? '')} className="rounded-md bg-cyan-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50">{isSpanish ? 'Reintentar' : 'Retry'}</button>
+              <button type="button" onClick={() => { setPasswordValues(previous => ({ ...previous, [operation.jobId]: '' })); onCancel(operation.jobId); }} className="rounded-md border border-neutral-700 px-3 py-2 text-xs text-neutral-300 transition hover:bg-neutral-800">{isSpanish ? 'Cancelar' : 'Cancel'}</button>
+            </form>
+          </section>)}
+
           {queuedOperations.length > 0 && <section className="space-y-2" aria-label={isSpanish ? 'Operaciones en cola' : 'Queued operations'}>
             <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{isSpanish ? 'En cola' : 'Queue'} ({queuedOperations.length})</h3>
             {queuedOperations.map(operation => <div key={operation.jobId} className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950/40 px-3 py-2">
@@ -226,10 +243,10 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
             </div>)}
           </section>}
 
-          {!activeOperation && queuedOperations.length === 0 && recentOperations.length === 0 && <div className="py-3 text-center text-sm text-neutral-500">{isSpanish ? 'El historial de operaciones está vacío.' : 'Operation history is empty.'}</div>}
+          {!activeOperation && passwordOperations.length === 0 && queuedOperations.length === 0 && recentOperations.length === 0 && <div className="py-3 text-center text-sm text-neutral-500">{isSpanish ? 'El historial de operaciones está vacío.' : 'Operation history is empty.'}</div>}
         </div>}
 
-        {!isExpanded && <button type="button" onClick={() => setIsExpanded(true)} className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-300 hover:bg-neutral-800"><ChevronDown className="h-4 w-4" />{activeOperation ? operationName(activeOperation, language) : queuedOperations.length ? (isSpanish ? `${queuedOperations.length} en cola` : `${queuedOperations.length} queued`) : (isSpanish ? 'Ver actividad reciente' : 'View recent activity')}</button>}
+        {!isExpanded && <button type="button" onClick={() => setIsExpanded(true)} className="flex items-center gap-2 px-4 py-2 text-sm text-neutral-300 hover:bg-neutral-800"><ChevronDown className="h-4 w-4" />{activeOperation ? operationName(activeOperation, language) : passwordOperations.length ? (isSpanish ? 'Contraseña requerida' : 'Password required') : queuedOperations.length ? (isSpanish ? `${queuedOperations.length} en cola` : `${queuedOperations.length} queued`) : (isSpanish ? 'Ver actividad reciente' : 'View recent activity')}</button>}
       </section>
     </aside>,
     document.body,

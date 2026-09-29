@@ -25,7 +25,7 @@ import {
   ArrowDown,
   ArrowUp,
 } from 'lucide-react';
-import { ContextMenuPosition, FileItem, GroupByField, SortField, SortOrder, ViewMode } from '../types';
+import { ArchiveExtractionMode, ContextMenuPosition, FileItem, GroupByField, SortField, SortOrder, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
 import type { NewItemKind } from './CreateItemModal';
 
@@ -49,7 +49,7 @@ interface ContextMenuProps {
   onViewModeChange: (mode: ViewMode) => void;
   onPreview: (item: FileItem) => void;
   supportsArchiveExtraction: boolean;
-  onExtractArchive: (item: FileItem) => void;
+  onExtractArchive: (item: FileItem, mode: ArchiveExtractionMode) => void;
   onCopyOpposite: (item: FileItem) => void;
   onMoveOpposite: (item: FileItem) => void;
   onCopyToClipboard: (item: FileItem) => void;
@@ -132,7 +132,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const isSystemLocation = Boolean(item && (item.id.startsWith('system-drive-') || item.id.startsWith('system-location-')));
   const menuWidth = 264;
   const archiveItem = Boolean(item && !item.isFolder && ["zip", "rar"].includes(item.extension.toLowerCase()));
-  const menuHeight = isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? 370 : item ? (archiveItem && supportsArchiveExtraction ? 370 : 330) : sortMenuOpen ? 600 : groupMenuOpen ? 580 : newMenuOpen ? 460 : 440;
+  const menuHeight = isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? 370 : item ? (archiveItem && supportsArchiveExtraction ? 410 : 330) : sortMenuOpen ? 600 : groupMenuOpen ? 580 : newMenuOpen ? 460 : 440;
   const adjustedX = Math.max(8, Math.min(position.x, window.innerWidth - menuWidth - 8));
   const adjustedY = Math.max(8, Math.min(position.y, window.innerHeight - menuHeight - 8));
 
@@ -177,7 +177,10 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           )}
           <div className="py-0.5">
             <MenuButton icon={<Eye className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.openPreview} shortcut="Space" onClick={() => { onPreview(item); onClose(); }} />
-            {archiveItem && supportsArchiveExtraction && <MenuButton icon={<Archive className="h-3.5 w-3.5 text-violet-400" />} label={t.contextMenu.extractArchive} onClick={() => { onExtractArchive(item); onClose(); }} />}
+            {archiveItem && supportsArchiveExtraction && <>
+              <MenuButton icon={<Archive className="h-3.5 w-3.5 text-violet-400" />} label={t.contextMenu.extractArchiveHere} onClick={() => { onExtractArchive(item, 'here'); onClose(); }} />
+              <MenuButton icon={<FolderOpen className="h-3.5 w-3.5 text-violet-300" />} label={t.contextMenu.extractArchiveFolder.replace('{folder}', item.name.replace(/\.[^.]+$/, ''))} onClick={() => { onExtractArchive(item, 'folder'); onClose(); }} />
+            </>}
             <MenuButton icon={<Copy className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.copyToClipboard} shortcut="Ctrl+C" onClick={() => { onCopyToClipboard(item); onClose(); }} />
             <MenuButton icon={<Scissors className="h-3.5 w-3.5 text-amber-400" />} label={t.contextMenu.cutToClipboard} shortcut="Ctrl+X" onClick={() => { onCutToClipboard(item); onClose(); }} />
             <MenuButton icon={<Copy className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.copyToOpposite} shortcut="F5" onClick={() => { onCopyOpposite(item); onClose(); }} />
