@@ -61,7 +61,7 @@
             </ListView.ItemsPanel>
             <ListView.ItemTemplate>
                 <DataTemplate>
-                    <Grid Height="38" Padding="14,0" ColumnSpacing="14">
+                    <Grid Height="38" Padding="14,0" ColumnSpacing="14" IsHitTestVisible="False">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="80" />
                             <ColumnDefinition Width="*" />

@@ -4,6 +4,8 @@ This standalone WinUI application isolates native mouse-wheel behavior from the 
 
 The diagnostics bar reports wheel events and actual `ScrollViewer` view changes separately. This distinguishes missing input from input that reaches WinUI but does not move the list.
 
+The row template marks its decorative content as non-hit-testable. Pointer input therefore targets the `ListViewItem` container consistently while selection and double-click behavior remain available through that container.
+
 Build and run:
 
 ```powershell

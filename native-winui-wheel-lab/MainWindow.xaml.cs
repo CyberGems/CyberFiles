@@ -84,11 +84,11 @@ public sealed partial class MainWindow : Window
         Title = _isSpanish ? "CyberFiles · Laboratorio de rueda" : "CyberFiles · Wheel input lab";
         TitleText.Text = _isSpanish ? "Prueba aislada de rueda" : "Isolated wheel test";
         DescriptionText.Text = _isSpanish
-            ? "Desplaza esta lista sin hacer clic primero."
-            : "Scroll this list without clicking it first.";
+            ? "Desplaza sobre los números, nombres, tamaños y espacios vacíos."
+            : "Scroll over numbers, names, sizes, and empty spaces.";
         ResultHintText.Text = _isSpanish
-            ? "La prueba registra la entrada de rueda y el movimiento real por separado."
-            : "The test records wheel input and actual movement separately.";
+            ? "El contenido visual de cada fila deja que el contenedor reciba el puntero."
+            : "Each row's visual content lets the item container receive pointer input.";
         UpdateDiagnostics();
     }
 
