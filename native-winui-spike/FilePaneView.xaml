@@ -18,18 +18,20 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Button x:Name="BackButton" Grid.Column="0" Width="38" Content="←" Click="Back_Click" />
-                <Button x:Name="UpButton" Grid.Column="1" Width="38" Content="↑" Click="Up_Click" />
-                <Button x:Name="RefreshButton" Grid.Column="2" Width="82" Content="Actualizar" Click="Refresh_Click" />
-                <TextBox x:Name="PathBox" Grid.Column="3" VerticalAlignment="Center" PlaceholderText="Escribe o pega una ruta..." KeyDown="PathBox_KeyDown" />
-                <Button x:Name="OpenButton" Grid.Column="4" Content="Abrir" Click="Open_Click" />
-                <Button x:Name="CancelButton" Grid.Column="5" Content="Cancelar" Click="Cancel_Click" IsEnabled="False" />
-                <ComboBox x:Name="SortBox" Grid.Column="6" Width="164" SelectedIndex="0" SelectionChanged="SortBox_SelectionChanged" />
+                <Button x:Name="ForwardButton" Grid.Column="1" Width="38" Content="→" Click="Forward_Click" IsEnabled="False" />
+                <Button x:Name="UpButton" Grid.Column="2" Width="38" Content="↑" Click="Up_Click" />
+                <Button x:Name="RefreshButton" Grid.Column="3" Width="82" Content="Actualizar" Click="Refresh_Click" />
+                <TextBox x:Name="PathBox" Grid.Column="4" VerticalAlignment="Center" PlaceholderText="Escribe o pega una ruta..." KeyDown="PathBox_KeyDown" />
+                <Button x:Name="OpenButton" Grid.Column="5" Content="Abrir" Click="Open_Click" />
+                <Button x:Name="CancelButton" Grid.Column="6" Content="Cancelar" Click="Cancel_Click" IsEnabled="False" />
+                <ComboBox x:Name="SortBox" Grid.Column="7" Width="164" SelectedIndex="0" SelectionChanged="SortBox_SelectionChanged" />
             </Grid>
         </Border>
 

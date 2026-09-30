@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using Microsoft.VisualBasic.FileIO;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -13,6 +14,7 @@ namespace CyberFiles.WinUIPrototype;
 public sealed partial class FilePaneView : UserControl
 {
     private readonly Stack<string> _backHistory = new();
+    private readonly Stack<string> _forwardHistory = new();
     private readonly CultureInfo _culture = CultureInfo.CurrentCulture;
     private List<FileEntryDescriptor> _allEntries = [];
     private List<FileRow> _allRows = [];
@@ -76,6 +78,9 @@ public sealed partial class FilePaneView : UserControl
     {
         var sortIndex = SortBox.SelectedIndex < 0 ? 0 : SortBox.SelectedIndex;
         RefreshButton.Content = _isSpanish ? "Actualizar" : "Refresh";
+        AutomationProperties.SetName(BackButton, _isSpanish ? "Atrás" : "Back");
+        AutomationProperties.SetName(ForwardButton, _isSpanish ? "Adelante" : "Forward");
+        AutomationProperties.SetName(UpButton, _isSpanish ? "Subir a la carpeta superior" : "Go up one folder");
         OpenButton.Content = _isSpanish ? "Abrir" : "Open";
         CancelButton.Content = _isSpanish ? "Cancelar" : "Cancel";
         PathBox.PlaceholderText = _isSpanish ? "Escribe o pega una ruta..." : "Enter or paste a path...";
@@ -130,7 +135,10 @@ public sealed partial class FilePaneView : UserControl
 
         if (addHistory && !string.IsNullOrEmpty(_currentPath) &&
             !string.Equals(_currentPath, fullPath, StringComparison.OrdinalIgnoreCase))
+        {
             _backHistory.Push(_currentPath);
+            _forwardHistory.Clear();
+        }
 
         _loadCancellation?.Cancel();
         _loadCancellation?.Dispose();
@@ -473,6 +481,7 @@ public sealed partial class FilePaneView : UserControl
     private void UpdateNavigationButtons()
     {
         BackButton.IsEnabled = !_isLoading && _backHistory.Count > 0;
+        ForwardButton.IsEnabled = !_isLoading && _forwardHistory.Count > 0;
         UpButton.IsEnabled = !_isLoading && Directory.GetParent(_currentPath) is not null;
         OpenButton.IsEnabled = !_isLoading;
         RefreshButton.IsEnabled = !_isLoading;
@@ -508,8 +517,34 @@ public sealed partial class FilePaneView : UserControl
 
     private async void Back_Click(object sender, RoutedEventArgs e)
     {
-        if (_backHistory.Count > 0)
-            await LoadPathAsync(_backHistory.Pop(), addHistory: false);
+        if (_isLoading || _backHistory.Count == 0)
+            return;
+
+        var targetPath = _backHistory.Peek();
+        var currentPath = _currentPath;
+        await LoadPathAsync(targetPath, addHistory: false);
+        if (string.Equals(_currentPath, targetPath, StringComparison.OrdinalIgnoreCase))
+        {
+            _backHistory.Pop();
+            _forwardHistory.Push(currentPath);
+            UpdateNavigationButtons();
+        }
+    }
+
+    private async void Forward_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isLoading || _forwardHistory.Count == 0)
+            return;
+
+        var targetPath = _forwardHistory.Peek();
+        var currentPath = _currentPath;
+        await LoadPathAsync(targetPath, addHistory: false);
+        if (string.Equals(_currentPath, targetPath, StringComparison.OrdinalIgnoreCase))
+        {
+            _forwardHistory.Pop();
+            _backHistory.Push(currentPath);
+            UpdateNavigationButtons();
+        }
     }
 
     private async void Up_Click(object sender, RoutedEventArgs e)
