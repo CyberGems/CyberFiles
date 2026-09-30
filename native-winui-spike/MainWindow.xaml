@@ -18,6 +18,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                     <FontIcon Glyph="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="22" Foreground="#30D7E9" />
@@ -25,7 +26,16 @@
                     <TextBlock x:Name="PrototypeLabel" Text="WinUI · prototipo" Foreground="#A8ABB2" VerticalAlignment="Center" />
                 </StackPanel>
                 <TextBlock x:Name="ActivePaneText" Grid.Column="1" Text="Panel activo: izquierdo" Foreground="#91EAF4" VerticalAlignment="Center" HorizontalAlignment="Right" />
-                <ComboBox x:Name="LanguageBox" Grid.Column="2" Width="116" SelectedIndex="0" SelectionChanged="LanguageBox_SelectionChanged">
+                <Button x:Name="ActivityCenterToggleButton" Grid.Column="2" Click="ActivityCenterToggle_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <FontIcon Glyph="&#xE9D9;" FontFamily="Segoe MDL2 Assets" Foreground="#30D7E9" />
+                        <TextBlock x:Name="ActivityCenterButtonLabel" Text="Operaciones" />
+                        <Border x:Name="ActivityBadge" Padding="6,1" CornerRadius="9" Background="#123D48" BorderBrush="#1F6877" BorderThickness="1" Visibility="Collapsed">
+                            <TextBlock x:Name="ActivityBadgeText" Text="0" FontSize="11" Foreground="#91EAF4" />
+                        </Border>
+                    </StackPanel>
+                </Button>
+                <ComboBox x:Name="LanguageBox" Grid.Column="3" Width="116" SelectedIndex="0" SelectionChanged="LanguageBox_SelectionChanged">
                     <ComboBoxItem Content="Español" />
                     <ComboBoxItem Content="English" />
                 </ComboBox>
@@ -75,25 +85,151 @@
             </Grid>
         </Grid>
 
-        <Border Grid.Row="2" Padding="12,8" CornerRadius="8" Background="#191B1F" BorderBrush="#30343A" BorderThickness="1">
-            <Grid RowSpacing="6">
+        <Border
+            x:Name="ActivityCenterPanel"
+            Grid.Row="1"
+            Width="680"
+            Height="520"
+            MaxHeight="540"
+            Margin="0,0,16,12"
+            Padding="18"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Background="#191B1F"
+            BorderBrush="#454A52"
+            BorderThickness="1"
+            CornerRadius="12"
+            Visibility="Collapsed">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="ActivityCenterTranslation" Y="22" />
+            </Border.RenderTransform>
+            <Grid RowSpacing="12">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <Grid ColumnSpacing="10">
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border Width="42" Height="42" CornerRadius="10" Background="#0D3038" VerticalAlignment="Center">
+                        <FontIcon Glyph="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="20" Foreground="#30D7E9" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                        <TextBlock x:Name="ActivityCenterTitle" Text="Centro de operaciones" FontSize="20" FontWeight="SemiBold" />
+                        <TextBlock x:Name="ActivityCenterSummary" Text="Sin operaciones pendientes" Foreground="#A8ABB2" />
+                    </StackPanel>
+                    <ToggleButton x:Name="ActivityPinButton" Grid.Column="2" Content="Fijar" Click="ActivityPin_Click" VerticalAlignment="Center" />
+                    <Button x:Name="ActivityCenterCloseButton" Grid.Column="3" Content="×" Width="38" Click="ActivityCenterClose_Click" VerticalAlignment="Center" />
+                </Grid>
+
+                <Grid x:Name="ActivityQueueSection" Grid.Row="1" RowSpacing="7">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="150" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="ActivityQueueHeading" Text="EN CURSO Y EN COLA" Foreground="#A8ABB2" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <ProgressBar x:Name="ActivityAggregateProgress" Grid.Column="1" Height="4" Minimum="0" Maximum="1" Value="0" VerticalAlignment="Center" />
+                        <Button x:Name="ActivityCancelCurrentButton" Grid.Column="2" Content="Cancelar actual" Click="CancelOperation_Click" Visibility="Collapsed" />
+                        <Button x:Name="ActivityCancelQueueButton" Grid.Column="3" Content="Cancelar todo" Click="CancelQueue_Click" Visibility="Collapsed" />
+                    </Grid>
+                    <ListView
+                        x:Name="ActivityQueueList"
+                        Grid.Row="1"
+                        MaxHeight="190"
+                        SelectionMode="None"
+                        IsItemClickEnabled="False"
+                        Background="Transparent"
+                        BorderThickness="0">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="10,8" Margin="0,0,0,5" CornerRadius="8" Background="#111315" BorderBrush="#30343A" BorderThickness="1">
+                                    <Grid RowSpacing="5" ColumnSpacing="10">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Text="{Binding State}" Foreground="#91EAF4" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Route}" Foreground="#A8ABB2" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                        <ProgressBar Grid.Row="2" Grid.ColumnSpan="2" Height="4" Minimum="0" Maximum="1" Value="{Binding Progress}" IsIndeterminate="{Binding IsIndeterminate}" Visibility="{Binding ProgressVisibility}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+
+                <Grid Grid.Row="2" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="ActivityRecentHeading" Text="RECIENTES" Foreground="#A8ABB2" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button x:Name="ActivityHistoryClearButton" Grid.Column="1" Content="Limpiar recientes" Click="ActivityHistoryClear_Click" VerticalAlignment="Center" />
+                </Grid>
+                <ListView
+                    x:Name="ActivityHistoryList"
+                    Grid.Row="3"
+                    SelectionMode="None"
+                    IsItemClickEnabled="False"
+                    Background="Transparent"
+                    BorderThickness="0">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Border Padding="10,8" Margin="0,0,0,5" CornerRadius="8" Background="#111315" BorderBrush="#30343A" BorderThickness="1">
+                                <Grid ColumnSpacing="10" RowSpacing="3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <FontIcon Glyph="{Binding Glyph}" FontFamily="Segoe MDL2 Assets" Foreground="{Binding StatusBrush}" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Route}" Foreground="#A8ABB2" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="{Binding Status}" Foreground="{Binding StatusBrush}" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <TextBlock
+                    x:Name="ActivityEmptyText"
+                    Grid.Row="3"
+                    Text="Aún no hay operaciones recientes."
+                    Foreground="#858A93"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Padding="12,8" CornerRadius="8" Background="#191B1F" BorderBrush="#30343A" BorderThickness="1">
+            <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <TextBlock x:Name="PrototypeStatus" Text="Navegación independiente en ambos paneles" Foreground="#A8ABB2" VerticalAlignment="Center" />
                     <TextBlock x:Name="OperationStatus" Grid.Column="1" Text="" Foreground="#91EAF4" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="600" />
-                    <Button x:Name="CancelOperationButton" Grid.Column="2" Content="Cancelar actual" Click="CancelOperation_Click" Visibility="Collapsed" />
-                    <Button x:Name="CancelQueueButton" Grid.Column="3" Content="Cancelar cola" Click="CancelQueue_Click" Visibility="Collapsed" />
-                </Grid>
-                <ProgressBar x:Name="OperationProgress" Grid.Row="1" Height="4" Minimum="0" Maximum="1" Value="0" Visibility="Collapsed" />
             </Grid>
         </Border>
     </Grid>
