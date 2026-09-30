@@ -54,6 +54,10 @@ public sealed partial class FilePaneView : UserControl
     public FilePaneView()
     {
         InitializeComponent();
+        FileAreaGrid.AddHandler(
+            UIElement.PointerWheelChangedEvent,
+            new PointerEventHandler(FileArea_PointerWheelChanged),
+            handledEventsToo: true);
         TextInputContextMenu.Attach(PathBox, () => _isSpanish);
         TextInputContextMenu.Attach(FilterBox, () => _isSpanish);
         _uiReady = true;
@@ -503,6 +507,13 @@ public sealed partial class FilePaneView : UserControl
     private void SetStatus(string value) => StatusText.Text = value;
 
     private void ActivatePane() => PaneActivated?.Invoke(this, EventArgs.Empty);
+
+    private void FileArea_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        ActivatePane();
+        if (EntryList.FocusState == FocusState.Unfocused)
+            EntryList.Focus(FocusState.Pointer);
+    }
 
     private async void Open_Click(object sender, RoutedEventArgs e) => await NavigateAsync(PathBox.Text);
 
