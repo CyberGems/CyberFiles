@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using Microsoft.VisualBasic.FileIO;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -36,6 +37,22 @@ public sealed partial class FilePaneView : UserControl
     private int _folderCount;
     private int _unclassifiedCount;
     private int _viewGeneration;
+    private bool _wheelFallbackPending;
+    private double _wheelFallbackStartOffset;
+    private int _wheelFallbackDelta;
+    private ScrollViewer? _wheelFallbackScrollViewer;
+
+    private const uint SpiGetWheelScrollLines = 0x0068;
+    private const uint WheelDeltaPerNotch = 120;
+    private const double FileRowScrollPitch = 38;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SystemParametersInfo(
+        uint uiAction,
+        uint uiParam,
+        out uint pvParam,
+        uint fWinIni);
 
     public event EventHandler? PaneActivated;
     public event EventHandler? SelectionUpdated;
@@ -54,6 +71,10 @@ public sealed partial class FilePaneView : UserControl
     public FilePaneView()
     {
         InitializeComponent();
+        FileAreaGrid.AddHandler(
+            UIElement.PointerWheelChangedEvent,
+            new PointerEventHandler(FileArea_PointerWheelChanged),
+            handledEventsToo: true);
         TextInputContextMenu.Attach(PathBox, () => _isSpanish);
         TextInputContextMenu.Attach(FilterBox, () => _isSpanish);
         _uiReady = true;
@@ -503,6 +524,72 @@ public sealed partial class FilePaneView : UserControl
     private void SetStatus(string value) => StatusText.Text = value;
 
     private void ActivatePane() => PaneActivated?.Invoke(this, EventArgs.Empty);
+
+    private async void FileArea_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        var scrollViewer = _listScrollViewer;
+        var wheelDelta = e.GetCurrentPoint(FileAreaGrid).Properties.MouseWheelDelta;
+        if (scrollViewer is null || wheelDelta == 0)
+            return;
+
+        // Let WinUI scroll first. If it delivers the event without moving the ListView,
+        // apply a fallback after the routed input has completed. This never sets focus.
+        e.Handled = true;
+        if (_wheelFallbackPending)
+        {
+            if (ReferenceEquals(_wheelFallbackScrollViewer, scrollViewer))
+                _wheelFallbackDelta += wheelDelta;
+            return;
+        }
+
+        _wheelFallbackPending = true;
+        _wheelFallbackScrollViewer = scrollViewer;
+        _wheelFallbackStartOffset = scrollViewer.VerticalOffset;
+        _wheelFallbackDelta = wheelDelta;
+
+        try
+        {
+            await Task.Delay(24);
+
+            var targetScrollViewer = _wheelFallbackScrollViewer;
+            var startOffset = _wheelFallbackStartOffset;
+            var accumulatedDelta = _wheelFallbackDelta;
+            if (targetScrollViewer is null || !ReferenceEquals(targetScrollViewer, _listScrollViewer))
+                return;
+
+            // Native scrolling already handled this wheel input.
+            if (Math.Abs(targetScrollViewer.VerticalOffset - startOffset) > 0.5)
+                return;
+
+            var scrollLines = GetSystemWheelScrollLines();
+            if (scrollLines == 0)
+                return;
+
+            var step = scrollLines == uint.MaxValue
+                ? targetScrollViewer.ViewportHeight
+                : scrollLines * FileRowScrollPitch;
+            var requestedOffset = targetScrollViewer.VerticalOffset -
+                accumulatedDelta / (double)WheelDeltaPerNotch * step;
+            var maxOffset = Math.Max(0, targetScrollViewer.ExtentHeight - targetScrollViewer.ViewportHeight);
+            var clampedOffset = Math.Clamp(requestedOffset, 0, maxOffset);
+
+            if (Math.Abs(clampedOffset - targetScrollViewer.VerticalOffset) > 0.5)
+                targetScrollViewer.ChangeView(null, clampedOffset, null, disableAnimation: true);
+        }
+        finally
+        {
+            _wheelFallbackPending = false;
+            _wheelFallbackScrollViewer = null;
+            _wheelFallbackDelta = 0;
+        }
+    }
+
+    private static uint GetSystemWheelScrollLines()
+    {
+        return SystemParametersInfo(SpiGetWheelScrollLines, 0, out var scrollLines, 0)
+            ? scrollLines
+            : 3;
+    }
 
     private async void Open_Click(object sender, RoutedEventArgs e) => await NavigateAsync(PathBox.Text);
 

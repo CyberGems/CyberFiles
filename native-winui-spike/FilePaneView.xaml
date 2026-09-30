@@ -51,7 +51,7 @@
         </Border>
 
         <Border Grid.Row="2" CornerRadius="8" Background="#151619" BorderBrush="#30343A" BorderThickness="1">
-            <Grid RowSpacing="0">
+            <Grid x:Name="FileAreaGrid" RowSpacing="0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="38" />
                     <RowDefinition Height="*" />
