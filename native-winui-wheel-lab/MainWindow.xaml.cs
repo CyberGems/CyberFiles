@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.UI;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -12,11 +13,50 @@ namespace CyberFiles.WheelLab;
 public sealed partial class MainWindow : Window
 {
     private ScrollViewer? _scrollViewer;
+    private int _nativeWheelMessages;
     private int _wheelEvents;
     private int _viewChanges;
     private bool _isSpanish = true;
     private bool _isPointerOverList;
     private bool _uiReady;
+    private double _pointerY;
+    private string _lastWheelSource = "—";
+    private readonly WindowSubclassProcedure _windowSubclassProcedure;
+    private IntPtr _windowHandle;
+
+    private const uint WmMouseWheel = 0x020A;
+    private static readonly UIntPtr WindowSubclassId = new(1);
+
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    private delegate IntPtr WindowSubclassProcedure(
+        IntPtr windowHandle,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam,
+        UIntPtr subclassId,
+        UIntPtr referenceData);
+
+    [DllImport("comctl32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowSubclass(
+        IntPtr windowHandle,
+        WindowSubclassProcedure callback,
+        UIntPtr subclassId,
+        UIntPtr referenceData);
+
+    [DllImport("comctl32.dll")]
+    private static extern IntPtr DefSubclassProc(
+        IntPtr windowHandle,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam);
+
+    [DllImport("comctl32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool RemoveWindowSubclass(
+        IntPtr windowHandle,
+        WindowSubclassProcedure callback,
+        UIntPtr subclassId);
 
     public MainWindow()
     {
@@ -29,8 +69,12 @@ public sealed partial class MainWindow : Window
             new PointerEventHandler(EntryList_PointerWheelChanged),
             handledEventsToo: true);
 
-        var windowHandle = WindowNative.GetWindowHandle(this);
-        var windowId = Win32Interop.GetWindowIdFromWindow(windowHandle);
+        _windowHandle = WindowNative.GetWindowHandle(this);
+        _windowSubclassProcedure = WindowSubclassCallback;
+        SetWindowSubclass(_windowHandle, _windowSubclassProcedure, WindowSubclassId, UIntPtr.Zero);
+        Closed += MainWindow_Closed;
+
+        var windowId = Win32Interop.GetWindowIdFromWindow(_windowHandle);
         AppWindow.GetFromWindowId(windowId).Resize(new SizeInt32(900, 720));
         _uiReady = true;
         ApplyLanguage();
@@ -49,6 +93,7 @@ public sealed partial class MainWindow : Window
     private void EntryList_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
         _wheelEvents++;
+        _lastWheelSource = e.OriginalSource?.GetType().Name ?? "—";
         UpdateDiagnostics();
     }
 
@@ -69,6 +114,32 @@ public sealed partial class MainWindow : Window
         _isPointerOverList = false;
         UpdateDiagnostics();
     }
+
+    private void EntryList_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        _pointerY = e.GetCurrentPoint(EntryList).Position.Y;
+        UpdateDiagnostics();
+    }
+
+    private IntPtr WindowSubclassCallback(
+        IntPtr windowHandle,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam,
+        UIntPtr subclassId,
+        UIntPtr referenceData)
+    {
+        if (message == WmMouseWheel)
+        {
+            _nativeWheelMessages++;
+            DispatcherQueue.TryEnqueue(UpdateDiagnostics);
+        }
+
+        return DefSubclassProc(windowHandle, message, wParam, lParam);
+    }
+
+    private void MainWindow_Closed(object sender, WindowEventArgs e) =>
+        RemoveWindowSubclass(_windowHandle, _windowSubclassProcedure, WindowSubclassId);
 
     private void LanguageBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -95,12 +166,13 @@ public sealed partial class MainWindow : Window
     private void UpdateDiagnostics()
     {
         var offset = _scrollViewer?.VerticalOffset ?? 0;
-        WheelEventsText.Text = _isSpanish ? $"Eventos de rueda: {_wheelEvents}" : $"Wheel events: {_wheelEvents}";
-        ViewChangesText.Text = _isSpanish ? $"Cambios de vista: {_viewChanges}" : $"View changes: {_viewChanges}";
+        NativeWheelText.Text = $"Windows: {_nativeWheelMessages}";
+        WheelEventsText.Text = $"XAML: {_wheelEvents}";
+        ViewChangesText.Text = _isSpanish ? $"Vista: {_viewChanges}" : $"View: {_viewChanges}";
         OffsetText.Text = _isSpanish ? $"Posición: {offset:N0}" : $"Offset: {offset:N0}";
         PointerText.Text = _isSpanish
-            ? (_isPointerOverList ? "Cursor sobre la lista" : "Cursor fuera de la lista")
-            : (_isPointerOverList ? "Pointer over the list" : "Pointer outside the list");
+            ? (_isPointerOverList ? $"Cursor Y: {_pointerY:N0} · Objetivo: {_lastWheelSource}" : "Cursor fuera de la lista")
+            : (_isPointerOverList ? $"Pointer Y: {_pointerY:N0} · Target: {_lastWheelSource}" : "Pointer outside the list");
     }
 
     private static ScrollViewer? FindScrollViewer(DependencyObject parent)

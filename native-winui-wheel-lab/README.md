@@ -2,7 +2,7 @@
 
 This standalone WinUI application isolates native mouse-wheel behavior from the CyberFiles explorer prototype. It renders one virtualized `ListView` with 10,000 in-memory rows and no paging, file-system access, dual-pane coordination, focus management, or custom scrolling.
 
-The diagnostics bar reports wheel events and actual `ScrollViewer` view changes separately. This distinguishes missing input from input that reaches WinUI but does not move the list.
+The diagnostics bar reports native `WM_MOUSEWHEEL` messages, XAML wheel events, and actual `ScrollViewer` view changes separately. It also reports the pointer height and the XAML event source. This distinguishes missing Windows input from a XAML routing problem or input that reaches WinUI but does not move the list.
 
 The row template marks its decorative content as non-hit-testable. Pointer input therefore targets the `ListViewItem` container consistently while selection and double-click behavior remain available through that container.
 

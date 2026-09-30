@@ -28,17 +28,19 @@
         </Grid>
 
         <Border Grid.Row="1" Padding="12,8" CornerRadius="8" Background="#191B1F" BorderBrush="#30343A" BorderThickness="1">
-            <Grid ColumnSpacing="18">
+            <Grid ColumnSpacing="14">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <TextBlock x:Name="WheelEventsText" Text="Eventos de rueda: 0" Foreground="#91EAF4" />
-                <TextBlock x:Name="ViewChangesText" Grid.Column="1" Text="Cambios de vista: 0" Foreground="#91EAF4" />
-                <TextBlock x:Name="OffsetText" Grid.Column="2" Text="Posición: 0" Foreground="#E3E5E8" />
-                <TextBlock x:Name="PointerText" Grid.Column="3" Text="Cursor fuera de la lista" HorizontalAlignment="Right" Foreground="#A8ABB2" />
+                <TextBlock x:Name="NativeWheelText" Text="Windows: 0" Foreground="#F4D35E" />
+                <TextBlock x:Name="WheelEventsText" Grid.Column="1" Text="XAML: 0" Foreground="#91EAF4" />
+                <TextBlock x:Name="ViewChangesText" Grid.Column="2" Text="Vista: 0" Foreground="#91EAF4" />
+                <TextBlock x:Name="OffsetText" Grid.Column="3" Text="Posición: 0" Foreground="#E3E5E8" />
+                <TextBlock x:Name="PointerText" Grid.Column="4" Text="Cursor fuera de la lista" HorizontalAlignment="Right" Foreground="#A8ABB2" TextTrimming="CharacterEllipsis" />
             </Grid>
         </Border>
 
@@ -48,6 +50,7 @@
             Loaded="EntryList_Loaded"
             PointerEntered="EntryList_PointerEntered"
             PointerExited="EntryList_PointerExited"
+            PointerMoved="EntryList_PointerMoved"
             ScrollViewer.VerticalScrollMode="Enabled"
             ScrollViewer.VerticalScrollBarVisibility="Auto"
             Background="#151619"
