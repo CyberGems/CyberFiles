@@ -441,8 +441,6 @@ struct DirectoryListing {
     next_offset: usize,
 }
 
-const DIRECTORY_PAGE_SIZE: usize = 400;
-
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct NativeOperationFailure {
@@ -2091,20 +2089,16 @@ async fn list_directory(path: String, offset: usize) -> Result<DirectoryListing,
             .file_name()
             .map(|name| name.to_string_lossy().to_string())
             .unwrap_or_else(|| root.to_string_lossy().to_string());
+        // Desktop listings are complete snapshots. Enumeration and metadata work
+        // stay on the blocking worker while the webview remains responsive. The
+        // frontend virtualizes the snapshot instead of treating 400 items as the
+        // folder total or requiring the user to scroll before more items exist.
         let read_dir =
             fs::read_dir(&root).map_err(|error| format!("Cannot read folder: {error}"))?;
-        // Read only one page and do not recurse. The blocking filesystem work runs
-        // off the UI thread so slow disks and network folders remain responsive.
-        let raw_entries: Vec<_> = read_dir
-            .flatten()
-            .skip(offset)
-            .take(DIRECTORY_PAGE_SIZE + 1)
-            .collect();
-        let has_more = raw_entries.len() > DIRECTORY_PAGE_SIZE;
-        let page_len = raw_entries.len().min(DIRECTORY_PAGE_SIZE);
-        let mut entries = Vec::with_capacity(page_len);
+        let raw_entries: Vec<_> = read_dir.flatten().collect();
+        let mut entries = Vec::with_capacity(raw_entries.len().saturating_sub(offset));
 
-        for entry in raw_entries.into_iter().take(page_len) {
+        for entry in raw_entries.into_iter().skip(offset) {
             let entry_path = entry.path();
             let Ok(metadata) = fs::symlink_metadata(&entry_path) else {
                 continue;
@@ -2137,12 +2131,13 @@ async fn list_directory(path: String, offset: usize) -> Result<DirectoryListing,
             });
         }
 
+        let next_offset = offset + entries.len();
         Ok(DirectoryListing {
             root_path: display_path(&root),
             root_name,
             entries,
-            has_more,
-            next_offset: offset + page_len,
+            has_more: false,
+            next_offset,
         })
     })
     .await

@@ -492,7 +492,7 @@ interface BrowserDirectoryCursor {
   pending?: any;
 }
 
-const DIRECTORY_PAGE_SIZE = 400;
+const BROWSER_DIRECTORY_PAGE_SIZE = 400;
 const MAX_TAB_HISTORY_ENTRIES = 200;
 
 const getPathKey = (path: string) => normalizeWindowsPath(path).replace(/[\\/]+$/, '').toLowerCase();
@@ -1756,13 +1756,13 @@ export default function App() {
     const iterator: AsyncIterator<any> = savedCursor?.iterator ?? directoryHandle.values();
     const pageHandles: any[] = [];
     if (savedCursor?.pending) pageHandles.push(savedCursor.pending);
-    while (pageHandles.length < DIRECTORY_PAGE_SIZE + 1) {
+    while (pageHandles.length < BROWSER_DIRECTORY_PAGE_SIZE + 1) {
       const next = await iterator.next();
       if (next.done) break;
       pageHandles.push(next.value);
     }
 
-    const hasMore = pageHandles.length > DIRECTORY_PAGE_SIZE;
+    const hasMore = pageHandles.length > BROWSER_DIRECTORY_PAGE_SIZE;
     const pending = hasMore ? pageHandles.pop() : undefined;
     browserDirectoryCursors.current.set(pathKey, { iterator, pending });
     const mapEntry = async (entry: any): Promise<FileItem> => {
@@ -3868,7 +3868,7 @@ export default function App() {
       completeOnboarding();
       const count = loaded.files.length - 1;
       const suffix = loaded.hasMore
-        ? (language === 'es' ? ', primeros 400. Desplázate hacia abajo para cargar más automáticamente.' : ', first 400. Scroll down to load more automatically.')
+        ? (language === 'es' ? ', cargando el resto automáticamente.' : ', loading the remainder automatically.')
         : '';
       showToast(`${language === 'es' ? 'Carpeta cargada' : 'Folder loaded'}: "${loaded.rootName}" (${count} ${language === 'es' ? 'elementos' : 'items'})${suffix}`);
     } catch (error: any) {

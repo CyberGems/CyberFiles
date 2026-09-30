@@ -106,6 +106,14 @@ type RelativeGraphColumn = 'size' | 'created' | 'modified';
 type RelativeGraphWidths = Partial<Record<RelativeGraphColumn, number>>;
 type ResizableColumn = FileColumn;
 type FolderSizeState = { status: 'loading' | 'paused' | 'done' | 'error'; size?: number; entriesScanned?: number };
+type FileGroup = { id: string; label: string; items: FileItem[] };
+type DetailsEntry =
+  | { kind: 'group'; key: string; group: FileGroup }
+  | { kind: 'item'; key: string; item: FileItem; itemIndex: number };
+
+const DETAILS_ENTRY_HEIGHT = 32;
+const DETAILS_VIRTUALIZATION_THRESHOLD = 250;
+const DETAILS_OVERSCAN_ROWS = 14;
 
 function getDisplayItemName(item: FileItem, showFileExtensions: boolean): string {
   if (showFileExtensions || item.isFolder) return item.name;
@@ -384,6 +392,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const suppressColumnSortRef = useRef(false);
   const previousPathRef = useRef(tab.currentPath);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const detailsScrollFrameRef = useRef<number | null>(null);
   const lastScrolledFocusedIdRef = useRef<string | null>(null);
   const columnHeadersRef = useRef<HTMLDivElement>(null);
   const marqueeDragRef = useRef<MarqueeDrag | null>(null);
@@ -392,66 +401,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [marqueeBounds, setMarqueeBounds] = useState<MarqueeBounds | null>(null);
   const [marqueePreviewIds, setMarqueePreviewIds] = useState<string[] | null>(null);
   const [viewportScrollbarWidth, setViewportScrollbarWidth] = useState(0);
+  const [detailsViewport, setDetailsViewport] = useState({ scrollTop: 0, height: 0 });
 
   const visibleFileColumns = columnLayout.order.filter(column =>
     columnLayout.visible.includes(column) || (editingItemId !== null && column === 'name'),
   );
-  const { requests: nativeFileIconRequests, key: nativeFileIconRequestKey } = React.useMemo(() => {
-    const requests: NativeFileIconRequest[] = [];
-    const keyParts: string[] = [];
-    files.forEach(item => {
-      if (item.isFolder || item.recycleBinId || !item.path) return;
-      requests.push({ id: item.id, path: item.path });
-      keyParts.push(`${item.id}\u0000${item.path}\u0000${item.modifiedAtMs ?? ''}`);
-    });
-    keyParts.sort();
-    return { requests, key: keyParts.join('\u0001') };
-  }, [files]);
-  nativeFileIconRequestsRef.current = nativeFileIconRequests;
-
-  useEffect(() => {
-    const generation = ++nativeFileIconGenerationRef.current;
-    const scope = nativeFileIconScope;
-    const iconRequests = nativeFileIconRequestsRef.current;
-    let cancelled = false;
-    let scheduledBatch: number | null = null;
-
-    setNativeFileIconState(previous => previous.scope === scope ? previous : { scope, byItemId: {} });
-    if (!isTauriDesktop() || isRecycleBin || iconRequests.length === 0) {
-      return () => { cancelled = true; };
-    }
-
-    let nextIndex = 0;
-    const loadNextIconBatch = async () => {
-      const batch = iconRequests.slice(nextIndex, nextIndex + 48);
-      nextIndex += batch.length;
-      try {
-        const groups = await getNativeFileIcons(batch, nativeFileIconSize === 'large');
-        if (cancelled || generation !== nativeFileIconGenerationRef.current) return;
-        setNativeFileIconState(previous => {
-          if (generation !== nativeFileIconGenerationRef.current) return previous;
-          const byItemId = previous.scope === scope ? previous.byItemId : {};
-          const nextByItemId = { ...byItemId };
-          groups.forEach(group => group.itemIds.forEach(id => { nextByItemId[id] = group.dataUrl; }));
-          return { scope, byItemId: nextByItemId };
-        });
-      } catch {
-        // Shell icons are an enhancement. Keep the generic file icons when a lookup fails.
-      }
-
-      if (!cancelled && generation === nativeFileIconGenerationRef.current && nextIndex < iconRequests.length) {
-        scheduledBatch = window.setTimeout(() => { void loadNextIconBatch(); }, 24);
-      }
-    };
-
-    if (nativeFileIconRequestKey) {
-      scheduledBatch = window.setTimeout(() => { void loadNextIconBatch(); }, 48);
-    }
-    return () => {
-      cancelled = true;
-      if (scheduledBatch !== null) window.clearTimeout(scheduledBatch);
-    };
-  }, [isRecycleBin, nativeFileIconRequestKey, nativeFileIconScope, nativeFileIconSize]);
 
   const relativeGraphWidths = React.useMemo(() => {
     const widths = new Map<string, RelativeGraphWidths>();
@@ -617,41 +571,143 @@ export const FilePane: React.FC<FilePaneProps> = ({
     + Math.max(0, visibleFileColumns.length - 1) * 8 + 18;
   const getFileTypeLabel = (item: FileItem) => t.pane.folderTypeLabels[item.type]
     .replace('{extension}', item.extension.toUpperCase()).trim();
-  const getGroupForItem = (item: FileItem): { id: string; label: string } => {
-    if (tab.groupBy === 'name') {
-      const initial = item.name.trim().charAt(0).toLocaleUpperCase() || '#';
-      return { id: initial, label: initial };
-    }
-    if (tab.groupBy === 'type') return { id: item.type, label: getFileTypeLabel(item) };
-    if (tab.groupBy === 'size') {
-      if (item.isFolder) return { id: 'folders', label: t.pane.groups.folders };
-      const sizeGroup = item.size === 0 ? 'emptyFiles'
-        : item.size < 1024 * 1024 ? 'smallFiles'
-          : item.size < 100 * 1024 * 1024 ? 'mediumFiles'
-            : item.size < 1024 * 1024 * 1024 ? 'largeFiles' : 'hugeFiles';
-      return { id: sizeGroup, label: t.pane.groups[sizeGroup] };
-    }
-    if (tab.groupBy === 'modifiedDate') {
-      const modifiedAt = item.modifiedAtMs ?? Date.parse(item.modifiedDate);
-      if (!Number.isFinite(modifiedAt)) return { id: 'unknownDate', label: t.pane.groups.unknownDate };
-      const age = Math.max(0, Date.now() - modifiedAt);
-      const day = 24 * 60 * 60 * 1000;
-      const dateGroup = age < day ? 'today' : age < 2 * day ? 'yesterday' : age < 7 * day ? 'earlierWeek' : age < 30 * day ? 'earlierMonth' : 'older';
-      return { id: dateGroup, label: t.pane.groups[dateGroup] };
-    }
-    return { id: 'all', label: '' };
-  };
-  const fileGroups = (() => {
+  const fileGroups = React.useMemo<FileGroup[]>(() => {
     if (!tab.groupBy || tab.groupBy === 'none') return [{ id: 'all', label: '', items: files }];
-    const groups = new Map<string, { id: string; label: string; items: FileItem[] }>();
+    const groups = new Map<string, FileGroup>();
     files.forEach(item => {
-      const group = getGroupForItem(item);
+      let group: { id: string; label: string };
+      if (tab.groupBy === 'name') {
+        const initial = item.name.trim().charAt(0).toLocaleUpperCase() || '#';
+        group = { id: initial, label: initial };
+      } else if (tab.groupBy === 'type') {
+        group = {
+          id: item.type,
+          label: t.pane.folderTypeLabels[item.type].replace('{extension}', item.extension.toUpperCase()).trim(),
+        };
+      } else if (tab.groupBy === 'size') {
+        if (item.isFolder) group = { id: 'folders', label: t.pane.groups.folders };
+        else {
+          const sizeGroup = item.size === 0 ? 'emptyFiles'
+            : item.size < 1024 * 1024 ? 'smallFiles'
+              : item.size < 100 * 1024 * 1024 ? 'mediumFiles'
+                : item.size < 1024 * 1024 * 1024 ? 'largeFiles' : 'hugeFiles';
+          group = { id: sizeGroup, label: t.pane.groups[sizeGroup] };
+        }
+      } else {
+        const modifiedAt = item.modifiedAtMs ?? Date.parse(item.modifiedDate);
+        if (!Number.isFinite(modifiedAt)) group = { id: 'unknownDate', label: t.pane.groups.unknownDate };
+        else {
+          const age = Math.max(0, Date.now() - modifiedAt);
+          const day = 24 * 60 * 60 * 1000;
+          const dateGroup = age < day ? 'today' : age < 2 * day ? 'yesterday' : age < 7 * day ? 'earlierWeek' : age < 30 * day ? 'earlierMonth' : 'older';
+          group = { id: dateGroup, label: t.pane.groups[dateGroup] };
+        }
+      }
       const existing = groups.get(group.id);
       if (existing) existing.items.push(item);
       else groups.set(group.id, { ...group, items: [item] });
     });
     return [...groups.values()];
-  })();
+  }, [files, tab.groupBy, t.pane.folderTypeLabels, t.pane.groups]);
+  const itemIndexById = React.useMemo(
+    () => new Map(files.map((item, index) => [item.id, index])),
+    [files],
+  );
+  const detailsEntries = React.useMemo<DetailsEntry[]>(() => {
+    const entries: DetailsEntry[] = [];
+    fileGroups.forEach(group => {
+      const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
+      if (group.label) entries.push({ kind: 'group', key: `group-${groupCollapseKey}`, group });
+      if (collapsedGroups[groupCollapseKey]) return;
+      group.items.forEach(item => entries.push({
+        kind: 'item',
+        key: item.id,
+        item,
+        itemIndex: itemIndexById.get(item.id) ?? 0,
+      }));
+    });
+    return entries;
+  }, [collapsedGroups, fileGroups, itemIndexById, paneId, tab.groupBy, tab.id]);
+  const virtualizeDetails = effectiveViewMode === 'details'
+    && detailsEntries.length > DETAILS_VIRTUALIZATION_THRESHOLD;
+  const firstVirtualDetailsIndex = virtualizeDetails
+    ? Math.max(0, Math.floor(detailsViewport.scrollTop / DETAILS_ENTRY_HEIGHT) - DETAILS_OVERSCAN_ROWS)
+    : 0;
+  const lastVirtualDetailsIndex = virtualizeDetails
+    ? Math.min(
+      detailsEntries.length,
+      Math.ceil((detailsViewport.scrollTop + Math.max(detailsViewport.height, DETAILS_ENTRY_HEIGHT)) / DETAILS_ENTRY_HEIGHT)
+        + DETAILS_OVERSCAN_ROWS,
+    )
+    : detailsEntries.length;
+  const renderedDetailsEntries = React.useMemo(
+    () => detailsEntries.slice(firstVirtualDetailsIndex, lastVirtualDetailsIndex),
+    [detailsEntries, firstVirtualDetailsIndex, lastVirtualDetailsIndex],
+  );
+  const iconCandidateItems = React.useMemo(
+    () => virtualizeDetails
+      ? renderedDetailsEntries.flatMap(entry => entry.kind === 'item' ? [entry.item] : [])
+      : files,
+    [files, renderedDetailsEntries, virtualizeDetails],
+  );
+  const { requests: nativeFileIconRequests, key: nativeFileIconRequestKey } = React.useMemo(() => {
+    const requests: NativeFileIconRequest[] = [];
+    const keyParts: string[] = [];
+    iconCandidateItems.forEach(item => {
+      if (item.isFolder || item.recycleBinId || !item.path) return;
+      requests.push({ id: item.id, path: item.path });
+      keyParts.push(`${item.id}\u0000${item.path}\u0000${item.modifiedAtMs ?? ''}`);
+    });
+    keyParts.sort();
+    return { requests, key: keyParts.join('\u0001') };
+  }, [iconCandidateItems]);
+  nativeFileIconRequestsRef.current = nativeFileIconRequests;
+
+  useEffect(() => {
+    const generation = ++nativeFileIconGenerationRef.current;
+    const scope = nativeFileIconScope;
+    const iconRequests = nativeFileIconRequestsRef.current;
+    let cancelled = false;
+    let scheduledBatch: number | null = null;
+
+    setNativeFileIconState(previous => previous.scope === scope ? previous : { scope, byItemId: {} });
+    if (!isTauriDesktop() || isRecycleBin || iconRequests.length === 0) {
+      return () => { cancelled = true; };
+    }
+
+    const missingRequests = iconRequests.filter(request => nativeFileIconState.scope !== scope || !nativeFileIconState.byItemId[request.id]);
+    let nextIndex = 0;
+    const loadNextIconBatch = async () => {
+      const batch = missingRequests.slice(nextIndex, nextIndex + 48);
+      nextIndex += batch.length;
+      if (batch.length === 0) return;
+      try {
+        const groups = await getNativeFileIcons(batch, nativeFileIconSize === 'large');
+        if (cancelled || generation !== nativeFileIconGenerationRef.current) return;
+        setNativeFileIconState(previous => {
+          if (generation !== nativeFileIconGenerationRef.current) return previous;
+          const byItemId = previous.scope === scope ? previous.byItemId : {};
+          const nextByItemId = { ...byItemId };
+          groups.forEach(group => group.itemIds.forEach(id => { nextByItemId[id] = group.dataUrl; }));
+          return { scope, byItemId: nextByItemId };
+        });
+      } catch {
+        // Shell icons are an enhancement. Keep the generic file icons when a lookup fails.
+      }
+
+      if (!cancelled && generation === nativeFileIconGenerationRef.current && nextIndex < missingRequests.length) {
+        scheduledBatch = window.setTimeout(() => { void loadNextIconBatch(); }, 24);
+      }
+    };
+
+    if (nativeFileIconRequestKey && missingRequests.length > 0) {
+      scheduledBatch = window.setTimeout(() => { void loadNextIconBatch(); }, 48);
+    }
+    return () => {
+      cancelled = true;
+      if (scheduledBatch !== null) window.clearTimeout(scheduledBatch);
+    };
+  }, [isRecycleBin, nativeFileIconRequestKey, nativeFileIconScope, nativeFileIconSize]);
   const renderFileGroupHeading = (group: { id: string; label: string }) => {
     if (!group.label) return null;
     const key = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
@@ -841,12 +897,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
-    const measureScrollbar = () => setViewportScrollbarWidth(Math.max(0, viewport.offsetWidth - viewport.clientWidth));
-    measureScrollbar();
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measureScrollbar);
+    const measureViewport = () => {
+      setViewportScrollbarWidth(Math.max(0, viewport.offsetWidth - viewport.clientWidth));
+      setDetailsViewport(previous => previous.height === viewport.clientHeight
+        ? previous
+        : { ...previous, height: viewport.clientHeight });
+    };
+    measureViewport();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measureViewport);
     observer?.observe(viewport);
     return () => observer?.disconnect();
   }, [files.length, effectiveViewMode]);
+
+  useEffect(() => () => {
+    if (detailsScrollFrameRef.current !== null) window.cancelAnimationFrame(detailsScrollFrameRef.current);
+  }, []);
 
   useEffect(() => {
     if (!tab.focusedId || !tab.selectedIds.includes(tab.focusedId)) {
@@ -859,8 +924,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (focusedItem) {
       focusedItem.scrollIntoView({ block: 'nearest' });
       lastScrolledFocusedIdRef.current = tab.focusedId;
+      return;
     }
-  }, [files, tab.focusedId, tab.selectedIds]);
+    if (virtualizeDetails) {
+      const focusedIndex = detailsEntries.findIndex(entry => entry.kind === 'item' && entry.item.id === tab.focusedId);
+      const viewport = viewportRef.current;
+      if (viewport && focusedIndex >= 0) {
+        const itemTop = focusedIndex * DETAILS_ENTRY_HEIGHT;
+        const itemBottom = itemTop + DETAILS_ENTRY_HEIGHT;
+        if (itemTop < viewport.scrollTop) viewport.scrollTop = itemTop;
+        else if (itemBottom > viewport.scrollTop + viewport.clientHeight) {
+          viewport.scrollTop = Math.max(0, itemBottom - viewport.clientHeight);
+        }
+        lastScrolledFocusedIdRef.current = tab.focusedId;
+      }
+    }
+  }, [detailsEntries, files, tab.focusedId, tab.selectedIds, virtualizeDetails]);
 
   useEffect(() => {
     setPathInput(tab.currentPath);
@@ -969,6 +1048,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   useEffect(() => {
     if (previousPathRef.current === tab.currentPath) return;
     previousPathRef.current = tab.currentPath;
+    if (viewportRef.current) viewportRef.current.scrollTop = 0;
+    setDetailsViewport(previous => ({ ...previous, scrollTop: 0 }));
     if (!styleLocked) setColumnWidths(DEFAULT_FILE_COLUMN_WIDTHS);
   }, [tab.currentPath, styleLocked]);
 
@@ -1051,14 +1132,38 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   const autoFitColumn = (column: ResizableColumn) => {
     const headerContent = columnHeadersRef.current?.querySelector<HTMLElement>(`[data-file-column-header="${column}"]`);
-    const cells = viewportRef.current?.querySelectorAll<HTMLElement>(`[data-file-column-content="${column}"]`) ?? [];
+    const cells = viewportRef.current
+      ? [...viewportRef.current.querySelectorAll<HTMLElement>(`[data-file-column-content="${column}"]`)]
+      : [];
     const headerWidth = headerContent ? headerContent.scrollWidth + 28 : 0;
-    const widestCell = [...cells].reduce((widest, cell) => {
+    const widestRenderedCell = cells.reduce((widest, cell) => {
       const hasColorLabel = column === 'name' && Boolean(cell.parentElement?.querySelector('[data-file-name-decoration="color-label"]'));
       const cellPadding = column === 'name' ? 28 + (hasColorLabel ? 16 : 0) : 4;
       return Math.max(widest, cell.scrollWidth + cellPadding);
     }, 0);
-    const fittedWidth = Math.max(headerWidth, widestCell);
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    const sampleCell = cells[0];
+    if (context) context.font = sampleCell ? window.getComputedStyle(sampleCell).font : '11px sans-serif';
+    const widestSnapshotCell = context ? files.reduce((widest, item) => {
+      let label = '';
+      if (column === 'name') label = getDisplayItemName(item, showFileExtensions);
+      else if (column === 'extension') label = item.isFolder || !showFileExtensions ? '' : item.extension;
+      else if (column === 'type') label = getFileTypeLabel(item);
+      else if (column === 'size') {
+        const folderSize = folderSizeStates[item.id];
+        label = item.isFolder
+          ? (folderSize?.status === 'done' ? formatFileSize(folderSize.size ?? 0) : t.pane.folderSizeCalculate)
+          : formatFileSize(item.size);
+      } else if (column === 'created') {
+        label = formatDateTimeForDisplay(item.createdAtMs, item.createdDate, dateFormat, language) || '--';
+      } else {
+        label = formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language) || '--';
+      }
+      const cellPadding = column === 'name' ? 28 + (item.colorLabel ? 16 : 0) : 4;
+      return Math.max(widest, context.measureText(label).width + cellPadding);
+    }, 0) : 0;
+    const fittedWidth = Math.ceil(Math.max(headerWidth, widestRenderedCell, widestSnapshotCell));
 
     setColumnWidths(previous => {
       const currentWidth = column === 'name'
@@ -1612,6 +1717,99 @@ export const FilePane: React.FC<FilePaneProps> = ({
     );
   };
 
+  const renderDetailsFileRow = (item: FileItem, idx: number) => {
+    const isSelected = visibleSelectedIds.includes(item.id);
+    const isEditing = editingItemId === item.id;
+    const isZebra = idx % 2 === 1;
+
+    return (
+      <div
+        key={item.id}
+        data-file-item="true"
+        data-file-id={item.id}
+        draggable={!item.recycleBinId}
+        onDragStart={event => handleDragStart(event, item)}
+        onDrop={event => {
+          if (item.isFolder && !item.recycleBinId) {
+            event.stopPropagation();
+            handleDrop(event, item);
+          }
+        }}
+        onClick={event => { handleItemClick(event, item, idx); handleConfiguredSingleClick(event, item); }}
+        onDoubleClick={() => handleConfiguredDoubleClick(item)}
+        onContextMenu={event => handleFileItemContextMenu(event, item)}
+        style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth}px`, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
+        className={`grid h-[30px] items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors ${
+          isSelected
+            ? 'bg-cyan-950/70 border-cyan-700/60 text-neutral-100 font-medium'
+            : isZebra
+              ? 'bg-neutral-900/30 border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
+              : 'bg-transparent border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
+        }`}
+      >
+        {visibleFileColumns.map(column => {
+          if (column === 'extension') {
+            return <div key={column} className="min-w-0 truncate font-sans text-[10px] uppercase text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder || !showFileExtensions ? '' : (item.extension || '')}</span></div>;
+          }
+          if (column === 'name') {
+            return (
+              <div key={column} className="flex min-w-0 items-center gap-2">
+                <span className="flex-shrink-0">{getDisplayFileIcon(item)}</span>
+                {item.colorLabel && (
+                  <span data-file-name-decoration="color-label" className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                    item.colorLabel === 'red' ? 'bg-red-400' :
+                    item.colorLabel === 'blue' ? 'bg-blue-400' :
+                    item.colorLabel === 'green' ? 'bg-emerald-400' :
+                    item.colorLabel === 'yellow' ? 'bg-amber-400' : 'bg-purple-400'
+                  }`} />
+                )}
+                {isEditing ? (
+                  renderInlineRenameInput(item, 'min-w-0 flex-1')
+                ) : (
+                  <Tooltip label={renderItemTooltip(item)} placement="top">
+                    <span data-file-column-content={column} onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="truncate text-[11.5px] font-medium" style={getRecentNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+                  </Tooltip>
+                )}
+              </div>
+            );
+          }
+          if (column === 'type') {
+            return <div key={column} className="min-w-0 truncate font-sans text-[10px] text-neutral-400"><span data-file-column-content={column}>{getFileTypeLabel(item)}</span></div>;
+          }
+          if (column === 'size') {
+            const folderSize = folderSizeStates[item.id];
+            return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.size, 'size')}>{item.isFolder ? (
+              isTauriDesktop() && !isRecycleBin && !item.recycleBinId ? (
+                folderSize?.status === 'done' ? (
+                  <span data-file-column-content={column} className="inline-flex h-5 min-w-[44px] items-center justify-end whitespace-nowrap leading-none">{formatFileSize(folderSize.size ?? 0)}</span>
+                ) : (
+                  <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip} placement="top">
+                    <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="ml-auto inline-flex h-5 w-[44px] shrink-0 items-center justify-end gap-1 rounded px-1 py-0 text-right leading-none text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
+                      <span data-file-column-content={column} className="inline-flex items-center gap-1 whitespace-nowrap">
+                        <span className={folderSize?.status === 'loading' ? 'invisible' : ''}>{folderSize?.status === 'error' ? '!' : t.pane.folderSizeCalculate}</span>
+                        <span className="grid h-3 w-3 flex-shrink-0 place-items-center">
+                          {folderSize?.status === 'loading'
+                            ? <LoaderCircle className="h-3 w-3 animate-spin" />
+                            : (!folderSize || folderSize.status === 'error') ? <Calculator className="h-3 w-3" /> : null}
+                        </span>
+                      </span>
+                    </button>
+                  </Tooltip>
+                )
+              ) : <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">--</span>
+            ) : <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{formatFileSize(item.size)}</span>}</div>;
+          }
+          if (column === 'created') {
+            const createdDate = formatDateTimeForDisplay(item.createdAtMs, item.createdDate, dateFormat, language);
+            return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.created, 'date')}><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{createdDate || '--'}</span></div>;
+          }
+          const modifiedDate = formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language);
+          return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.modified, 'date')}><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{modifiedDate || '--'}</span></div>;
+        })}
+      </div>
+    );
+  };
+
   return (
     <div 
       onClick={onActivate}
@@ -1934,6 +2132,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
         className={`relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto py-0.5 select-none focus:outline-none ${marqueeBounds ? 'cursor-crosshair' : ''}`}
         tabIndex={0}
         onScroll={event => {
+          if (effectiveViewMode === 'details') {
+            const viewport = event.currentTarget;
+            if (detailsScrollFrameRef.current === null) {
+              detailsScrollFrameRef.current = window.requestAnimationFrame(() => {
+                detailsScrollFrameRef.current = null;
+                setDetailsViewport(previous => {
+                  const scrollTop = viewport.scrollTop;
+                  const height = viewport.clientHeight;
+                  return previous.scrollTop === scrollTop && previous.height === height
+                    ? previous
+                    : { scrollTop, height };
+                });
+              });
+            }
+          }
           if (!hasMore || isLoadingDirectory || !onLoadMore) return;
           const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
           if (scrollHeight - scrollTop - clientHeight <= Math.max(500, clientHeight)) onLoadMore();
@@ -2000,109 +2213,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
             )}
           </div>
         ) : effectiveViewMode === 'details' ? (
-          <div className="space-y-0.5 px-4">
-            {fileGroups.map(group => {
-              const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
-              const groupCollapsed = collapsedGroups[groupCollapseKey] === true;
-              return (
-              <React.Fragment key={`file-group-${groupCollapseKey}`}>
-              {renderFileGroupHeading(group)}
-              {!groupCollapsed && group.items.map(item => {
-              const idx = files.indexOf(item);
-              const isSelected = visibleSelectedIds.includes(item.id);
-              const isEditing = editingItemId === item.id;
-              const isZebra = idx % 2 === 1;
-
-              return (
-                <div
-                  key={item.id}
-                  data-file-item="true"
-                  data-file-id={item.id}
-                  draggable={!item.recycleBinId}
-                  onDragStart={(e) => handleDragStart(e, item)}
-                  onDrop={(e) => {
-                    if (item.isFolder && !item.recycleBinId) {
-                      e.stopPropagation();
-                      handleDrop(e, item);
-                    }
-                  }}
-                  onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
-                  onDoubleClick={() => handleConfiguredDoubleClick(item)}
-                  onContextMenu={event => handleFileItemContextMenu(event, item)}
-                  style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth}px`, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
-                  className={`grid min-h-[30px] items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors ${
-                    isSelected
-                      ? 'bg-cyan-950/70 border-cyan-700/60 text-neutral-100 font-medium'
-                      : isZebra
-                        ? 'bg-neutral-900/30 border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
-                        : 'bg-transparent border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
-                  }`}
-                >
-                  {visibleFileColumns.map(column => {
-                    if (column === 'extension') {
-                      return <div key={column} className="min-w-0 truncate font-sans text-[10px] uppercase text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder || !showFileExtensions ? '' : (item.extension || '')}</span></div>;
-                    }
-                    if (column === 'name') {
-                      return (
-                        <div key={column} className="flex min-w-0 items-center gap-2">
-                          <span className="flex-shrink-0">{getDisplayFileIcon(item)}</span>
-                          {item.colorLabel && (
-                            <span data-file-name-decoration="color-label" className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                              item.colorLabel === 'red' ? 'bg-red-400' :
-                              item.colorLabel === 'blue' ? 'bg-blue-400' :
-                              item.colorLabel === 'green' ? 'bg-emerald-400' :
-                              item.colorLabel === 'yellow' ? 'bg-amber-400' : 'bg-purple-400'
-                            }`} />
-                          )}
-                          {isEditing ? (
-                            renderInlineRenameInput(item, 'min-w-0 flex-1')
-                          ) : (
-                            <Tooltip label={renderItemTooltip(item)} placement="top">
-                              <span data-file-column-content={column} onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="truncate text-[11.5px] font-medium" style={getRecentNameStyle(item, isSelected)} >{getDisplayItemName(item, showFileExtensions)}</span>
-                            </Tooltip>
-                          )}
-                        </div>
-                      );
-                    }
-                    if (column === 'type') {
-                      return <div key={column} className="min-w-0 truncate font-sans text-[10px] text-neutral-400"><span data-file-column-content={column}>{getFileTypeLabel(item)}</span></div>;
-                    }
-                    if (column === 'size') {
-                      const folderSize = folderSizeStates[item.id];
-                      return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.size, 'size')}>{item.isFolder ? (
-                        isTauriDesktop() && !isRecycleBin && !item.recycleBinId ? (
-                          folderSize?.status === 'done' ? (
-                            <span data-file-column-content={column} className="inline-flex h-5 min-w-[44px] items-center justify-end whitespace-nowrap leading-none">{formatFileSize(folderSize.size ?? 0)}</span>
-                          ) : (
-                            <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip} placement="top">
-                              <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="ml-auto inline-flex h-5 w-[44px] shrink-0 items-center justify-end gap-1 rounded px-1 py-0 text-right leading-none text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
-                                <span data-file-column-content={column} className="inline-flex items-center gap-1 whitespace-nowrap">
-                                  <span className={folderSize?.status === 'loading' ? 'invisible' : ''}>{folderSize?.status === 'error' ? '!' : t.pane.folderSizeCalculate}</span>
-                                  <span className="grid h-3 w-3 flex-shrink-0 place-items-center">
-                                    {folderSize?.status === 'loading'
-                                      ? <LoaderCircle className="h-3 w-3 animate-spin" />
-                                      : (!folderSize || folderSize.status === 'error') ? <Calculator className="h-3 w-3" /> : null}
-                                  </span>
-                                </span>
-                              </button>
-                            </Tooltip>
-                          )
-                        ) : <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">--</span>
-                      ) : <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{formatFileSize(item.size)}</span>}</div>;
-                    }
-                    if (column === 'created') {
-                      const createdDate = formatDateTimeForDisplay(item.createdAtMs, item.createdDate, dateFormat, language);
-                      return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.created, 'date')}><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{createdDate || '--'}</span></div>;
-                    }
-                    const modifiedDate = formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language);
-                    return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.modified, 'date')}><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{modifiedDate || '--'}</span></div>;
-                  })}
+          <div
+            className={virtualizeDetails ? 'relative px-4' : 'px-4'}
+            style={virtualizeDetails ? { height: `${detailsEntries.length * DETAILS_ENTRY_HEIGHT}px` } : undefined}
+          >
+            <div
+              className={virtualizeDetails ? 'absolute inset-x-4 top-0 space-y-0.5' : 'space-y-0.5'}
+              style={virtualizeDetails ? { transform: `translateY(${firstVirtualDetailsIndex * DETAILS_ENTRY_HEIGHT}px)` } : undefined}
+            >
+              {renderedDetailsEntries.map(entry => entry.kind === 'group' ? (
+                <div key={entry.key} className="h-[30px]">
+                  {renderFileGroupHeading(entry.group)}
                 </div>
-              );
-              })}
-              </React.Fragment>
-              );
-            })}
+              ) : renderDetailsFileRow(entry.item, entry.itemIndex))}
+            </div>
           </div>
         ) : effectiveViewMode === 'compact' ? (
           <div className="grid grid-cols-1 gap-x-2 gap-y-1 p-1.5 sm:grid-cols-2 lg:grid-cols-3">
