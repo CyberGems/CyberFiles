@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useContext } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { 
   Folder, 
   FileText, 
@@ -2137,13 +2137,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
             if (detailsScrollFrameRef.current === null) {
               detailsScrollFrameRef.current = window.requestAnimationFrame(() => {
                 detailsScrollFrameRef.current = null;
-                setDetailsViewport(previous => {
+                flushSync(() => setDetailsViewport(previous => {
                   const scrollTop = viewport.scrollTop;
                   const height = viewport.clientHeight;
                   return previous.scrollTop === scrollTop && previous.height === height
                     ? previous
                     : { scrollTop, height };
-                });
+                }));
               });
             }
           }
