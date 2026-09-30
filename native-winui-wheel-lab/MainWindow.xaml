@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="CyberFiles.WheelLab.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="CyberFiles · Wheel input lab">
+    <Grid Padding="20" RowSpacing="12" Background="#101113">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="4">
+                <TextBlock x:Name="TitleText" Text="Prueba aislada de rueda" FontSize="24" FontWeight="SemiBold" />
+                <TextBlock x:Name="DescriptionText" Text="Desplaza esta lista sin hacer clic primero." Foreground="#A8ABB2" />
+            </StackPanel>
+            <ComboBox x:Name="LanguageBox" Grid.Column="1" Width="120" SelectedIndex="0" SelectionChanged="LanguageBox_SelectionChanged">
+                <ComboBoxItem Content="Español" />
+                <ComboBoxItem Content="English" />
+            </ComboBox>
+        </Grid>
+
+        <Border Grid.Row="1" Padding="12,8" CornerRadius="8" Background="#191B1F" BorderBrush="#30343A" BorderThickness="1">
+            <Grid ColumnSpacing="18">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="WheelEventsText" Text="Eventos de rueda: 0" Foreground="#91EAF4" />
+                <TextBlock x:Name="ViewChangesText" Grid.Column="1" Text="Cambios de vista: 0" Foreground="#91EAF4" />
+                <TextBlock x:Name="OffsetText" Grid.Column="2" Text="Posición: 0" Foreground="#E3E5E8" />
+                <TextBlock x:Name="PointerText" Grid.Column="3" Text="Cursor fuera de la lista" HorizontalAlignment="Right" Foreground="#A8ABB2" />
+            </Grid>
+        </Border>
+
+        <ListView
+            x:Name="EntryList"
+            Grid.Row="2"
+            Loaded="EntryList_Loaded"
+            PointerEntered="EntryList_PointerEntered"
+            PointerExited="EntryList_PointerExited"
+            ScrollViewer.VerticalScrollMode="Enabled"
+            ScrollViewer.VerticalScrollBarVisibility="Auto"
+            Background="#151619"
+            BorderBrush="#30343A"
+            BorderThickness="1"
+            CornerRadius="8">
+            <ListView.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <ItemsStackPanel Orientation="Vertical" />
+                </ItemsPanelTemplate>
+            </ListView.ItemsPanel>
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <Grid Height="38" Padding="14,0" ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="80" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="140" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding Number}" VerticalAlignment="Center" Foreground="#91EAF4" />
+                        <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{Binding Size}" VerticalAlignment="Center" HorizontalAlignment="Right" Foreground="#A8ABB2" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <TextBlock
+            x:Name="ResultHintText"
+            Grid.Row="3"
+            Text="La prueba registra la entrada de rueda y el movimiento real por separado."
+            Foreground="#A8ABB2" />
+    </Grid>
+</Window>
