@@ -363,6 +363,8 @@ public sealed partial class FilePaneView : UserControl
 
     private void EntryList_Loaded(object sender, RoutedEventArgs e)
     {
+        EntryList.ApplyTemplate();
+        EntryList.UpdateLayout();
         _listScrollViewer ??= FindScrollViewer(EntryList);
         if (_listScrollViewer is not null)
         {
@@ -381,7 +383,8 @@ public sealed partial class FilePaneView : UserControl
 
         var remainingContent = _listScrollViewer.ExtentHeight -
             (_listScrollViewer.VerticalOffset + _listScrollViewer.ViewportHeight);
-        if (remainingContent < 280)
+        var prefetchDistance = Math.Max(900, _listScrollViewer.ViewportHeight * 1.5);
+        if (remainingContent < prefetchDistance)
             await LoadNextPageAsync();
     }
 

@@ -81,6 +81,8 @@
                     DoubleTapped="EntryList_DoubleTapped"
                     KeyDown="EntryList_KeyDown"
                     SelectionChanged="EntryList_SelectionChanged"
+                    ScrollViewer.VerticalScrollMode="Enabled"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
                     Background="Transparent"
                     BorderThickness="0">
                     <ListView.ItemsPanel>
