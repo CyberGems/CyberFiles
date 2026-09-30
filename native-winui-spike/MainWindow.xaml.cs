@@ -22,7 +22,7 @@ public sealed partial class MainWindow : Window
     private readonly FileOperationQueue _operationQueue = new();
     private FileOperationQueueSnapshot _lastQueueSnapshot = new(false, 0, 0, 0, null, Array.Empty<FileTransferRequest>(), 0, false, false, null);
     private FileTransferItemResult? _lastOperationResult;
-    private readonly List<FileTransferItemResult> _recentResults = [];
+    private readonly List<ActivityHistoryRecord> _recentActivities = [];
     private readonly ObservableCollection<ActivityQueueItemDisplay> _queueDisplayItems = [];
     private readonly ObservableCollection<ActivityHistoryItemDisplay> _historyDisplayItems = [];
     private readonly DispatcherTimer _activityCenterHideTimer = new() { Interval = TimeSpan.FromSeconds(4) };
@@ -49,6 +49,8 @@ public sealed partial class MainWindow : Window
         RightPane.SelectionUpdated += Pane_SelectionUpdated;
         LeftPane.DirectoryChanged += Pane_DirectoryChanged;
         RightPane.DirectoryChanged += Pane_DirectoryChanged;
+        LeftPane.FileActionCompleted += Pane_FileActionCompleted;
+        RightPane.FileActionCompleted += Pane_FileActionCompleted;
         _operationQueue.StateChanged += OperationQueue_StateChanged;
         _operationQueue.ItemFinished += OperationQueue_ItemFinished;
         _uiReady = true;
@@ -157,6 +159,19 @@ public sealed partial class MainWindow : Window
 
     private void Pane_DirectoryChanged(object? sender, EventArgs e) => UpdateTransferButtons();
 
+    private void Pane_FileActionCompleted(FilePaneActionRecord action)
+    {
+        var kind = action.Kind switch
+        {
+            FilePaneActionKind.Open => ActivityActionKind.Open,
+            FilePaneActionKind.CreateFolder => ActivityActionKind.CreateFolder,
+            FilePaneActionKind.Rename => ActivityActionKind.Rename,
+            FilePaneActionKind.RecycleBin => ActivityActionKind.RecycleBin,
+            _ => ActivityActionKind.Open,
+        };
+        AddRecentActivity(new ActivityHistoryRecord(kind, action.Subject, action.Route, action.Succeeded, false, action.Error, Count: action.Count));
+    }
+
     private void UpdateTransferButtons()
     {
         var hasLeftSelection = !LeftPane.IsLoading && !RightPane.IsLoading && LeftPane.SelectedPaths.Count > 0 && !string.IsNullOrWhiteSpace(RightPane.CurrentPath);
@@ -209,10 +224,15 @@ public sealed partial class MainWindow : Window
         DispatcherQueue.TryEnqueue(() =>
         {
             _lastOperationResult = result;
-            _recentResults.Insert(0, result);
-            if (_recentResults.Count > 10)
-                _recentResults.RemoveAt(_recentResults.Count - 1);
-            RebuildActivityHistory();
+            var kind = result.Request.Kind == TransferKind.Copy ? ActivityActionKind.Copy : ActivityActionKind.Move;
+            AddRecentActivity(new ActivityHistoryRecord(
+                kind,
+                Path.GetFileName(Path.TrimEndingDirectorySeparator(result.Request.SourcePath)),
+                $"{result.Request.SourcePath} → {result.Request.DestinationDirectory}",
+                result.Succeeded,
+                result.Cancelled,
+                result.Error,
+                result.FailureReason));
             UpdateOperationSummary(result);
             _ = RefreshPanesAfterTransferAsync(result);
         });
@@ -250,8 +270,8 @@ public sealed partial class MainWindow : Window
         }
         else
         {
-            ActivityCenterSummary.Text = _recentResults.Count > 0
-                ? (_isSpanish ? $"{_recentResults.Count} operaciones recientes" : $"{_recentResults.Count} recent operations")
+            ActivityCenterSummary.Text = _recentActivities.Count > 0
+                ? (_isSpanish ? $"{_recentActivities.Count} operaciones recientes" : $"{_recentActivities.Count} recent operations")
                 : (_isSpanish ? "Sin operaciones pendientes" : "No pending operations");
             ActivityQueueHeading.Text = _isSpanish ? "TRABAJOS EN COLA" : "QUEUED OPERATIONS";
         }
@@ -309,44 +329,71 @@ public sealed partial class MainWindow : Window
     private void RebuildActivityHistory()
     {
         _historyDisplayItems.Clear();
-        foreach (var result in _recentResults)
+        foreach (var record in _recentActivities)
         {
-            var name = Path.GetFileName(Path.TrimEndingDirectorySeparator(result.Request.SourcePath));
-            var action = result.Request.Kind == TransferKind.Copy
-                ? (_isSpanish ? "Copia" : "Copy")
-                : (_isSpanish ? "Movimiento" : "Move");
-            var route = $"{result.Request.SourcePath} → {result.Request.DestinationDirectory}";
-            var status = result.Succeeded
+            var action = GetLocalizedActionName(record.Kind);
+            var status = record.Succeeded
                 ? (_isSpanish ? "Completada" : "Completed")
-                : result.Cancelled
+                : record.Cancelled
                     ? (_isSpanish ? "Cancelada" : "Cancelled")
-                    : $"{(_isSpanish ? "Error" : "Failed")}: {GetLocalizedTransferError(result)}";
-            var glyph = result.Succeeded ? "\uE73E" : result.Cancelled ? "\uE711" : "\uE783";
-            var color = result.Succeeded
+                    : $"{(_isSpanish ? "Error" : "Failed")}: {GetLocalizedActivityError(record)}";
+            var glyph = record.Succeeded ? "\uE73E" : record.Cancelled ? "\uE711" : "\uE783";
+            var color = record.Succeeded
                 ? Colors.LightGreen
-                : result.Cancelled
+                : record.Cancelled
                     ? Colors.LightGray
                     : Colors.OrangeRed;
 
             _historyDisplayItems.Add(new ActivityHistoryItemDisplay(
-                $"{action}: {name}",
-                route,
+                $"{action}: {GetActivitySubject(record)}",
+                record.Route,
                 status,
                 glyph,
                 new SolidColorBrush(color)));
         }
 
-        ActivityEmptyText.Visibility = _recentResults.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        ActivityHistoryClearButton.IsEnabled = _recentResults.Count > 0;
+        ActivityEmptyText.Visibility = _recentActivities.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ActivityHistoryClearButton.IsEnabled = _recentActivities.Count > 0;
         if (!_lastQueueSnapshot.IsRunning)
         {
-            ActivityCenterSummary.Text = _recentResults.Count > 0
-                ? (_isSpanish ? $"{_recentResults.Count} operaciones recientes" : $"{_recentResults.Count} recent operations")
+            ActivityCenterSummary.Text = _recentActivities.Count > 0
+                ? (_isSpanish ? $"{_recentActivities.Count} operaciones recientes" : $"{_recentActivities.Count} recent operations")
                 : (_isSpanish ? "Sin operaciones pendientes" : "No pending operations");
         }
         ActivityRecentHeading.Text = _isSpanish
-            ? $"RECIENTES · {_recentResults.Count}/10"
-            : $"RECENT · {_recentResults.Count}/10";
+            ? $"RECIENTES · {_recentActivities.Count}/10"
+            : $"RECENT · {_recentActivities.Count}/10";
+    }
+
+    private void AddRecentActivity(ActivityHistoryRecord record)
+    {
+        _recentActivities.Insert(0, record);
+        if (_recentActivities.Count > 10)
+            _recentActivities.RemoveAt(_recentActivities.Count - 1);
+        RebuildActivityHistory();
+    }
+
+    private string GetLocalizedActionName(ActivityActionKind kind) => kind switch
+    {
+        ActivityActionKind.Copy => _isSpanish ? "Copia" : "Copy",
+        ActivityActionKind.Move => _isSpanish ? "Movimiento" : "Move",
+        ActivityActionKind.Open => _isSpanish ? "Abrir" : "Open",
+        ActivityActionKind.CreateFolder => _isSpanish ? "Crear carpeta" : "Create folder",
+        ActivityActionKind.Rename => _isSpanish ? "Renombrar" : "Rename",
+        ActivityActionKind.RecycleBin => _isSpanish ? "Papelera" : "Recycle Bin",
+        _ => _isSpanish ? "Operación" : "Operation",
+    };
+
+    private string GetActivitySubject(ActivityHistoryRecord record) =>
+        record.Kind == ActivityActionKind.RecycleBin && record.Count > 1
+            ? (_isSpanish ? $"{record.Count} elementos" : $"{record.Count} items")
+            : record.Subject;
+
+    private string GetLocalizedActivityError(ActivityHistoryRecord record)
+    {
+        if (record.FailureReason != TransferFailureReason.Unknown)
+            return GetLocalizedTransferError(record.FailureReason, record.Error);
+        return record.Error ?? (_isSpanish ? "Error desconocido" : "Unknown error");
     }
 
     private void ActivityCenterToggle_Click(object sender, RoutedEventArgs e)
@@ -373,7 +420,7 @@ public sealed partial class MainWindow : Window
 
     private void ActivityHistoryClear_Click(object sender, RoutedEventArgs e)
     {
-        _recentResults.Clear();
+        _recentActivities.Clear();
         RebuildActivityHistory();
     }
 
@@ -499,11 +546,14 @@ public sealed partial class MainWindow : Window
     }
 
     private string GetLocalizedTransferError(FileTransferItemResult result)
+        => GetLocalizedTransferError(result.FailureReason, result.Error);
+
+    private string GetLocalizedTransferError(TransferFailureReason failureReason, string? error)
     {
         if (!_isSpanish)
-            return result.Error ?? "Unknown file operation error.";
+            return error ?? "Unknown file operation error.";
 
-        return result.FailureReason switch
+        return failureReason switch
         {
             TransferFailureReason.Collision => "ya existe un elemento con ese nombre en el destino",
             TransferFailureReason.SourceMissing => "el elemento de origen ya no existe",
@@ -512,7 +562,7 @@ public sealed partial class MainWindow : Window
             TransferFailureReason.ReparsePoint => "se omitió un enlace simbólico o punto de reanálisis por seguridad",
             TransferFailureReason.CrossVolumeFolderMove => "aún no se admite mover carpetas entre unidades",
             TransferFailureReason.SourceChanged => "el archivo cambió durante la copia",
-            _ => result.Error ?? "Error desconocido de operación de archivos",
+            _ => error ?? "Error desconocido de operación de archivos",
         };
     }
 
@@ -648,3 +698,23 @@ public sealed record ActivityHistoryItemDisplay(
     string Status,
     string Glyph,
     Brush StatusBrush);
+
+public enum ActivityActionKind
+{
+    Copy,
+    Move,
+    Open,
+    CreateFolder,
+    Rename,
+    RecycleBin,
+}
+
+public sealed record ActivityHistoryRecord(
+    ActivityActionKind Kind,
+    string Subject,
+    string Route,
+    bool Succeeded,
+    bool Cancelled,
+    string? Error = null,
+    TransferFailureReason FailureReason = TransferFailureReason.Unknown,
+    int Count = 1);

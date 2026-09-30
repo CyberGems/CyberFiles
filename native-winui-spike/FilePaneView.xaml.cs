@@ -38,6 +38,7 @@ public sealed partial class FilePaneView : UserControl
     public event EventHandler? PaneActivated;
     public event EventHandler? SelectionUpdated;
     public event EventHandler? DirectoryChanged;
+    public event Action<FilePaneActionRecord>? FileActionCompleted;
 
     public string CurrentPath => _currentPath;
     public bool IsLoading => _isLoading;
@@ -548,10 +549,12 @@ public sealed partial class FilePaneView : UserControl
         {
             Process.Start(new ProcessStartInfo(row.FullPath) { UseShellExecute = true });
             SetStatus(_isSpanish ? "Archivo abierto con la aplicación predeterminada." : "Opened with the default application.");
+            FileActionCompleted?.Invoke(new(FilePaneActionKind.Open, row.Name, row.FullPath, true));
         }
         catch (Exception ex)
         {
             SetStatus((_isSpanish ? "No se pudo abrir el archivo: " : "Could not open the file: ") + ex.Message);
+            FileActionCompleted?.Invoke(new(FilePaneActionKind.Open, row.Name, row.FullPath, false, ex.Message));
         }
     }
 
@@ -570,6 +573,7 @@ public sealed partial class FilePaneView : UserControl
         if (!TryGetSafeLeafName(name, out var validationMessage))
         {
             SetStatus(validationMessage);
+            FileActionCompleted?.Invoke(new(FilePaneActionKind.CreateFolder, name, _currentPath, false, validationMessage));
             return;
         }
 
@@ -578,17 +582,21 @@ public sealed partial class FilePaneView : UserControl
         {
             if (File.Exists(targetPath) || Directory.Exists(targetPath))
             {
-                SetStatus(_isSpanish ? "Ya existe un elemento con ese nombre." : "An item with that name already exists.");
+                var error = _isSpanish ? "Ya existe un elemento con ese nombre." : "An item with that name already exists.";
+                SetStatus(error);
+                FileActionCompleted?.Invoke(new(FilePaneActionKind.CreateFolder, name, $"{_currentPath} → {targetPath}", false, error));
                 return;
             }
 
             Directory.CreateDirectory(targetPath);
             await RefreshCurrentPathAsync();
             SetStatus(_isSpanish ? "Carpeta creada." : "Folder created.");
+            FileActionCompleted?.Invoke(new(FilePaneActionKind.CreateFolder, name, $"{_currentPath} → {targetPath}", true));
         }
         catch (Exception ex)
         {
             SetStatus((_isSpanish ? "No se pudo crear la carpeta: " : "Could not create the folder: ") + ex.Message);
+            FileActionCompleted?.Invoke(new(FilePaneActionKind.CreateFolder, name, $"{_currentPath} → {targetPath}", false, ex.Message));
         }
     }
 
@@ -613,6 +621,7 @@ public sealed partial class FilePaneView : UserControl
         if (!TryGetSafeLeafName(newName, out var validationMessage))
         {
             SetStatus(validationMessage);
+            FileActionCompleted?.Invoke(new(FilePaneActionKind.Rename, currentName, sourcePath, false, validationMessage));
             return;
         }
 
@@ -625,7 +634,9 @@ public sealed partial class FilePaneView : UserControl
         {
             if (File.Exists(destinationPath) || Directory.Exists(destinationPath))
             {
-                SetStatus(_isSpanish ? "Ya existe un elemento con ese nombre." : "An item with that name already exists.");
+                var error = _isSpanish ? "Ya existe un elemento con ese nombre." : "An item with that name already exists.";
+                SetStatus(error);
+                FileActionCompleted?.Invoke(new(FilePaneActionKind.Rename, currentName, $"{sourcePath} → {destinationPath}", false, error));
                 return;
             }
 
@@ -636,10 +647,12 @@ public sealed partial class FilePaneView : UserControl
 
             await RefreshCurrentPathAsync();
             SetStatus(_isSpanish ? "Elemento renombrado." : "Item renamed.");
+            FileActionCompleted?.Invoke(new(FilePaneActionKind.Rename, newName, $"{sourcePath} → {destinationPath}", true));
         }
         catch (Exception ex)
         {
             SetStatus((_isSpanish ? "No se pudo renombrar: " : "Could not rename: ") + ex.Message);
+            FileActionCompleted?.Invoke(new(FilePaneActionKind.Rename, currentName, $"{sourcePath} → {destinationPath}", false, ex.Message));
         }
     }
 
@@ -718,6 +731,18 @@ public sealed partial class FilePaneView : UserControl
                 ? $"{succeeded} enviado(s) a la Papelera; {failures.Count} no se pudieron mover."
                 : $"{succeeded} moved to the Recycle Bin; {failures.Count} could not be moved.");
         }
+
+        var subject = selected.Count == 1 ? Path.GetFileName(selected[0]) : string.Empty;
+        var route = selected.Count == 1
+            ? selected[0]
+            : _currentPath;
+        FileActionCompleted?.Invoke(new(
+            FilePaneActionKind.RecycleBin,
+            subject,
+            route,
+            failures.Count == 0,
+            failures.Count == 0 ? null : $"{succeeded} succeeded; {failures.Count} failed.",
+            selected.Count));
     }
 
     private async Task<string?> PromptForNameAsync(string title, string label, string initialValue, string primaryAction)
@@ -800,6 +825,22 @@ public sealed partial class FilePaneView : UserControl
 
     private void Pane_PointerPressed(object sender, PointerRoutedEventArgs e) => ActivatePane();
 }
+
+public enum FilePaneActionKind
+{
+    Open,
+    CreateFolder,
+    Rename,
+    RecycleBin,
+}
+
+public sealed record FilePaneActionRecord(
+    FilePaneActionKind Kind,
+    string Subject,
+    string Route,
+    bool Succeeded,
+    string? Error = null,
+    int Count = 1);
 
 public sealed class FileRow
 {
