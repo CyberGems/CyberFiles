@@ -366,20 +366,31 @@ public sealed partial class FilePaneView : UserControl
     {
         EntryList.ApplyTemplate();
         EntryList.UpdateLayout();
-        _listScrollViewer ??= FindScrollViewer(EntryList);
         if (_listScrollViewer is not null)
-        {
             _listScrollViewer.ViewChanged -= ListScrollViewer_ViewChanged;
+
+        _listScrollViewer = FindScrollViewer(EntryList);
+        if (_listScrollViewer is not null)
             _listScrollViewer.ViewChanged += ListScrollViewer_ViewChanged;
-        }
 
         if (_isPagedView)
             _ = LoadNextPageAsync();
     }
 
+    private void EntryList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs e)
+    {
+        if (e.InRecycleQueue || !_isPagedView || _isLoadingPage)
+            return;
+
+        // Ask for another page as soon as virtualization prepares rows near the end.
+        // This keeps paging responsive even if ScrollViewer.ViewChanged is missed.
+        if (e.ItemIndex >= Math.Max(0, _visibleRows.Count - 24))
+            _ = LoadNextPageAsync();
+    }
+
     private async void ListScrollViewer_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
     {
-        if (_listScrollViewer is null || !_isPagedView)
+        if (_listScrollViewer is null || _listScrollViewer.ViewportHeight <= 0 || !_isPagedView)
             return;
 
         var remainingContent = _listScrollViewer.ExtentHeight -
@@ -425,7 +436,17 @@ public sealed partial class FilePaneView : UserControl
         finally
         {
             _isLoadingPage = false;
-            if (_isPagedView && !ReferenceEquals(targetRows, _visibleRows))
+
+            var viewStillNeedsRows = false;
+            if (_listScrollViewer is { ViewportHeight: > 0 } scrollViewer)
+            {
+                var remainingContent = scrollViewer.ExtentHeight -
+                    (scrollViewer.VerticalOffset + scrollViewer.ViewportHeight);
+                viewStillNeedsRows = remainingContent < Math.Max(900, scrollViewer.ViewportHeight * 1.5);
+            }
+
+            if (_isPagedView &&
+                (!ReferenceEquals(targetRows, _visibleRows) || viewStillNeedsRows))
                 _ = LoadNextPageAsync();
         }
     }
