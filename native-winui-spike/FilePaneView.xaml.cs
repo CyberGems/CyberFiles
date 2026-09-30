@@ -9,7 +9,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.System;
-using Windows.Foundation;
 
 namespace CyberFiles.WinUIPrototype;
 
@@ -38,6 +37,7 @@ public sealed partial class FilePaneView : UserControl
     private int _folderCount;
     private int _unclassifiedCount;
     private int _viewGeneration;
+    private bool _isPointerOverFileArea;
 
     public event EventHandler? PaneActivated;
     public event EventHandler? SelectionUpdated;
@@ -45,6 +45,7 @@ public sealed partial class FilePaneView : UserControl
     public event Action<FilePaneActionRecord>? FileActionCompleted;
 
     public string CurrentPath => _currentPath;
+    public bool IsPointerOverFileArea => _isPointerOverFileArea;
     public bool IsLoading => _isLoading;
 
     public IReadOnlyList<string> SelectedPaths => EntryList.SelectedItems
@@ -56,6 +57,8 @@ public sealed partial class FilePaneView : UserControl
     public FilePaneView()
     {
         InitializeComponent();
+        FileAreaGrid.PointerEntered += (_, _) => _isPointerOverFileArea = true;
+        FileAreaGrid.PointerExited += (_, _) => _isPointerOverFileArea = false;
         TextInputContextMenu.Attach(PathBox, () => _isSpanish);
         TextInputContextMenu.Attach(FilterBox, () => _isSpanish);
         _uiReady = true;
@@ -506,25 +509,10 @@ public sealed partial class FilePaneView : UserControl
 
     private void ActivatePane() => PaneActivated?.Invoke(this, EventArgs.Empty);
 
-    public bool TryScrollWithMouseWheel(UIElement coordinateRoot, Point pointerPosition, int wheelDelta)
+    public bool TryScrollWithMouseWheel(int wheelDelta)
     {
         var scrollViewer = _listScrollViewer;
-        if (scrollViewer is null || wheelDelta == 0 || !FileAreaGrid.IsLoaded)
-            return false;
-
-        Rect fileAreaBounds;
-        try
-        {
-            fileAreaBounds = FileAreaGrid
-                .TransformToVisual(coordinateRoot)
-                .TransformBounds(new Rect(0, 0, FileAreaGrid.ActualWidth, FileAreaGrid.ActualHeight));
-        }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
-
-        if (!fileAreaBounds.Contains(pointerPosition))
+        if (!_isPointerOverFileArea || scrollViewer is null || wheelDelta == 0)
             return false;
 
         var scrollLines = GetSystemWheelScrollLines();

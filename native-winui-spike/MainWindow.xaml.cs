@@ -10,7 +10,6 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Windowing;
 using Windows.Graphics;
-using Windows.Foundation;
 using WinRT.Interop;
 
 namespace CyberFiles.WinUIPrototype;
@@ -47,13 +46,6 @@ public sealed partial class MainWindow : Window
         UIntPtr subclassId,
         UIntPtr referenceData);
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativePoint
-    {
-        public int X;
-        public int Y;
-    }
-
     [DllImport("comctl32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetWindowSubclass(
@@ -75,14 +67,6 @@ public sealed partial class MainWindow : Window
         IntPtr windowHandle,
         WindowSubclassProcedure callback,
         UIntPtr subclassId);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetCursorPos(out NativePoint point);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool ClientToScreen(IntPtr windowHandle, ref NativePoint point);
 
     public MainWindow(string initialPath)
     {
@@ -125,33 +109,16 @@ public sealed partial class MainWindow : Window
         UIntPtr subclassId,
         UIntPtr referenceData)
     {
-        if (message == WmMouseWheel && TryGetPointerPositionInRoot(out var pointerPosition))
+        if (message == WmMouseWheel)
         {
             var wheelDelta = unchecked((short)((wParam.ToUInt64() >> 16) & 0xffff));
             if (wheelDelta != 0 &&
-                (LeftPane.TryScrollWithMouseWheel(RootLayout, pointerPosition, wheelDelta) ||
-                 RightPane.TryScrollWithMouseWheel(RootLayout, pointerPosition, wheelDelta)))
+                (LeftPane.TryScrollWithMouseWheel(wheelDelta) ||
+                 RightPane.TryScrollWithMouseWheel(wheelDelta)))
                 return IntPtr.Zero;
         }
 
         return DefSubclassProc(windowHandle, message, wParam, lParam);
-    }
-
-    private bool TryGetPointerPositionInRoot(out Point pointerPosition)
-    {
-        pointerPosition = default;
-        var clientOrigin = new NativePoint();
-        if (!ClientToScreen(_windowHandle, ref clientOrigin) || !GetCursorPos(out var cursorPosition))
-            return false;
-
-        var scale = RootLayout.XamlRoot?.RasterizationScale ?? 1;
-        if (scale <= 0)
-            scale = 1;
-
-        pointerPosition = new Point(
-            (cursorPosition.X - clientOrigin.X) / scale,
-            (cursorPosition.Y - clientOrigin.Y) / scale);
-        return true;
     }
 
     private void MainWindow_Closed(object sender, WindowEventArgs e) =>
