@@ -34,7 +34,18 @@
         </Border>
 
         <Border Grid.Row="1" Padding="9" CornerRadius="8" Background="#191B1F" BorderBrush="#30343A" BorderThickness="1">
-            <TextBox x:Name="FilterBox" PlaceholderText="Filtrar por nombre..." TextChanged="FilterBox_TextChanged" />
+            <Grid ColumnSpacing="6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="FilterBox" PlaceholderText="Filtrar por nombre..." TextChanged="FilterBox_TextChanged" />
+                <Button x:Name="NewFolderButton" Grid.Column="1" Content="Nueva carpeta" Click="NewFolder_Click" />
+                <Button x:Name="RenameButton" Grid.Column="2" Content="Renombrar" Click="Rename_Click" IsEnabled="False" />
+                <Button x:Name="DeleteButton" Grid.Column="3" Content="Papelera" Click="Delete_Click" IsEnabled="False" />
+            </Grid>
         </Border>
 
         <Border Grid.Row="2" CornerRadius="8" Background="#151619" BorderBrush="#30343A" BorderThickness="1">
@@ -68,6 +79,7 @@
                     IncrementalLoadingThreshold="3"
                     IsItemClickEnabled="False"
                     DoubleTapped="EntryList_DoubleTapped"
+                    KeyDown="EntryList_KeyDown"
                     SelectionChanged="EntryList_SelectionChanged"
                     Background="Transparent"
                     BorderThickness="0">

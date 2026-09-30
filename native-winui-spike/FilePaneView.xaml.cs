@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Globalization;
+using Microsoft.VisualBasic.FileIO;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -49,6 +51,8 @@ public sealed partial class FilePaneView : UserControl
     public FilePaneView()
     {
         InitializeComponent();
+        TextInputContextMenu.Attach(PathBox, () => _isSpanish);
+        TextInputContextMenu.Attach(FilterBox, () => _isSpanish);
         _uiReady = true;
         ApplyLanguage();
     }
@@ -75,6 +79,9 @@ public sealed partial class FilePaneView : UserControl
         CancelButton.Content = _isSpanish ? "Cancelar" : "Cancel";
         PathBox.PlaceholderText = _isSpanish ? "Escribe o pega una ruta..." : "Enter or paste a path...";
         FilterBox.PlaceholderText = _isSpanish ? "Filtrar por nombre..." : "Filter by name...";
+        NewFolderButton.Content = _isSpanish ? "Nueva carpeta" : "New folder";
+        RenameButton.Content = _isSpanish ? "Renombrar" : "Rename";
+        DeleteButton.Content = _isSpanish ? "Papelera" : "Recycle bin";
         NameHeader.Text = _isSpanish ? "NOMBRE" : "NAME";
         TypeHeader.Text = _isSpanish ? "TIPO" : "TYPE";
         SizeHeader.Text = _isSpanish ? "TAMAÑO" : "SIZE";
@@ -453,6 +460,9 @@ public sealed partial class FilePaneView : UserControl
         SelectionText.Text = _isSpanish
             ? selected.ToString("N0", _culture) + " seleccionados"
             : selected.ToString("N0", _culture) + " selected";
+        NewFolderButton.IsEnabled = !_isLoading && _hasLoadedDirectory;
+        RenameButton.IsEnabled = !_isLoading && SelectedPaths.Count == 1;
+        DeleteButton.IsEnabled = !_isLoading && SelectedPaths.Count > 0;
         SelectionUpdated?.Invoke(this, EventArgs.Empty);
     }
 
@@ -498,8 +508,266 @@ public sealed partial class FilePaneView : UserControl
 
     private async void EntryList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        if (EntryList.SelectedItem is FileRowDisplay row && row.IsFolder && !row.Unavailable)
+        await OpenSelectedAsync();
+    }
+
+    private async void EntryList_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case VirtualKey.Enter:
+                e.Handled = true;
+                await OpenSelectedAsync();
+                break;
+            case VirtualKey.F2:
+                e.Handled = true;
+                await RenameSelectedAsync();
+                break;
+            case VirtualKey.Delete:
+                e.Handled = true;
+                await SendSelectedToRecycleBinAsync();
+                break;
+        }
+    }
+
+    private async Task OpenSelectedAsync()
+    {
+        if (EntryList.SelectedItem is not FileRowDisplay row || row.Unavailable)
+            return;
+
+        if (row.IsFolder)
+        {
             await NavigateAsync(row.FullPath);
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(row.FullPath) { UseShellExecute = true });
+            SetStatus(_isSpanish ? "Archivo abierto con la aplicación predeterminada." : "Opened with the default application.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus((_isSpanish ? "No se pudo abrir el archivo: " : "Could not open the file: ") + ex.Message);
+        }
+    }
+
+    private async void NewFolder_Click(object sender, RoutedEventArgs e) => await CreateFolderAsync();
+
+    private async Task CreateFolderAsync()
+    {
+        var name = await PromptForNameAsync(
+            _isSpanish ? "Crear carpeta" : "Create folder",
+            _isSpanish ? "Nombre de la carpeta" : "Folder name",
+            string.Empty,
+            _isSpanish ? "Crear" : "Create");
+        if (name is null)
+            return;
+
+        if (!TryGetSafeLeafName(name, out var validationMessage))
+        {
+            SetStatus(validationMessage);
+            return;
+        }
+
+        var targetPath = Path.Combine(_currentPath, name);
+        try
+        {
+            if (File.Exists(targetPath) || Directory.Exists(targetPath))
+            {
+                SetStatus(_isSpanish ? "Ya existe un elemento con ese nombre." : "An item with that name already exists.");
+                return;
+            }
+
+            Directory.CreateDirectory(targetPath);
+            await RefreshCurrentPathAsync();
+            SetStatus(_isSpanish ? "Carpeta creada." : "Folder created.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus((_isSpanish ? "No se pudo crear la carpeta: " : "Could not create the folder: ") + ex.Message);
+        }
+    }
+
+    private async void Rename_Click(object sender, RoutedEventArgs e) => await RenameSelectedAsync();
+
+    private async Task RenameSelectedAsync()
+    {
+        var selected = SelectedPaths;
+        if (selected.Count != 1)
+            return;
+
+        var sourcePath = selected[0];
+        var currentName = Path.GetFileName(Path.TrimEndingDirectorySeparator(sourcePath));
+        var newName = await PromptForNameAsync(
+            _isSpanish ? "Renombrar elemento" : "Rename item",
+            _isSpanish ? "Nuevo nombre" : "New name",
+            currentName,
+            _isSpanish ? "Renombrar" : "Rename");
+        if (newName is null || string.Equals(currentName, newName, StringComparison.Ordinal))
+            return;
+
+        if (!TryGetSafeLeafName(newName, out var validationMessage))
+        {
+            SetStatus(validationMessage);
+            return;
+        }
+
+        var parentPath = Path.GetDirectoryName(sourcePath);
+        if (string.IsNullOrEmpty(parentPath))
+            return;
+
+        var destinationPath = Path.Combine(parentPath, newName);
+        try
+        {
+            if (File.Exists(destinationPath) || Directory.Exists(destinationPath))
+            {
+                SetStatus(_isSpanish ? "Ya existe un elemento con ese nombre." : "An item with that name already exists.");
+                return;
+            }
+
+            if (Directory.Exists(sourcePath))
+                Directory.Move(sourcePath, destinationPath);
+            else
+                File.Move(sourcePath, destinationPath);
+
+            await RefreshCurrentPathAsync();
+            SetStatus(_isSpanish ? "Elemento renombrado." : "Item renamed.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus((_isSpanish ? "No se pudo renombrar: " : "Could not rename: ") + ex.Message);
+        }
+    }
+
+    private async void Delete_Click(object sender, RoutedEventArgs e) => await SendSelectedToRecycleBinAsync();
+
+    private async Task SendSelectedToRecycleBinAsync()
+    {
+        var selected = SelectedPaths;
+        if (selected.Count == 0)
+            return;
+
+        var preview = string.Join(Environment.NewLine, selected.Take(6).Select(Path.GetFileName));
+        if (selected.Count > 6)
+            preview += Environment.NewLine + (_isSpanish ? $"y {selected.Count - 6} más…" : $"and {selected.Count - 6} more…");
+
+        var confirmation = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = _isSpanish ? "Enviar a la Papelera de reciclaje" : "Move to Recycle Bin",
+            Content = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = _isSpanish
+                            ? $"Se moverán {selected.Count} elemento(s) a la Papelera de reciclaje. Podrás restaurarlos desde allí."
+                            : $"{selected.Count} item(s) will be moved to the Recycle Bin, where you can restore them.",
+                        TextWrapping = TextWrapping.Wrap,
+                    },
+                    new TextBlock { Text = preview, TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(Microsoft.UI.Colors.DarkGray) },
+                },
+            },
+            PrimaryButtonText = _isSpanish ? "Enviar a la Papelera" : "Move to Recycle Bin",
+            CloseButtonText = _isSpanish ? "Cancelar" : "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        if (await confirmation.ShowAsync() != ContentDialogResult.Primary)
+            return;
+
+        var succeeded = 0;
+        var failures = new List<string>();
+        foreach (var path in selected)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                    FileSystem.DeleteDirectory(path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+                else if (File.Exists(path))
+                    FileSystem.DeleteFile(path, UIOption.OnlyErrorDialogs, RecycleOption.SendToRecycleBin);
+                else
+                {
+                    failures.Add($"{Path.GetFileName(path)}: " + (_isSpanish ? "ya no existe" : "no longer exists"));
+                    continue;
+                }
+                succeeded++;
+            }
+            catch (Exception ex)
+            {
+                failures.Add($"{Path.GetFileName(path)}: {ex.Message}");
+            }
+        }
+
+        await RefreshCurrentPathAsync();
+        if (failures.Count == 0)
+        {
+            SetStatus(_isSpanish
+                ? $"{succeeded} elemento(s) enviado(s) a la Papelera."
+                : $"{succeeded} item(s) moved to the Recycle Bin.");
+        }
+        else
+        {
+            SetStatus(_isSpanish
+                ? $"{succeeded} enviado(s) a la Papelera; {failures.Count} no se pudieron mover."
+                : $"{succeeded} moved to the Recycle Bin; {failures.Count} could not be moved.");
+        }
+    }
+
+    private async Task<string?> PromptForNameAsync(string title, string label, string initialValue, string primaryAction)
+    {
+        var textBox = new TextBox { Text = initialValue, PlaceholderText = label };
+        TextInputContextMenu.Attach(textBox, () => _isSpanish);
+        textBox.Loaded += (_, _) =>
+        {
+            textBox.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+            textBox.SelectAll();
+        };
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = XamlRoot,
+            Title = title,
+            Content = textBox,
+            PrimaryButtonText = primaryAction,
+            CloseButtonText = _isSpanish ? "Cancelar" : "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+        };
+
+        return await dialog.ShowAsync() == ContentDialogResult.Primary ? textBox.Text : null;
+    }
+
+    private bool TryGetSafeLeafName(string name, out string error)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name is "." or ".." ||
+            name.EndsWith(' ') || name.EndsWith('.') ||
+            name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
+            !string.Equals(Path.GetFileName(name), name, StringComparison.Ordinal))
+        {
+            error = _isSpanish ? "Escribe un nombre de archivo o carpeta válido." : "Enter a valid file or folder name.";
+            return false;
+        }
+
+        var deviceName = name.Split('.')[0];
+        var isReservedDeviceName = deviceName.Equals("CON", StringComparison.OrdinalIgnoreCase) ||
+            deviceName.Equals("PRN", StringComparison.OrdinalIgnoreCase) ||
+            deviceName.Equals("AUX", StringComparison.OrdinalIgnoreCase) ||
+            deviceName.Equals("NUL", StringComparison.OrdinalIgnoreCase) ||
+            (deviceName.Length == 4 &&
+             (deviceName.StartsWith("COM", StringComparison.OrdinalIgnoreCase) ||
+              deviceName.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)) &&
+             deviceName[3] is >= '1' and <= '9');
+        if (isReservedDeviceName)
+        {
+            error = _isSpanish ? "Ese nombre está reservado por Windows." : "That name is reserved by Windows.";
+            return false;
+        }
+
+        error = string.Empty;
+        return true;
     }
 
     private void EntryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
