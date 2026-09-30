@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.System;
+using Windows.Foundation;
 
 namespace CyberFiles.WinUIPrototype;
 
@@ -37,22 +38,6 @@ public sealed partial class FilePaneView : UserControl
     private int _folderCount;
     private int _unclassifiedCount;
     private int _viewGeneration;
-    private bool _wheelFallbackPending;
-    private double _wheelFallbackStartOffset;
-    private int _wheelFallbackDelta;
-    private ScrollViewer? _wheelFallbackScrollViewer;
-
-    private const uint SpiGetWheelScrollLines = 0x0068;
-    private const uint WheelDeltaPerNotch = 120;
-    private const double FileRowScrollPitch = 38;
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool SystemParametersInfo(
-        uint uiAction,
-        uint uiParam,
-        out uint pvParam,
-        uint fWinIni);
 
     public event EventHandler? PaneActivated;
     public event EventHandler? SelectionUpdated;
@@ -71,10 +56,6 @@ public sealed partial class FilePaneView : UserControl
     public FilePaneView()
     {
         InitializeComponent();
-        FileAreaGrid.AddHandler(
-            UIElement.PointerWheelChangedEvent,
-            new PointerEventHandler(FileArea_PointerWheelChanged),
-            handledEventsToo: true);
         TextInputContextMenu.Attach(PathBox, () => _isSpanish);
         TextInputContextMenu.Attach(FilterBox, () => _isSpanish);
         _uiReady = true;
@@ -525,70 +506,64 @@ public sealed partial class FilePaneView : UserControl
 
     private void ActivatePane() => PaneActivated?.Invoke(this, EventArgs.Empty);
 
-    private async void FileArea_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    public bool TryScrollWithMouseWheel(UIElement coordinateRoot, Point pointerPosition, int wheelDelta)
     {
         var scrollViewer = _listScrollViewer;
-        var wheelDelta = e.GetCurrentPoint(FileAreaGrid).Properties.MouseWheelDelta;
-        if (scrollViewer is null || wheelDelta == 0)
-            return;
+        if (scrollViewer is null || wheelDelta == 0 || !FileAreaGrid.IsLoaded)
+            return false;
 
-        // Let WinUI scroll first. If it delivers the event without moving the ListView,
-        // apply a fallback after the routed input has completed. This never sets focus.
-        e.Handled = true;
-        if (_wheelFallbackPending)
-        {
-            if (ReferenceEquals(_wheelFallbackScrollViewer, scrollViewer))
-                _wheelFallbackDelta += wheelDelta;
-            return;
-        }
-
-        _wheelFallbackPending = true;
-        _wheelFallbackScrollViewer = scrollViewer;
-        _wheelFallbackStartOffset = scrollViewer.VerticalOffset;
-        _wheelFallbackDelta = wheelDelta;
-
+        Rect fileAreaBounds;
         try
         {
-            await Task.Delay(24);
-
-            var targetScrollViewer = _wheelFallbackScrollViewer;
-            var startOffset = _wheelFallbackStartOffset;
-            var accumulatedDelta = _wheelFallbackDelta;
-            if (targetScrollViewer is null || !ReferenceEquals(targetScrollViewer, _listScrollViewer))
-                return;
-
-            // Native scrolling already handled this wheel input.
-            if (Math.Abs(targetScrollViewer.VerticalOffset - startOffset) > 0.5)
-                return;
-
-            var scrollLines = GetSystemWheelScrollLines();
-            if (scrollLines == 0)
-                return;
-
-            var step = scrollLines == uint.MaxValue
-                ? targetScrollViewer.ViewportHeight
-                : scrollLines * FileRowScrollPitch;
-            var requestedOffset = targetScrollViewer.VerticalOffset -
-                accumulatedDelta / (double)WheelDeltaPerNotch * step;
-            var maxOffset = Math.Max(0, targetScrollViewer.ExtentHeight - targetScrollViewer.ViewportHeight);
-            var clampedOffset = Math.Clamp(requestedOffset, 0, maxOffset);
-
-            if (Math.Abs(clampedOffset - targetScrollViewer.VerticalOffset) > 0.5)
-                targetScrollViewer.ChangeView(null, clampedOffset, null, disableAnimation: true);
+            fileAreaBounds = FileAreaGrid
+                .TransformToVisual(coordinateRoot)
+                .TransformBounds(new Rect(0, 0, FileAreaGrid.ActualWidth, FileAreaGrid.ActualHeight));
         }
-        finally
+        catch (InvalidOperationException)
         {
-            _wheelFallbackPending = false;
-            _wheelFallbackScrollViewer = null;
-            _wheelFallbackDelta = 0;
+            return false;
         }
+
+        if (!fileAreaBounds.Contains(pointerPosition))
+            return false;
+
+        var scrollLines = GetSystemWheelScrollLines();
+        if (scrollLines == 0)
+            return true;
+
+        const double rowScrollPitch = 38;
+        const uint wheelDeltaPerNotch = 120;
+        var step = scrollLines == uint.MaxValue
+            ? scrollViewer.ViewportHeight
+            : scrollLines * rowScrollPitch;
+        var requestedOffset = scrollViewer.VerticalOffset -
+            wheelDelta / (double)wheelDeltaPerNotch * step;
+        var maxOffset = Math.Max(0, scrollViewer.ExtentHeight - scrollViewer.ViewportHeight);
+        var clampedOffset = Math.Clamp(requestedOffset, 0, maxOffset);
+
+        if (Math.Abs(clampedOffset - scrollViewer.VerticalOffset) > 0.5)
+            scrollViewer.ChangeView(null, clampedOffset, null, disableAnimation: true);
+
+        return true;
     }
 
     private static uint GetSystemWheelScrollLines()
     {
-        return SystemParametersInfo(SpiGetWheelScrollLines, 0, out var scrollLines, 0)
-            ? scrollLines
-            : 3;
+        return NativeWheel.GetScrollLines(out var scrollLines) ? scrollLines : 3;
+    }
+
+    private static class NativeWheel
+    {
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SystemParametersInfo(
+            uint uiAction,
+            uint uiParam,
+            out uint pvParam,
+            uint fWinIni);
+
+        public static bool GetScrollLines(out uint scrollLines) =>
+            SystemParametersInfo(0x0068, 0, out scrollLines, 0);
     }
 
     private async void Open_Click(object sender, RoutedEventArgs e) => await NavigateAsync(PathBox.Text);

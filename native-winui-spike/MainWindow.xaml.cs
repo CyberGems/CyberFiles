@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
@@ -8,6 +10,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Windowing;
 using Windows.Graphics;
+using Windows.Foundation;
 using WinRT.Interop;
 
 namespace CyberFiles.WinUIPrototype;
@@ -30,6 +33,56 @@ public sealed partial class MainWindow : Window
     private bool _activityCenterPinned;
     private bool _activityCenterAutoOpened;
     private bool _activityCenterClosing;
+    private const uint WmMouseWheel = 0x020A;
+    private static readonly UIntPtr WindowSubclassId = new(1);
+    private readonly WindowSubclassProcedure _windowSubclassProcedure;
+    private IntPtr _windowHandle;
+
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    private delegate IntPtr WindowSubclassProcedure(
+        IntPtr windowHandle,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam,
+        UIntPtr subclassId,
+        UIntPtr referenceData);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("comctl32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowSubclass(
+        IntPtr windowHandle,
+        WindowSubclassProcedure callback,
+        UIntPtr subclassId,
+        UIntPtr referenceData);
+
+    [DllImport("comctl32.dll")]
+    private static extern IntPtr DefSubclassProc(
+        IntPtr windowHandle,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam);
+
+    [DllImport("comctl32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool RemoveWindowSubclass(
+        IntPtr windowHandle,
+        WindowSubclassProcedure callback,
+        UIntPtr subclassId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out NativePoint point);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ClientToScreen(IntPtr windowHandle, ref NativePoint point);
 
     public MainWindow(string initialPath)
     {
@@ -37,8 +90,13 @@ public sealed partial class MainWindow : Window
         ActivityQueueList.ItemsSource = _queueDisplayItems;
         ActivityHistoryList.ItemsSource = _historyDisplayItems;
         _activityCenterHideTimer.Tick += ActivityCenterHideTimer_Tick;
-        var windowHandle = WindowNative.GetWindowHandle(this);
-        var windowId = Win32Interop.GetWindowIdFromWindow(windowHandle);
+        _windowHandle = WindowNative.GetWindowHandle(this);
+        _windowSubclassProcedure = WindowSubclassCallback;
+        if (!SetWindowSubclass(_windowHandle, _windowSubclassProcedure, WindowSubclassId, UIntPtr.Zero))
+            Debug.WriteLine($"Could not install the mouse-wheel window hook. Win32 error: {Marshal.GetLastWin32Error()}");
+        Closed += MainWindow_Closed;
+
+        var windowId = Win32Interop.GetWindowIdFromWindow(_windowHandle);
         AppWindow.GetFromWindowId(windowId).Resize(new SizeInt32(1440, 900));
         _leftPath = initialPath;
         _rightPath = GetInitialRightPath(initialPath);
@@ -58,6 +116,46 @@ public sealed partial class MainWindow : Window
         UpdateActivePaneDisplay();
         _ = LoadPanesAsync();
     }
+
+    private IntPtr WindowSubclassCallback(
+        IntPtr windowHandle,
+        uint message,
+        UIntPtr wParam,
+        IntPtr lParam,
+        UIntPtr subclassId,
+        UIntPtr referenceData)
+    {
+        if (message == WmMouseWheel && TryGetPointerPositionInRoot(out var pointerPosition))
+        {
+            var wheelDelta = unchecked((short)((wParam.ToUInt64() >> 16) & 0xffff));
+            if (wheelDelta != 0 &&
+                (LeftPane.TryScrollWithMouseWheel(RootLayout, pointerPosition, wheelDelta) ||
+                 RightPane.TryScrollWithMouseWheel(RootLayout, pointerPosition, wheelDelta)))
+                return IntPtr.Zero;
+        }
+
+        return DefSubclassProc(windowHandle, message, wParam, lParam);
+    }
+
+    private bool TryGetPointerPositionInRoot(out Point pointerPosition)
+    {
+        pointerPosition = default;
+        var clientOrigin = new NativePoint();
+        if (!ClientToScreen(_windowHandle, ref clientOrigin) || !GetCursorPos(out var cursorPosition))
+            return false;
+
+        var scale = RootLayout.XamlRoot?.RasterizationScale ?? 1;
+        if (scale <= 0)
+            scale = 1;
+
+        pointerPosition = new Point(
+            (cursorPosition.X - clientOrigin.X) / scale,
+            (cursorPosition.Y - clientOrigin.Y) / scale);
+        return true;
+    }
+
+    private void MainWindow_Closed(object sender, WindowEventArgs e) =>
+        RemoveWindowSubclass(_windowHandle, _windowSubclassProcedure, WindowSubclassId);
 
     private async Task LoadPanesAsync()
     {
