@@ -188,6 +188,19 @@ body,
   height: 0;
 }
 
+/* Keep large alternate views cheap while preserving their grid geometry. */
+.cyberfiles-compact-item {
+  content-visibility: auto;
+  contain: layout paint style;
+  contain-intrinsic-size: 38px;
+}
+
+.cyberfiles-icon-item {
+  content-visibility: auto;
+  contain: layout paint style;
+  contain-intrinsic-size: 148px;
+}
+
 html[data-theme='light'] [data-system-home-icon='folder'] {
   color: #a16207 !important;
   background-color: rgb(250 204 21 / 16%) !important;

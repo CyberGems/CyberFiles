@@ -644,12 +644,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
     () => detailsEntries.slice(firstVirtualDetailsIndex, lastVirtualDetailsIndex),
     [detailsEntries, firstVirtualDetailsIndex, lastVirtualDetailsIndex],
   );
-  const iconCandidateItems = React.useMemo(
-    () => virtualizeDetails
-      ? renderedDetailsEntries.flatMap(entry => entry.kind === 'item' ? [entry.item] : [])
-      : files,
-    [files, renderedDetailsEntries, virtualizeDetails],
-  );
+  const iconCandidateItems = React.useMemo(() => {
+    if (virtualizeDetails) {
+      return renderedDetailsEntries.flatMap(entry => entry.kind === 'item' ? [entry.item] : []);
+    }
+    if (files.length <= DETAILS_VIRTUALIZATION_THRESHOLD) return files;
+    const columns = effectiveViewMode === 'icons' ? 5 : 3;
+    const estimatedRowHeight = effectiveViewMode === 'icons' ? 150 : 40;
+    const estimatedRow = Math.floor(detailsViewport.scrollTop / estimatedRowHeight);
+    const start = Math.max(0, estimatedRow * columns - columns * 8);
+    return files.slice(start, Math.min(files.length, start + columns * 24));
+  }, [detailsViewport.scrollTop, effectiveViewMode, files, renderedDetailsEntries, virtualizeDetails]);
   const { requests: nativeFileIconRequests, key: nativeFileIconRequestKey } = React.useMemo(() => {
     const requests: NativeFileIconRequest[] = [];
     const keyParts: string[] = [];
@@ -2132,20 +2137,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
         className={`relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto py-0.5 select-none focus:outline-none ${marqueeBounds ? 'cursor-crosshair' : ''}`}
         tabIndex={0}
         onScroll={event => {
-          if (effectiveViewMode === 'details') {
-            const viewport = event.currentTarget;
-            if (detailsScrollFrameRef.current === null) {
-              detailsScrollFrameRef.current = window.requestAnimationFrame(() => {
-                detailsScrollFrameRef.current = null;
-                flushSync(() => setDetailsViewport(previous => {
-                  const scrollTop = viewport.scrollTop;
-                  const height = viewport.clientHeight;
-                  return previous.scrollTop === scrollTop && previous.height === height
-                    ? previous
-                    : { scrollTop, height };
-                }));
+          const viewport = event.currentTarget;
+          if (detailsScrollFrameRef.current === null) {
+            detailsScrollFrameRef.current = window.requestAnimationFrame(() => {
+              detailsScrollFrameRef.current = null;
+              const updateViewport = () => setDetailsViewport(previous => {
+                const scrollTop = viewport.scrollTop;
+                const height = viewport.clientHeight;
+                return previous.scrollTop === scrollTop && previous.height === height
+                  ? previous
+                  : { scrollTop, height };
               });
-            }
+              if (effectiveViewMode === 'details') flushSync(updateViewport);
+              else updateViewport();
+            });
           }
           if (!hasMore || isLoadingDirectory || !onLoadMore) return;
           const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
@@ -2255,7 +2260,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
-                  className={`flex min-w-0 items-center gap-2 rounded border px-2 py-1.5 text-xs transition-colors ${
+                  className={`cyberfiles-compact-item flex min-w-0 items-center gap-2 rounded border px-2 py-1.5 text-xs transition-colors ${
                     isSelected
                       ? 'border-cyan-700/60 bg-cyan-950/70 text-neutral-100'
                       : 'border-transparent text-neutral-300 hover:border-neutral-800 hover:bg-neutral-800/60 hover:text-neutral-100'
@@ -2301,7 +2306,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
-                  className={`flex min-w-0 flex-col items-center justify-start gap-1.5 rounded-lg border p-2.5 text-center cursor-pointer transition-colors ${
+                  className={`cyberfiles-icon-item flex min-w-0 flex-col items-center justify-start gap-1.5 rounded-lg border p-2.5 text-center cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-600/70 text-neutral-100 shadow'
                       : 'border-neutral-800/40 bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60 hover:border-neutral-700'
