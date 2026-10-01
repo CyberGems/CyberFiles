@@ -954,7 +954,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <div
                       className={"group flex min-w-0 items-center gap-0.5 rounded " + (dragTargetQuickAccessId === item.id ? "ring-1 ring-cyan-500/60 bg-cyan-950/20 " : "") + (draggingQuickAccessId === item.id ? "opacity-50" : "")}
                       onDragOver={event => {
-                        if (quickAccessSortMode !== 'manual' || item.path === SYSTEM_HOME_PATH || !draggingQuickAccessRef.current) return;
+                        if (quickAccessSortMode !== 'manual' || item.path === SYSTEM_HOME_PATH) return;
                         event.preventDefault();
                         event.dataTransfer.dropEffect = 'move';
                         setDragTargetQuickAccessId(item.id);
