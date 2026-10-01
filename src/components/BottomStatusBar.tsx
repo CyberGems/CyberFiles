@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link2, Clock } from 'lucide-react';
+import { Clock, HardDrive, Link2, Network } from 'lucide-react';
 import { DriveInfo, FileItem, TabState, ViewLayout, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize } from '../utils/fileSystem';
 import { useLanguage } from '../locales/LanguageContext';
@@ -12,6 +12,17 @@ interface BottomStatusBarProps {
   activeFiles: FileItem[];
   drives: DriveInfo[];
   onOpenShortcuts: () => void;
+}
+
+function formatStorageSize(bytes: number, language: 'es' | 'en') {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  const unitIndex = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / (1024 ** unitIndex);
+  const maximumFractionDigits = unitIndex >= 4 ? 2 : value >= 100 ? 0 : 1;
+  return `${new Intl.NumberFormat(language === 'es' ? 'es-CR' : 'en-US', {
+    maximumFractionDigits,
+  }).format(value)} ${units[unitIndex]}`;
 }
 
 export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
@@ -68,18 +79,34 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
   const folderTotalBytes = fileItems.reduce((acc, f) => acc + (f.size || 0), 0);
 
   // Active drive information (e.g. C:)
-  const driveLetter = (currentPath.slice(0, 2) || 'C:').toUpperCase();
-  const currentDrive = isSystemHome ? undefined : drives.find(d => d.letter.toUpperCase() === driveLetter) || drives[0];
-
-  const totalDriveGB = currentDrive ? (currentDrive.totalBytes / (1024 ** 3)).toFixed(0) : '447';
-  const usedDriveGB = currentDrive ? (currentDrive.usedBytes / (1024 ** 3)).toFixed(0) : '413';
-  const freeDriveGB = currentDrive 
-    ? ((currentDrive.totalBytes - currentDrive.usedBytes) / (1024 ** 3)).toFixed(1).replace('.', ',') 
-    : '33,6';
+  const driveLetter = currentPath.match(/^[a-zA-Z]:/)?.[0]?.toUpperCase() ?? '';
+  const currentDrive = isSystemHome || !driveLetter
+    ? undefined
+    : drives.find(drive => drive.letter.toUpperCase() === driveLetter);
+  const capacityDrive = currentDrive && currentDrive.totalBytes > 0 ? currentDrive : null;
+  const freeDriveBytes = capacityDrive ? Math.max(0, capacityDrive.totalBytes - capacityDrive.usedBytes) : 0;
   const driveUsedPct = currentDrive?.totalBytes
-    ? Math.round((currentDrive.usedBytes / currentDrive.totalBytes) * 100) 
+    ? Math.min(100, Math.max(0, Math.round((currentDrive.usedBytes / currentDrive.totalBytes) * 100)))
     : 0;
-  const capacityDrive = currentDrive && currentDrive.totalBytes > 0 && !isSystemHome ? currentDrive : null;
+  const driveUsageColor = driveUsedPct >= 90
+    ? 'bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.6)]'
+    : driveUsedPct >= 75
+      ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.5)]'
+      : 'bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.45)]';
+  const driveUsageTextColor = driveUsedPct >= 90
+    ? 'text-rose-300'
+    : driveUsedPct >= 75
+      ? 'text-amber-300'
+      : 'text-cyan-300';
+
+  const nonNetworkDrives = drives.filter(drive => drive.type !== 'network');
+  const networkDrives = drives.filter(drive => drive.type === 'network');
+  const localCapacityDrives = nonNetworkDrives.filter(drive => drive.totalBytes > 0);
+  const localTotalBytes = localCapacityDrives.reduce((total, drive) => total + drive.totalBytes, 0);
+  const localUsedBytes = localCapacityDrives.reduce((total, drive) => total + Math.min(drive.usedBytes, drive.totalBytes), 0);
+  const localFreeBytes = Math.max(0, localTotalBytes - localUsedBytes);
+  const localUsedPct = localTotalBytes > 0 ? Math.round((localUsedBytes / localTotalBytes) * 100) : 0;
+  const localUsageColor = localUsedPct >= 90 ? 'bg-rose-500' : localUsedPct >= 75 ? 'bg-amber-400' : 'bg-cyan-400';
 
   if (!currentPath) {
     return (
@@ -112,35 +139,102 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
           </Tooltip>
         )}
 
-        {/* 1. Files: X/Y */}
-        <Tooltip label={language === 'es' ? `Archivos: ${selectedFileItems.length} seleccionados de ${fileItems.length} totales` : `Files: ${selectedFileItems.length} selected out of ${fileItems.length}`} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-400 font-bold">{language === 'es' ? 'Archivos:' : 'Files:'}</span><span className="text-yellow-300 font-bold">{selectedFileItems.length}/{fileItems.length}</span></div></Tooltip>
+        {isSystemHome ? (
+          <>
+            <Tooltip label={t.statusBar.drivesCount.replace('{count}', String(nonNetworkDrives.length))} placement="top">
+              <div className="flex items-center gap-1.5 border border-neutral-800 bg-neutral-950 px-2 py-0.5 text-[10px] whitespace-nowrap">
+                <HardDrive className="h-3 w-3 text-cyan-400" />
+                <span className="font-semibold text-neutral-200">{t.statusBar.drivesCount.replace('{count}', String(nonNetworkDrives.length))}</span>
+              </div>
+            </Tooltip>
+            <Tooltip label={t.statusBar.networkLocationsCount.replace('{count}', String(networkDrives.length))} placement="top">
+              <div className="flex items-center gap-1.5 border border-neutral-800 bg-neutral-950 px-2 py-0.5 text-[10px] whitespace-nowrap">
+                <Network className="h-3 w-3 text-violet-300" />
+                <span className="font-semibold text-neutral-200">{t.statusBar.networkLocationsCount.replace('{count}', String(networkDrives.length))}</span>
+              </div>
+            </Tooltip>
+            {localTotalBytes > 0 && (
+              <Tooltip
+                label={t.statusBar.localStorageFree
+                  .replace('{free}', formatStorageSize(localFreeBytes, language))
+                  .replace('{total}', formatStorageSize(localTotalBytes, language))}
+                placement="top"
+              >
+                <div className="hidden items-center gap-2 border border-neutral-700 bg-neutral-900/90 px-2 py-0.5 text-[10px] whitespace-nowrap sm:flex">
+                  <div
+                    role="progressbar"
+                    aria-label={t.statusBar.localStorageUsage.replace('{used}', String(localUsedPct))}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={localUsedPct}
+                    className="h-1.5 w-16 overflow-hidden rounded-full bg-neutral-700"
+                  >
+                    <div className={`h-full rounded-full ${localUsageColor}`} style={{ width: `${localUsedPct}%` }} />
+                  </div>
+                  <span className="font-semibold text-neutral-200">
+                    {t.statusBar.localStorageFree
+                      .replace('{free}', formatStorageSize(localFreeBytes, language))
+                      .replace('{total}', formatStorageSize(localTotalBytes, language))}
+                  </span>
+                </div>
+              </Tooltip>
+            )}
+          </>
+        ) : (
+          <>
+            <Tooltip label={language === 'es' ? `Archivos: ${selectedFileItems.length} seleccionados de ${fileItems.length} totales` : `Files: ${selectedFileItems.length} selected out of ${fileItems.length}`} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-400 font-bold">{language === 'es' ? 'Archivos:' : 'Files:'}</span><span className="text-yellow-300 font-bold">{selectedFileItems.length}/{fileItems.length}</span></div></Tooltip>
 
-        {/* 2. Folders: X/Y */}
-        <Tooltip label={language === 'es' ? `Carpetas: ${selectedFolderItems.length} seleccionadas de ${folderItems.length} totales` : `Folders: ${selectedFolderItems.length} selected out of ${folderItems.length}`} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-400 font-bold">{language === 'es' ? 'Carpetas:' : 'Folders:'}</span><span className="text-yellow-300 font-bold">{selectedFolderItems.length}/{folderItems.length}</span></div></Tooltip>
+            <Tooltip label={language === 'es' ? `Carpetas: ${selectedFolderItems.length} seleccionadas de ${folderItems.length} totales` : `Folders: ${selectedFolderItems.length} selected out of ${folderItems.length}`} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-400 font-bold">{language === 'es' ? 'Carpetas:' : 'Folders:'}</span><span className="text-yellow-300 font-bold">{selectedFolderItems.length}/{folderItems.length}</span></div></Tooltip>
 
-        {/* 3. Total: N */}
-        <Tooltip label={language === 'es' ? `Total de objetos en esta carpeta: ${activeFiles.length}` : `Total items in this folder: ${activeFiles.length}`} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-400 font-bold">Total:</span><span className="text-yellow-300 font-bold">{activeFiles.length}</span></div></Tooltip>
+            <Tooltip label={language === 'es' ? `Total de objetos en esta carpeta: ${activeFiles.length}` : `Total items in this folder: ${activeFiles.length}`} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-400 font-bold">Total:</span><span className="text-yellow-300 font-bold">{activeFiles.length}</span></div></Tooltip>
 
-        {/* 4. Bytes of Total (e.g., 0 bytes of 174 KB) */}
-        <Tooltip label={language === 'es' ? `Tamaño seleccionado: ${formatFileSize(selectedTotalBytes)} de ${formatFileSize(folderTotalBytes)} total` : `Selected size: ${formatFileSize(selectedTotalBytes)} out of ${formatFileSize(folderTotalBytes)}`} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-300 font-bold">{formatFileSize(selectedTotalBytes)} {language === 'es' ? 'de' : 'of'} {formatFileSize(folderTotalBytes)}</span></div></Tooltip>
+            <Tooltip label={language === 'es' ? `Tamaño seleccionado: ${formatFileSize(selectedTotalBytes)} de ${formatFileSize(folderTotalBytes)} total` : `Selected size: ${formatFileSize(selectedTotalBytes)} out of ${formatFileSize(folderTotalBytes)}`} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-300 font-bold">{formatFileSize(selectedTotalBytes)} {language === 'es' ? 'de' : 'of'} {formatFileSize(folderTotalBytes)}</span></div></Tooltip>
 
-        {/* 5. Drive space percentage used pill (e.g. 93% used, 33,6 GB free) */}
-        {capacityDrive && <Tooltip label={language === 'es' ? `Espacio en unidad ${capacityDrive.letter}: ${driveUsedPct}% ocupado, ${freeDriveGB} GB libres` : `Drive ${capacityDrive.letter}: ${driveUsedPct}% used, ${freeDriveGB} GB free`} placement="top"><div className="hidden sm:flex items-center gap-1 px-2 py-0.5 bg-neutral-800/90 text-neutral-200 border border-neutral-700 text-[10px] whitespace-nowrap font-medium"><span className="text-neutral-100 font-bold">{driveUsedPct}% {language === 'es' ? 'usado,' : 'used,'}</span><span className="text-neutral-300">{freeDriveGB} GB {language === 'es' ? 'libres' : 'free'}</span></div></Tooltip>}
+            {capacityDrive && (
+              <Tooltip
+                label={t.statusBar.driveUsage
+                  .replace('{drive}', capacityDrive.letter)
+                  .replace('{used}', String(driveUsedPct))
+                  .replace('{free}', formatStorageSize(freeDriveBytes, language))
+                  .replace('{total}', formatStorageSize(capacityDrive.totalBytes, language))}
+                placement="top"
+              >
+                <div className="hidden items-center gap-1.5 border border-neutral-700 bg-neutral-900/90 px-2 py-0.5 text-[10px] font-medium whitespace-nowrap sm:flex">
+                  <span className="font-bold text-yellow-400">({capacityDrive.letter})</span>
+                  <div
+                    role="progressbar"
+                    aria-label={t.statusBar.driveUsage
+                      .replace('{drive}', capacityDrive.letter)
+                      .replace('{used}', String(driveUsedPct))
+                      .replace('{free}', formatStorageSize(freeDriveBytes, language))
+                      .replace('{total}', formatStorageSize(capacityDrive.totalBytes, language))}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={driveUsedPct}
+                    className="h-1.5 w-16 overflow-hidden rounded-full bg-neutral-700"
+                  >
+                    <div className={`h-full rounded-full ${driveUsageColor}`} style={{ width: `${driveUsedPct}%` }} />
+                  </div>
+                  <span className={`font-bold ${driveUsageTextColor}`}>{driveUsedPct}%</span>
+                  <span className="text-neutral-300">{formatStorageSize(freeDriveBytes, language)} {language === 'es' ? 'libres' : 'free'}</span>
+                </div>
+              </Tooltip>
+            )}
 
-        {/* 6. Drive Total & Used (e.g., (C:) Total: 447 GB  Used: 413 GB) */}
-        {capacityDrive && <Tooltip label={language === 'es' ? `Capacidad de disco ${capacityDrive.letter}: ${totalDriveGB} GB total, ${usedDriveGB} GB ocupados` : `Drive ${capacityDrive.letter}: ${totalDriveGB} GB total, ${usedDriveGB} GB used`} placement="top"><div className="hidden md:flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap">
-          <span className="text-yellow-400 font-bold">({capacityDrive.letter})</span>
-          <span className="text-neutral-400">{language === 'es' ? 'Total:' : 'Total:'}</span>
-          <span className="text-yellow-300 font-bold">{totalDriveGB} GB</span>
-          <span className="text-neutral-400 ml-1">{language === 'es' ? 'Usado:' : 'Used:'}</span>
-          <span className="text-yellow-300 font-bold">{usedDriveGB} GB</span>
-        </div></Tooltip>}
+            {capacityDrive && <Tooltip label={language === 'es' ? `Capacidad de disco ${capacityDrive.letter}: ${formatStorageSize(capacityDrive.totalBytes, language)} total, ${formatStorageSize(capacityDrive.usedBytes, language)} ocupados` : `Drive ${capacityDrive.letter}: ${formatStorageSize(capacityDrive.totalBytes, language)} total, ${formatStorageSize(capacityDrive.usedBytes, language)} used`} placement="top"><div className="hidden md:flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap">
+              <span className="text-neutral-400">Total:</span>
+              <span className="text-yellow-300 font-bold">{formatStorageSize(capacityDrive.totalBytes, language)}</span>
+              <span className="text-neutral-400 ml-1">{language === 'es' ? 'Usado:' : 'Used:'}</span>
+              <span className="text-yellow-300 font-bold">{formatStorageSize(capacityDrive.usedBytes, language)}</span>
+            </div></Tooltip>}
+          </>
+        )}
       </div>
 
       {/* Right section: Path length information, Clock & System indicators */}
       <div className="flex items-center gap-2 flex-shrink-0">
         {/* Path length & MAX_PATH monitor (Windows NTFS 260 limit) */}
-        <Tooltip label={language === 'es' ? `Ruta actual: ${displayPath}. Longitud: ${pathLength} caracteres. Límite estándar de Windows: ${MAX_PATH_WINDOWS}.` : `Current path: ${displayPath}. Length: ${pathLength} characters. Standard Windows limit: ${MAX_PATH_WINDOWS}.`} placement="top"><div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors text-[10px] ${
+        {!isSystemHome && <Tooltip label={language === 'es' ? `Ruta actual: ${displayPath}. Longitud: ${pathLength} caracteres. Límite estándar de Windows: ${MAX_PATH_WINDOWS}.` : `Current path: ${displayPath}. Length: ${pathLength} characters. Standard Windows limit: ${MAX_PATH_WINDOWS}.`} placement="top"><div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors text-[10px] ${
             isExceedingMaxPath
               ? 'bg-rose-950/80 border-rose-700/80 text-rose-300 font-bold animate-pulse'
               : isNearMaxPath
@@ -152,7 +246,7 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
           <span className="text-neutral-400 hidden xl:inline">{language === 'es' ? 'Ruta:' : 'Path:'}</span>
           <span className="font-bold text-neutral-100">{pathLength}</span>
           <span className="text-neutral-500 text-[9px]">/ {MAX_PATH_WINDOWS} ch</span>
-        </div></Tooltip>
+        </div></Tooltip>}
 
         {/* Live clock */}
         <div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-neutral-300 text-[10px] whitespace-nowrap">
