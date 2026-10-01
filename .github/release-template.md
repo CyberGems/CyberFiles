@@ -12,6 +12,8 @@
 
 ### Key features
 
+- **Large-folder browsing:** additional directory items load automatically as you scroll, while full folder counts remain available.
+
 - **Flexible navigation:** dual vertical, dual horizontal, and single-pane layouts with independent tabs and history.
 - **File management:** copy, move, rename, create folders, and send selected items to the Windows Recycle Bin. Queued operations show progress and can be paused or canceled.
 - **Archive tools:** preview ZIP and RAR contents, extract password-protected archives, and create ZIP files.
@@ -21,6 +23,7 @@
 - **Personal Quick Access:** pin folders from the sidebar or their context menu, rename and remove shortcuts, sort A–Z or Z–A, or arrange them manually by drag and drop.
 - **Recent-item cues:** files and folders changed in the last 24 hours receive a subtle amber accent, with details available in their tooltips.
 - **Customizable workspace:** details, compact, and icon views; adjustable columns; three themes; English and Spanish UI.
+- **Informative status bar:** graphical drive usage and clearer details for local storage, selection, paths, and date and time.
 - **System integration:** Windows-associated file icons, tray controls, and a configurable global shortcut.
 
 ### Windows download

@@ -15,6 +15,7 @@ Download the Windows installer and release notes from the [GitHub Releases page]
 ## Features
 
 - Browse real Windows drives and common user folders from a unified This PC view.
+- Browse large directories with additional items loaded automatically as you scroll, while folder totals remain accurate.
 - Use dual vertical, dual horizontal, or single-pane layouts, with independent tabs and navigation history.
 - Switch between details, compact, and icon-grid views. Resize details columns and optionally keep the current view style while navigating.
 - Preview common text, Markdown, HTML, and image files, plus the contents of ZIP and RAR archives.
@@ -26,6 +27,7 @@ Download the Windows installer and release notes from the [GitHub Releases page]
 - Open the command palette with Ctrl+K to find commands and navigate to locations.
 - View file icons from their Windows-associated applications, and calculate folder sizes by hovering over the folder name.
 - Choose CyberFiles, grayscale, or light appearance, and English or Spanish UI language.
+- Review drive capacity, folder selection, path length, and localized date and time details from the status bar.
 - Use the system tray and configurable global shortcut. Window size, position, and maximized state are restored on the next launch.
 
 ## Development
