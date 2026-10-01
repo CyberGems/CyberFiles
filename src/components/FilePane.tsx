@@ -43,6 +43,7 @@ import { listen } from '@tauri-apps/api/event';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip, TooltipPreferenceContext } from './Tooltip';
 import {
+  DEFAULT_FILE_COLUMN_LAYOUT,
   DEFAULT_FILE_COLUMN_WIDTHS,
   FILE_COLUMN_LAYOUT_STORAGE_KEY,
   FILE_COLUMN_WIDTHS_STORAGE_KEY,
@@ -967,10 +968,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, [columnMenuPosition]);
 
   useEffect(() => {
-    if (previousPathRef.current === tab.currentPath) return;
-    previousPathRef.current = tab.currentPath;
+    if (previousPathRef.current !== tab.currentPath) {
+      previousPathRef.current = tab.currentPath;
+    }
     if (!styleLocked) setColumnWidths(DEFAULT_FILE_COLUMN_WIDTHS);
   }, [tab.currentPath, styleLocked]);
+
+  useEffect(() => {
+    if (!styleLocked) setColumnLayout(DEFAULT_FILE_COLUMN_LAYOUT);
+  }, [styleLocked]);
 
   const startColumnResize = (column: ResizableColumn, event: React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();

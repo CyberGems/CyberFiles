@@ -805,7 +805,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 aria-current={currentPath === RECYCLE_BIN_PATH ? 'page' : undefined}
                 className={"flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 " + (currentPath === RECYCLE_BIN_PATH ? "bg-neutral-800/90 text-cyan-300 font-medium" : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100")}
               >
-                <Trash2 className={"h-4 w-4 flex-shrink-0 " + (currentPath === RECYCLE_BIN_PATH ? "text-cyan-300" : canEmptyRecycleBin ? "text-rose-300" : "text-neutral-500")} />
+                <Trash2 className={"h-4 w-4 flex-shrink-0 " + (currentPath === RECYCLE_BIN_PATH ? "text-cyan-300" : "text-neutral-500")} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[11px]">{t.sidebar.recycleBinTitle}</span>
                   <span className="block truncate text-[9px] text-neutral-500">{recycleBinStateLabel}</span>

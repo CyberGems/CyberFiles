@@ -861,6 +861,33 @@ export default function App() {
   ]);
   const [activeRightTabIndex, setActiveRightTabIndex] = useState(initialSessionSnapshot?.activeRightTabIndex ?? 0);
 
+  const resetTabsToDefaultFolderStyle = useCallback((tabs: TabState[]) => tabs.map(tab => {
+    const defaultStyle = styleForPath(tab.currentPath, DEFAULT_FOLDER_STYLE);
+    return {
+      ...tab,
+      ...defaultStyle,
+      folderStyle: { ...DEFAULT_FOLDER_STYLE },
+    };
+  }), []);
+
+  const handleFolderStyleLockChange = useCallback((enabled: boolean) => {
+    if (!enabled) {
+      setLeftTabs(resetTabsToDefaultFolderStyle);
+      setRightTabs(resetTabsToDefaultFolderStyle);
+    }
+    setFolderStyleLocked(enabled);
+  }, [resetTabsToDefaultFolderStyle]);
+
+  const toggleFolderStyleLock = useCallback(() => {
+    handleFolderStyleLockChange(!folderStyleLocked);
+  }, [folderStyleLocked, handleFolderStyleLockChange]);
+
+  useEffect(() => {
+    if (folderStyleLocked) return;
+    setLeftTabs(resetTabsToDefaultFolderStyle);
+    setRightTabs(resetTabsToDefaultFolderStyle);
+  }, [folderStyleLocked, resetTabsToDefaultFolderStyle]);
+
   useEffect(() => {
     const recycleBinOpen = [...leftTabs, ...rightTabs].some(tab => tab.currentPath === RECYCLE_BIN_PATH);
     if (recycleBinOpen && !recycleBinLoaded.current) void refreshRecycleBinContents();
@@ -4547,7 +4574,7 @@ export default function App() {
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
-                  onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
+                  onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('left')}
                   tab={leftTabs[activeLeftTabIndex]}
                   tabs={leftTabs}
@@ -4603,7 +4630,7 @@ export default function App() {
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
-                  onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
+                  onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('right')}
                   tab={rightTabs[activeRightTabIndex]}
                   tabs={rightTabs}
@@ -4660,7 +4687,7 @@ export default function App() {
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
-                  onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
+                  onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('left')}
                   tab={leftTabs[activeLeftTabIndex]}
                   tabs={leftTabs}
@@ -4712,7 +4739,7 @@ export default function App() {
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
-                  onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
+                  onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('right')}
                   tab={rightTabs[activeRightTabIndex]}
                   tabs={rightTabs}
@@ -4769,7 +4796,7 @@ export default function App() {
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
-                onStyleLockToggle={() => setFolderStyleLocked(value => !value)}
+                onStyleLockToggle={toggleFolderStyleLock}
                 onActivate={() => {}}
                 tab={currentTab}
                 tabs={activeTabs}
@@ -5079,7 +5106,7 @@ export default function App() {
             emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
             onEmptyAreaDoubleClickNavigatesUpChange={setEmptyAreaDoubleClickNavigatesUp}
             folderStyleLocked={folderStyleLocked}
-            onFolderStyleLockedChange={setFolderStyleLocked}
+            onFolderStyleLockedChange={handleFolderStyleLockChange}
             recentItemStyle={recentItemStyle}
             onRecentItemStyleChange={setRecentItemStyle}
             onRecentItemStyleReset={() => setRecentItemStyle({ ...DEFAULT_RECENT_ITEM_STYLE, enabled: recentItemStyle.enabled })}

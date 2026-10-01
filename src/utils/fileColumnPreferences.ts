@@ -19,7 +19,7 @@ export const DEFAULT_FILE_COLUMN_WIDTHS: FileColumnWidthsSnapshot = {
 };
 
 const COLUMNS: FileColumnId[] = ['extension', 'name', 'type', 'size', 'created', 'modified'];
-const DEFAULT_COLUMN_LAYOUT: FileColumnLayoutSnapshot = {
+export const DEFAULT_FILE_COLUMN_LAYOUT: FileColumnLayoutSnapshot = {
   order: COLUMNS,
   visible: ['name', 'type', 'size', 'created', 'modified'],
 };
@@ -27,20 +27,20 @@ const DEFAULT_COLUMN_LAYOUT: FileColumnLayoutSnapshot = {
 function readLayout(paneId: WorkspacePaneId): FileColumnLayoutSnapshot {
   try {
     const saved = JSON.parse(window.localStorage.getItem(`${FILE_COLUMN_LAYOUT_STORAGE_KEY}_${paneId}`) || 'null');
-    if (!saved || typeof saved !== 'object') return DEFAULT_COLUMN_LAYOUT;
+    if (!saved || typeof saved !== 'object') return DEFAULT_FILE_COLUMN_LAYOUT;
     const savedHadTypeColumn = Array.isArray(saved.order) && saved.order.includes('type');
     const order: FileColumnId[] = Array.isArray(saved.order)
       ? COLUMNS.filter(column => saved.order.includes(column))
-      : [...DEFAULT_COLUMN_LAYOUT.order];
+      : [...DEFAULT_FILE_COLUMN_LAYOUT.order];
     COLUMNS.forEach(column => {
       if (!order.includes(column)) order.push(column);
     });
     const visible = Array.isArray(saved.visible)
       ? order.filter(column => saved.visible.includes(column) || (column === 'type' && !savedHadTypeColumn))
-      : DEFAULT_COLUMN_LAYOUT.visible;
+      : DEFAULT_FILE_COLUMN_LAYOUT.visible;
     return { order, visible: visible.length > 0 ? visible : ['name'] };
   } catch {
-    return DEFAULT_COLUMN_LAYOUT;
+    return DEFAULT_FILE_COLUMN_LAYOUT;
   }
 }
 
