@@ -47,6 +47,11 @@ html[data-theme='light'] select option {
   transition: opacity 140ms ease-out;
 }
 
+.cyberfiles-onboarding-shell {
+  height: min(760px, calc(100vh - 32px));
+  max-height: calc(100vh - 32px);
+}
+
 #root.cyberfiles-ready {
   opacity: 1;
 }

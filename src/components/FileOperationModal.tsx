@@ -28,6 +28,7 @@ export interface TransferOperationView extends NativeTransferProgress {
 
 interface FileOperationModalProps {
   operations: TransferOperationView[];
+  hidden?: boolean;
   language: 'en' | 'es';
   onTogglePause: (jobId: string) => void;
   onCancel: (jobId: string) => void;
@@ -86,7 +87,7 @@ function sourceLabel(operation: TransferOperationView, language: 'en' | 'es'): s
     : (language === 'es' ? `${operation.sourcePaths.length} elementos seleccionados` : `${operation.sourcePaths.length} selected items`);
 }
 
-export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operations, language, onTogglePause, onCancel, onSubmitPassword, onClearHistory }) => {
+export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operations, hidden = false, language, onTogglePause, onCancel, onSubmitPassword, onClearHistory }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -152,6 +153,8 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
       lastSample.current = { time: Date.now(), bytes: activeOperation.bytesCopied };
     }
   }, [activeOperation?.status, activeOperation?.bytesCopied]);
+
+  if (hidden) return null;
 
   if (operations.length === 0 && !isExpanded) {
     return createPortal(

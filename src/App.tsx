@@ -4949,7 +4949,7 @@ export default function App() {
         />
       )}
       {pendingZipCreation && <CreateZipModal key={pendingZipCreation.targetPath + ':' + pendingZipCreation.sourcePaths.join('|')} defaultName={pendingZipCreation.defaultName} itemCount={pendingZipCreation.sourcePaths.length} targetPath={pendingZipCreation.targetPath} onClose={() => setPendingZipCreation(null)} onChooseTarget={async () => { try { return await chooseNativeFolder(t.contextMenu.chooseTargetFolder); } catch (error) { showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))); return null; } }} onSubmit={handleCreateZip} />}
-      <FileOperationModal operations={transferOperations} language={language} onTogglePause={jobId => { void toggleTransferPause(jobId); }} onCancel={jobId => { void cancelTransfer(jobId); }} onSubmitPassword={submitArchivePassword} onClearHistory={clearTransferHistory} />
+      <FileOperationModal hidden={isOnboardingOpen} operations={transferOperations} language={language} onTogglePause={jobId => { void toggleTransferPause(jobId); }} onCancel={jobId => { void cancelTransfer(jobId); }} onSubmitPassword={submitArchivePassword} onClearHistory={clearTransferHistory} />
       <TextInputContextMenu />
 
       <WorkspaceManagerModal

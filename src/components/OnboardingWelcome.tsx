@@ -1,9 +1,9 @@
-import { Check, FolderSync, Monitor, Palette, Sparkles, X } from 'lucide-react';
+import { Check, FolderSync, Monitor, Palette, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLanguage } from '../locales/LanguageContext';
 import { type AppTheme, useTheme } from '../themes/ThemeContext';
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile } from '../utils/workspaceProfiles';
-import { Tooltip } from './Tooltip';
+
 
 interface OnboardingWelcomeProps {
   isOpen: boolean;
@@ -112,12 +112,12 @@ export function OnboardingWelcome({
 
   return (
     <div className="fixed inset-0 z-[75] flex items-center justify-center bg-[#080d16]/88 p-4 backdrop-blur-md sm:p-6">
-      <section role="dialog" aria-modal="true" aria-labelledby="welcome-title" className="grid max-h-[min(720px,calc(100vh-32px))] w-full max-w-4xl grid-cols-1 overflow-hidden rounded-2xl border border-cyan-400/25 bg-neutral-950 shadow-[0_24px_80px_rgba(0,0,0,0.6),0_0_36px_rgba(34,211,238,0.08)] md:grid-cols-[210px_minmax(0,1fr)]">
+      <section role="dialog" aria-modal="true" aria-labelledby="welcome-title" className="grid cyberfiles-onboarding-shell w-full max-w-4xl grid-cols-1 overflow-hidden rounded-2xl border border-cyan-400/25 bg-neutral-950 shadow-[0_24px_80px_rgba(0,0,0,0.6),0_0_36px_rgba(34,211,238,0.08)] md:grid-cols-[210px_minmax(0,1fr)]">
         <aside className="relative hidden overflow-hidden border-r border-cyan-900/40 bg-gradient-to-b from-cyan-950/80 via-neutral-950 to-neutral-950 p-6 md:flex md:flex-col">
           <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl" />
           <div className="relative">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 text-neutral-950 shadow-lg shadow-cyan-500/20">
-              <Sparkles className="h-5 w-5" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-neutral-950/70 p-1 shadow-lg shadow-cyan-500/20 ring-1 ring-cyan-300/30">
+              <img src="/icon.png" alt="CyberFiles" className="h-full w-full rounded-lg object-contain" />
             </div>
             <div className="mt-4 text-lg font-semibold tracking-tight text-neutral-100">CyberFiles</div>
             <div className="mt-1 text-xs text-cyan-200/65">{t.onboarding.sidebarSubtitle}</div>
@@ -127,14 +127,13 @@ export function OnboardingWelcome({
             {stepItems.map((item, index) => {
               const Icon = item.icon;
               const active = step === index;
-              const available = index <= step;
+
               return (
-                <Tooltip key={item.number} label={available ? item.title : t.onboarding.stepLocked} placement="right">
-                  <button
+                <button
+                    key={item.number}
                     type="button"
-                    disabled={!available}
                     onClick={() => setStep(index as OnboardingStep)}
-                    className={`flex w-full items-center gap-3 text-left transition-colors ${available ? 'cursor-pointer' : 'cursor-default'} ${active ? 'text-cyan-100' : available ? 'text-neutral-400 hover:text-neutral-200' : 'text-neutral-600'}`}
+                    className={`flex w-full cursor-pointer items-center gap-3 text-left text-neutral-400 transition-colors hover:text-neutral-200 ${active ? 'text-cyan-100' : ''}`}
                   >
                     <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${active ? 'border-cyan-300 bg-cyan-300 text-neutral-950 shadow-[0_0_18px_rgba(34,211,238,0.45)]' : index < step ? 'border-cyan-700 bg-cyan-950/70 text-cyan-200' : 'border-cyan-900/70 bg-neutral-950/40 text-neutral-500'}`}>
                       {index < step ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
@@ -144,7 +143,6 @@ export function OnboardingWelcome({
                       <span className="mt-0.5 block text-[10px] text-current/65">{item.description}</span>
                     </span>
                   </button>
-                </Tooltip>
               );
             })}
           </nav>
@@ -153,8 +151,7 @@ export function OnboardingWelcome({
         </aside>
 
         <div className="relative flex min-h-0 flex-col bg-neutral-900/95">
-          <Tooltip label={t.onboarding.close} placement="bottom">
-            <button
+          <button
               type="button"
               aria-label={t.onboarding.close}
               onClick={onSkip}
@@ -162,7 +159,6 @@ export function OnboardingWelcome({
             >
               <X className="h-4 w-4" />
             </button>
-          </Tooltip>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4 pt-8 sm:px-10 sm:pt-10">
             <div className="mb-6 flex items-center gap-2 md:hidden">
@@ -191,8 +187,8 @@ export function OnboardingWelcome({
                     const selected = theme === option;
                     const copy = t.settings[option];
                     return (
-                      <Tooltip key={option} label={copy.description} placement="top">
-                        <button
+                      <button
+                          key={option}
                           type="button"
                           role="radio"
                           aria-checked={selected}
@@ -202,7 +198,6 @@ export function OnboardingWelcome({
                           <div className={`theme-preview theme-preview-${option} h-14 overflow-hidden rounded-lg border border-black/20`} aria-hidden="true"><span /><span /><span /></div>
                           <div className="mt-2 flex items-center justify-between gap-2"><span className="truncate text-xs font-semibold text-neutral-100">{copy.name}</span>{selected && <Check className="h-4 w-4 flex-shrink-0 text-cyan-300" />}</div>
                         </button>
-                      </Tooltip>
                     );
                   })}
                 </div>
@@ -271,25 +266,17 @@ export function OnboardingWelcome({
           </div>
 
           <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-800 px-6 py-4 sm:px-10">
-            <Tooltip label={t.onboarding.skip} placement="top">
-              <button type="button" onClick={onSkip} className="rounded-lg border border-neutral-700 px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:bg-neutral-800 hover:text-neutral-100">
+            <button type="button" onClick={onSkip} className="rounded-lg border border-neutral-700 px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:bg-neutral-800 hover:text-neutral-100">
                 {t.onboarding.skip}
               </button>
-            </Tooltip>
             <div className="flex items-center gap-2">
               {step > 0 && (
-                <Tooltip label={t.onboarding.back} placement="top">
-                  <button type="button" onClick={goBack} className="rounded-lg border border-neutral-700 px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:bg-neutral-800 hover:text-neutral-100">{t.onboarding.back}</button>
-                </Tooltip>
+                <button type="button" onClick={goBack} className="rounded-lg border border-neutral-700 px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:bg-neutral-800 hover:text-neutral-100">{t.onboarding.back}</button>
               )}
               {step < 2 ? (
-                <Tooltip label={t.onboarding.next} placement="top">
-                  <button autoFocus type="button" onClick={goNext} className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-neutral-950 shadow-lg shadow-cyan-900/20 transition-colors hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-neutral-900">{t.onboarding.next}<span className="text-xs opacity-70">Enter</span></button>
-                </Tooltip>
+                <button autoFocus type="button" onClick={goNext} className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-neutral-950 shadow-lg shadow-cyan-900/20 transition-colors hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-neutral-900">{t.onboarding.next}<span className="text-xs opacity-70">Enter</span></button>
               ) : (
-                <Tooltip label={t.onboarding.finish} placement="top">
-                  <button autoFocus type="button" onClick={onContinue} className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-neutral-950 shadow-lg shadow-cyan-900/20 transition-colors hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-neutral-900">{t.onboarding.finish}<Check className="h-4 w-4" /></button>
-                </Tooltip>
+                <button autoFocus type="button" onClick={onContinue} className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-neutral-950 shadow-lg shadow-cyan-900/20 transition-colors hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-neutral-900">{t.onboarding.finish}<Check className="h-4 w-4" /></button>
               )}
             </div>
           </footer>
