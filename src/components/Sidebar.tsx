@@ -176,7 +176,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [editingQuickAccessId, setEditingQuickAccessId] = useState<string | null>(null);
   const [editingQuickAccessName, setEditingQuickAccessName] = useState('');
   const [draggingQuickAccessId, setDraggingQuickAccessId] = useState<string | null>(null);
-  const draggingQuickAccessRef = React.useRef<string | null>(null);
+  const quickAccessPointerDragRef = React.useRef<{
+    sourceId: string;
+    targetId: string | null;
+    pointerId: number;
+  } | null>(null);
   const [dragTargetQuickAccessId, setDragTargetQuickAccessId] = useState<string | null>(null);
   const [expandedFolderPaths, setExpandedFolderPaths] = useState<Set<string>>(() => new Set());
   const [folderTreeStates, setFolderTreeStates] = useState<Record<string, FolderTreeState>>({});
@@ -377,6 +381,47 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (!name) return;
     onRenameQuickAccess(id, name);
     cancelQuickAccessRename();
+  };
+
+  const beginQuickAccessPointerDrag = (event: React.PointerEvent<HTMLButtonElement>, sourceId: string) => {
+    if (quickAccessSortMode !== 'manual' || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dismissAllTooltips();
+    event.currentTarget.focus({ preventScroll: true });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    quickAccessPointerDragRef.current = { sourceId, targetId: null, pointerId: event.pointerId };
+    setDraggingQuickAccessId(sourceId);
+    setDragTargetQuickAccessId(null);
+  };
+
+  const updateQuickAccessPointerDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const drag = quickAccessPointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    const targetElement = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>('[data-quick-access-drop-id]');
+    const candidateId = targetElement?.dataset.quickAccessDropId ?? null;
+    const targetId = candidateId && candidateId !== drag.sourceId ? candidateId : null;
+    drag.targetId = targetId;
+    setDragTargetQuickAccessId(previous => previous === targetId ? previous : targetId);
+  };
+
+  const finishQuickAccessPointerDrag = (
+    event: React.PointerEvent<HTMLButtonElement>,
+    cancelled = false,
+  ) => {
+    const drag = quickAccessPointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    if (!cancelled && drag.targetId) onReorderQuickAccess(drag.sourceId, drag.targetId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    quickAccessPointerDragRef.current = null;
+    setDraggingQuickAccessId(null);
+    setDragTargetQuickAccessId(null);
   };
 
   const getQuickAccessIcon = (iconName: string) => {
@@ -952,41 +997,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   return (
                     <React.Fragment key={item.id}>
                     <div
+                      data-quick-access-drop-id={item.path === SYSTEM_HOME_PATH ? undefined : item.id}
                       className={"group flex min-w-0 items-center gap-0.5 rounded " + (dragTargetQuickAccessId === item.id ? "ring-1 ring-cyan-500/60 bg-cyan-950/20 " : "") + (draggingQuickAccessId === item.id ? "opacity-50" : "")}
-                      onDragOver={event => {
-                        if (quickAccessSortMode !== 'manual' || item.path === SYSTEM_HOME_PATH) return;
-                        event.preventDefault();
-                        event.dataTransfer.dropEffect = 'move';
-                        setDragTargetQuickAccessId(item.id);
-                      }}
-                      onDragLeave={event => {
-                        if (event.currentTarget === event.target) setDragTargetQuickAccessId(null);
-                      }}
-                      onDrop={event => {
-                        if (quickAccessSortMode !== 'manual' || item.path === SYSTEM_HOME_PATH) return;
-                        event.preventDefault();
-                        const draggedId = event.dataTransfer.getData('text/plain') || draggingQuickAccessRef.current || draggingQuickAccessId;
-                        if (draggedId) onReorderQuickAccess(draggedId, item.id);
-                        draggingQuickAccessRef.current = null;
-                        setDraggingQuickAccessId(null);
-                        setDragTargetQuickAccessId(null);
-                      }}
                     >
                       {quickAccessSortMode === 'manual' && item.path !== SYSTEM_HOME_PATH && (
                         <Tooltip label={t.sidebar.quickAccessReorderHint} placement="right">
                           <button
                             type="button"
-                            draggable
+                            draggable={false}
                             aria-label={t.sidebar.quickAccessReorder + ': ' + item.name}
-                            onDragStart={event => {
-                              dismissAllTooltips();
-                              draggingQuickAccessRef.current = item.id;
-                              setDraggingQuickAccessId(item.id);
-                              event.dataTransfer.effectAllowed = 'move';
-                              event.dataTransfer.setData('text/plain', item.id);
-                            }}
-                            onDragEnd={() => {
-                              draggingQuickAccessRef.current = null;
+                            onPointerDown={event => beginQuickAccessPointerDrag(event, item.id)}
+                            onPointerMove={updateQuickAccessPointerDrag}
+                            onPointerUp={event => finishQuickAccessPointerDrag(event)}
+                            onPointerCancel={event => finishQuickAccessPointerDrag(event, true)}
+                            onLostPointerCapture={event => {
+                              if (quickAccessPointerDragRef.current?.pointerId !== event.pointerId) return;
+                              quickAccessPointerDragRef.current = null;
                               setDraggingQuickAccessId(null);
                               setDragTargetQuickAccessId(null);
                             }}
@@ -997,7 +1023,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               event.preventDefault();
                               onMoveQuickAccess(item.id, direction);
                             }}
-                            className="flex-shrink-0 cursor-grab rounded p-0.5 text-neutral-600 transition-colors hover:text-neutral-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70 active:cursor-grabbing"
+                            className={`touch-none select-none flex-shrink-0 rounded p-0.5 text-neutral-600 transition-colors hover:text-neutral-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${draggingQuickAccessId === item.id ? 'cursor-grabbing text-cyan-300' : 'cursor-grab'}`}
                           >
                             <GripVertical className="h-3.5 w-3.5" />
                           </button>
@@ -1019,20 +1045,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <Tooltip label={item.path === SYSTEM_HOME_PATH ? item.name : item.path} placement="right">
                         <button
                           type="button"
-                          draggable={quickAccessSortMode === 'manual' && item.path !== SYSTEM_HOME_PATH}
-                          onDragStart={event => {
-                            if (quickAccessSortMode !== 'manual' || item.path === SYSTEM_HOME_PATH) return;
-                            dismissAllTooltips();
-                            draggingQuickAccessRef.current = item.id;
-                            setDraggingQuickAccessId(item.id);
-                            event.dataTransfer.effectAllowed = 'move';
-                            event.dataTransfer.setData('text/plain', item.id);
-                          }}
-                          onDragEnd={() => {
-                            draggingQuickAccessRef.current = null;
-                            setDraggingQuickAccessId(null);
-                            setDragTargetQuickAccessId(null);
-                          }}
+                          draggable={false}
                           onClick={() => item.path === SYSTEM_HOME_PATH || item.isCustom ? onOpenCustomQuickAccess(item) : onNavigate(item.path)}
                           className={`flex min-w-0 flex-1 items-center justify-between rounded-md px-2.5 py-1.5 text-left transition-colors ${
                             isSelected
