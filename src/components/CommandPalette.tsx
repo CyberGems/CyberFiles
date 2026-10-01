@@ -202,7 +202,7 @@ export function CommandPalette({
                       )}
                     </span>
                     {command.shortcut && !command.disabled && (
-                      <kbd className="flex-shrink-0 rounded-md border border-neutral-600 bg-neutral-900 px-2 py-1 font-sans text-[11px] text-neutral-400">
+                      <kbd className="keyboard-hint flex-shrink-0">
                         {command.shortcut}
                       </kbd>
                     )}

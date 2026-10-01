@@ -164,7 +164,7 @@ export function CloseWindowModal({
                 <span className="block text-sm font-semibold text-neutral-100">{t.closeWindow.continueWorking}</span>
                 <span className="mt-1 block text-xs leading-5 text-neutral-400">{rememberChoice ? t.closeWindow.continueDisabledDescription : t.closeWindow.continueDescription}</span>
               </span>
-              <kbd className="shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs font-semibold text-neutral-400">{t.closeWindow.keys.escape}</kbd>
+              <kbd className="keyboard-hint shrink-0">{t.closeWindow.keys.escape}</kbd>
             </button>
             <button
               ref={hideButtonRef}
@@ -180,7 +180,7 @@ export function CloseWindowModal({
                 <span className="block text-sm font-semibold text-neutral-100">{t.closeWindow.hideToTray}</span>
                 <span className="mt-1 block text-xs leading-5 text-neutral-400">{t.closeWindow.hideToTrayDescription}</span>
               </span>
-              <kbd className="shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs font-semibold text-neutral-400">{t.closeWindow.keys.enter}</kbd>
+              <kbd className="keyboard-hint shrink-0">{t.closeWindow.keys.enter}</kbd>
             </button>
             <button
               type="button"
@@ -195,7 +195,7 @@ export function CloseWindowModal({
                 <span className="block text-sm font-semibold text-neutral-100">{t.closeWindow.exit}</span>
                 <span className="mt-1 block text-xs leading-5 text-neutral-400">{t.closeWindow.exitDescription}</span>
               </span>
-              <kbd className="shrink-0 rounded-md border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs font-semibold text-neutral-400">{t.closeWindow.keys.space}</kbd>
+              <kbd className="keyboard-hint shrink-0">{t.closeWindow.keys.space}</kbd>
             </button>
         </div>
 

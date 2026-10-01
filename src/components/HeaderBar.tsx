@@ -137,7 +137,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           <button onClick={onOpenSearch} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-950 border border-cyan-800/70 hover:border-cyan-500 text-neutral-300 hover:text-cyan-300 transition-all shadow-inner flex-shrink-0">
             <Search className="w-3.5 h-3.5 text-cyan-400" />
             <span className="text-xs font-medium">{language === 'es' ? 'Buscar' : 'Search'}</span>
-            <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400 font-sans text-[10px] border border-neutral-700">Ctrl+F</kbd>
+            <kbd className="keyboard-hint">Ctrl+F</kbd>
           </button>
         </Tooltip>
         <Tooltip label={t.commandPalette.openTooltip} placement="bottom">
@@ -145,16 +145,17 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             type="button"
             aria-label={t.commandPalette.open}
             onClick={onOpenCommandPalette}
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg border border-neutral-800 bg-neutral-900 text-neutral-300 transition-colors hover:border-cyan-700 hover:bg-neutral-800 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70"
+            className="flex h-8 w-auto flex-shrink-0 items-center justify-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-2 text-neutral-300 transition-colors hover:border-cyan-700 hover:bg-neutral-800 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70"
           >
             <Keyboard aria-hidden="true" className="h-4 w-4" />
+            <kbd className="keyboard-hint">Ctrl+K</kbd>
           </button>
         </Tooltip>
 
         <div className="header-actions flex items-center gap-1 overflow-x-auto min-w-0">
           <UndoHistoryMenu items={undoHistory} onUndo={onUndoAction} disabled={undoBusy} />
-          <Tooltip label={t.toolbar.delete} disabled={disabled}><button onClick={onDeleteSelected} disabled={disabled} className="header-action text-rose-200"><Trash2 className="w-3.5 h-3.5 text-rose-400" /><span className="core-action-label">{language === 'es' ? 'Eliminar' : 'Delete'}</span><span className="shortcut">Del</span></button></Tooltip>
-          <Tooltip label={t.toolbar.newFolder}><button onClick={onNewFolder} className="header-action"><FolderPlus className="w-3.5 h-3.5 text-emerald-400" /><span className="action-label">{language === 'es' ? 'Nueva carpeta' : 'New folder'}</span><span className="shortcut">F7</span></button></Tooltip>
+          <Tooltip label={t.toolbar.delete} disabled={disabled}><button onClick={onDeleteSelected} disabled={disabled} className="header-action text-rose-200"><Trash2 className="w-3.5 h-3.5 text-rose-400" /><span className="core-action-label">{language === 'es' ? 'Eliminar' : 'Delete'}</span><kbd className="keyboard-hint">Del</kbd></button></Tooltip>
+          <Tooltip label={t.toolbar.newFolder}><button onClick={onNewFolder} className="header-action"><FolderPlus className="w-3.5 h-3.5 text-emerald-400" /><span className="action-label">{language === 'es' ? 'Nueva carpeta' : 'New folder'}</span><kbd className="keyboard-hint">F7</kbd></button></Tooltip>
         </div>
       </div>
 
@@ -255,7 +256,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             {workspaceChangesPending && <span aria-hidden="true" className="absolute -right-1 -top-1 h-2 w-2 rounded-full border border-neutral-950 bg-amber-300" />}
           </button>
         </Tooltip>
-        <Tooltip label={propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel}><button type="button" onClick={onTogglePropertiesPanel} aria-label={`${propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} (F3)`} aria-pressed={propertiesPanelOpen} className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors ${propertiesPanelOpen ? 'bg-cyan-950/70 border-cyan-700/70 text-cyan-300' : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'}`}><Info className={`w-3.5 h-3.5 ${propertiesPanelOpen ? 'text-cyan-300' : 'text-neutral-400'}`} /><span className="hidden xl:inline">{t.toolbar.propertiesPanel}</span><span className="text-[10px] opacity-60 font-sans">F3</span></button></Tooltip>
+        <Tooltip label={propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel}><button type="button" onClick={onTogglePropertiesPanel} aria-label={`${propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} (F3)`} aria-pressed={propertiesPanelOpen} className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors ${propertiesPanelOpen ? 'bg-cyan-950/70 border-cyan-700/70 text-cyan-300' : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'}`}><Info className={`w-3.5 h-3.5 ${propertiesPanelOpen ? 'text-cyan-300' : 'text-neutral-400'}`} /><span className="hidden xl:inline">{t.toolbar.propertiesPanel}</span><kbd className="keyboard-hint">F3</kbd></button></Tooltip>
       </div>
 
       <style>{`
@@ -265,7 +266,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         .header-action:hover:not(:disabled) { background:var(--color-neutral-800); }
         .header-action:disabled { opacity:.4; cursor:not-allowed; }
         .header-action.accent { background:var(--color-cyan-950); border:1px solid var(--color-neutral-700); color:var(--color-cyan-200); }
-        .shortcut { color:var(--color-neutral-500); font:10px "Segoe UI",Inter,ui-sans-serif,system-ui,sans-serif; }
         .view-choice-group { gap:2px; padding:3px; border:1px solid var(--color-neutral-700); border-radius:6px; background:var(--color-neutral-950); box-shadow:inset 0 1px 2px rgba(0,0,0,.35); }
         .view-choice { display:flex; width:34px; height:30px; align-items:center; justify-content:center; border:1px solid transparent; border-radius:3px; color:var(--color-neutral-500); transition:background-color .14s,color .14s,border-color .14s,box-shadow .14s; }
         .view-choice:hover:not([aria-pressed="true"]) { background:var(--color-neutral-800); color:var(--color-neutral-200); }

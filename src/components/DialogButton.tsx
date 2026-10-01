@@ -30,9 +30,6 @@ export const DialogButton = forwardRef<HTMLButtonElement, DialogButtonProps>(fun
   type = 'button',
   ...props
 }, ref) {
-  const keyClasses = variant === 'primary'
-    ? 'border-neutral-950/30 bg-neutral-950/15 text-neutral-950'
-    : 'border-neutral-700 bg-neutral-900/70 text-neutral-400';
 
   return (
     <button
@@ -43,7 +40,7 @@ export const DialogButton = forwardRef<HTMLButtonElement, DialogButtonProps>(fun
     >
       <span>{children}</span>
       {shortcut && (
-        <kbd aria-hidden="true" className={`inline-flex items-center rounded border px-2 py-0.5 text-[11px] font-semibold leading-5 ${keyClasses}`}>
+        <kbd aria-hidden="true" className={`keyboard-hint ${variant === 'primary' ? 'keyboard-hint-primary' : ''}`}>
           {shortcut}
         </kbd>
       )}

@@ -1675,9 +1675,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 e.stopPropagation();
                 onAddTab();
               }}
-              className="p-1.5 ml-1 text-neutral-400 hover:text-cyan-300 hover:bg-neutral-800 rounded transition-colors"
+              className="inline-flex items-center gap-1.5 p-1.5 ml-1 text-neutral-400 hover:text-cyan-300 hover:bg-neutral-800 rounded transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
+              <kbd className="keyboard-hint">Ctrl+T</kbd>
             </button>
           </Tooltip>
         </div>

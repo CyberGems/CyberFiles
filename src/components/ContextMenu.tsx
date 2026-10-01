@@ -299,7 +299,7 @@ const MenuButton: React.FC<{
     className={"flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-40 " + (danger ? "text-rose-300 hover:bg-rose-950/40" : "text-neutral-200 hover:bg-neutral-800")}
   >
     <span className="flex min-w-0 items-center gap-2">{icon}<span className="truncate">{label}</span></span>
-    {shortcut && <span className="shrink-0 font-sans text-[10px] text-neutral-500">{shortcut}</span>}
+    {shortcut && <kbd className="keyboard-hint shrink-0">{shortcut}</kbd>}
     {trailing}
   </button>
 );

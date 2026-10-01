@@ -85,7 +85,7 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
     return (
       <footer id="app-bottom-status-bar" className="h-7 bg-black border-t border-neutral-800 px-2 text-[11px] font-sans text-neutral-400 flex items-center justify-between select-none z-30 flex-shrink-0">
         <span>{t.pane.noFolderOpen}</span>
-        <Tooltip label={t.header.shortcutsTooltip} placement="top"><button onClick={onOpenShortcuts} className="rounded px-1.5 py-0.5 text-[10px] text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200">F1</button></Tooltip>
+        <Tooltip label={t.header.shortcutsTooltip} placement="top"><button onClick={onOpenShortcuts} className="rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"><kbd className="keyboard-hint">F1</kbd></button></Tooltip>
       </footer>
     );
   }
@@ -161,7 +161,7 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
         </div>
 
         {/* Keyboard Shortcuts trigger */}
-        <Tooltip label={t.header.shortcutsTooltip} placement="top"><button onClick={onOpenShortcuts} className="px-1.5 py-0.5 rounded hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 transition-colors text-[10px]">F1</button></Tooltip>
+        <Tooltip label={t.header.shortcutsTooltip} placement="top"><button onClick={onOpenShortcuts} className="rounded text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"><kbd className="keyboard-hint">F1</kbd></button></Tooltip>
       </div>
     </footer>
   );

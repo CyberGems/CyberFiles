@@ -52,6 +52,31 @@ html[data-theme='light'] select option {
   max-height: calc(100vh - 32px);
 }
 
+.keyboard-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.15rem;
+  padding: 2px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.keyboard-hint-primary {
+  border-color: rgba(8, 47, 73, 0.35);
+  background: rgba(8, 47, 73, 0.14);
+  color: var(--color-neutral-950);
+}
+
 #root.cyberfiles-ready {
   opacity: 1;
 }

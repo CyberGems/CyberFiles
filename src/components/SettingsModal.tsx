@@ -386,7 +386,7 @@ export function SettingsModal({
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="min-w-20 text-xs text-neutral-400">{t.settings.hotkeyShortcut}</span>
-              <kbd className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1 font-sans text-xs text-neutral-200">{globalShortcut.shortcut}</kbd>
+              <kbd className="keyboard-hint text-neutral-200">{globalShortcut.shortcut}</kbd>
               <button
                 type="button"
                 disabled={!globalShortcutLoaded || !globalShortcutSupported}

@@ -65,6 +65,14 @@ export function OnboardingWelcome({
         event.preventDefault();
         onSkip();
       }
+      if (event.target === document.body && event.key === 'ArrowRight' && stepRef.current < 2) {
+        event.preventDefault();
+        setStep(current => (current + 1) as OnboardingStep);
+      }
+      if (event.target === document.body && event.key === 'ArrowLeft' && stepRef.current > 0) {
+        event.preventDefault();
+        setStep(current => (current - 1) as OnboardingStep);
+      }
       if (event.key === 'Enter' && event.target === document.body) {
         event.preventDefault();
         if (stepRef.current < 2) setStep(current => (current + 1) as OnboardingStep);
@@ -113,12 +121,10 @@ export function OnboardingWelcome({
   return (
     <div className="fixed inset-0 z-[75] flex items-center justify-center bg-[#080d16]/88 p-4 backdrop-blur-md sm:p-6">
       <section role="dialog" aria-modal="true" aria-labelledby="welcome-title" className="grid cyberfiles-onboarding-shell w-full max-w-4xl grid-cols-1 overflow-hidden rounded-2xl border border-cyan-400/25 bg-neutral-950 shadow-[0_24px_80px_rgba(0,0,0,0.6),0_0_36px_rgba(34,211,238,0.08)] md:grid-cols-[210px_minmax(0,1fr)]">
-        <aside className="relative hidden overflow-hidden border-r border-cyan-900/40 bg-gradient-to-b from-cyan-950/80 via-neutral-950 to-neutral-950 p-6 md:flex md:flex-col">
+        <aside className="relative hidden overflow-hidden border-r border-cyan-900/40 bg-gradient-to-t from-cyan-950/80 via-neutral-950 to-neutral-950 p-6 md:flex md:flex-col">
           <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-cyan-400/10 blur-3xl" />
           <div className="relative">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-neutral-950/70 p-1 shadow-lg shadow-cyan-500/20 ring-1 ring-cyan-300/30">
-              <img src="/icon.png" alt="CyberFiles" className="h-full w-full rounded-lg object-contain" />
-            </div>
+            <img src="/icon.png" alt="CyberFiles" className="h-20 w-20 object-contain" />
             <div className="mt-4 text-lg font-semibold tracking-tight text-neutral-100">CyberFiles</div>
             <div className="mt-1 text-xs text-cyan-200/65">{t.onboarding.sidebarSubtitle}</div>
           </div>
@@ -266,17 +272,28 @@ export function OnboardingWelcome({
           </div>
 
           <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-800 px-6 py-4 sm:px-10">
-            <button type="button" onClick={onSkip} className="rounded-lg border border-neutral-700 px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:bg-neutral-800 hover:text-neutral-100">
-                {t.onboarding.skip}
-              </button>
+            <button type="button" onClick={onSkip} className="inline-flex items-center gap-2 rounded-lg border border-neutral-700 px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:bg-neutral-800 hover:text-neutral-100">
+              {t.onboarding.skip}
+              <kbd className="keyboard-hint">Esc</kbd>
+            </button>
             <div className="flex items-center gap-2">
               {step > 0 && (
-                <button type="button" onClick={goBack} className="rounded-lg border border-neutral-700 px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:bg-neutral-800 hover:text-neutral-100">{t.onboarding.back}</button>
+                <button type="button" onClick={goBack} className="inline-flex items-center gap-2 rounded-lg border border-neutral-700 px-3.5 py-2 text-sm font-medium text-neutral-300 transition-colors hover:border-neutral-500 hover:bg-neutral-800 hover:text-neutral-100">
+                  {t.onboarding.back}
+                  <kbd className="keyboard-hint">←</kbd>
+                </button>
               )}
               {step < 2 ? (
-                <button autoFocus type="button" onClick={goNext} className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-neutral-950 shadow-lg shadow-cyan-900/20 transition-colors hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-neutral-900">{t.onboarding.next}<span className="text-xs opacity-70">Enter</span></button>
+                <button autoFocus type="button" onClick={goNext} className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-neutral-950 shadow-lg shadow-cyan-900/20 transition-colors hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-neutral-900">
+                  {t.onboarding.next}
+                  <kbd className="keyboard-hint keyboard-hint-primary">→</kbd>
+                </button>
               ) : (
-                <button autoFocus type="button" onClick={onContinue} className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-neutral-950 shadow-lg shadow-cyan-900/20 transition-colors hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-neutral-900">{t.onboarding.finish}<Check className="h-4 w-4" /></button>
+                <button autoFocus type="button" onClick={onContinue} className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-neutral-950 shadow-lg shadow-cyan-900/20 transition-colors hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-neutral-900">
+                  {t.onboarding.finish}
+                  <kbd className="keyboard-hint keyboard-hint-primary">Enter</kbd>
+                  <Check className="h-4 w-4" />
+                </button>
               )}
             </div>
           </footer>

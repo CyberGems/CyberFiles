@@ -176,9 +176,9 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
             <div>
               <h2 className="text-sm font-bold text-neutral-100 flex items-center gap-2">
                 <span>{isSpanish ? 'Buscar archivos' : 'Search files'}</span>
-                <span className="text-[10px] font-sans px-1.5 py-0.2 rounded bg-neutral-800 text-neutral-400 border border-neutral-700">
+                <kbd className="keyboard-hint">
                   Ctrl+F
-                </span>
+                </kbd>
               </h2>
               <p className="text-[11px] text-neutral-400">
                 {isSpanish ? 'Busca por nombre, ruta y contenido disponible en los datos cargados.' : 'Search by name, path, and available content in the loaded data.'}
@@ -472,13 +472,13 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
         <div className="px-4 py-2 bg-neutral-950 border-t border-neutral-800 flex items-center justify-between text-[11px] text-neutral-400">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 font-sans text-[10px]">↑/↓</kbd> Navegar
+              <kbd className="keyboard-hint">↑/↓</kbd> Navegar
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 font-sans text-[10px]">Enter</kbd> Localizar en panel
+              <kbd className="keyboard-hint">Enter</kbd> Localizar en panel
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 font-sans text-[10px]">Esc</kbd> Cerrar
+              <kbd className="keyboard-hint">Esc</kbd> Cerrar
             </span>
           </div>
           <div className="text-neutral-500">
