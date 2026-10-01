@@ -5153,9 +5153,15 @@ export default function App() {
         <Suspense fallback={null}>
           <OnboardingWelcome
             isOpen={isOnboardingOpen}
-            onOpenFolder={handleOpenRealFolder}
             onContinue={activateSystemHome}
             onSkip={activateSystemHome}
+            folderStyleLocked={folderStyleLocked}
+            onFolderStyleLockedChange={handleFolderStyleLockChange}
+            startupBehavior={startupBehavior}
+            onStartupBehaviorChange={setStartupBehavior}
+            startupSessionId={startupSessionId}
+            onStartupSessionIdChange={setStartupSessionId}
+            sessions={workspaceStore.sessions}
           />
         </Suspense>
       )}
