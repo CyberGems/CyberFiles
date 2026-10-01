@@ -39,7 +39,7 @@ import { ArchiveExtractionMode, DriveInfo, FileItem, FileType, QuickAccessItem, 
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
 import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
-import { Tooltip } from './Tooltip';
+import { dismissAllTooltips, Tooltip } from './Tooltip';
 
 interface FolderTreeState {
   folders: FileItem[];
@@ -176,6 +176,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [editingQuickAccessId, setEditingQuickAccessId] = useState<string | null>(null);
   const [editingQuickAccessName, setEditingQuickAccessName] = useState('');
   const [draggingQuickAccessId, setDraggingQuickAccessId] = useState<string | null>(null);
+  const draggingQuickAccessRef = React.useRef<string | null>(null);
   const [dragTargetQuickAccessId, setDragTargetQuickAccessId] = useState<string | null>(null);
   const [expandedFolderPaths, setExpandedFolderPaths] = useState<Set<string>>(() => new Set());
   const [folderTreeStates, setFolderTreeStates] = useState<Record<string, FolderTreeState>>({});
@@ -953,15 +954,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <div
                       className={"group flex min-w-0 items-center gap-0.5 rounded " + (dragTargetQuickAccessId === item.id ? "ring-1 ring-cyan-500/60 bg-cyan-950/20 " : "") + (draggingQuickAccessId === item.id ? "opacity-50" : "")}
                       onDragOver={event => {
-                        if (quickAccessSortMode !== 'manual' || item.path === SYSTEM_HOME_PATH) return;
+                        if (quickAccessSortMode !== 'manual' || item.path === SYSTEM_HOME_PATH || !draggingQuickAccessRef.current) return;
                         event.preventDefault();
                         event.dataTransfer.dropEffect = 'move';
                         setDragTargetQuickAccessId(item.id);
                       }}
+                      onDragLeave={event => {
+                        if (event.currentTarget === event.target) setDragTargetQuickAccessId(null);
+                      }}
                       onDrop={event => {
+                        if (quickAccessSortMode !== 'manual' || item.path === SYSTEM_HOME_PATH) return;
                         event.preventDefault();
-                        const draggedId = event.dataTransfer.getData('text/plain') || draggingQuickAccessId;
-                        if (draggedId && item.path !== SYSTEM_HOME_PATH) onReorderQuickAccess(draggedId, item.id);
+                        const draggedId = event.dataTransfer.getData('text/plain') || draggingQuickAccessRef.current || draggingQuickAccessId;
+                        if (draggedId) onReorderQuickAccess(draggedId, item.id);
+                        draggingQuickAccessRef.current = null;
                         setDraggingQuickAccessId(null);
                         setDragTargetQuickAccessId(null);
                       }}
@@ -973,11 +979,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             draggable
                             aria-label={t.sidebar.quickAccessReorder + ': ' + item.name}
                             onDragStart={event => {
+                              dismissAllTooltips();
+                              draggingQuickAccessRef.current = item.id;
                               setDraggingQuickAccessId(item.id);
                               event.dataTransfer.effectAllowed = 'move';
                               event.dataTransfer.setData('text/plain', item.id);
                             }}
                             onDragEnd={() => {
+                              draggingQuickAccessRef.current = null;
                               setDraggingQuickAccessId(null);
                               setDragTargetQuickAccessId(null);
                             }}
@@ -1010,6 +1019,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <Tooltip label={item.path === SYSTEM_HOME_PATH ? item.name : item.path} placement="right">
                         <button
                           type="button"
+                          draggable={quickAccessSortMode === 'manual' && item.path !== SYSTEM_HOME_PATH}
+                          onDragStart={event => {
+                            if (quickAccessSortMode !== 'manual' || item.path === SYSTEM_HOME_PATH) return;
+                            dismissAllTooltips();
+                            draggingQuickAccessRef.current = item.id;
+                            setDraggingQuickAccessId(item.id);
+                            event.dataTransfer.effectAllowed = 'move';
+                            event.dataTransfer.setData('text/plain', item.id);
+                          }}
+                          onDragEnd={() => {
+                            draggingQuickAccessRef.current = null;
+                            setDraggingQuickAccessId(null);
+                            setDragTargetQuickAccessId(null);
+                          }}
                           onClick={() => item.path === SYSTEM_HOME_PATH || item.isCustom ? onOpenCustomQuickAccess(item) : onNavigate(item.path)}
                           className={`flex min-w-0 flex-1 items-center justify-between rounded-md px-2.5 py-1.5 text-left transition-colors ${
                             isSelected

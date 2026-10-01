@@ -11,8 +11,10 @@ import {
 } from 'react';
 import type {
   CSSProperties,
+  DragEvent as ReactDragEvent,
   FocusEvent as ReactFocusEvent,
   MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
   ReactElement,
   ReactNode,
 } from 'react';
@@ -306,6 +308,18 @@ export function Tooltip({ label, placement = 'bottom', children, disabled = fals
     child.props.onClick?.(event);
     hide();
   };
+  const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+    child.props.onPointerDown?.(event);
+    hide();
+  };
+  const onDragStart = (event: ReactDragEvent<HTMLElement>) => {
+    child.props.onDragStart?.(event);
+    hide();
+  };
+  const onDragEnd = (event: ReactDragEvent<HTMLElement>) => {
+    child.props.onDragEnd?.(event);
+    hide();
+  };
 
   const trigger = cloneElement(child, {
     onMouseEnter,
@@ -314,6 +328,9 @@ export function Tooltip({ label, placement = 'bottom', children, disabled = fals
     onFocus,
     onBlur,
     onClick,
+    onPointerDown,
+    onDragStart,
+    onDragEnd,
     'aria-describedby': anchorElement ? tooltipId : undefined,
     'data-has-tooltip': 'true',
   });
