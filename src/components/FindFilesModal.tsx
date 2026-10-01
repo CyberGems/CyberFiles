@@ -28,6 +28,44 @@ import { searchFileSystem, SearchOptions } from '../utils/searchIndex';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 
+const SEARCH_HISTORY_STORAGE_KEY = 'cyberfiles_find_files_history_v1';
+const SEARCH_HISTORY_LIMIT = 20;
+const SEARCH_HISTORY_QUERY_LIMIT = 500;
+
+function readSearchHistory(): string[] {
+  try {
+    const stored = localStorage.getItem(SEARCH_HISTORY_STORAGE_KEY);
+    if (!stored) return [];
+
+    const parsed: unknown = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return [];
+
+    const seen = new Set<string>();
+    const history: string[] = [];
+    for (const value of parsed) {
+      if (typeof value !== 'string') continue;
+      const query = value.trim();
+      const key = query.toLowerCase();
+      if (!query || query.length > SEARCH_HISTORY_QUERY_LIMIT || seen.has(key)) continue;
+      seen.add(key);
+      history.push(query);
+      if (history.length === SEARCH_HISTORY_LIMIT) break;
+    }
+    return history;
+  } catch {
+    return [];
+  }
+}
+
+function addSearchHistoryEntry(history: string[], value: string): string[] {
+  const query = value.trim();
+  if (!query || query.length > SEARCH_HISTORY_QUERY_LIMIT) return history;
+
+  const next = [query, ...history.filter((entry) => entry.toLowerCase() !== query.toLowerCase())];
+  if (next.length === history.length && next.every((entry, index) => entry === history[index])) return history;
+  return next.slice(0, SEARCH_HISTORY_LIMIT);
+}
+
 interface FindFilesModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -59,6 +97,8 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
   const [extensionFilter, setExtensionFilter] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [searchHistory, setSearchHistory] = useState<string[]>(readSearchHistory);
+  const [isSearchHistoryOpen, setIsSearchHistoryOpen] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -68,8 +108,28 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
       }, 50);
+    } else {
+      setIsSearchHistoryOpen(false);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SEARCH_HISTORY_STORAGE_KEY, JSON.stringify(searchHistory));
+    } catch {
+      // Search history is a convenience and should not interrupt searching if storage is unavailable.
+    }
+  }, [searchHistory]);
+
+  useEffect(() => {
+    const normalizedQuery = query.trim();
+    if (!isOpen || !normalizedQuery || normalizedQuery.length > SEARCH_HISTORY_QUERY_LIMIT) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setSearchHistory((history) => addSearchHistoryEntry(history, normalizedQuery));
+    }, 700);
+    return () => window.clearTimeout(timeoutId);
+  }, [query, isOpen]);
 
   // Execute search
   const searchResults = useMemo(() => {
@@ -97,8 +157,18 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
 
   // Keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-search-history]')) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setIsSearchHistoryOpen(false);
+      }
+      return;
+    }
+
     if (e.key === 'Escape') {
-      onClose();
+      if (isSearchHistoryOpen) setIsSearchHistoryOpen(false);
+      else onClose();
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelectedIndex((prev) => Math.min(prev + 1, Math.max(0, searchResults.matches.length - 1)));
@@ -109,16 +179,37 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
       e.preventDefault();
       const match = searchResults.matches[selectedIndex];
       if (match) {
-        onNavigateToFile(match.file);
-        onClose();
+        handleNavigateToResult(match.file);
       }
     }
   };
 
   const handleCopyPath = (file: FileItem) => {
+    rememberCurrentSearch();
     navigator.clipboard?.writeText(file.path);
     setCopiedId(file.id);
     setTimeout(() => setCopiedId(null), 1800);
+  };
+
+  const handleSelectSearchHistory = (value: string) => {
+    setQuery(value);
+    setSelectedIndex(0);
+    setIsSearchHistoryOpen(false);
+    searchInputRef.current?.focus();
+  };
+
+  const handleRemoveSearchHistory = (value: string) => {
+    setSearchHistory((history) => history.filter((entry) => entry.toLowerCase() !== value.toLowerCase()));
+  };
+
+  const rememberCurrentSearch = () => {
+    setSearchHistory((history) => addSearchHistoryEntry(history, query));
+  };
+
+  const handleNavigateToResult = (file: FileItem) => {
+    rememberCurrentSearch();
+    onNavigateToFile(file);
+    onClose();
   };
 
   const getFileIcon = (file: FileItem) => {
@@ -207,23 +298,35 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={isSpanish ? 'Buscar por nombre, extensión o contenido (ej: informe, .pdf, presupuesto)...' : 'Search by name, extension, or content (e.g. report, .pdf, budget)...'}
-              className="w-full bg-neutral-950 text-neutral-100 placeholder-neutral-500 pl-9 pr-24 py-2.5 rounded-lg border border-neutral-700 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none text-sm font-sans"
+              className="w-full bg-neutral-950 text-neutral-100 placeholder-neutral-500 pl-9 pr-36 py-2.5 rounded-lg border border-neutral-700 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none text-sm font-sans"
             />
             {query && (
               <Tooltip label={t.findFiles.clearSearch} placement="top">
                 <button
                   onClick={() => setQuery('')}
-                  className="absolute right-20 text-neutral-500 hover:text-neutral-300 p-1"
+                  className="absolute right-28 text-neutral-500 hover:text-neutral-300 p-1 cursor-pointer"
+                  aria-label={t.findFiles.clearSearch}
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               </Tooltip>
             )}
             <div className="absolute right-2.5 flex items-center gap-1">
+              <Tooltip label={t.findFiles.openSearchHistory} placement="top">
+                <button
+                  onClick={() => setIsSearchHistoryOpen((open) => !open)}
+                  className={`p-1 rounded transition-colors cursor-pointer ${isSearchHistoryOpen ? 'bg-cyan-500/20 text-cyan-300' : 'text-neutral-500 hover:text-neutral-300'}`}
+                  aria-label={t.findFiles.openSearchHistory}
+                  aria-expanded={isSearchHistoryOpen}
+                  aria-controls="find-files-search-history"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                </button>
+              </Tooltip>
               <Tooltip label={t.findFiles.caseSensitive} placement="top">
                 <button
                   onClick={() => setCaseSensitive(!caseSensitive)}
-                  className={`px-1.5 py-0.5 rounded text-[11px] font-sans font-bold transition-colors ${
+                  className={`px-1.5 py-0.5 rounded text-[11px] font-sans font-bold transition-colors cursor-pointer ${
                     caseSensitive 
                       ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50' 
                       : 'text-neutral-500 hover:text-neutral-300'
@@ -235,7 +338,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
               <Tooltip label={t.findFiles.useRegex} placement="top">
                 <button
                   onClick={() => setUseRegex(!useRegex)}
-                  className={`px-1.5 py-0.5 rounded text-[11px] font-sans font-bold transition-colors ${
+                  className={`px-1.5 py-0.5 rounded text-[11px] font-sans font-bold transition-colors cursor-pointer ${
                     useRegex 
                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50' 
                       : 'text-neutral-500 hover:text-neutral-300'
@@ -245,6 +348,60 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
                 </button>
               </Tooltip>
             </div>
+
+            {isSearchHistoryOpen && (
+              <div
+                id="find-files-search-history"
+                data-search-history
+                className="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-950 shadow-2xl"
+                role="region"
+                aria-label={t.findFiles.searchHistory}
+              >
+                <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
+                  <span className="flex items-center gap-2 text-xs font-semibold text-neutral-300">
+                    <Clock className="h-3.5 w-3.5 text-cyan-400" />
+                    {t.findFiles.searchHistory}
+                  </span>
+                  {searchHistory.length > 0 && (
+                    <Tooltip label={t.findFiles.clearSearchHistory} placement="left">
+                      <button
+                        onClick={() => setSearchHistory([])}
+                        className="text-[11px] text-neutral-500 transition-colors hover:text-rose-300 cursor-pointer"
+                      >
+                        {t.findFiles.clearSearchHistory}
+                      </button>
+                    </Tooltip>
+                  )}
+                </div>
+                {searchHistory.length === 0 ? (
+                  <p className="px-3 py-4 text-xs text-neutral-500">{t.findFiles.noSearchHistory}</p>
+                ) : (
+                  <ul className="max-h-56 overflow-y-auto py-1">
+                    {searchHistory.map((entry) => (
+                      <li key={entry} className="flex items-center gap-2 px-2 py-0.5 hover:bg-neutral-800/70">
+                        <Tooltip label={t.findFiles.useSearchHistoryEntry} placement="right">
+                          <button
+                            onClick={() => handleSelectSearchHistory(entry)}
+                            className="min-w-0 flex-1 truncate rounded px-1.5 py-1.5 text-left text-xs text-neutral-200 cursor-pointer"
+                          >
+                            {entry}
+                          </button>
+                        </Tooltip>
+                        <Tooltip label={t.findFiles.removeSearchHistoryEntry} placement="left">
+                          <button
+                            onClick={() => handleRemoveSearchHistory(entry)}
+                            className="rounded p-1 text-neutral-500 hover:bg-neutral-700 hover:text-neutral-200 cursor-pointer"
+                            aria-label={t.findFiles.removeSearchHistoryEntry}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </Tooltip>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Quick Scope & Filter Badges */}
@@ -367,10 +524,9 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
               return (
                 <div
                   key={file.id}
-                  onClick={() => setSelectedIndex(idx)}
-                  onDoubleClick={() => {
-                    onNavigateToFile(file);
-                    onClose();
+                  onClick={() => {
+                    setSelectedIndex(idx);
+                    handleNavigateToResult(file);
                   }}
                   className={`px-4 py-2 flex items-center justify-between text-xs cursor-pointer transition-colors ${
                     isSelected 
@@ -430,7 +586,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
                             e.stopPropagation();
                             handleCopyPath(file);
                           }}
-                          className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200"
+                          className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 cursor-pointer"
                         >
                           {copiedId === file.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
@@ -441,9 +597,10 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              rememberCurrentSearch();
                               onPreviewFile(file);
                             }}
-                            className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-cyan-300"
+                            className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-cyan-300 cursor-pointer"
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </button>
@@ -454,10 +611,9 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            onNavigateToFile(file);
-                            onClose();
+                            handleNavigateToResult(file);
                           }}
-                          className="flex items-center gap-1 px-2 py-1 rounded bg-cyan-950 hover:bg-cyan-900 border border-cyan-800/80 text-cyan-300 font-medium text-[11px]"
+                          className="flex items-center gap-1 px-2 py-1 rounded bg-cyan-950 hover:bg-cyan-900 border border-cyan-800/80 text-cyan-300 font-medium text-[11px] cursor-pointer"
                         >
                           <span>{t.findFiles.navigateToFile}</span>
                           <ArrowRight className="w-3 h-3" />
@@ -485,7 +641,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
             </span>
           </div>
           <div className="text-neutral-500">
-            Doble clic en cualquier elemento para abrir su carpeta inmediatamente
+            {t.findFiles.clickResultToLocate}
           </div>
         </div>
       </div>

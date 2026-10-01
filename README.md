@@ -12,6 +12,12 @@ CyberFiles is an early Windows-first file manager preview. Its workspace combine
 
 Download the Windows installer and release notes from the [GitHub Releases page](https://github.com/CyberGems/CyberFiles/releases).
 
+## Portable edition
+
+Each Windows release also includes a portable ZIP package. Extract the ZIP and run `CyberFiles.exe`; no installer is needed. The portable edition stores its settings and user data in the `CyberFiles_Data` folder beside the executable. Keep that folder with the application when moving or backing up the portable copy. The portable profile is separate from the profile used by an installed copy of CyberFiles.
+
+The portable edition requires the Microsoft Edge WebView2 Evergreen Runtime. The installer can download this runtime if it is missing; portable users need to install it separately when their PC does not already have it. Portable packages target Windows 10 and 11 on x64.
+
 ## Features
 
 - Browse real Windows drives and common user folders from a unified This PC view.
