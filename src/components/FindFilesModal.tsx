@@ -83,6 +83,8 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
       useRegex,
       extensionFilter,
     };
+    const hasFilters = sizeFilter !== 'all' || typeFilter !== 'all' || extensionFilter.trim().length > 0;
+    if (!query.trim() && !hasFilters) return { matches: [], totalScanned: 0, durationMs: 0 };
     return searchFileSystem(allFiles, options);
   }, [allFiles, query, searchContent, scope, currentPath, sizeFilter, typeFilter, caseSensitive, useRegex, extensionFilter]);
 
@@ -99,7 +101,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
       onClose();
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex((prev) => Math.min(prev + 1, searchResults.matches.length - 1));
+      setSelectedIndex((prev) => Math.min(prev + 1, Math.max(0, searchResults.matches.length - 1)));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setSelectedIndex((prev) => Math.max(prev - 1, 0));
@@ -181,7 +183,8 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
                 </kbd>
               </h2>
               <p className="text-[11px] text-neutral-400">
-                {isSpanish ? 'Busca por nombre, ruta y contenido disponible en los datos cargados.' : 'Search by name, path, and available content in the loaded data.'}
+                {t.findFiles.subtitle}
+                <span className="mt-0.5 block text-[10px] text-neutral-500">{t.findFiles.loadedDataNote}</span>
               </p>
             </div>
           </div>
@@ -257,7 +260,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
                 }`}
               >
                 <HardDrive className="w-3 h-3 text-cyan-400" />
-                <span>{isSpanish ? `Todos los elementos (${allFiles.length})` : `All loaded items (${allFiles.length})`}</span>
+                <span>{t.findFiles.allLoadedItems.replace('{count}', String(allFiles.length))}</span>
               </button>
               <button
                 onClick={() => setScope('current')}
@@ -268,7 +271,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
                 }`}
               >
                 <Folder className="w-3 h-3 text-amber-400" />
-                <span className="truncate max-w-[180px]">Carpeta actual: {currentPath.split('\\').pop() || currentPath}</span>
+                <span className="truncate max-w-[180px]">{t.findFiles.currentFolder.replace('{name}', currentPath.split('\\').pop() || currentPath)}</span>
               </button>
             </div>
 
@@ -282,7 +285,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
               />
                 <span className="flex items-center gap-1">
                   <FileText className="w-3 h-3 text-cyan-400" />
-                <span>{isSpanish ? 'Buscar dentro del texto y código' : 'Search inside text and code'}</span>
+                <span>{t.findFiles.contentSearch}</span>
               </span>
             </label>
 
@@ -328,20 +331,20 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
         <div className="px-4 py-1.5 bg-neutral-950 border-b border-neutral-800 flex items-center justify-between text-[11px] font-sans text-neutral-400">
           <div className="flex items-center gap-3">
             <span>
-              Resultados: <strong className="text-cyan-400">{searchResults.matches.length}</strong> elementos
+              {t.findFiles.resultsSummary.replace('{count}', String(searchResults.matches.length))}
             </span>
             <span>·</span>
             <span>
-              Tamaño acumulado: <strong className="text-yellow-400">{formatFileSize(totalSize)}</strong>
+              {t.findFiles.aggregateSize.replace('{size}', formatFileSize(totalSize))}
             </span>
             <span>·</span>
             <span>
-              Escaneados: <strong className="text-neutral-200">{searchResults.totalScanned}</strong>
+              {t.findFiles.scannedSummary.replace('{count}', String(searchResults.totalScanned))}
             </span>
           </div>
           <div className="flex items-center gap-1.5 text-neutral-500">
             <Clock className="w-3 h-3 text-cyan-400" />
-            <span>Tiempo: <strong className="text-emerald-400">{searchResults.durationMs} ms</strong></span>
+            <span>{t.findFiles.durationSummary.replace('{duration}', String(searchResults.durationMs))}</span>
           </div>
         </div>
 
@@ -350,9 +353,9 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
           {searchResults.matches.length === 0 ? (
             <div className="h-64 flex flex-col items-center justify-center text-center p-6 text-neutral-500">
               <Search className="w-10 h-10 text-neutral-700 mb-2 stroke-[1.5]" />
-              <p className="text-sm font-medium text-neutral-400">No se encontraron archivos que coincidan</p>
+              <p className="text-sm font-medium text-neutral-400">{!query.trim() && sizeFilter === 'all' && typeFilter === 'all' && !extensionFilter.trim() ? t.findFiles.enterQueryTitle : t.findFiles.noResults}</p>
               <p className="text-xs text-neutral-500 mt-1 max-w-sm">
-                Prueba cambiando los términos de búsqueda, desactivando filtros de tamaño o ampliando el ámbito a todos los discos.
+                {!query.trim() && sizeFilter === 'all' && typeFilter === 'all' && !extensionFilter.trim() ? t.findFiles.enterQueryDescription : t.findFiles.noResultsDesc}
               </p>
             </div>
           ) : (

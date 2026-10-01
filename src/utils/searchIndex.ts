@@ -60,12 +60,11 @@ export function searchFileSystem(
   let totalScanned = 0;
 
   for (const file of files) {
-    totalScanned++;
-
     // 1. Scope filter
     if (scopePath && !isSameOrDescendantPath(file.path, scopePath)) {
       continue;
     }
+    totalScanned++;
 
     // 2. Type filter
     if (typeFilter !== 'all') {

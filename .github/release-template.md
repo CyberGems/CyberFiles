@@ -31,11 +31,13 @@
 | File | Description | Platform |
 | :--- | :--- | :--- |
 | **[CyberFiles_{{VERSION_NUM}}_x64-setup.exe](https://github.com/CyberGems/CyberFiles/releases/download/{{VERSION}}/CyberFiles_{{VERSION_NUM}}_x64-setup.exe)** | Recommended NSIS installer. WebView2 is downloaded during setup if needed. | Windows 10 / 11 (x64) |
+| **[CyberFiles_{{VERSION_NUM}}_x64-portable.zip](https://github.com/CyberGems/CyberFiles/releases/download/{{VERSION}}/CyberFiles_{{VERSION_NUM}}_x64-portable.zip)** | Extract and run without installation. Settings stay beside the app. Requires the WebView2 Evergreen Runtime. | Windows 10 / 11 (x64) |
 
 ### SHA-256 checksum
 
 - **CyberFiles_{{VERSION_NUM}}_x64-setup.exe**: **{{SETUP_SHA256}}**
-- The SHA-256 checksum is also included in the downloadable SHA256SUMS.txt file.
+- **CyberFiles_{{VERSION_NUM}}_x64-portable.zip**: **{{PORTABLE_SHA256}}**
+- The SHA-256 checksums are also included in the downloadable SHA256SUMS.txt file.
 
 ### VirusTotal
 

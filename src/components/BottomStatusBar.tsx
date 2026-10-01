@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, File, Folder, HardDrive, Keyboard, Link2, List, Network, PanelLeft, PanelRight } from 'lucide-react';
+import { Clock, Eye, EyeOff, File, Folder, HardDrive, Keyboard, Link2, List, Network, PanelLeft, PanelRight } from 'lucide-react';
 import { DriveInfo, FileItem, TabState, ViewLayout, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize } from '../utils/fileSystem';
 import { useLanguage } from '../locales/LanguageContext';
@@ -10,6 +10,8 @@ interface BottomStatusBarProps {
   activePane: 'left' | 'right';
   currentTab: TabState;
   activeFiles: FileItem[];
+  hiddenItemsCount: number | null;
+  showHiddenFiles: boolean;
   drives: DriveInfo[];
   onOpenShortcuts: () => void;
 }
@@ -103,6 +105,8 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
   activePane,
   currentTab,
   activeFiles,
+  hiddenItemsCount,
+  showHiddenFiles,
   drives,
   onOpenShortcuts,
 }) => {
@@ -335,6 +339,30 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
             <Tooltip label={<StatusTooltipCard icon={<Folder className="h-4 w-4" />} title={t.statusBar.folders} primary={`${formatCount(selectedFolderItems.length)} / ${formatCount(folderItems.length)}`} rows={[{ label: t.statusBar.selected, value: formatCount(selectedFolderItems.length), tone: 'cyan' }, { label: t.statusBar.inFolder, value: formatCount(folderItems.length) }]} />} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-400 font-bold">{language === 'es' ? 'Carpetas:' : 'Folders:'}</span><span className="text-yellow-300 font-bold">{selectedFolderItems.length}/{folderItems.length}</span></div></Tooltip>
 
             <Tooltip label={<StatusTooltipCard icon={<List className="h-4 w-4" />} title={t.statusBar.folderContents} primary={formatCount(activeFiles.length)} rows={[{ label: t.statusBar.files, value: formatCount(fileItems.length) }, { label: t.statusBar.folders, value: formatCount(folderItems.length) }, { label: t.statusBar.selected, value: formatCount(selectedItemCount), tone: 'cyan' }]} />} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-400 font-bold">Total:</span><span className="text-yellow-300 font-bold">{activeFiles.length}</span></div></Tooltip>
+            {hiddenItemsCount !== null && hiddenItemsCount > 0 && (
+              <Tooltip
+                label={(
+                  <StatusTooltipCard
+                    icon={showHiddenFiles ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                    title={t.statusBar.hiddenItems}
+                    primary={formatCount(hiddenItemsCount)}
+                    description={showHiddenFiles ? t.statusBar.hiddenItemsShown : t.statusBar.hiddenItemsNotShown}
+                    rows={[{ label: t.statusBar.currentLocation, value: displayPath }]}
+                  />
+                )}
+                placement="top"
+              >
+                <div
+                  role="img"
+                  aria-label={`${t.statusBar.hiddenItems}: ${formatCount(hiddenItemsCount)}. ${showHiddenFiles ? t.statusBar.hiddenItemsShown : t.statusBar.hiddenItemsNotShown}`}
+                  tabIndex={0}
+                  className={`flex items-center gap-1 border px-2 py-0.5 text-[10px] font-bold whitespace-nowrap outline-none focus-visible:ring-1 focus-visible:ring-rose-400/80 ${showHiddenFiles ? 'border-rose-900/70 bg-rose-950/35 text-rose-300' : 'border-rose-500/90 bg-rose-950/90 text-rose-100 shadow-[0_0_8px_rgba(244,63,94,0.3)]'}`}
+                >
+                  {showHiddenFiles ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+                  <span>{t.statusBar.hiddenItems}: {formatCount(hiddenItemsCount)}</span>
+                </div>
+              </Tooltip>
+            )}
 
             <Tooltip label={<StatusTooltipCard icon={<HardDrive className="h-4 w-4" />} title={t.statusBar.selectedSize} primary={formatFileSize(selectedTotalBytes)} rows={[{ label: t.statusBar.selected, value: formatFileSize(selectedTotalBytes), tone: 'cyan' }, { label: t.statusBar.folderFileSize, value: formatFileSize(folderTotalBytes) }]} />} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-300 font-bold">{formatFileSize(selectedTotalBytes)} {language === 'es' ? 'de' : 'of'} {formatFileSize(folderTotalBytes)}</span></div></Tooltip>
 

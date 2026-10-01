@@ -15,7 +15,9 @@
     "test": "npm run test:unit",
     "test:unit": "tsx --test src/utils/fileSystem.test.ts",
     "test:native": "cargo test --manifest-path src-tauri/Cargo.toml",
-    "build:installer": "tauri build --bundles nsis"
+    "build:installer": "tauri build --bundles nsis",
+    "build:portable": "tauri build --no-bundle && npm run package:portable",
+    "package:portable": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable.ps1"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

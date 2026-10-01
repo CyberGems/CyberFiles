@@ -66,6 +66,38 @@ struct GlobalShortcutState {
 
 const APP_IDENTIFIER: &str = "com.cybergems.cyberfiles";
 const INSTANCE_PREFERENCES_FILE: &str = "cyberfiles-instance-preferences.json";
+const PORTABLE_MODE_MARKER: &str = "portable.mode";
+const PORTABLE_DATA_DIRECTORY: &str = "CyberFiles_Data";
+
+fn portable_data_directory_from_executable() -> Option<PathBuf> {
+    let executable_directory = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    executable_directory
+        .join(PORTABLE_MODE_MARKER)
+        .is_file()
+        .then(|| executable_directory.join(PORTABLE_DATA_DIRECTORY))
+}
+
+fn app_config_directory<R: tauri::Runtime, M: Manager<R>>(app: &M) -> Result<PathBuf, String> {
+    if let Some(data_directory) = portable_data_directory_from_executable() {
+        let config_directory = data_directory.join("config");
+        fs::create_dir_all(&config_directory).map_err(|error| error.to_string())?;
+        return Ok(config_directory);
+    }
+
+    app.path()
+        .app_config_dir()
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn configure_portable_webview_data_directory() {
+    if let Some(data_directory) = portable_data_directory_from_executable() {
+        let webview_directory = data_directory.join("WebView2");
+        fs::create_dir_all(&webview_directory)
+            .expect("Could not create CyberFiles portable WebView2 data directory");
+        std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", webview_directory);
+    }
+}
 
 #[derive(Clone, Deserialize, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -144,10 +176,8 @@ fn quit_app(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<(), S
 fn global_shortcut_config_path<R: tauri::Runtime, M: Manager<R>>(
     app: &M,
 ) -> Result<PathBuf, String> {
-    app.path()
-        .app_config_dir()
+    app_config_directory(app)
         .map(|directory| directory.join("cyberfiles-global-shortcut.json"))
-        .map_err(|error| error.to_string())
 }
 
 fn load_global_shortcut_preferences(path: &Path) -> GlobalShortcutPreferences {
@@ -202,10 +232,8 @@ fn get_global_shortcut_settings(app: tauri::AppHandle) -> Result<GlobalShortcutS
 fn instance_preferences_config_path<R: tauri::Runtime, M: Manager<R>>(
     app: &M,
 ) -> Result<PathBuf, String> {
-    app.path()
-        .app_config_dir()
+    app_config_directory(app)
         .map(|directory| directory.join(INSTANCE_PREFERENCES_FILE))
-        .map_err(|error| error.to_string())
 }
 
 fn load_instance_preferences(path: &Path) -> InstancePreferences {
@@ -273,6 +301,12 @@ impl Drop for SingleInstanceGuard {
 
 #[cfg(target_os = "windows")]
 fn startup_instance_preferences_path() -> Result<PathBuf, String> {
+    if let Some(data_directory) = portable_data_directory_from_executable() {
+        return Ok(data_directory
+            .join("config")
+            .join(INSTANCE_PREFERENCES_FILE));
+    }
+
     std::env::var_os("APPDATA")
         .map(PathBuf::from)
         .map(|directory| {
@@ -300,18 +334,18 @@ fn focus_existing_main_window() {
 }
 
 #[cfg(target_os = "windows")]
-fn acquire_single_instance_guard() -> Result<Option<SingleInstanceGuard>, String> {
+fn acquire_single_instance_guard(portable: bool) -> Result<Option<SingleInstanceGuard>, String> {
     use windows_sys::Win32::{
         Foundation::{CloseHandle, GetLastError, SetLastError, ERROR_ALREADY_EXISTS},
         System::Threading::CreateMutexW,
     };
 
-    let name: Vec<u16> = "Local"
-        .encode_utf16()
-        .chain(Some(92))
-        .chain("com.cybergems.cyberfiles.single-instance".encode_utf16())
-        .chain(Some(0))
-        .collect();
+    let mutex_name = if portable {
+        "Local\\com.cybergems.cyberfiles.portable.single-instance"
+    } else {
+        "Local\\com.cybergems.cyberfiles.single-instance"
+    };
+    let name: Vec<u16> = mutex_name.encode_utf16().chain(Some(0)).collect();
     unsafe {
         SetLastError(0);
     }
@@ -2065,7 +2099,7 @@ fn display_path(path: &Path) -> String {
     value.to_string()
 }
 
-fn is_hidden_metadata(metadata: &fs::Metadata) -> bool {
+fn is_hidden_metadata(metadata: &fs::Metadata, _path: &Path) -> bool {
     #[cfg(target_os = "windows")]
     {
         use std::os::windows::fs::MetadataExt;
@@ -2074,7 +2108,8 @@ fn is_hidden_metadata(metadata: &fs::Metadata) -> bool {
     #[cfg(not(target_os = "windows"))]
     {
         let _ = metadata;
-        false
+        _path.file_name()
+            .is_some_and(|name| name.to_string_lossy().starts_with('.'))
     }
 }
 
@@ -2130,7 +2165,7 @@ async fn list_directory(path: String, offset: usize) -> Result<DirectoryListing,
                 name: entry.file_name().to_string_lossy().to_string(),
                 path: display_path(&entry_path),
                 is_folder,
-                is_hidden: is_hidden_metadata(&metadata),
+                is_hidden: is_hidden_metadata(&metadata, &entry_path),
                 size: if is_folder { 0 } else { metadata.len() },
                 modified_ms,
                 created_ms,
@@ -2147,6 +2182,33 @@ async fn list_directory(path: String, offset: usize) -> Result<DirectoryListing,
     })
     .await
     .map_err(|error| format!("Folder scan worker failed: {error}"))?
+}
+
+#[tauri::command]
+async fn count_hidden_items(path: String) -> Result<usize, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = fs::canonicalize(&path)
+            .map_err(|error| format!("Cannot access folder: {error}"))?;
+        if !root.is_dir() {
+            return Err("The selected location is not a folder.".to_string());
+        }
+
+        let entries = fs::read_dir(&root)
+            .map_err(|error| format!("Cannot read folder: {error}"))?;
+        let mut hidden_count = 0;
+        for entry in entries {
+            let entry = entry.map_err(|error| format!("Cannot read folder entry: {error}"))?;
+            let entry_path = entry.path();
+            let metadata = fs::symlink_metadata(&entry_path)
+                .map_err(|error| format!("Cannot read folder entry metadata: {error}"))?;
+            if !metadata.file_type().is_symlink() && is_hidden_metadata(&metadata, &entry_path) {
+                hidden_count += 1;
+            }
+        }
+        Ok(hidden_count)
+    })
+    .await
+    .map_err(|error| format!("Hidden item count worker failed: {error}"))?
 }
 
 #[derive(Serialize)]
@@ -3355,10 +3417,8 @@ const MIN_WINDOW_HEIGHT_LOGICAL: f64 = 480.0;
 const DEFAULT_WINDOW_WORK_AREA_RATIO: f64 = 0.85;
 
 fn window_state_path<R: tauri::Runtime, M: Manager<R>>(app: &M) -> Result<PathBuf, String> {
-    app.path()
-        .app_config_dir()
+    app_config_directory(app)
         .map(|directory| directory.join("cyberfiles-window.json"))
-        .map_err(|error| error.to_string())
 }
 
 fn write_window_state(path: &PathBuf, state: &StoredWindowState) -> Result<(), String> {
@@ -5131,6 +5191,8 @@ async fn edit_hosts_file() -> Result<(), String> {
 
 fn main() {
     #[cfg(target_os = "windows")]
+    configure_portable_webview_data_directory();
+    #[cfg(target_os = "windows")]
     let _single_instance_guard = {
         let preferences_path = startup_instance_preferences_path()
             .expect("Could not locate CyberFiles instance preferences");
@@ -5138,7 +5200,7 @@ fn main() {
         if preferences.allow_multiple_instances {
             None
         } else {
-            let guard = acquire_single_instance_guard()
+            let guard = acquire_single_instance_guard(portable_data_directory_from_executable().is_some())
                 .expect("Could not enforce CyberFiles single-instance mode");
             if guard.is_none() {
                 return;
@@ -5290,6 +5352,7 @@ fn main() {
             hide_main_window,
             quit_app,
             list_directory,
+            count_hidden_items,
             get_file_icons,
             calculate_folder_size,
             calculate_folder_size_bounded,

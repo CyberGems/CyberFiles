@@ -79,7 +79,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, countNativeHiddenItems, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
@@ -108,6 +108,7 @@ const RELATIVE_GRAPHS_ENABLED_KEY = 'cyberfiles_relative_graphs_enabled_v1';
 const DATE_FORMAT_KEY = 'cyberfiles_date_format_v1';
 const DATE_FORMAT_SYSTEM_DEFAULT_MIGRATION_KEY = 'cyberfiles_date_format_system_default_migrated_v1';
 const SHOW_HIDDEN_FILES_KEY = 'cyberfiles_show_hidden_files_v1';
+const EMPTY_FILE_ITEMS: FileItem[] = [];
 const SHOW_FILE_EXTENSIONS_KEY = 'cyberfiles_show_file_extensions_v1';
 const LAST_TERMINAL_OPTION_KEY = 'cyberfiles_last_terminal_option_v1';
 const STARTUP_BEHAVIOR_KEY = 'cyberfiles_startup_behavior_v1';
@@ -1161,6 +1162,33 @@ export default function App() {
   const setActiveTabs = activePane === 'left' ? setLeftTabs : setRightTabs;
   const activeTabIndex = activePane === 'left' ? activeLeftTabIndex : activeRightTabIndex;
   const currentTab = activeTabs[activeTabIndex] || activeTabs[0];
+  const currentDirectoryItems = childrenByParent.get(getPathKey(currentTab.currentPath)) ?? EMPTY_FILE_ITEMS;
+  const [nativeHiddenItemsResult, setNativeHiddenItemsResult] = useState<{ pathKey: string; count: number } | null>(null);
+  useEffect(() => {
+    const path = currentTab.currentPath;
+    if (!isTauriDesktop() || !path || path === SYSTEM_HOME_PATH || path === RECYCLE_BIN_PATH) return;
+
+    let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      void countNativeHiddenItems(path)
+        .then(count => {
+          if (!cancelled) setNativeHiddenItemsResult({ pathKey: getPathKey(path), count });
+        })
+        .catch(error => {
+          if (!cancelled) console.warn('Could not count hidden items in the current folder:', error);
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [currentTab.currentPath, currentDirectoryItems]);
+  const hiddenItemsCount = currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH || !isTauriDesktop()
+    ? null
+    : nativeHiddenItemsResult?.pathKey === getPathKey(currentTab.currentPath)
+      ? nativeHiddenItemsResult.count
+      : null;
   const systemQuickAccess = useMemo<QuickAccessItem[]>(() => {
     const labels: Record<NativeLocation['id'], string> = {
       desktop: t.sidebar.desktop,
@@ -4864,6 +4892,8 @@ export default function App() {
         activePane={activePane}
         currentTab={currentTab}
         activeFiles={activeDisplayFiles}
+        hiddenItemsCount={hiddenItemsCount}
+        showHiddenFiles={showHiddenFiles}
         drives={drives}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
       />

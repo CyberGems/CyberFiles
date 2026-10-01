@@ -77,6 +77,7 @@ jobs:
             throw "Release tag '$($env:RELEASE_TAG)' must match package and Tauri versions ($packageVersion / $tauriVersion)."
           }
           npm run build:installer
+          npm run package:portable
 
       - name: Prepare checksums and release notes
         shell: pwsh
@@ -86,14 +87,21 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $versionNumber = $env:RELEASE_TAG.TrimStart('v')
           $installerPath = Join-Path 'src-tauri/target/release/bundle/nsis' "CyberFiles_${versionNumber}_x64-setup.exe"
+          $portablePath = Join-Path 'src-tauri/target/release/bundle/portable' "CyberFiles_${versionNumber}_x64-portable.zip"
           if (-not (Test-Path -LiteralPath $installerPath)) {
             throw "Expected NSIS installer not found: $installerPath"
           }
+          if (-not (Test-Path -LiteralPath $portablePath)) {
+            throw "Expected portable package not found: $portablePath"
+          }
 
           $installer = Get-Item -LiteralPath $installerPath
+          $portable = Get-Item -LiteralPath $portablePath
           $installerHash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $portableHash = (Get-FileHash -LiteralPath $portable.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           $checksumPath = Join-Path $installer.DirectoryName 'SHA256SUMS.txt'
-          [System.IO.File]::WriteAllText($checksumPath, "$installerHash  $($installer.Name)`n", [System.Text.UTF8Encoding]::new($false))
+          $checksumLines = @("$installerHash  $($installer.Name)", "$portableHash  $($portable.Name)")
+          [System.IO.File]::WriteAllText($checksumPath, ($checksumLines -join "`n") + "`n", [System.Text.UTF8Encoding]::new($false))
 
           $tagRef = "refs/tags/$($env:RELEASE_TAG)"
           $tagRefSpec = "${tagRef}:${tagRef}"
@@ -126,10 +134,13 @@ jobs:
           $notes = $template.Replace('{{VERSION}}', $env:RELEASE_TAG).
             Replace('{{RELEASE_SUMMARY}}', $releaseSummary).
             Replace('{{VERSION_NUM}}', $versionNumber).
-            Replace('{{SETUP_SHA256}}', $installerHash)
+            Replace('{{SETUP_SHA256}}', $installerHash).
+            Replace('{{PORTABLE_SHA256}}', $portableHash)
           [System.IO.File]::WriteAllText('release_notes.md', $notes, [System.Text.UTF8Encoding]::new($false))
           Write-Host "Installer: $($installer.Name)"
-          Write-Host "SHA-256: $installerHash"
+          Write-Host "Installer SHA-256: $installerHash"
+          Write-Host "Portable package: $($portable.Name)"
+          Write-Host "Portable SHA-256: $portableHash"
 
       - name: Scan installer with VirusTotal
         id: virustotal
@@ -159,6 +170,7 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             src-tauri/target/release/bundle/nsis/CyberFiles_*_x64-setup.exe
+            src-tauri/target/release/bundle/portable/CyberFiles_*_x64-portable.zip
             src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

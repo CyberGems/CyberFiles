@@ -212,6 +212,11 @@ export async function listNativeDirectory(path: string, offset = 0): Promise<{ r
   };
 }
 
+export async function countNativeHiddenItems(path: string): Promise<number> {
+  if (!isTauriDesktop()) throw new Error('Native hidden-item counts are unavailable.');
+  return invoke<number>('count_hidden_items', { path });
+}
+
 export async function getNativeFileIcons(items: NativeFileIconRequest[], large: boolean): Promise<NativeFileIconGroup[]> {
   if (!isTauriDesktop() || items.length === 0) return [];
   return invoke<NativeFileIconGroup[]>('get_file_icons', { items, large });
