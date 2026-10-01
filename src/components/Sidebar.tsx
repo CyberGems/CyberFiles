@@ -782,96 +782,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       ) : activeTab === 'tree' ? (
         <div className="p-3 space-y-5 overflow-y-auto flex-1">
-          {drives.length > 0 && (
-          <div className="space-y-1.5">
-            <button
-              type="button"
-              onClick={() => toggleSection('drives')}
-              aria-expanded={!collapsedSections.drives}
-              aria-label={`${t.sidebar.drivesTitle}: ${collapsedSections.drives ? t.sidebar.expandSection : t.sidebar.collapseSection}`}
-              className="collapse-toggle flex w-full items-center gap-1 rounded-lg px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-neutral-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
-            >
-              {collapsedSections.drives ? <ChevronRight data-collapse-chevron="true" className="h-3 w-3" /> : <ChevronDown data-collapse-chevron="true" className="h-3 w-3" />}
-              <span>{t.sidebar.drivesTitle}</span>
-            </button>
-
-            {!collapsedSections.drives && <div className="space-y-1">
-              {drives.map((drive) => {
-                const hasCapacity = Number.isFinite(drive.totalBytes) && drive.totalBytes > 0;
-                const usedPercentage = hasCapacity ? Math.min(100, Math.round((drive.usedBytes / drive.totalBytes) * 100)) : 0;
-                const isSelected = currentPath.startsWith(drive.letter);
-
-                return (
-                  <button
-                    key={drive.id}
-                    onClick={() => onOpenDrive ? onOpenDrive(drive.letter + '\\') : onNavigate(drive.letter + '\\')}
-                    className={`w-full text-left p-2 rounded-lg border transition-all ${
-                      isSelected 
-                        ? 'bg-neutral-900 border-cyan-500/40 text-neutral-100 shadow-sm' 
-                        : 'bg-neutral-950/60 border-neutral-800/60 text-neutral-300 hover:bg-neutral-900/70 hover:border-neutral-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <HardDrive className={`w-3.5 h-3.5 ${isSelected ? 'text-cyan-400' : 'text-neutral-400'}`} />
-                        <span className="font-sans font-bold text-xs">{drive.letter}</span>
-                        <span className="text-[11px] text-neutral-400 truncate max-w-[100px]">{drive.label}</span>
-                      </div>
-                      <span className="text-[10px] text-neutral-400 font-sans">{hasCapacity ? `${usedPercentage}%` : '—'}</span>
-                    </div>
-
-                    {/* Usage Meter Bar */}
-                    <div className="w-full h-1 bg-neutral-800 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${
-                          usedPercentage > 85 ? 'bg-rose-500' : usedPercentage > 65 ? 'bg-amber-400' : 'bg-cyan-500'
-                        }`}
-                        style={{ width: hasCapacity ? `${usedPercentage}%` : '0%' }}
-                      />
-                    </div>
-
-                    <div className="flex justify-between text-[9px] text-neutral-400 mt-1 font-sans">
-                      <span>{language === 'es' ? 'Libre' : 'Free'}: {hasCapacity ? formatFileSize(drive.totalBytes - drive.usedBytes) : '—'}</span>
-                      <span>Total: {hasCapacity ? formatFileSize(drive.totalBytes) : '—'}</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>}
-          </div>
-          )}
-
-          <div className="flex items-center gap-1">
-            <Tooltip label={recycleBinSupported ? t.sidebar.openRecycleBinAction : t.sidebar.recycleBinDesktopOnly} placement="right">
-              <button
-                type="button"
-                disabled={!recycleBinSupported}
-                onClick={onOpenRecycleBin}
-                aria-label={t.sidebar.openRecycleBinAction}
-                aria-current={currentPath === RECYCLE_BIN_PATH ? 'page' : undefined}
-                className={"flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 " + (currentPath === RECYCLE_BIN_PATH ? "bg-neutral-800/90 text-cyan-300 font-medium" : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100")}
-              >
-                <Trash2 className={"h-4 w-4 flex-shrink-0 " + (currentPath === RECYCLE_BIN_PATH ? "text-cyan-300" : "text-neutral-500")} />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[11px]">{t.sidebar.recycleBinTitle}</span>
-                  <span className="block truncate text-[9px] text-neutral-500">{recycleBinStateLabel}</span>
-                </span>
-              </button>
-            </Tooltip>
-            {canEmptyRecycleBin && (
-              <Tooltip label={t.sidebar.emptyRecycleBinAction} placement="right">
-                <button
-                  type="button"
-                  onClick={onRequestEmptyRecycleBin}
-                  aria-label={t.sidebar.emptyRecycleBinAction}
-                  className="flex-shrink-0 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-[9px] text-neutral-400 transition-colors hover:border-rose-800/70 hover:bg-rose-950/30 hover:text-rose-200"
-                >
-                  {t.sidebar.emptyRecycleBinButton}
-                </button>
-              </Tooltip>
-            )}
-          </div>
-
           {(quickAccess.length > 0 || onAddQuickAccess) && (
             <div className="space-y-1">
               <div className="flex items-center gap-1">
@@ -1104,6 +1014,97 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>}
             </div>
           )}
+
+          {drives.length > 0 && (
+          <div className="space-y-1.5">
+            <button
+              type="button"
+              onClick={() => toggleSection('drives')}
+              aria-expanded={!collapsedSections.drives}
+              aria-label={`${t.sidebar.drivesTitle}: ${collapsedSections.drives ? t.sidebar.expandSection : t.sidebar.collapseSection}`}
+              className="collapse-toggle flex w-full items-center gap-1 rounded-lg px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-neutral-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+            >
+              {collapsedSections.drives ? <ChevronRight data-collapse-chevron="true" className="h-3 w-3" /> : <ChevronDown data-collapse-chevron="true" className="h-3 w-3" />}
+              <span>{t.sidebar.drivesTitle}</span>
+            </button>
+
+            {!collapsedSections.drives && <div className="space-y-1">
+              {drives.map((drive) => {
+                const hasCapacity = Number.isFinite(drive.totalBytes) && drive.totalBytes > 0;
+                const usedPercentage = hasCapacity ? Math.min(100, Math.round((drive.usedBytes / drive.totalBytes) * 100)) : 0;
+                const isSelected = currentPath.startsWith(drive.letter);
+
+                return (
+                  <button
+                    key={drive.id}
+                    onClick={() => onOpenDrive ? onOpenDrive(drive.letter + '\\') : onNavigate(drive.letter + '\\')}
+                    className={`w-full text-left p-2 rounded-lg border transition-all ${
+                      isSelected
+                        ? 'bg-neutral-900 border-cyan-500/40 text-neutral-100 shadow-sm'
+                        : 'bg-neutral-950/60 border-neutral-800/60 text-neutral-300 hover:bg-neutral-900/70 hover:border-neutral-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <HardDrive className={`w-3.5 h-3.5 ${isSelected ? 'text-cyan-400' : 'text-neutral-400'}`} />
+                        <span className="font-sans font-bold text-xs">{drive.letter}</span>
+                        <span className="text-[11px] text-neutral-400 truncate max-w-[100px]">{drive.label}</span>
+                      </div>
+                      <span className="text-[10px] text-neutral-400 font-sans">{hasCapacity ? `${usedPercentage}%` : '—'}</span>
+                    </div>
+
+                    {/* Usage Meter Bar */}
+                    <div className="w-full h-1 bg-neutral-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${
+                          usedPercentage > 85 ? 'bg-rose-500' : usedPercentage > 65 ? 'bg-amber-400' : 'bg-cyan-500'
+                        }`}
+                        style={{ width: hasCapacity ? `${usedPercentage}%` : '0%' }}
+                      />
+                    </div>
+
+                    <div className="flex justify-between text-[9px] text-neutral-400 mt-1 font-sans">
+                      <span>{language === 'es' ? 'Libre' : 'Free'}: {hasCapacity ? formatFileSize(drive.totalBytes - drive.usedBytes) : '—'}</span>
+                      <span>Total: {hasCapacity ? formatFileSize(drive.totalBytes) : '—'}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>}
+          </div>
+          )}
+
+          <div className="flex items-center gap-1">
+            <Tooltip label={recycleBinSupported ? t.sidebar.openRecycleBinAction : t.sidebar.recycleBinDesktopOnly} placement="right">
+              <button
+                type="button"
+                disabled={!recycleBinSupported}
+                onClick={onOpenRecycleBin}
+                aria-label={t.sidebar.openRecycleBinAction}
+                aria-current={currentPath === RECYCLE_BIN_PATH ? 'page' : undefined}
+                className={"flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 " + (currentPath === RECYCLE_BIN_PATH ? "bg-neutral-800/90 text-cyan-300 font-medium" : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100")}
+              >
+                <Trash2 className={"h-4 w-4 flex-shrink-0 " + (currentPath === RECYCLE_BIN_PATH ? "text-cyan-300" : "text-neutral-500")} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[11px]">{t.sidebar.recycleBinTitle}</span>
+                  <span className="block truncate text-[9px] text-neutral-500">{recycleBinStateLabel}</span>
+                </span>
+              </button>
+            </Tooltip>
+            {canEmptyRecycleBin && (
+              <Tooltip label={t.sidebar.emptyRecycleBinAction} placement="right">
+                <button
+                  type="button"
+                  onClick={onRequestEmptyRecycleBin}
+                  aria-label={t.sidebar.emptyRecycleBinAction}
+                  className="flex-shrink-0 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-[9px] text-neutral-400 transition-colors hover:border-rose-800/70 hover:bg-rose-950/30 hover:text-rose-200"
+                >
+                  {t.sidebar.emptyRecycleBinButton}
+                </button>
+              </Tooltip>
+            )}
+          </div>
+
         </div>
       ) : (
         /* RECENT FILES TAB */

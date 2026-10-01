@@ -109,7 +109,18 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
         searchInputRef.current?.select();
       }, 50);
     } else {
+      setSearchHistory((history) => addSearchHistoryEntry(history, query));
       setIsSearchHistoryOpen(false);
+      setQuery('');
+      setSearchContent(true);
+      setUseRegex(false);
+      setCaseSensitive(false);
+      setScope('all');
+      setSizeFilter('all');
+      setTypeFilter('all');
+      setExtensionFilter('');
+      setSelectedIndex(0);
+      setCopiedId(null);
     }
   }, [isOpen]);
 
