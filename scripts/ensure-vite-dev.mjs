@@ -2,7 +2,7 @@ import net from 'node:net';
 import { spawn } from 'node:child_process';
 
 const host = '127.0.0.1';
-const port = 3000;
+const port = 3001;
 
 function isPortInUse() {
   return new Promise(resolve => {
