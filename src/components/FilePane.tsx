@@ -1051,10 +1051,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, [columnMenuPosition]);
 
   useEffect(() => {
-    if (previousPathRef.current === tab.currentPath) return;
-    previousPathRef.current = tab.currentPath;
-    if (viewportRef.current) viewportRef.current.scrollTop = 0;
-    setDetailsViewport(previous => ({ ...previous, scrollTop: 0 }));
+    if (previousPathRef.current !== tab.currentPath) {
+      previousPathRef.current = tab.currentPath;
+      if (viewportRef.current) viewportRef.current.scrollTop = 0;
+      setDetailsViewport(previous => ({ ...previous, scrollTop: 0 }));
+    }
     if (!styleLocked) setColumnWidths(DEFAULT_FILE_COLUMN_WIDTHS);
   }, [tab.currentPath, styleLocked]);
 
