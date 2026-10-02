@@ -202,6 +202,8 @@ interface MouseGestureDrag {
 
 const MOUSE_GESTURE_MENU_TOLERANCE = 12;
 const MOUSE_GESTURE_HOLD_TIMEOUT = 2000;
+const FOLDER_TOOLTIP_OVERVIEW_MS = 3000;
+const FOLDER_SIZE_HOVER_DELAY_MS = 4000;
 
 const COLLAPSED_SYSTEM_HOME_SECTIONS_KEY = 'cyberfiles_system_home_collapsed_sections_v1';
 const FILE_COLUMNS: FileColumn[] = ['extension', 'name', 'type', 'size', 'created', 'modified'];
@@ -709,7 +711,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const renderFolderContents = (item: FileItem) => {
     const state = folderChildCounts[item.id];
     return (
-      <div className="mt-1 w-full rounded-md border border-cyan-400/20 bg-cyan-950/20 px-2 py-1.5">
+      <div className="mt-1 h-[76px] w-full overflow-hidden rounded-md border border-cyan-400/20 bg-cyan-950/20 px-2 py-1.5">
         <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-300">{t.pane.folderTooltipContents}</div>
         {state?.status === 'done' ? (
           <>
@@ -717,7 +719,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               <span>{t.pane.folderTooltipFiles.replace('{count}', new Intl.NumberFormat(language).format(state.summary.fileCount))}</span>
               <span>{t.pane.folderTooltipFolders.replace('{count}', new Intl.NumberFormat(language).format(state.summary.folderCount))}</span>
             </div>
-            <div className="mt-1 text-[10px] text-cyan-100">
+            <div className="mt-1 truncate text-[10px] text-cyan-100">
               {t.pane.folderContentTypeLabel}: {formatFolderContentLabel(state.summary, t.pane.folderContentKinds)}
             </div>
           </>
@@ -731,7 +733,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   const renderItemTooltip = (item: FileItem, additionalDetails?: React.ReactNode) => (
-    <div className="flex max-w-[18rem] flex-col items-center gap-1 text-center">
+    <div className={`flex flex-col items-center gap-1 text-center ${item.isFolder ? 'w-64 max-w-[calc(100vw-2rem)]' : 'max-w-[18rem]'}`}>
       {imageTooltipThumbnailsEnabled && item.type === 'image' && !item.isFolder && (
         <ImageFileThumbnail
           item={item}
@@ -740,17 +742,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
           fit="contain"
         />
       )}
-      <span className="font-semibold">{item.name}</span>
-      {item.path && <span className="break-all font-sans text-[10px] text-cyan-200">{item.path}</span>}
+      <span className={`font-semibold ${item.isFolder ? 'block w-full break-all' : ''}`}>{item.name}</span>
+      {item.path && <span className={`font-sans text-[10px] text-cyan-200 ${item.isFolder ? 'block w-full truncate' : 'break-all'}`}>{item.path}</span>}
       {item.isFolder && !item.recycleBinId && !isRecycleBin && (
         <>
           {renderFolderContents(item)}
-          <span className="text-cyan-100">{getFolderTooltipSizeText(item)}</span>
+          <span className="flex h-8 w-full items-center justify-center overflow-hidden text-[10px] leading-4 text-cyan-100">{getFolderTooltipSizeText(item)}</span>
         </>
       )}
       {!item.isFolder && <span>{formatFileSize(item.size)}</span>}
       {(item.modifiedDate || item.modifiedAtMs !== undefined) && (
-        <span className="text-[10px] text-neutral-300">
+        <span className={`text-[10px] text-neutral-300 ${item.isFolder ? 'block w-full truncate' : ''}`}>
           {t.pane.itemTooltipModifiedDate.replace('{date}', formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language))}
         </span>
       )}
@@ -988,7 +990,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       folderSizeHoverTimersRef.current.delete(item.id);
       if (!hoveredFolderItemsRef.current.has(item.id)) return;
       void startFolderSizeOnHover(item);
-    }, 2000);
+    }, FOLDER_SIZE_HOVER_DELAY_MS);
     folderSizeHoverTimersRef.current.set(item.id, timer);
   };
   const loadFolderChildCounts = async (item: FileItem) => {
@@ -998,12 +1000,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const loading: FolderChildCountState = { status: 'loading' };
     folderChildCountsRef.current = { ...folderChildCountsRef.current, [item.id]: loading };
     setFolderChildCounts(previous => ({ ...previous, [item.id]: loading }));
+    const overviewUntil = Date.now() + FOLDER_TOOLTIP_OVERVIEW_MS;
+    let nextState: FolderChildCountState;
     try {
       const summary = await loadFolderContentSummary(item);
-      setFolderChildCounts(previous => ({ ...previous, [item.id]: { status: 'done', summary, checkedAt: summary.scannedAt } }));
+      nextState = { status: 'done', summary, checkedAt: summary.scannedAt };
     } catch {
-      setFolderChildCounts(previous => ({ ...previous, [item.id]: { status: 'error' } }));
+      nextState = { status: 'error' };
     }
+    const remainingOverview = overviewUntil - Date.now();
+    if (remainingOverview > 0) await new Promise<void>(resolve => window.setTimeout(resolve, remainingOverview));
+    setFolderChildCounts(previous => ({ ...previous, [item.id]: nextState }));
   };
   const handleFolderTooltipMouseEnter = (item: FileItem) => {
     if (!item.isFolder || item.recycleBinId || isRecycleBin) return;

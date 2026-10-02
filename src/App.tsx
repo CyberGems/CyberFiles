@@ -2189,6 +2189,30 @@ export default function App() {
     const targetTabs = targetPane === 'left' ? leftTabs : rightTabs;
     const targetTabIndex = targetPane === 'left' ? activeLeftTabIndex : activeRightTabIndex;
     const targetTab = targetTabs[targetTabIndex];
+    let returnedFolderPath: string | null = null;
+    const departingPath = targetTab?.currentPath;
+    if (departingPath && departingPath !== SYSTEM_HOME_PATH && departingPath !== RECYCLE_BIN_PATH && getPathKey(departingPath) !== pathKey) {
+      if (targetPath === SYSTEM_HOME_PATH) {
+        returnedFolderPath = systemHomeItems
+          .filter(item => isSameOrDescendantPath(departingPath, item.path))
+          .sort((left, right) => right.path.length - left.path.length)[0]?.path ?? null;
+      } else {
+        let childPath = departingPath;
+        while (true) {
+          const parentPath = getParentPath(childPath);
+          if (getPathKey(parentPath) === getPathKey(childPath)) break;
+          if (getPathKey(parentPath) === pathKey) {
+            returnedFolderPath = childPath;
+            break;
+          }
+          childPath = parentPath;
+        }
+      }
+    }
+    const returnedFolder = returnedFolderPath
+      ? (targetPath === SYSTEM_HOME_PATH ? systemHomeItems : allFiles)
+        .find(item => item.isFolder && getPathKey(item.path) === getPathKey(returnedFolderPath))
+      : undefined;
     const systemWorkspace = systemHomeWorkspace.current || targetTab?.history.includes(SYSTEM_HOME_PATH) === true;
     const workspaceRoot = isDesktop ? nativeRootPath.current : browserRootPath.current;
     if (targetPath !== RECYCLE_BIN_PATH && workspaceRoot && !systemWorkspace && !isSameOrDescendantPath(targetPath, workspaceRoot)) {
@@ -2257,8 +2281,8 @@ export default function App() {
           ...styleForPath(targetPath, rememberedStyle),
           folderStyle: rememberedStyle,
           filterQuery: '',
-          selectedIds: [],
-          focusedId: null,
+          selectedIds: returnedFolder ? [returnedFolder.id] : [],
+          focusedId: returnedFolder?.id ?? null,
         };
       });
       const useViewTransition = navigationTransitionsEnabled
@@ -2332,14 +2356,17 @@ export default function App() {
         );
         return [...retained, ...preservedLaterPages, ...listing.entries];
       });
-      if (forceRefresh) {
+      const returnedEntry = returnedFolderPath
+        ? listing.entries.find(item => item.isFolder && getPathKey(item.path) === getPathKey(returnedFolderPath))
+        : undefined;
+      if (forceRefresh || (returnedEntry && !returnedFolder)) {
         const cachedIds = listing.hasMore
           ? allFiles.filter(item => getPathKey(getParentPath(item.path)) === pathKey).map(item => item.id)
           : [];
         const refreshedIds = new Set([...listing.entries.map(item => item.id), ...cachedIds]);
         updatePaneTab(targetPane, tab => {
           if (getPathKey(tab.currentPath) !== pathKey) return tab;
-          const selectedIds = tab.selectedIds.filter(id => refreshedIds.has(id));
+          const selectedIds = returnedEntry ? [returnedEntry.id] : tab.selectedIds.filter(id => refreshedIds.has(id));
           const focusedId = tab.focusedId && selectedIds.includes(tab.focusedId)
             ? tab.focusedId
             : selectedIds[0] || null;
@@ -2387,7 +2414,7 @@ export default function App() {
     } finally {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
-  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectory, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, newTabsNextToCurrent, rememberRecentFolder, navigationTransitionsEnabled, navigationTransitionStyle, showHiddenFiles, invalidateFlatDirectories]);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, systemHomeItems, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectory, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, newTabsNextToCurrent, rememberRecentFolder, navigationTransitionsEnabled, navigationTransitionStyle, showHiddenFiles, invalidateFlatDirectories]);
 
   const lastSessionReloadHandled = useRef(0);
   useEffect(() => {
