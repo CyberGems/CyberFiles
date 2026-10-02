@@ -4664,6 +4664,21 @@ export default function App() {
   const leftKnownCounts = knownDirectoryCounts(leftTabs[activeLeftTabIndex], leftDirectoryState, showHiddenFiles);
   const rightKnownCounts = knownDirectoryCounts(rightTabs[activeRightTabIndex], rightDirectoryState, showHiddenFiles);
   const activeKnownCounts = activePane === 'left' ? leftKnownCounts : rightKnownCounts;
+  const currentDirectCounts = nativeDirectories[getPathKey(currentTab.currentPath)]?.counts;
+  const currentDirectFolderCount = currentDirectCounts
+    ? (showHiddenFiles ? currentDirectCounts.folderCount : currentDirectCounts.visibleFolderCount)
+    : null;
+  const flatViewLocationAvailable = isTauriDesktop() && !!currentTab.currentPath && !currentTab.currentPath.startsWith('::');
+  const flatViewAvailable = flatViewLocationAvailable && (currentTab.flatView === true || (currentDirectFolderCount !== null && currentDirectFolderCount > 0));
+  const flatViewTooltip = currentTab.flatView && flatViewLocationAvailable
+    ? t.toolbar.flatViewDisableTooltip
+    : !flatViewLocationAvailable
+      ? t.toolbar.flatViewFolderOnly
+      : currentDirectFolderCount === null
+        ? t.toolbar.flatViewCheckingFolders
+        : currentDirectFolderCount === 0
+          ? t.toolbar.flatViewNoSubfolders
+          : t.toolbar.flatViewTooltip;
   const leftAtSystemHome = leftTabs[activeLeftTabIndex].currentPath === SYSTEM_HOME_PATH;
   const rightAtSystemHome = rightTabs[activeRightTabIndex].currentPath === SYSTEM_HOME_PATH;
   const leftAtRecycleBin = leftTabs[activeLeftTabIndex].currentPath === RECYCLE_BIN_PATH;
@@ -4896,9 +4911,11 @@ export default function App() {
         undoBusy={undoBusy || isFileOperationBusy || transferOperations.some(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status))}
         selectedCount={selectedCount}
         flatView={currentTab.flatView === true && !!currentTab.currentPath && !currentTab.currentPath.startsWith('::')}
-        flatViewAvailable={isTauriDesktop() && !!currentTab.currentPath && !currentTab.currentPath.startsWith('::')}
+        flatViewAvailable={flatViewAvailable}
+        flatViewTooltip={flatViewTooltip}
         flatViewLoading={Boolean(currentTab.flatView && !currentTab.currentPath.startsWith('::') && (!flatDirectories[getPathKey(currentTab.currentPath)] || flatDirectories[getPathKey(currentTab.currentPath)].loading))}
         onToggleFlatView={() => {
+          if (!flatViewAvailable) return;
           const key = getPathKey(currentTab.currentPath);
           if (!currentTab.flatView && flatDirectories[key]?.error) invalidateFlatDirectories([currentTab.currentPath]);
           updateActiveTab(tab => ({ ...tab, flatView: !tab.flatView, selectedIds: [], focusedId: null }));

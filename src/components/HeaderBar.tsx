@@ -56,6 +56,7 @@ interface HeaderBarProps {
   selectedCount: number;
   flatView: boolean;
   flatViewAvailable: boolean;
+  flatViewTooltip: string;
   flatViewLoading: boolean;
   onToggleFlatView: () => void;
   onOpenWorkspaceManager: () => void;
@@ -91,6 +92,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   selectedCount,
   flatView,
   flatViewAvailable,
+  flatViewTooltip,
   flatViewLoading,
   onToggleFlatView,
   onOpenWorkspaceManager,
@@ -210,11 +212,13 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </>
         )}
 
-        <Tooltip label={t.toolbar.flatViewTooltip} placement="bottom">
-          <button type="button" aria-label={t.toolbar.flatView} aria-pressed={flatView} disabled={!flatViewAvailable} onClick={onToggleFlatView} className={flatView ? 'flex h-9 items-center gap-1.5 rounded-md border border-cyan-700/70 bg-cyan-950/70 px-2 text-xs font-medium text-cyan-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70 disabled:opacity-40' : 'flex h-9 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900 px-2 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70 disabled:cursor-not-allowed disabled:opacity-40'}>
-            {flatViewLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ListTree className="h-4 w-4" />}
-            <span>{t.toolbar.flatView}</span>
-          </button>
+        <Tooltip label={flatViewTooltip} placement="bottom">
+          <span className={`inline-flex rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70 ${flatViewAvailable ? '' : 'cursor-not-allowed'}`} tabIndex={flatViewAvailable ? undefined : 0} aria-label={flatViewAvailable ? undefined : `${t.toolbar.flatView}: ${flatViewTooltip}`}>
+            <button type="button" aria-label={t.toolbar.flatView} aria-pressed={flatView} disabled={!flatViewAvailable} onClick={onToggleFlatView} className={flatView ? 'flex h-9 items-center gap-1.5 rounded-md border border-cyan-700/70 bg-cyan-950/70 px-2 text-xs font-medium text-cyan-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70 disabled:pointer-events-none disabled:opacity-40' : 'flex h-9 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900 px-2 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70 disabled:pointer-events-none disabled:opacity-40'}>
+              {flatViewLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ListTree className="h-4 w-4" />}
+              <span>{t.toolbar.flatView}</span>
+            </button>
+          </span>
         </Tooltip>
 
         <div className="view-choice-group flex items-center" role="group" aria-label={t.toolbar.viewModes}>
