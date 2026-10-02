@@ -103,11 +103,13 @@ function getFileNameSuffix(filename: string): string {
 }
 
 const KNOWN_FILE_EXTENSIONS = new Set([
-  'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico',
+  'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif', 'heic', 'heif', 'tif', 'tiff',
   'rs', 'ts', 'tsx', 'js', 'jsx', 'json', 'jsonl', 'toml', 'html', 'htm', 'xml', 'css', 'py', 'cpp', 'c', 'h', 'cs', 'sql', 'yaml', 'yml', 'csv',
   'txt', 'md', 'markdown', 'log', 'ini', 'cfg', 'env', 'properties', 'sh', 'java', 'go', 'rb', 'php',
-  'mp3', 'wav', 'flac', 'ogg', 'aac', 'mp4', 'mkv', 'mov', 'avi', 'webm',
-  'zip', 'rar', '7z', 'tar', 'gz', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+  'mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a', 'opus', 'wma', 'aif', 'aiff', 'alac', 'ape',
+  'mp4', 'mkv', 'mov', 'avi', 'webm', 'wmv', 'mpeg', 'mpg', 'm4v', 'flv', '3gp', 'ogv',
+  'zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz', 'zst', 'cab',
+  'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'epub', 'rtf',
   'exe', 'msi', 'bat', 'cmd', 'ps1', 'bin', 'dat', 'iso', 'sys', 'dll',
 ]);
 
@@ -149,6 +151,11 @@ export function detectFileType(name: string, isFolder: boolean): FileType {
     case 'svg':
     case 'bmp':
     case 'ico':
+    case 'avif':
+    case 'heic':
+    case 'heif':
+    case 'tif':
+    case 'tiff':
       return 'image';
     case 'rs':
     case 'ts':
@@ -191,18 +198,36 @@ export function detectFileType(name: string, isFolder: boolean): FileType {
     case 'flac':
     case 'ogg':
     case 'aac':
+    case 'm4a':
+    case 'opus':
+    case 'wma':
+    case 'aif':
+    case 'aiff':
+    case 'alac':
+    case 'ape':
       return 'audio';
     case 'mp4':
     case 'mkv':
     case 'mov':
     case 'avi':
     case 'webm':
+    case 'wmv':
+    case 'mpeg':
+    case 'mpg':
+    case 'm4v':
+    case 'flv':
+    case '3gp':
+    case 'ogv':
       return 'video';
     case 'zip':
     case 'rar':
     case '7z':
     case 'tar':
     case 'gz':
+    case 'bz2':
+    case 'xz':
+    case 'zst':
+    case 'cab':
       return 'archive';
     case 'pdf':
     case 'doc':
@@ -211,6 +236,11 @@ export function detectFileType(name: string, isFolder: boolean): FileType {
     case 'xlsx':
     case 'ppt':
     case 'pptx':
+    case 'odt':
+    case 'ods':
+    case 'odp':
+    case 'epub':
+    case 'rtf':
       return 'document';
     case 'exe':
     case 'msi':

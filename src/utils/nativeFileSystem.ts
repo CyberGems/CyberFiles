@@ -61,6 +61,7 @@ export interface NativeDirectoryCounts {
 export interface NativeFolderChildCounts {
   fileCount: number;
   folderCount: number;
+  extensionCounts: Record<string, number>;
 }
 
 interface NativeDrive {

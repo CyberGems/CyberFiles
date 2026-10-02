@@ -38,7 +38,8 @@ import {
 import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, NavigationTransitionStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
-import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, countNativeFolderChildren, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
+import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
+import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { listen } from '@tauri-apps/api/event';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip, TooltipPreferenceContext } from './Tooltip';
@@ -116,7 +117,7 @@ type RelativeGraphColumn = 'size' | 'created' | 'modified';
 type RelativeGraphWidths = Partial<Record<RelativeGraphColumn, number>>;
 type ResizableColumn = FileColumn;
 type FolderSizeState = { status: 'loading' | 'paused' | 'done' | 'error'; size?: number; entriesScanned?: number };
-type FolderChildCountState = { status: 'loading' | 'done' | 'error'; fileCount?: number; folderCount?: number; checkedAt?: number };
+type FolderChildCountState = { status: 'loading' | 'error' } | { status: 'done'; summary: FolderContentSummary; checkedAt: number };
 type NavigationMotion = 'into' | 'up' | 'back' | 'forward' | 'other';
 
 function normalizeNavigationPath(path: string): string {
@@ -666,6 +667,30 @@ export const FilePane: React.FC<FilePaneProps> = ({
     return parent.slice(root.length).replace(/^[\\/]+/, '');
   };
 
+  const renderFolderContents = (item: FileItem) => {
+    const state = folderChildCounts[item.id];
+    return (
+      <div className="mt-1 w-full rounded-md border border-cyan-400/20 bg-cyan-950/20 px-2 py-1.5">
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-300">{t.pane.folderTooltipContents}</div>
+        {state?.status === 'done' ? (
+          <>
+            <div className="mt-1 flex justify-center gap-3 text-[11px] text-neutral-100">
+              <span>{t.pane.folderTooltipFiles.replace('{count}', new Intl.NumberFormat(language).format(state.summary.fileCount))}</span>
+              <span>{t.pane.folderTooltipFolders.replace('{count}', new Intl.NumberFormat(language).format(state.summary.folderCount))}</span>
+            </div>
+            <div className="mt-1 text-[10px] text-cyan-100">
+              {t.pane.folderContentTypeLabel}: {formatFolderContentLabel(state.summary, t.pane.folderContentKinds)}
+            </div>
+          </>
+        ) : (
+          <div className="mt-1 text-[10px] text-neutral-400">
+            {state?.status === 'error' ? t.pane.folderTooltipCountFailed : t.pane.folderTooltipCounting}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderItemTooltip = (item: FileItem, additionalDetails?: React.ReactNode) => (
     <div className="flex max-w-[18rem] flex-col items-center gap-1 text-center">
       {imageTooltipThumbnailsEnabled && item.type === 'image' && !item.isFolder && (
@@ -680,19 +705,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {item.path && <span className="break-all font-sans text-[10px] text-cyan-200">{item.path}</span>}
       {item.isFolder && !item.recycleBinId && !isRecycleBin && (
         <>
-          <div className="mt-1 w-full rounded-md border border-cyan-400/20 bg-cyan-950/20 px-2 py-1.5">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-300">{t.pane.folderTooltipContents}</div>
-            {folderChildCounts[item.id]?.status === 'done' ? (
-              <div className="mt-1 flex justify-center gap-3 text-[11px] text-neutral-100">
-                <span>{t.pane.folderTooltipFiles.replace('{count}', new Intl.NumberFormat(language).format(folderChildCounts[item.id].fileCount ?? 0))}</span>
-                <span>{t.pane.folderTooltipFolders.replace('{count}', new Intl.NumberFormat(language).format(folderChildCounts[item.id].folderCount ?? 0))}</span>
-              </div>
-            ) : (
-              <div className="mt-1 text-[10px] text-neutral-400">
-                {folderChildCounts[item.id]?.status === 'error' ? t.pane.folderTooltipCountFailed : t.pane.folderTooltipCounting}
-              </div>
-            )}
-          </div>
+          {renderFolderContents(item)}
           <span className="text-cyan-100">{getFolderTooltipSizeText(item)}</span>
         </>
       )}
@@ -942,24 +955,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const loadFolderChildCounts = async (item: FileItem) => {
     if (!tooltipsEnabled || !item.path) return;
     const cached = folderChildCountsRef.current[item.id];
-    if (cached?.status === 'loading' || (cached?.status === 'done' && Date.now() - (cached.checkedAt ?? 0) < 30_000)) return;
+    if (cached?.status === 'loading' || (cached?.status === 'done' && Date.now() - cached.checkedAt < 30_000)) return;
     const loading: FolderChildCountState = { status: 'loading' };
     folderChildCountsRef.current = { ...folderChildCountsRef.current, [item.id]: loading };
     setFolderChildCounts(previous => ({ ...previous, [item.id]: loading }));
     try {
-      let fileCount = 0;
-      let folderCount = 0;
-      if (isTauriDesktop()) {
-        ({ fileCount, folderCount } = await countNativeFolderChildren(item.path));
-      } else {
-        const handle = item.handle as FileSystemDirectoryHandle | undefined;
-        if (!handle || handle.kind !== 'directory') throw new Error('Folder handle unavailable.');
-        for await (const child of handle.values()) {
-          if (child.kind === 'directory') folderCount += 1;
-          else fileCount += 1;
-        }
-      }
-      setFolderChildCounts(previous => ({ ...previous, [item.id]: { status: 'done', fileCount, folderCount, checkedAt: Date.now() } }));
+      const summary = await loadFolderContentSummary(item);
+      setFolderChildCounts(previous => ({ ...previous, [item.id]: { status: 'done', summary, checkedAt: summary.scannedAt } }));
     } catch {
       setFolderChildCounts(previous => ({ ...previous, [item.id]: { status: 'error' } }));
     }

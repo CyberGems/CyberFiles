@@ -4,6 +4,7 @@ import { FileItem } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, isTextPreviewableFile } from '../utils/fileSystem';
 import { isTauriDesktop, loadNativeImageThumbnail, loadNativePdfPreviewUrl, loadNativeArchivePreview, MAX_PDF_PREVIEW_BYTES, type NativeArchivePreview } from '../utils/nativeFileSystem';
+import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 
@@ -151,6 +152,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
   const [archivePreviewState, setArchivePreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable' | 'password-required' | 'desktop-only' | 'too-many-entries'>('idle');
   const [archivePassword, setArchivePassword] = useState('');
   const [archivePasswordError, setArchivePasswordError] = useState(false);
+  const [folderContent, setFolderContent] = useState<{ itemId: string; status: 'loading' | 'done' | 'error'; summary?: FolderContentSummary } | null>(null);
   const { t, language } = useLanguage();
 
   useEffect(() => {
@@ -267,6 +269,25 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
     });
     return () => { cancelled = true; };
   }, [item?.id, item?.path, item?.extension, item?.type, item?.isFolder]);
+
+  useEffect(() => {
+    if (!item?.isFolder) {
+      setFolderContent(null);
+      return;
+    }
+    let cancelled = false;
+    setFolderContent({ itemId: item.id, status: 'loading' });
+    void loadFolderContentSummary(item).then(
+      summary => {
+        if (!cancelled) setFolderContent({ itemId: item.id, status: 'done', summary });
+      },
+      () => {
+        if (!cancelled) setFolderContent({ itemId: item.id, status: 'error' });
+      },
+    );
+    return () => { cancelled = true; };
+  }, [item?.id, item?.path, item?.handle, item?.isFolder]);
+
   if (!item) {
     return (
       <aside className="w-full min-w-0 bg-neutral-950 border-l border-neutral-800 flex flex-col justify-center items-center text-neutral-500 p-6 text-center select-none text-xs flex-shrink-0">
@@ -437,6 +458,18 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
                   <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.type}:</span><span className="text-right text-neutral-200">{t.preview.folder}</span></div>
                 ) : (
                   <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.fileSize}:</span><span className="text-right text-neutral-200">{formatFileSize(item.size)} ({item.size.toLocaleString()} bytes)</span></div>
+                )}
+                {item.isFolder && (
+                  <div className="flex items-center justify-between gap-3 text-neutral-400">
+                    <span>{t.pane.folderContentTypeLabel}:</span>
+                    <span className="text-right text-neutral-200">
+                      {folderContent?.itemId === item.id && folderContent.status === 'done' && folderContent.summary
+                        ? formatFolderContentLabel(folderContent.summary, t.pane.folderContentKinds)
+                        : folderContent?.itemId === item.id && folderContent.status === 'error'
+                          ? t.pane.folderTooltipCountFailed
+                          : t.pane.folderTooltipCounting}
+                    </span>
+                  </div>
                 )}
                 <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.modified}:</span><span className="text-right text-neutral-200">{formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language) || '----'}</span></div>
                 <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.attributes}:</span><span className="text-right text-neutral-200">{item.attributes || '----'}</span></div>

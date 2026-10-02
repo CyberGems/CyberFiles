@@ -2326,6 +2326,7 @@ async fn list_flat_directory(path: String) -> Result<FlatDirectoryListing, Strin
 struct FolderChildCounts {
     file_count: usize,
     folder_count: usize,
+    extension_counts: HashMap<String, usize>,
 }
 
 #[tauri::command]
@@ -2339,7 +2340,11 @@ async fn count_folder_children(path: String) -> Result<FolderChildCounts, String
 
         let entries = fs::read_dir(&root)
             .map_err(|error| format!("Cannot read folder: {error}"))?;
-        let mut counts = FolderChildCounts { file_count: 0, folder_count: 0 };
+        let mut counts = FolderChildCounts {
+            file_count: 0,
+            folder_count: 0,
+            extension_counts: HashMap::new(),
+        };
         for entry in entries {
             let entry = entry.map_err(|error| format!("Cannot read folder entry: {error}"))?;
             let entry_path = entry.path();
@@ -2353,6 +2358,12 @@ async fn count_folder_children(path: String) -> Result<FolderChildCounts, String
                 counts.folder_count += 1;
             } else {
                 counts.file_count += 1;
+                let extension = entry_path
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+                *counts.extension_counts.entry(extension).or_insert(0) += 1;
             }
         }
         Ok(counts)
