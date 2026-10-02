@@ -1840,9 +1840,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
       onActivate();
       if (dx < 0) onNavigateBack();
       else onNavigateForward();
-    } else if (dy < 0 && Math.abs(dy) > Math.abs(dx) * 1.35) {
+    } else if (Math.abs(dy) > Math.abs(dx) * 1.35) {
       onActivate();
-      onNavigateUp();
+      const viewport = viewportRef.current;
+      if (viewport) {
+        lastScrolledFocusedIdRef.current = tab.focusedId;
+        viewport.scrollTop = dy < 0 ? 0 : viewport.scrollHeight;
+      }
     }
   };
 
