@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useContext } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Folder, 
@@ -402,12 +402,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const suppressColumnSortRef = useRef(false);
   const previousPathRef = useRef(tab.currentPath);
   const navigationSnapshotRef = useRef({
+    tabId: tab.id,
     path: tab.currentPath,
     historyIndex: tab.historyIndex,
     historyLength: tab.history.length,
   });
-  const navigationAnimationFrameRef = useRef<number | null>(null);
-  const [navigationMotion, setNavigationMotion] = useState<NavigationMotion | null>(null);
+  const pendingNavigationRef = useRef<{ tabId: string; path: string; motion: NavigationMotion } | null>(null);
+  const [navigationTransition, setNavigationTransition] = useState<{ tabId: string; path: string; motion: NavigationMotion } | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const lastScrolledFocusedIdRef = useRef<string | null>(null);
   const columnHeadersRef = useRef<HTMLDivElement>(null);
@@ -563,9 +564,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   useEffect(() => () => {
     clearPendingDeselection();
-    if (navigationAnimationFrameRef.current !== null) {
-      window.cancelAnimationFrame(navigationAnimationFrameRef.current);
-    }
     if (columnResizeFrameRef.current !== null) {
       window.cancelAnimationFrame(columnResizeFrameRef.current);
     }
@@ -574,33 +572,43 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const previous = navigationSnapshotRef.current;
     const current = {
+      tabId: tab.id,
       path: tab.currentPath,
       historyIndex: tab.historyIndex,
       historyLength: tab.history.length,
     };
     navigationSnapshotRef.current = current;
-    if (previous.path === current.path) return;
-    if (!navigationTransitionsEnabled) {
-      setNavigationMotion(null);
-      return;
+    if (previous.tabId !== current.tabId || previous.path !== current.path) {
+      let motion: NavigationMotion = 'other';
+      if (previous.tabId === current.tabId) {
+        if (previous.historyLength === current.historyLength && current.historyIndex < previous.historyIndex) motion = 'back';
+        else if (previous.historyLength === current.historyLength && current.historyIndex > previous.historyIndex) motion = 'forward';
+        else if (isNavigationDescendant(current.path, previous.path)) motion = 'into';
+        else if (isNavigationDescendant(previous.path, current.path)) motion = 'up';
+      }
+      pendingNavigationRef.current = { tabId: current.tabId, path: current.path, motion };
+      setNavigationTransition(null);
+      if (viewportRef.current) viewportRef.current.scrollTop = 0;
     }
 
-    let motion: NavigationMotion = 'other';
-    if (previous.historyLength === current.historyLength && current.historyIndex < previous.historyIndex) motion = 'back';
-    else if (previous.historyLength === current.historyLength && current.historyIndex > previous.historyIndex) motion = 'forward';
-    else if (isNavigationDescendant(current.path, previous.path)) motion = 'into';
-    else if (isNavigationDescendant(previous.path, current.path)) motion = 'up';
-
-    setNavigationMotion(null);
-    if (navigationAnimationFrameRef.current !== null) window.cancelAnimationFrame(navigationAnimationFrameRef.current);
-    navigationAnimationFrameRef.current = window.requestAnimationFrame(() => {
-      setNavigationMotion(motion);
-      navigationAnimationFrameRef.current = null;
-    });
-  }, [navigationTransitionsEnabled, tab.currentPath, tab.historyIndex, tab.history.length]);
+    if (!navigationTransitionsEnabled) {
+      pendingNavigationRef.current = null;
+      setNavigationTransition(null);
+      return;
+    }
+    if (document.documentElement.dataset.cyberfilesNavigationPane === paneId) {
+      pendingNavigationRef.current = null;
+      return;
+    }
+    const pending = pendingNavigationRef.current;
+    if (pending && !isLoadingDirectory && pending.tabId === current.tabId && pending.path === current.path) {
+      pendingNavigationRef.current = null;
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) setNavigationTransition(pending);
+    }
+  }, [navigationTransitionsEnabled, isLoadingDirectory, tab.id, tab.currentPath, tab.historyIndex, tab.history.length]);
 
   const hasRecentActivity = (item: FileItem) => {
     const changedAt = Math.max(item.createdAtMs ?? 0, item.modifiedAtMs ?? 0);
@@ -2020,17 +2028,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* 5. File Items Viewport */}
       <div 
         ref={viewportRef}
-        className={`relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto py-0.5 select-none focus:outline-none ${marqueeBounds ? 'cursor-crosshair' : ''} ${navigationMotion ? `cyberfiles-navigation-transition cyberfiles-navigation-${navigationTransitionStyle} cyberfiles-navigation-${navigationMotion}` : ''}`}
+        data-cyberfiles-pane-viewport={paneId}
+        className={`relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto py-0.5 select-none focus:outline-none ${marqueeBounds ? 'cursor-crosshair' : ''}`}
         tabIndex={0}
         onScroll={event => {
           if (!hasMore || isLoadingDirectory || !onLoadMore) return;
           const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
           if (scrollHeight - scrollTop - clientHeight <= Math.max(500, clientHeight)) onLoadMore();
-        }}
-        onAnimationEnd={event => {
-          if (event.target === event.currentTarget && event.animationName.startsWith('cyberfiles-navigation-')) {
-            setNavigationMotion(null);
-          }
         }}
         onClick={handleViewportClick}
         onContextMenu={handleViewportContextMenu}
@@ -2047,6 +2051,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
             style={marqueeBounds}
           />
         )}
+        <div
+          key={`${tab.id}:${tab.currentPath}`}
+          className={`min-h-full ${navigationTransition?.tabId === tab.id && navigationTransition.path === tab.currentPath ? `cyberfiles-navigation-transition cyberfiles-navigation-${navigationTransitionStyle} cyberfiles-navigation-${navigationTransition.motion}` : ''}`}
+          onAnimationEnd={event => {
+            if (event.target === event.currentTarget && event.animationName.startsWith('cyberfiles-navigation-')) {
+              setNavigationTransition(null);
+            }
+          }}
+        >
         {files.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-neutral-500 gap-2 p-6">
             {isLoadingDirectory ? <RotateCw className="w-7 h-7 text-cyan-500 animate-spin" /> : <Folder className="w-8 h-8 text-neutral-600 stroke-[1.5]" />}
@@ -2317,6 +2330,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             </button>
           </div>
         )}
+        </div>
         </div>
         </div>
       </div>

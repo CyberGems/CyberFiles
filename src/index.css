@@ -383,30 +383,28 @@ html[data-theme='light'] [data-system-home-icon='network'] {
 .cyberfiles-navigation-transition {
   animation-duration: var(--cyberfiles-navigation-duration);
   animation-fill-mode: both;
-  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
   transform-origin: center;
   will-change: transform, opacity;
 }
 
 .cyberfiles-navigation-subtle {
-  --cyberfiles-navigation-duration: 155ms;
-  --cyberfiles-navigation-distance: 7px;
-  --cyberfiles-navigation-scale-in: 0.988;
-  --cyberfiles-navigation-scale-out: 1.012;
+  --cyberfiles-navigation-duration: 265ms;
+  --cyberfiles-navigation-distance: 16px;
+  --cyberfiles-navigation-scale-in: 0.975;
+  --cyberfiles-navigation-start-opacity: 0.52;
 }
 
 .cyberfiles-navigation-dynamic {
-  --cyberfiles-navigation-duration: 210ms;
-  --cyberfiles-navigation-distance: 16px;
-  --cyberfiles-navigation-scale-in: 0.965;
-  --cyberfiles-navigation-scale-out: 1.035;
+  --cyberfiles-navigation-duration: 330ms;
+  --cyberfiles-navigation-distance: 30px;
+  --cyberfiles-navigation-scale-in: 0.95;
+  --cyberfiles-navigation-start-opacity: 0.36;
 }
 
 .cyberfiles-navigation-fade {
-  --cyberfiles-navigation-duration: 130ms;
-  --cyberfiles-navigation-distance: 0px;
-  --cyberfiles-navigation-scale-in: 1;
-  --cyberfiles-navigation-scale-out: 1;
+  --cyberfiles-navigation-duration: 330ms;
+  --cyberfiles-navigation-start-opacity: 0.35;
 }
 
 .cyberfiles-navigation-into { animation-name: cyberfiles-navigation-into; }
@@ -414,30 +412,131 @@ html[data-theme='light'] [data-system-home-icon='network'] {
 .cyberfiles-navigation-back { animation-name: cyberfiles-navigation-back; }
 .cyberfiles-navigation-forward { animation-name: cyberfiles-navigation-forward; }
 .cyberfiles-navigation-other { animation-name: cyberfiles-navigation-other; }
+.cyberfiles-navigation-fade.cyberfiles-navigation-transition {
+  animation-name: cyberfiles-navigation-fade;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
 
 @keyframes cyberfiles-navigation-into {
-  from { opacity: 0.22; transform: scale(var(--cyberfiles-navigation-scale-in)); }
-  to { opacity: 1; transform: scale(1); }
+  from { opacity: var(--cyberfiles-navigation-start-opacity); transform: translate3d(0, var(--cyberfiles-navigation-distance), 0) scale(var(--cyberfiles-navigation-scale-in)); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
 
 @keyframes cyberfiles-navigation-up {
-  from { opacity: 0.22; transform: scale(var(--cyberfiles-navigation-scale-out)); }
-  to { opacity: 1; transform: scale(1); }
+  from { opacity: var(--cyberfiles-navigation-start-opacity); transform: translate3d(0, calc(-1 * var(--cyberfiles-navigation-distance)), 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
 @keyframes cyberfiles-navigation-back {
-  from { opacity: 0.22; transform: translateX(calc(-1 * var(--cyberfiles-navigation-distance))); }
-  to { opacity: 1; transform: translateX(0); }
+  from { opacity: var(--cyberfiles-navigation-start-opacity); transform: translate3d(calc(-1 * var(--cyberfiles-navigation-distance)), 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
 @keyframes cyberfiles-navigation-forward {
-  from { opacity: 0.22; transform: translateX(var(--cyberfiles-navigation-distance)); }
-  to { opacity: 1; transform: translateX(0); }
+  from { opacity: var(--cyberfiles-navigation-start-opacity); transform: translate3d(var(--cyberfiles-navigation-distance), 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
 @keyframes cyberfiles-navigation-other {
-  from { opacity: 0.18; }
+  from { opacity: var(--cyberfiles-navigation-start-opacity); }
   to { opacity: 1; }
+}
+
+@keyframes cyberfiles-navigation-fade {
+  from { opacity: var(--cyberfiles-navigation-start-opacity); }
+  to { opacity: 1; }
+}
+
+html[data-cyberfiles-navigation-pane='left'] [data-cyberfiles-pane-viewport='left'],
+html[data-cyberfiles-navigation-pane='right'] [data-cyberfiles-pane-viewport='right'] {
+  view-transition-name: cyberfiles-navigation-pane;
+}
+
+html[data-cyberfiles-navigation-pane] {
+  --cyberfiles-view-duration: 270ms;
+  --cyberfiles-view-distance: 16px;
+  --cyberfiles-view-old-x: 0px;
+  --cyberfiles-view-old-y: 0px;
+  --cyberfiles-view-old-scale: 1;
+  --cyberfiles-view-new-x: 0px;
+  --cyberfiles-view-new-y: 0px;
+  --cyberfiles-view-new-scale: 1;
+  --cyberfiles-view-new-opacity: 0.55;
+}
+
+html[data-cyberfiles-navigation-style='dynamic'] {
+  --cyberfiles-view-duration: 340ms;
+  --cyberfiles-view-distance: 30px;
+  --cyberfiles-view-new-opacity: 0.4;
+}
+
+html[data-cyberfiles-navigation-style='fade'] {
+  --cyberfiles-view-duration: 340ms;
+  --cyberfiles-view-distance: 0px;
+  --cyberfiles-view-new-opacity: 0;
+}
+
+html[data-cyberfiles-navigation-motion='into'] {
+  --cyberfiles-view-old-y: calc(-0.5 * var(--cyberfiles-view-distance));
+  --cyberfiles-view-old-scale: 0.985;
+  --cyberfiles-view-new-y: var(--cyberfiles-view-distance);
+  --cyberfiles-view-new-scale: 0.975;
+}
+
+html[data-cyberfiles-navigation-motion='up'] {
+  --cyberfiles-view-old-y: calc(0.5 * var(--cyberfiles-view-distance));
+  --cyberfiles-view-old-scale: 0.985;
+  --cyberfiles-view-new-y: calc(-1 * var(--cyberfiles-view-distance));
+}
+
+html[data-cyberfiles-navigation-motion='back'] {
+  --cyberfiles-view-old-x: var(--cyberfiles-view-distance);
+  --cyberfiles-view-new-x: calc(-1 * var(--cyberfiles-view-distance));
+}
+
+html[data-cyberfiles-navigation-motion='forward'] {
+  --cyberfiles-view-old-x: calc(-1 * var(--cyberfiles-view-distance));
+  --cyberfiles-view-new-x: var(--cyberfiles-view-distance);
+}
+
+html[data-cyberfiles-navigation-style='fade'] {
+  --cyberfiles-view-old-x: 0px;
+  --cyberfiles-view-old-y: 0px;
+  --cyberfiles-view-old-scale: 1;
+  --cyberfiles-view-new-x: 0px;
+  --cyberfiles-view-new-y: 0px;
+  --cyberfiles-view-new-scale: 1;
+}
+
+html[data-cyberfiles-navigation-pane]::view-transition-old(root) {
+  animation: none;
+  opacity: 0;
+}
+
+html[data-cyberfiles-navigation-pane]::view-transition-new(root) {
+  animation: none;
+}
+
+html[data-cyberfiles-navigation-pane]::view-transition-old(cyberfiles-navigation-pane) {
+  animation: cyberfiles-navigation-view-out var(--cyberfiles-view-duration) cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+html[data-cyberfiles-navigation-pane]::view-transition-new(cyberfiles-navigation-pane) {
+  animation: cyberfiles-navigation-view-in var(--cyberfiles-view-duration) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes cyberfiles-navigation-view-out {
+  to {
+    opacity: 0;
+    transform: translate3d(var(--cyberfiles-view-old-x), var(--cyberfiles-view-old-y), 0) scale(var(--cyberfiles-view-old-scale));
+  }
+}
+
+@keyframes cyberfiles-navigation-view-in {
+  from {
+    opacity: var(--cyberfiles-view-new-opacity);
+    transform: translate3d(var(--cyberfiles-view-new-x), var(--cyberfiles-view-new-y), 0) scale(var(--cyberfiles-view-new-scale));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

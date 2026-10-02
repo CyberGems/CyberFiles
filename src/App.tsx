@@ -1,4 +1,5 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -714,6 +715,7 @@ export default function App() {
   const browserDirectoryCursors = useRef(new Map<string, BrowserDirectoryCursor>());
   const [nativeDirectories, setNativeDirectories] = useState<Record<string, NativeDirectoryState>>({});
   const nativeLoadedDirectories = useRef(new Set<string>());
+  const navigationViewTransitionSequence = useRef(0);
   const nativeInFlightDirectories = useRef(new Map<string, number>());
   const nativeWorkspaceGeneration = useRef(0);
   const nativeOpeningWorkspace = useRef(false);
@@ -2081,7 +2083,7 @@ export default function App() {
         setActiveRightTabIndex(insertIndex);
       }
     } else {
-      updatePaneTab(targetPane, tab => {
+      const updateCurrentTab = () => updatePaneTab(targetPane, tab => {
         if (getPathKey(tab.currentPath) === pathKey && historyIndexOverride === undefined) {
           return forceRefresh ? tab : { ...tab, selectedIds: [], focusedId: null };
         }
@@ -2102,6 +2104,37 @@ export default function App() {
           focusedId: null,
         };
       });
+      const useViewTransition = navigationTransitionsEnabled
+        && !forceRefresh
+        && targetTab
+        && getPathKey(targetTab.currentPath) !== pathKey
+        && nativeLoadedDirectories.current.has(pathKey)
+        && typeof document.startViewTransition === 'function'
+        && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (useViewTransition) {
+        const root = document.documentElement;
+        const token = String(++navigationViewTransitionSequence.current);
+        let motion: 'into' | 'up' | 'back' | 'forward' | 'other' = 'other';
+        if (historyIndexOverride !== undefined && historyIndexOverride < targetTab.historyIndex) motion = 'back';
+        else if (historyIndexOverride !== undefined && historyIndexOverride > targetTab.historyIndex) motion = 'forward';
+        else if (isSameOrDescendantPath(targetPath, targetTab.currentPath)) motion = 'into';
+        else if (isSameOrDescendantPath(targetTab.currentPath, targetPath)) motion = 'up';
+        root.dataset.cyberfilesNavigationPane = targetPane;
+        root.dataset.cyberfilesNavigationStyle = navigationTransitionStyle;
+        root.dataset.cyberfilesNavigationMotion = motion;
+        root.dataset.cyberfilesNavigationToken = token;
+        const transition = document.startViewTransition(() => flushSync(updateCurrentTab));
+        const clearTransition = () => {
+          if (root.dataset.cyberfilesNavigationToken !== token) return;
+          delete root.dataset.cyberfilesNavigationPane;
+          delete root.dataset.cyberfilesNavigationStyle;
+          delete root.dataset.cyberfilesNavigationMotion;
+          delete root.dataset.cyberfilesNavigationToken;
+        };
+        void transition.finished.then(clearTransition, clearTransition);
+      } else {
+        updateCurrentTab();
+      }
     }
 
     if (targetPath === SYSTEM_HOME_PATH) {
@@ -2179,7 +2212,7 @@ export default function App() {
     } finally {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
-  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectoryPage, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, newTabsNextToCurrent, rememberRecentFolder]);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectoryPage, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, newTabsNextToCurrent, rememberRecentFolder, navigationTransitionsEnabled, navigationTransitionStyle]);
 
   const lastSessionReloadHandled = useRef(0);
   useEffect(() => {
