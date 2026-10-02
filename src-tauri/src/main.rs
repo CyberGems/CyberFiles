@@ -2321,6 +2321,46 @@ async fn list_flat_directory(path: String) -> Result<FlatDirectoryListing, Strin
     .map_err(|error| format!("Flat folder scan worker failed: {error}"))?
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FolderChildCounts {
+    file_count: usize,
+    folder_count: usize,
+}
+
+#[tauri::command]
+async fn count_folder_children(path: String) -> Result<FolderChildCounts, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = fs::canonicalize(&path)
+            .map_err(|error| format!("Cannot access folder: {error}"))?;
+        if !root.is_dir() {
+            return Err("The selected location is not a folder.".to_string());
+        }
+
+        let entries = fs::read_dir(&root)
+            .map_err(|error| format!("Cannot read folder: {error}"))?;
+        let mut counts = FolderChildCounts { file_count: 0, folder_count: 0 };
+        for entry in entries {
+            let entry = entry.map_err(|error| format!("Cannot read folder entry: {error}"))?;
+            let entry_path = entry.path();
+            let metadata = fs::symlink_metadata(&entry_path)
+                .map_err(|error| format!("Cannot read folder entry metadata: {error}"))?;
+            // Match the lister: links are omitted rather than followed.
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            if metadata.is_dir() {
+                counts.folder_count += 1;
+            } else {
+                counts.file_count += 1;
+            }
+        }
+        Ok(counts)
+    })
+    .await
+    .map_err(|error| format!("Folder child count worker failed: {error}"))?
+}
+
 #[tauri::command]
 async fn count_hidden_items(path: String) -> Result<usize, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -5491,6 +5531,7 @@ fn main() {
             list_directory,
             list_flat_directory,
             count_hidden_items,
+            count_folder_children,
             get_file_icons,
             calculate_folder_size,
             calculate_folder_size_bounded,

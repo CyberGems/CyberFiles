@@ -38,7 +38,7 @@ import {
 import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, NavigationTransitionStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
-import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
+import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, countNativeFolderChildren, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
 import { listen } from '@tauri-apps/api/event';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip, TooltipPreferenceContext } from './Tooltip';
@@ -116,6 +116,7 @@ type RelativeGraphColumn = 'size' | 'created' | 'modified';
 type RelativeGraphWidths = Partial<Record<RelativeGraphColumn, number>>;
 type ResizableColumn = FileColumn;
 type FolderSizeState = { status: 'loading' | 'paused' | 'done' | 'error'; size?: number; entriesScanned?: number };
+type FolderChildCountState = { status: 'loading' | 'done' | 'error'; fileCount?: number; folderCount?: number; checkedAt?: number };
 type NavigationMotion = 'into' | 'up' | 'back' | 'forward' | 'other';
 
 function normalizeNavigationPath(path: string): string {
@@ -376,6 +377,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [folderSizeStates, setFolderSizeStates] = useState<Record<string, FolderSizeState>>({});
   const folderSizeStatesRef = useRef(folderSizeStates);
   folderSizeStatesRef.current = folderSizeStates;
+  const [folderChildCounts, setFolderChildCounts] = useState<Record<string, FolderChildCountState>>({});
+  const folderChildCountsRef = useRef(folderChildCounts);
+  folderChildCountsRef.current = folderChildCounts;
   const folderSizeHoverTimersRef = useRef(new Map<string, number>());
   const hoveredFolderItemsRef = useRef(new Map<string, FileItem>());
   const folderSizeJobsRef = useRef(new Map<string, string>());
@@ -675,7 +679,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
       <span className="font-semibold">{item.name}</span>
       {item.path && <span className="break-all font-sans text-[10px] text-cyan-200">{item.path}</span>}
       {item.isFolder && !item.recycleBinId && !isRecycleBin && (
-        <span className="text-cyan-100">{getFolderTooltipSizeText(item)}</span>
+        <>
+          <div className="mt-1 w-full rounded-md border border-cyan-400/20 bg-cyan-950/20 px-2 py-1.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-300">{t.pane.folderTooltipContents}</div>
+            {folderChildCounts[item.id]?.status === 'done' ? (
+              <div className="mt-1 flex justify-center gap-3 text-[11px] text-neutral-100">
+                <span>{t.pane.folderTooltipFiles.replace('{count}', new Intl.NumberFormat(language).format(folderChildCounts[item.id].fileCount ?? 0))}</span>
+                <span>{t.pane.folderTooltipFolders.replace('{count}', new Intl.NumberFormat(language).format(folderChildCounts[item.id].folderCount ?? 0))}</span>
+              </div>
+            ) : (
+              <div className="mt-1 text-[10px] text-neutral-400">
+                {folderChildCounts[item.id]?.status === 'error' ? t.pane.folderTooltipCountFailed : t.pane.folderTooltipCounting}
+              </div>
+            )}
+          </div>
+          <span className="text-cyan-100">{getFolderTooltipSizeText(item)}</span>
+        </>
       )}
       {!item.isFolder && <span>{formatFileSize(item.size)}</span>}
       {(item.modifiedDate || item.modifiedAtMs !== undefined) && (
@@ -920,8 +939,34 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }, 2000);
     folderSizeHoverTimersRef.current.set(item.id, timer);
   };
+  const loadFolderChildCounts = async (item: FileItem) => {
+    if (!tooltipsEnabled || !item.path) return;
+    const cached = folderChildCountsRef.current[item.id];
+    if (cached?.status === 'loading' || (cached?.status === 'done' && Date.now() - (cached.checkedAt ?? 0) < 30_000)) return;
+    const loading: FolderChildCountState = { status: 'loading' };
+    folderChildCountsRef.current = { ...folderChildCountsRef.current, [item.id]: loading };
+    setFolderChildCounts(previous => ({ ...previous, [item.id]: loading }));
+    try {
+      let fileCount = 0;
+      let folderCount = 0;
+      if (isTauriDesktop()) {
+        ({ fileCount, folderCount } = await countNativeFolderChildren(item.path));
+      } else {
+        const handle = item.handle as FileSystemDirectoryHandle | undefined;
+        if (!handle || handle.kind !== 'directory') throw new Error('Folder handle unavailable.');
+        for await (const child of handle.values()) {
+          if (child.kind === 'directory') folderCount += 1;
+          else fileCount += 1;
+        }
+      }
+      setFolderChildCounts(previous => ({ ...previous, [item.id]: { status: 'done', fileCount, folderCount, checkedAt: Date.now() } }));
+    } catch {
+      setFolderChildCounts(previous => ({ ...previous, [item.id]: { status: 'error' } }));
+    }
+  };
   const handleFolderTooltipMouseEnter = (item: FileItem) => {
     if (!item.isFolder || item.recycleBinId || isRecycleBin) return;
+    void loadFolderChildCounts(item);
     hoveredFolderItemsRef.current.set(item.id, item);
     const leaveTimer = folderSizeLeaveTimersRef.current.get(item.id);
     if (leaveTimer !== undefined) {
@@ -1846,15 +1891,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
       ) : undefined);
 
     return (
-      <Tooltip label={tooltipLabel} placement="top">
+      <Tooltip key={item.id} label={tooltipLabel} placement="top">
       <button
-        key={item.id}
         type="button"
         data-file-item="true"
         data-file-id={item.id}
         onClick={event => { handleItemClick(event, item, index); handleConfiguredSingleClick(event, item); }}
         onDoubleClick={() => handleConfiguredDoubleClick(item)}
         onContextMenu={event => handleFileItemContextMenu(event, item)}
+        onMouseEnter={category === 'folder' ? () => handleFolderTooltipMouseEnter(item) : undefined}
+        onMouseLeave={category === 'folder' ? () => handleFolderTooltipMouseLeave(item) : undefined}
         style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, selected) }}
         className={`group flex min-h-[68px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
           selected
@@ -1876,7 +1922,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           {icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate text-xs text-neutral-100 font-medium" style={getItemNameStyle(item, selected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+          <span className="inline-block max-w-full truncate text-xs text-neutral-100 font-medium" style={getItemNameStyle(item, selected)}>{getDisplayItemName(item, showFileExtensions)}</span>
           {category === 'folder' ? (
             <span className="mt-1 block truncate text-[10px] text-neutral-500">{item.path}</span>
           ) : hasCapacity && drive ? (
@@ -2585,8 +2631,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
               const isSelected = visibleSelectedIdSet.has(item.id);
 
               return (
+                <Tooltip key={item.id} label={renderItemTooltip(item)} placement="top" disabled={editingItemId === item.id}>
                 <div
-                  key={item.id}
                   data-file-item="true"
                   data-file-id={item.id}
                   data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
@@ -2595,6 +2641,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
+                  onMouseEnter={() => handleFolderTooltipMouseEnter(item)}
+                  onMouseLeave={() => handleFolderTooltipMouseLeave(item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
                   className={`flex min-w-0 ${virtualizeFiles ? 'h-36' : ''} flex-col items-center justify-start gap-1.5 rounded-lg border p-2.5 text-center cursor-pointer transition-colors data-[focused=true]:ring-1 data-[focused=true]:ring-inset data-[focused=true]:ring-cyan-300/70 ${
                     isSelected
@@ -2614,17 +2662,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   {editingItemId === item.id ? (
                     renderInlineRenameInput(item, 'w-full min-w-0', 'text-center')
                   ) : (
-                    <Tooltip label={renderItemTooltip(item)} placement="top">
-                      <span className="w-full min-w-0 px-1">
-                        <span onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate text-[11px] font-medium" style={getItemNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
-                      </span>
-                    </Tooltip>
+                    <span className="w-full min-w-0 px-1">
+                      <span className="inline-block max-w-full truncate text-[11px] font-medium" style={getItemNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+                    </span>
                   )}
                   {flatParentLabel(item) && <span className="w-full truncate px-1 font-sans text-[9px] text-neutral-500">{flatParentLabel(item)}</span>}
                   <span className="mt-0.5 text-[9px] font-sans text-neutral-400">
-                    {item.isFolder ? 'Carpeta' : formatFileSize(item.size)}
+                    {item.isFolder ? t.pane.iconFolderLabel : formatFileSize(item.size)}
                   </span>
                 </div>
+                </Tooltip>
               );
               })}
               {group.after > 0 && <div aria-hidden="true" className="col-span-full" style={{ height: group.after }} />}
