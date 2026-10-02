@@ -2181,6 +2181,11 @@ export default function App() {
     if (nativeOpeningWorkspace.current) return;
     if (forceRefresh && targetPath !== SYSTEM_HOME_PATH && targetPath !== RECYCLE_BIN_PATH) invalidateFlatDirectories([targetPath]);
     const isDesktop = isTauriDesktop();
+    if (targetPath === SYSTEM_HOME_PATH && isDesktop) {
+      systemHomeWorkspace.current = true;
+      nativeRootPath.current = SYSTEM_HOME_PATH;
+      browserRootPath.current = '';
+    }
     const targetTabs = targetPane === 'left' ? leftTabs : rightTabs;
     const targetTabIndex = targetPane === 'left' ? activeLeftTabIndex : activeRightTabIndex;
     const targetTab = targetTabs[targetTabIndex];

@@ -315,6 +315,10 @@ html[data-theme='light'] [data-system-home-icon='network'] {
   color: var(--color-neutral-100);
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.035);
 }
+html[data-theme='light'] #root .collapse-toggle:hover:not(:disabled) {
+  background-color: var(--color-neutral-800);
+  box-shadow: none;
+}
 #root .collapse-toggle [data-collapse-chevron] {
   transition: color 150ms ease;
 }

@@ -34,6 +34,7 @@ import {
   LockKeyhole,
   UnlockKeyhole,
   History,
+  Home,
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, NavigationTransitionStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
@@ -1593,14 +1594,18 @@ export const FilePane: React.FC<FilePaneProps> = ({
     segments.forEach((seg, idx) => {
       if (idx === 0) {
         accumulated = seg.includes(':') ? `${seg}\\` : seg;
-        result.push({ label: seg, fullPath: accumulated });
+        const drive = drives.find(candidate => candidate.letter.toLowerCase() === seg.toLowerCase());
+        const label = drive?.label && drive.label.toLowerCase() !== seg.toLowerCase()
+          ? `${drive.label} (${seg})`
+          : seg;
+        result.push({ label, fullPath: accumulated });
       } else {
         accumulated = `${accumulated.replace(/\\+$/, '')}\\${seg}`;
         result.push({ label: seg, fullPath: accumulated });
       }
     });
     return result;
-  }, [tab.currentPath, isSystemHome, isRecycleBin]);
+  }, [tab.currentPath, isSystemHome, isRecycleBin, drives]);
 
   // Handle Drag & Drop between panes
   const handleDragStart = (e: React.DragEvent, item: FileItem) => {
@@ -2357,6 +2362,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         <Tooltip label={`${t.toolbar.back} (Alt+${language === 'es' ? 'Izquierda' : 'Left'})`} disabled={tab.historyIndex <= 0}><button onClick={onNavigateBack} disabled={tab.historyIndex <= 0} className="p-1 rounded text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 transition-colors"><ArrowLeft className="w-3.5 h-3.5" /></button></Tooltip>
         <Tooltip label={`${t.toolbar.forward} (Alt+${language === 'es' ? 'Derecha' : 'Right'})`} disabled={tab.historyIndex >= tab.history.length - 1}><button onClick={onNavigateForward} disabled={tab.historyIndex >= tab.history.length - 1} className="p-1 rounded text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 transition-colors"><ArrowRight className="w-3.5 h-3.5" /></button></Tooltip>
         <Tooltip label={`${t.toolbar.up} (Backspace / Alt+${language === 'es' ? 'Arriba' : 'Up'})`} disabled={isSystemHome}><button onClick={onNavigateUp} disabled={isSystemHome} className="p-1 rounded text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 transition-colors"><ArrowUp className="w-3.5 h-3.5" /></button></Tooltip>
+        <Tooltip label={`${t.toolbar.refresh} (F5)`} disabled={!tab.currentPath}><button onClick={() => onRefresh ? onRefresh() : onNavigate(tab.currentPath)} disabled={!tab.currentPath} className="p-1 rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-30"><RotateCw className="w-3.5 h-3.5" /></button></Tooltip>
 
         {/* Breadcrumb Path Box */}
         <div 
@@ -2365,7 +2371,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             setPathInput(isSystemHome ? '' : tab.currentPath);
             setIsEditingPath(true);
           }}
-          className={`flex-1 min-w-0 flex h-8 min-h-8 items-center bg-neutral-950 px-2 rounded border border-neutral-800 overflow-hidden ${!isRecycleBin ? 'cursor-text hover:border-neutral-700' : 'cursor-default'}`}
+          className={`flex-1 min-w-0 flex h-9 min-h-9 items-center bg-neutral-950 px-2 rounded-full border border-neutral-800 overflow-hidden ${!isRecycleBin ? 'cursor-text hover:border-neutral-700' : 'cursor-default'}`}
         >
           {isEditingPath ? (
             <form onSubmit={handlePathSubmit} onClick={event => event.stopPropagation()} className="w-full">
@@ -2391,7 +2397,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
               <span>{t.sidebar.recycleBinTitle}</span>
             </div>
           ) : (
-            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto no-scrollbar font-sans text-xs">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto no-scrollbar font-sans text-xs">
+              {isTauriDesktop() && (
+                <>
+                  <Tooltip label={t.sidebar.thisPc} placement="bottom">
+                    <button type="button" aria-label={t.sidebar.thisPc} onClick={event => { event.stopPropagation(); onNavigate(SYSTEM_HOME_PATH); }} className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-amber-950/40 text-amber-300 transition-colors hover:bg-amber-950/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-400/70">
+                      <Home className="h-3.5 w-3.5" />
+                    </button>
+                  </Tooltip>
+                  {breadcrumbSegments.length > 0 && <ChevronRight aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-neutral-500" />}
+                </>
+              )}
               {breadcrumbSegments.length === 0 && <span className="px-1 text-neutral-500">{t.pane.noFolderOpen}</span>}
               {breadcrumbSegments.map((seg, i) => (
                 <React.Fragment key={seg.fullPath}>
@@ -2400,12 +2416,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       e.stopPropagation();
                       onNavigate(seg.fullPath);
                     }}
-                    className="rounded-md px-1.5 py-1 text-neutral-300 transition-colors duration-150 hover:bg-neutral-800/80 hover:text-neutral-100 active:bg-neutral-700/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70 truncate"
+                    className="flex-shrink-0 whitespace-nowrap rounded-md px-1.5 py-1 text-neutral-300 transition-colors duration-150 hover:bg-neutral-800/80 hover:text-neutral-100 active:bg-neutral-700/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
                   >
                     {seg.label}
                   </button>
                   {i < breadcrumbSegments.length - 1 && (
-                    <ChevronRight className="w-3 h-3 text-neutral-600 flex-shrink-0" />
+                    <ChevronRight aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-neutral-500" />
                   )}
                 </React.Fragment>
               ))}
@@ -2472,7 +2488,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
           document.body,
         )}
 
-        <Tooltip label={`${t.toolbar.refresh} (F5)`} disabled={!tab.currentPath}><button onClick={() => onRefresh ? onRefresh() : onNavigate(tab.currentPath)} disabled={!tab.currentPath} className="p-1 rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-30"><RotateCw className="w-3.5 h-3.5" /></button></Tooltip>
         <Tooltip label={styleLocked ? t.pane.folderStyleLocked : t.pane.folderStyleUnlocked} placement="bottom">
           <button
             type="button"
