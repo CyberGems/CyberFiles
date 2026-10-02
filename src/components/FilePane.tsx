@@ -40,6 +40,7 @@ import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
+import { advanceMouseGesturePath, MOUSE_GESTURE_MIN_DISTANCE, type MouseGesturePath } from '../utils/mouseGesture';
 import { listen } from '@tauri-apps/api/event';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip, TooltipPreferenceContext } from './Tooltip';
@@ -193,13 +194,13 @@ interface MouseGestureDrag {
   target: Element;
   startX: number;
   startY: number;
-  endX: number;
-  endY: number;
+  path: MouseGesturePath;
+  pathData: string;
   moved: boolean;
 }
 
 const MOUSE_GESTURE_MENU_TOLERANCE = 12;
-const MOUSE_GESTURE_MIN_DISTANCE = 48;
+const MOUSE_GESTURE_HOLD_TIMEOUT = 2000;
 
 const COLLAPSED_SYSTEM_HOME_SECTIONS_KEY = 'cyberfiles_system_home_collapsed_sections_v1';
 const FILE_COLUMNS: FileColumn[] = ['extension', 'name', 'type', 'size', 'created', 'modified'];
@@ -453,6 +454,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const mouseGestureDragRef = useRef<MouseGestureDrag | null>(null);
   const replayingGestureContextMenuRef = useRef(false);
   const suppressGestureContextMenuUntilRef = useRef(0);
+  const mouseGestureHoldTimerRef = useRef<number | null>(null);
+  const mouseGestureFadeTimerRef = useRef<number | null>(null);
+  const mouseGestureTrailRef = useRef<SVGSVGElement>(null);
+  const mouseGestureTrailPathRef = useRef<SVGPathElement>(null);
+  const mouseGestureTrailTipRef = useRef<SVGCircleElement>(null);
+  const mouseGestureTrailMarkerRef = useRef<SVGTextElement>(null);
+  useEffect(() => () => {
+    if (mouseGestureHoldTimerRef.current !== null) window.clearTimeout(mouseGestureHoldTimerRef.current);
+    if (mouseGestureFadeTimerRef.current !== null) window.clearTimeout(mouseGestureFadeTimerRef.current);
+  }, []);
   const marqueePreviewIdsRef = useRef<string[] | null>(null);
   const suppressViewportClickRef = useRef(false);
   const [marqueeBounds, setMarqueeBounds] = useState<MarqueeBounds | null>(null);
@@ -1777,6 +1788,62 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (!singleClickOpens || item.recycleBinId) onItemDoubleClick(item);
   };
 
+  const clearMouseGestureHoldTimer = () => {
+    if (mouseGestureHoldTimerRef.current !== null) window.clearTimeout(mouseGestureHoldTimerRef.current);
+    mouseGestureHoldTimerRef.current = null;
+  };
+
+  const paintMouseGestureTrail = (drag: MouseGestureDrag, colorOverride?: string) => {
+    if (!drag.moved && !drag.path.cancelled) return;
+    const svg = mouseGestureTrailRef.current;
+    const path = mouseGestureTrailPathRef.current;
+    const tip = mouseGestureTrailTipRef.current;
+    const marker = mouseGestureTrailMarkerRef.current;
+    if (!svg || !path || !tip || !marker) return;
+    const color = colorOverride ?? (drag.path.cancelled ? '#fb7185' : '#22d3ee');
+    svg.style.display = 'block';
+    svg.style.opacity = '1';
+    svg.style.filter = `drop-shadow(0 0 6px ${color})`;
+    path.setAttribute('d', drag.pathData);
+    path.setAttribute('stroke', color);
+    tip.setAttribute('cx', String(drag.path.lastX));
+    tip.setAttribute('cy', String(drag.path.lastY));
+    tip.setAttribute('fill', color);
+    marker.setAttribute('x', String(Math.max(20, Math.min(window.innerWidth - 20, drag.path.lastX + 18))));
+    marker.setAttribute('y', String(Math.max(20, Math.min(window.innerHeight - 20, drag.path.lastY - 18))));
+    marker.setAttribute('fill', color);
+    marker.textContent = drag.path.cancelled ? '×' : drag.path.direction ? {
+      left: '←', right: '→', up: '↑', down: '↓',
+    }[drag.path.direction] : '';
+  };
+
+  const fadeMouseGestureTrail = () => {
+    const svg = mouseGestureTrailRef.current;
+    if (!svg || svg.style.display === 'none') return;
+    svg.style.transition = 'opacity 220ms ease-out';
+    svg.style.opacity = '0';
+    if (mouseGestureFadeTimerRef.current !== null) window.clearTimeout(mouseGestureFadeTimerRef.current);
+    mouseGestureFadeTimerRef.current = window.setTimeout(() => {
+      svg.style.display = 'none';
+      mouseGestureFadeTimerRef.current = null;
+    }, 240);
+  };
+
+  const cancelMouseGesture = (drag: MouseGestureDrag) => {
+    drag.path.cancelled = true;
+    drag.moved = true;
+    paintMouseGestureTrail(drag);
+  };
+
+  const extendMouseGesture = (drag: MouseGestureDrag, x: number, y: number) => {
+    const next = advanceMouseGesturePath(drag.path, drag.startX, drag.startY, x, y);
+    if (next === drag.path) return;
+    drag.path = next;
+    drag.pathData += ` L ${Math.round(x)} ${Math.round(y)}`;
+    if (Math.hypot(x - drag.startX, y - drag.startY) > MOUSE_GESTURE_MENU_TOLERANCE) drag.moved = true;
+    paintMouseGestureTrail(drag);
+  };
+
   const handleMouseGesturePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!mouseGesturesEnabled || event.pointerType !== 'mouse' || event.button !== 2 || event.ctrlKey || event.metaKey || event.shiftKey) return;
     const target = event.target;
@@ -1784,37 +1851,53 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
     const control = target.closest('button, a');
     if (control && !control.hasAttribute('data-file-item')) return;
+    clearMouseGestureHoldTimer();
+    if (mouseGestureFadeTimerRef.current !== null) window.clearTimeout(mouseGestureFadeTimerRef.current);
+    mouseGestureFadeTimerRef.current = null;
+    const trail = mouseGestureTrailRef.current;
+    if (trail) {
+      trail.style.display = 'none';
+      trail.style.opacity = '1';
+      trail.style.transition = 'none';
+    }
     suppressGestureContextMenuUntilRef.current = 0;
-    mouseGestureDragRef.current = {
+    const drag: MouseGestureDrag = {
       pointerId: event.pointerId,
       target,
       startX: event.clientX,
       startY: event.clientY,
-      endX: event.clientX,
-      endY: event.clientY,
+      path: { lastX: event.clientX, lastY: event.clientY, length: 0, direction: null, peakProgress: 0, cancelled: false },
+      pathData: `M ${Math.round(event.clientX)} ${Math.round(event.clientY)}`,
       moved: false,
     };
+    mouseGestureDragRef.current = drag;
+    mouseGestureHoldTimerRef.current = window.setTimeout(() => {
+      if (mouseGestureDragRef.current === drag) cancelMouseGesture(drag);
+      mouseGestureHoldTimerRef.current = null;
+    }, MOUSE_GESTURE_HOLD_TIMEOUT);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
   const handleMouseGesturePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const drag = mouseGestureDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    drag.endX = event.clientX;
-    drag.endY = event.clientY;
-    if (Math.hypot(drag.endX - drag.startX, drag.endY - drag.startY) > MOUSE_GESTURE_MENU_TOLERANCE) {
-      drag.moved = true;
-      event.preventDefault();
-    }
+    extendMouseGesture(drag, event.clientX, event.clientY);
+    if (drag.moved) event.preventDefault();
   };
 
   const finishMouseGesture = (event: React.PointerEvent<HTMLDivElement>) => {
     const drag = mouseGestureDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    extendMouseGesture(drag, event.clientX, event.clientY);
+    clearMouseGestureHoldTimer();
     mouseGestureDragRef.current = null;
     suppressGestureContextMenuUntilRef.current = Date.now() + 300;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    if (event.type === 'pointercancel') return;
+    if (event.type === 'pointercancel') cancelMouseGesture(drag);
+    if (drag.path.cancelled) {
+      fadeMouseGestureTrail();
+      return;
+    }
 
     const dx = event.clientX - drag.startX;
     const dy = event.clientY - drag.startY;
@@ -1835,19 +1918,29 @@ export const FilePane: React.FC<FilePaneProps> = ({
       return;
     }
 
-    if (Math.hypot(dx, dy) < MOUSE_GESTURE_MIN_DISTANCE) return;
-    if (Math.abs(dx) > Math.abs(dy) * 1.35) {
+    const direction = drag.path.direction;
+    const progress = direction === 'left' ? -dx : direction === 'right' ? dx : direction === 'up' ? -dy : dy;
+    const viewport = viewportRef.current;
+    const canPerform = direction === 'left' ? tab.historyIndex > 0
+      : direction === 'right' ? tab.historyIndex < tab.history.length - 1
+      : direction === 'up' ? Boolean(viewport && viewport.scrollTop > 0)
+      : direction === 'down' ? Boolean(viewport && viewport.scrollTop < viewport.scrollHeight - viewport.clientHeight - 1)
+      : false;
+    if (direction && progress >= MOUSE_GESTURE_MIN_DISTANCE && canPerform) {
+      paintMouseGestureTrail(drag, '#4ade80');
       onActivate();
-      if (dx < 0) onNavigateBack();
-      else onNavigateForward();
-    } else if (Math.abs(dy) > Math.abs(dx) * 1.35) {
-      onActivate();
-      const viewport = viewportRef.current;
-      if (viewport) {
-        lastScrolledFocusedIdRef.current = tab.focusedId;
-        viewport.scrollTop = dy < 0 ? 0 : viewport.scrollHeight;
+      if (direction === 'left') onNavigateBack();
+      else if (direction === 'right') onNavigateForward();
+      else {
+        if (viewport) {
+          lastScrolledFocusedIdRef.current = tab.focusedId;
+          viewport.scrollTop = direction === 'up' ? 0 : viewport.scrollHeight;
+        }
       }
+    } else {
+      paintMouseGestureTrail(drag, '#fbbf24');
     }
+    fadeMouseGestureTrail();
   };
 
   const handleMouseGestureContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -1859,7 +1952,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   const handleMouseGestureLostCapture = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (mouseGestureDragRef.current?.pointerId === event.pointerId) {
+    const drag = mouseGestureDragRef.current;
+    if (drag?.pointerId === event.pointerId) {
+      clearMouseGestureHoldTimer();
+      cancelMouseGesture(drag);
+      fadeMouseGestureTrail();
       mouseGestureDragRef.current = null;
       suppressGestureContextMenuUntilRef.current = Date.now() + 300;
     }
@@ -2499,6 +2596,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
             transform: 'translateX(-50%)',
           }}
         />,
+        document.body,
+      )}
+
+      {createPortal(
+        <svg
+          ref={mouseGestureTrailRef}
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 z-[90]"
+          style={{ display: 'none', width: '100vw', height: '100vh' }}
+        >
+          <path ref={mouseGestureTrailPathRef} fill="none" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
+          <circle ref={mouseGestureTrailTipRef} r="5" />
+          <text ref={mouseGestureTrailMarkerRef} textAnchor="middle" dominantBaseline="middle" fontSize="23" fontWeight="700" stroke="#020617" strokeWidth="3" paintOrder="stroke" />
+        </svg>,
         document.body,
       )}
 
