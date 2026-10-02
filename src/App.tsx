@@ -15,6 +15,7 @@ import {
   DriveInfo, 
   QuickAccessItem,
   QuickAccessSortMode,
+  HiddenItemStyle,
   RecentItemStyle,
   GroupByField,
   ArchiveExtractionMode,
@@ -101,6 +102,7 @@ const SIDEBAR_LOCATIONS_NEW_TAB_KEY = 'cyberfiles_sidebar_locations_open_in_new_
 const NEW_TABS_NEXT_TO_CURRENT_KEY = 'cyberfiles_new_tabs_next_to_current_v1';
 const RECENT_ITEMS_BOLD_KEY = 'cyberfiles_bold_recent_items_v1';
 const RECENT_ITEMS_STYLE_KEY = 'cyberfiles_recent_items_style_v1';
+const HIDDEN_ITEMS_STYLE_KEY = 'cyberfiles_hidden_items_style_v1';
 const IMAGE_TOOLTIP_THUMBNAILS_KEY = 'cyberfiles_image_tooltip_thumbnails_v1';
 const NOTIFICATION_BANNERS_KEY = 'cyberfiles_notification_banners_v1';
 const TOOLTIPS_ENABLED_KEY = 'cyberfiles_tooltips_enabled_v1';
@@ -131,6 +133,14 @@ const DEFAULT_RECENT_ITEM_STYLE: RecentItemStyle = {
   backgroundColor: '#92400e',
   bold: true,
   italic: false,
+};
+const DEFAULT_HIDDEN_ITEM_STYLE: HiddenItemStyle = {
+  enabled: true,
+  textColor: 'auto',
+  backgroundEnabled: false,
+  backgroundColor: '#881337',
+  bold: false,
+  italic: true,
 };
 
 interface PanelViewPreferences {
@@ -378,6 +388,24 @@ function readRecentItemStyle(): RecentItemStyle {
   }
 }
 
+function readHiddenItemStyle(): HiddenItemStyle {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(HIDDEN_ITEMS_STYLE_KEY) || 'null');
+    if (!saved || typeof saved !== 'object') return { ...DEFAULT_HIDDEN_ITEM_STYLE };
+    const isColor = (value: unknown): value is string => typeof value === 'string' && /^#[\da-f]{6}$/i.test(value);
+    return {
+      enabled: typeof saved.enabled === 'boolean' ? saved.enabled : DEFAULT_HIDDEN_ITEM_STYLE.enabled,
+      textColor: saved.textColor === 'auto' || !isColor(saved.textColor) ? 'auto' : saved.textColor,
+      backgroundEnabled: typeof saved.backgroundEnabled === 'boolean' ? saved.backgroundEnabled : DEFAULT_HIDDEN_ITEM_STYLE.backgroundEnabled,
+      backgroundColor: isColor(saved.backgroundColor) ? saved.backgroundColor : DEFAULT_HIDDEN_ITEM_STYLE.backgroundColor,
+      bold: typeof saved.bold === 'boolean' ? saved.bold : DEFAULT_HIDDEN_ITEM_STYLE.bold,
+      italic: typeof saved.italic === 'boolean' ? saved.italic : DEFAULT_HIDDEN_ITEM_STYLE.italic,
+    };
+  } catch {
+    return { ...DEFAULT_HIDDEN_ITEM_STYLE };
+  }
+}
+
 function useKeepModalMountedAfterFirstOpen(isOpen: boolean) {
   const [hasOpened, setHasOpened] = useState(isOpen);
   useEffect(() => {
@@ -615,6 +643,7 @@ export default function App() {
   const [sidebarLocationsOpenInNewTab, setSidebarLocationsOpenInNewTab] = useState(() => readBooleanPreference(SIDEBAR_LOCATIONS_NEW_TAB_KEY, true));
   const [newTabsNextToCurrent, setNewTabsNextToCurrent] = useState(() => readBooleanPreference(NEW_TABS_NEXT_TO_CURRENT_KEY, true));
   const [recentItemStyle, setRecentItemStyle] = useState<RecentItemStyle>(readRecentItemStyle);
+  const [hiddenItemStyle, setHiddenItemStyle] = useState<HiddenItemStyle>(readHiddenItemStyle);
   const [imageTooltipThumbnailsEnabled, setImageTooltipThumbnailsEnabled] = useState(() => readBooleanPreference(IMAGE_TOOLTIP_THUMBNAILS_KEY, true));
   const [notificationBannersEnabled, setNotificationBannersEnabled] = useState(() => readBooleanPreference(NOTIFICATION_BANNERS_KEY, true));
   const [tooltipsEnabled, setTooltipsEnabled] = useState(() => readBooleanPreference(TOOLTIPS_ENABLED_KEY, true));
@@ -1639,6 +1668,14 @@ export default function App() {
       // Keep the selected behavior for the current session when storage is unavailable.
     }
   }, [recentItemStyle]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(HIDDEN_ITEMS_STYLE_KEY, JSON.stringify(hiddenItemStyle));
+    } catch {
+      // Keep the selected hidden item style for the current session when storage is unavailable.
+    }
+  }, [hiddenItemStyle]);
 
   useEffect(() => {
     try {
@@ -4598,6 +4635,7 @@ export default function App() {
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
+                  hiddenItemStyle={hiddenItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
@@ -4654,6 +4692,7 @@ export default function App() {
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
+                  hiddenItemStyle={hiddenItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
@@ -4711,6 +4750,7 @@ export default function App() {
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
+                  hiddenItemStyle={hiddenItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
@@ -4763,6 +4803,7 @@ export default function App() {
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
+                  hiddenItemStyle={hiddenItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
@@ -4820,6 +4861,7 @@ export default function App() {
                 isActive={true}
                 styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
+                  hiddenItemStyle={hiddenItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
@@ -5138,7 +5180,10 @@ export default function App() {
             folderStyleLocked={folderStyleLocked}
             onFolderStyleLockedChange={handleFolderStyleLockChange}
             recentItemStyle={recentItemStyle}
+            hiddenItemStyle={hiddenItemStyle}
             onRecentItemStyleChange={setRecentItemStyle}
+            onHiddenItemStyleChange={setHiddenItemStyle}
+            onHiddenItemStyleReset={() => setHiddenItemStyle({ ...DEFAULT_HIDDEN_ITEM_STYLE, enabled: hiddenItemStyle.enabled })}
             onRecentItemStyleReset={() => setRecentItemStyle({ ...DEFAULT_RECENT_ITEM_STYLE, enabled: recentItemStyle.enabled })}
             imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
             onImageTooltipThumbnailsEnabledChange={setImageTooltipThumbnailsEnabled}

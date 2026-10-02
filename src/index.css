@@ -9,6 +9,7 @@
   color-scheme: dark;
   --cyberfiles-tooltip-background: #101826;
   --cyberfiles-recent-item-color: #fef3c7;
+  --cyberfiles-hidden-item-color: #fb7185;
   --cyberfiles-scrollbar-track: #101826;
   --cyberfiles-scrollbar-thumb: #34445e;
   --cyberfiles-scrollbar-thumb-hover: #4f6485;
@@ -87,6 +88,7 @@ html[data-theme='gray'] {
   background: #0d0d0d;
   --cyberfiles-tooltip-background: #171717;
   --cyberfiles-recent-item-color: #e5e5e5;
+  --cyberfiles-hidden-item-color: #f87171;
   --cyberfiles-scrollbar-track: #151515;
   --cyberfiles-scrollbar-thumb: #454545;
   --cyberfiles-scrollbar-thumb-hover: #666666;
@@ -129,6 +131,7 @@ html[data-theme='gray'] #root {
 html[data-theme='light'] {
   color-scheme: light;
   --cyberfiles-recent-item-color: #8a5b00;
+  --cyberfiles-hidden-item-color: #b91c1c;
   --cyberfiles-scrollbar-track: #e9eef4;
   --cyberfiles-scrollbar-thumb: #9aa8b6;
   --cyberfiles-scrollbar-thumb-hover: #77899a;

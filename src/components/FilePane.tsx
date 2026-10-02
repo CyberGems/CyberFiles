@@ -35,7 +35,7 @@ import {
   UnlockKeyhole,
   History,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, GroupByField, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
+import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
@@ -55,6 +55,7 @@ interface FilePaneProps {
   isActive: boolean;
   styleLocked: boolean;
   recentItemStyle: RecentItemStyle;
+  hiddenItemStyle: HiddenItemStyle;
   emptyAreaDoubleClickNavigatesUp: boolean;
   imageTooltipThumbnailsEnabled: boolean;
   showFileExtensions: boolean;
@@ -285,6 +286,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   isActive,
   styleLocked,
   recentItemStyle,
+  hiddenItemStyle,
   emptyAreaDoubleClickNavigatesUp,
   imageTooltipThumbnailsEnabled,
   showFileExtensions,
@@ -554,24 +556,45 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   const isRecentlyChanged = (item: FileItem) => recentItemStyle.enabled && hasRecentActivity(item);
+  const isHiddenItem = (item: FileItem) => hiddenItemStyle.enabled && (
+    item.attributes?.toUpperCase().includes('H') === true || (!isTauriDesktop() && item.name.startsWith('.'))
+  );
 
-  const getRecentNameStyle = (item: FileItem, selected = false): React.CSSProperties | undefined => isRecentlyChanged(item)
-    ? {
-      color: recentItemStyle.textColor === 'auto' ? 'var(--cyberfiles-recent-item-color)' : recentItemStyle.textColor,
-      fontWeight: recentItemStyle.bold ? 700 : 400,
-      fontStyle: recentItemStyle.italic ? 'italic' : 'normal',
-      ...(selected && recentItemStyle.backgroundEnabled ? {
-        backgroundColor: `color-mix(in srgb, ${recentItemStyle.backgroundColor} 18%, transparent)`,
+  const getItemNameStyle = (item: FileItem, selected = false): React.CSSProperties | undefined => {
+    const hidden = isHiddenItem(item);
+    const recent = isRecentlyChanged(item);
+    if (!hidden && !recent) return undefined;
+
+    const backgroundStyle = hidden && hiddenItemStyle.backgroundEnabled
+      ? hiddenItemStyle
+      : recent && recentItemStyle.backgroundEnabled ? recentItemStyle : null;
+    const textColor = hidden
+      ? hiddenItemStyle.textColor === 'auto' ? 'var(--cyberfiles-hidden-item-color)' : hiddenItemStyle.textColor
+      : recentItemStyle.textColor === 'auto' ? 'var(--cyberfiles-recent-item-color)' : recentItemStyle.textColor;
+
+    return {
+      color: textColor,
+      fontWeight: (hidden && hiddenItemStyle.bold) || (recent && recentItemStyle.bold) ? 700 : 400,
+      fontStyle: (hidden && hiddenItemStyle.italic) || (recent && recentItemStyle.italic) ? 'italic' : 'normal',
+      ...(selected && backgroundStyle ? {
+        backgroundColor: `color-mix(in srgb, ${backgroundStyle.backgroundColor} 18%, transparent)`,
         borderRadius: 3,
         paddingInline: 3,
       } : {}),
-    }
-    : undefined;
+    };
+  };
 
-  const getRecentBackgroundStyle = (item: FileItem, selected: boolean): React.CSSProperties | undefined =>
-    isRecentlyChanged(item) && recentItemStyle.backgroundEnabled && !selected
-      ? { backgroundColor: `color-mix(in srgb, ${recentItemStyle.backgroundColor} 18%, transparent)` }
+  const getItemBackgroundStyle = (item: FileItem, selected: boolean): React.CSSProperties | undefined => {
+    if (selected) return undefined;
+    const hidden = isHiddenItem(item);
+    const recent = isRecentlyChanged(item);
+    const backgroundStyle = hidden && hiddenItemStyle.backgroundEnabled
+      ? hiddenItemStyle
+      : recent && recentItemStyle.backgroundEnabled ? recentItemStyle : null;
+    return backgroundStyle
+      ? { backgroundColor: `color-mix(in srgb, ${backgroundStyle.backgroundColor} 18%, transparent)` }
       : undefined;
+  };
 
   const getFolderTooltipSizeText = (item: FileItem) => {
     const folderSize = folderSizeStates[item.id];
@@ -1549,7 +1572,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         onClick={event => { handleItemClick(event, item, index); handleConfiguredSingleClick(event, item); }}
         onDoubleClick={() => handleConfiguredDoubleClick(item)}
         onContextMenu={event => handleFileItemContextMenu(event, item)}
-        style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, selected) }}
+        style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, selected) }}
         className={`group flex min-h-[68px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
           selected
             ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
@@ -1570,7 +1593,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           {icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate text-xs text-neutral-100 font-medium" style={getRecentNameStyle(item, selected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+          <span onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate text-xs text-neutral-100 font-medium" style={getItemNameStyle(item, selected)}>{getDisplayItemName(item, showFileExtensions)}</span>
           {category === 'folder' ? (
             <span className="mt-1 block truncate text-[10px] text-neutral-500">{item.path}</span>
           ) : hasCapacity && drive ? (
@@ -2036,7 +2059,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
-                  style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth}px`, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
+                  style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth}px`, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
                   className={`grid min-h-[30px] items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-700/60 text-neutral-100 font-medium'
@@ -2065,7 +2088,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             renderInlineRenameInput(item, 'min-w-0 flex-1')
                           ) : (
                             <Tooltip label={renderItemTooltip(item)} placement="top">
-                              <span data-file-column-content={column} onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="truncate text-[11.5px] font-medium" style={getRecentNameStyle(item, isSelected)} >{getDisplayItemName(item, showFileExtensions)}</span>
+                              <span data-file-column-content={column} onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="truncate text-[11.5px] font-medium" style={getItemNameStyle(item, isSelected)} >{getDisplayItemName(item, showFileExtensions)}</span>
                             </Tooltip>
                           )}
                         </div>
@@ -2137,7 +2160,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onClick={event => { handleItemClick(event, item, idx); handleConfiguredSingleClick(event, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
-                  style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
+                  style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
                   className={`flex min-w-0 items-center gap-2 rounded border px-2 py-1.5 text-xs transition-colors ${
                     isSelected
                       ? 'border-cyan-700/60 bg-cyan-950/70 text-neutral-100'
@@ -2150,7 +2173,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   ) : (
                     <Tooltip label={renderItemTooltip(item)} placement="top">
                       <span className="min-w-0 flex-1">
-                        <span onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate" style={getRecentNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+                        <span onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate" style={getItemNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
                       </span>
                     </Tooltip>
                   )}
@@ -2183,7 +2206,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
-                  style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getRecentBackgroundStyle(item, isSelected) }}
+                  style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
                   className={`flex min-w-0 flex-col items-center justify-start gap-1.5 rounded-lg border p-2.5 text-center cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-600/70 text-neutral-100 shadow'
@@ -2204,7 +2227,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   ) : (
                     <Tooltip label={renderItemTooltip(item)} placement="top">
                       <span className="w-full min-w-0 px-1">
-                        <span onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate text-[11px] font-medium" style={getRecentNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+                        <span onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate text-[11px] font-medium" style={getItemNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
                       </span>
                     </Tooltip>
                   )}

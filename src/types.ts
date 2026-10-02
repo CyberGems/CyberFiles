@@ -45,6 +45,15 @@ export interface RecentItemStyle {
   italic: boolean;
 }
 
+export interface HiddenItemStyle {
+  enabled: boolean;
+  textColor: string;
+  backgroundEnabled: boolean;
+  backgroundColor: string;
+  bold: boolean;
+  italic: boolean;
+}
+
 export type SortField = 'name' | 'size' | 'type' | 'createdDate' | 'modifiedDate' | 'extension';
 export type GroupByField = 'none' | 'name' | 'modifiedDate' | 'type' | 'size';
 export type SortOrder = 'asc' | 'desc';

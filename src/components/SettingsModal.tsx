@@ -4,7 +4,7 @@ import { useLanguage } from '../locales/LanguageContext';
 import { type AppTheme, useTheme } from '../themes/ThemeContext';
 import { Tooltip } from './Tooltip';
 import { DialogButton } from './DialogButton';
-import { type RecentItemStyle } from '../types';
+import { type HiddenItemStyle, type RecentItemStyle } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile } from '../utils/workspaceProfiles';
 import { ColorValueEditor } from './ColorValueEditor';
@@ -32,6 +32,9 @@ interface SettingsModalProps {
   recentItemStyle: RecentItemStyle;
   onRecentItemStyleChange: (style: RecentItemStyle) => void;
   onRecentItemStyleReset: () => void;
+  hiddenItemStyle: HiddenItemStyle;
+  onHiddenItemStyleChange: (style: HiddenItemStyle) => void;
+  onHiddenItemStyleReset: () => void;
   imageTooltipThumbnailsEnabled: boolean;
   onImageTooltipThumbnailsEnabledChange: (enabled: boolean) => void;
   notificationBannersEnabled: boolean;
@@ -60,6 +63,11 @@ const RECENT_ITEM_AUTO_COLORS: Record<AppTheme, string> = {
   cyberfiles: '#fef3c7',
   gray: '#e5e5e5',
   light: '#8a5b00',
+};
+const HIDDEN_ITEM_AUTO_COLORS: Record<AppTheme, string> = {
+  cyberfiles: '#fb7185',
+  gray: '#f87171',
+  light: '#b91c1c',
 };
 
 function keyFromEvent(event: KeyboardEvent): string | null {
@@ -99,6 +107,9 @@ export function SettingsModal({
   recentItemStyle,
   onRecentItemStyleChange,
   onRecentItemStyleReset,
+  hiddenItemStyle,
+  onHiddenItemStyleChange,
+  onHiddenItemStyleReset,
   imageTooltipThumbnailsEnabled,
   onImageTooltipThumbnailsEnabledChange,
   notificationBannersEnabled,
@@ -126,6 +137,9 @@ export function SettingsModal({
   const recentItemTextColor = recentItemStyle.textColor === 'auto'
     ? RECENT_ITEM_AUTO_COLORS[theme]
     : recentItemStyle.textColor;
+  const hiddenItemTextColor = hiddenItemStyle.textColor === 'auto'
+    ? HIDDEN_ITEM_AUTO_COLORS[theme]
+    : hiddenItemStyle.textColor;
   const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
   const [shortcutCaptureError, setShortcutCaptureError] = useState<string | null>(null);
 
@@ -531,7 +545,7 @@ export function SettingsModal({
               <button
                   type="button"
                   onClick={onRecentItemStyleReset}
-                  className="inline-flex items-center gap-1.5 rounded border border-neutral-700 px-2 py-1 text-[10px] text-neutral-300 transition-colors hover:border-cyan-500/60 hover:text-cyan-200"
+                  className="inline-flex items-center gap-1.5 rounded border border-neutral-700 px-2 py-1 text-[10px] text-neutral-300 transition-colors hover:border-cyan-500/60 hover:text-cyan-200 cursor-pointer"
                 >
                   <RotateCcw className="h-3 w-3" />
                   {t.settings.recentItemsReset}
@@ -599,6 +613,92 @@ export function SettingsModal({
             </div>
           </div>
 
+          <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={hiddenItemStyle.enabled}
+                  onChange={event => onHiddenItemStyleChange({ ...hiddenItemStyle, enabled: event.target.checked })}
+                  className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                />
+                <span>
+                  <span className="block font-medium text-neutral-200">{t.settings.hiddenItemsTitle}</span>
+                  <span className="mt-1 block">{t.settings.hiddenItemsDescription}</span>
+                </span>
+              </label>
+              <Tooltip label={t.settings.hiddenItemsReset} placement="top">
+                <button
+                  type="button"
+                  onClick={onHiddenItemStyleReset}
+                  className="inline-flex items-center gap-1.5 rounded border border-neutral-700 px-2 py-1 text-[10px] text-neutral-300 transition-colors hover:border-cyan-500/60 hover:text-cyan-200 cursor-pointer"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  {t.settings.hiddenItemsReset}
+                </button>
+              </Tooltip>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-2 border-t border-neutral-800 pt-3 sm:grid-cols-2">
+              <ColorValueEditor
+                label={t.settings.hiddenItemsTextColor}
+                value={hiddenItemTextColor}
+                onChange={textColor => onHiddenItemStyleChange({ ...hiddenItemStyle, textColor })}
+              />
+
+              <label className="flex cursor-pointer items-center gap-2 rounded border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-neutral-300">
+                <input
+                  type="checkbox"
+                  checked={hiddenItemStyle.bold}
+                  onChange={event => onHiddenItemStyleChange({ ...hiddenItemStyle, bold: event.target.checked })}
+                  className="h-4 w-4 flex-shrink-0 accent-cyan-400 focus:ring-cyan-400"
+                />
+                {t.settings.hiddenItemsBold}
+              </label>
+
+              <label className="flex cursor-pointer items-center gap-2 rounded border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-neutral-300">
+                <input
+                  type="checkbox"
+                  checked={hiddenItemStyle.italic}
+                  onChange={event => onHiddenItemStyleChange({ ...hiddenItemStyle, italic: event.target.checked })}
+                  className="h-4 w-4 flex-shrink-0 accent-cyan-400 focus:ring-cyan-400"
+                />
+                {t.settings.hiddenItemsItalic}
+              </label>
+
+              <label className="flex cursor-pointer items-center gap-2 rounded border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-neutral-300">
+                <input
+                  type="checkbox"
+                  checked={hiddenItemStyle.backgroundEnabled}
+                  onChange={event => onHiddenItemStyleChange({ ...hiddenItemStyle, backgroundEnabled: event.target.checked })}
+                  className="h-4 w-4 flex-shrink-0 accent-cyan-400 focus:ring-cyan-400"
+                />
+                {t.settings.hiddenItemsBackgroundEnabled}
+              </label>
+
+              <ColorValueEditor
+                label={t.settings.hiddenItemsBackgroundColor}
+                disabled={!hiddenItemStyle.backgroundEnabled}
+                value={hiddenItemStyle.backgroundColor}
+                onChange={backgroundColor => onHiddenItemStyleChange({ ...hiddenItemStyle, backgroundColor })}
+              />
+
+              <div className="flex items-center gap-2 rounded border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-neutral-400 sm:col-span-2">
+                <span>{t.settings.hiddenItemsPreview}:</span>
+                <span
+                  className="rounded px-1.5 py-0.5"
+                  style={{
+                    color: hiddenItemTextColor,
+                    fontWeight: hiddenItemStyle.bold ? 700 : 400,
+                    fontStyle: hiddenItemStyle.italic ? 'italic' : 'normal',
+                    backgroundColor: hiddenItemStyle.backgroundEnabled ? `color-mix(in srgb, ${hiddenItemStyle.backgroundColor} 18%, transparent)` : undefined,
+                  }}
+                >
+                  {t.settings.hiddenItemsPreviewText}
+                </span>
+              </div>
+            </div>
+          </div>
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
             <label className="flex cursor-pointer items-start gap-2.5">
                 <input
