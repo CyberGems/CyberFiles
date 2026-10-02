@@ -84,6 +84,7 @@ interface FilePaneProps {
   hasMore?: boolean;
   totalItemCount?: number;
   isLoadingDirectory?: boolean;
+  flatViewStatus?: { error?: string; skippedCount?: number };
   onLoadMore?: () => void;
   allFiles: FileItem[];
   onNavigate: (path: string) => void;
@@ -333,6 +334,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   hasMore = false,
   totalItemCount,
   isLoadingDirectory = false,
+  flatViewStatus,
   onLoadMore,
   onNavigate,
   onRefresh,
@@ -650,6 +652,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (folderSize?.status === 'error') return t.pane.folderSizeFailed;
     if (!autoFolderSizeEnabled) return t.pane.folderSizeHoverDisabled;
     return isTauriDesktop() ? t.pane.folderSizeHoverHint : t.pane.folderSizeHoverDesktopOnly;
+  };
+
+  const flatParentLabel = (item: FileItem) => {
+    if (!tab.flatView) return '';
+    const root = tab.currentPath.replace(/[\\/]+$/, '');
+    const parent = getParentPath(item.path);
+    if (!parent.toLowerCase().startsWith(`${root.toLowerCase()}\\`) && parent.toLowerCase() !== root.toLowerCase()) return parent;
+    return parent.slice(root.length).replace(/^[\\/]+/, '');
   };
 
   const renderItemTooltip = (item: FileItem, additionalDetails?: React.ReactNode) => (
@@ -1915,7 +1925,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   const visibleItemCount = `${files.length}${hasMore ? '+' : ''}`;
-  const itemCountLabel = hasMore && totalItemCount !== undefined
+  const itemCountLabel = isLoadingDirectory && tab.flatView ? t.pane.loadingFolder : hasMore && totalItemCount !== undefined
     ? t.pane.loadedOfTotal.replace('{loaded}', String(files.length)).replace('{total}', String(totalItemCount))
     : t.pane.itemsCount.replace('{count}', visibleItemCount);
   const renderFolderTab = (tabItem: TabState, idx: number, vertical: boolean) => {
@@ -2338,6 +2348,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
             style={marqueeBounds}
           />
         )}
+        {tab.flatView && (flatViewStatus?.skippedCount ?? 0) > 0 && (
+          <div role="status" className="mx-3 my-2 rounded-md border border-amber-800/60 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+            {t.pane.flatViewIncomplete.replace('{count}', String(flatViewStatus?.skippedCount ?? 0))}
+          </div>
+        )}
         <div
           key={`${tab.id}:${tab.currentPath}`}
           className={`min-h-full ${navigationTransition?.tabId === tab.id && navigationTransition.path === tab.currentPath ? `cyberfiles-navigation-transition cyberfiles-navigation-${navigationTransitionStyle} cyberfiles-navigation-${navigationTransition.motion}` : ''}`}
@@ -2350,7 +2365,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         {files.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-neutral-500 gap-2 p-6">
             {isLoadingDirectory ? <RotateCw className="w-7 h-7 text-cyan-500 animate-spin" /> : <Folder className="w-8 h-8 text-neutral-600 stroke-[1.5]" />}
-            <div className="text-xs">{isLoadingDirectory ? t.pane.loadingFolder : tab.currentPath ? t.pane.emptyFolder : t.pane.noFolderOpen}</div>
+            <div className="text-xs">{isLoadingDirectory ? t.pane.loadingFolder : flatViewStatus?.error ? t.pane.flatViewLoadFailed : tab.currentPath ? t.pane.emptyFolder : t.pane.noFolderOpen}</div>
             {!isLoadingDirectory && !tab.filterQuery && tab.currentPath && !isSystemHome && !isRecycleBin && getParentPath(tab.currentPath) !== tab.currentPath && (
               <div className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-neutral-800 bg-neutral-900/60 px-2.5 py-1 text-[11px] tracking-wide text-neutral-500">
                 <CornerUpLeft className="h-3 w-3 text-cyan-500/80" aria-hidden="true" />
@@ -2454,9 +2469,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             renderInlineRenameInput(item, 'min-w-0 flex-1')
                           ) : (
                             <Tooltip label={renderItemTooltip(item)} placement="top">
-                              <span data-file-column-content={column} onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="truncate text-[11.5px] font-medium" style={getItemNameStyle(item, isSelected)} >{getDisplayItemName(item, showFileExtensions)}</span>
+                              <span data-file-column-content={column} onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className={`${flatParentLabel(item) ? 'max-w-[55%] ' : ''}truncate text-[11.5px] font-medium`} style={getItemNameStyle(item, isSelected)} >{getDisplayItemName(item, showFileExtensions)}</span>
                             </Tooltip>
                           )}
+                          {flatParentLabel(item) && <span className="min-w-0 truncate font-sans text-[10px] font-normal text-neutral-500">· {flatParentLabel(item)}</span>}
                         </div>
                       );
                     }
@@ -2543,6 +2559,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     <Tooltip label={renderItemTooltip(item)} placement="top">
                       <span className="min-w-0 flex-1">
                         <span onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate" style={getItemNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+                        {flatParentLabel(item) && <span className="ml-1 inline-block max-w-[45%] align-bottom truncate font-sans text-[10px] text-neutral-500">· {flatParentLabel(item)}</span>}
                       </span>
                     </Tooltip>
                   )}
@@ -2603,6 +2620,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       </span>
                     </Tooltip>
                   )}
+                  {flatParentLabel(item) && <span className="w-full truncate px-1 font-sans text-[9px] text-neutral-500">{flatParentLabel(item)}</span>}
                   <span className="mt-0.5 text-[9px] font-sans text-neutral-400">
                     {item.isFolder ? 'Carpeta' : formatFileSize(item.size)}
                   </span>

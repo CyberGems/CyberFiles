@@ -1,18 +1,20 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Globe, Info, Keyboard, Minus, MoreHorizontal, Settings, X } from 'lucide-react';
+import { Globe, Info, Keyboard, Minus, MoreHorizontal, Search, Settings, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { dismissAllTooltips, Tooltip } from './Tooltip';
 
 interface WindowTitleBarProps {
   showWindowControls: boolean;
   onOpenSettings: () => void;
+  onOpenSearch: () => void;
+  onOpenCommandPalette: () => void;
   onOpenShortcuts: () => void;
   onOpenAbout: () => void;
   onWindowControlError: () => void;
 }
 
-export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenShortcuts, onOpenAbout, onWindowControlError }: WindowTitleBarProps) {
+export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearch, onOpenCommandPalette, onOpenShortcuts, onOpenAbout, onWindowControlError }: WindowTitleBarProps) {
   const { t, language, toggleLanguage } = useLanguage();
   const [appWindow, setAppWindow] = useState<ReturnType<typeof getCurrentWindow> | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -131,23 +133,37 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenShort
       className="relative z-40 flex h-12 min-h-12 shrink-0 select-none items-center border-b border-neutral-800 bg-neutral-950 text-neutral-200"
       onDoubleClick={toggleFromTitlebarDoubleClick}
     >
-      <Tooltip label={tTitlebar('Acerca de CyberFiles', 'About CyberFiles')} placement="bottom">
-        <button
-          type="button"
-          data-titlebar-no-drag=""
-          aria-label={tTitlebar('Acerca de CyberFiles', 'About CyberFiles')}
-          onClick={onOpenAbout}
-          className="ml-3 flex h-9 min-w-0 items-center gap-2 rounded-md px-1.5 text-neutral-300 transition-colors hover:bg-neutral-800/80 hover:text-white"
-        >
-          <img src="/icon.png" alt="" aria-hidden="true" className="h-7 w-7 shrink-0 rounded-md" />
-          <span className="truncate text-[13px] font-semibold tracking-wide">{t.app.title}</span>
-          <span className="hidden rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-[9px] font-sans text-neutral-500 sm:inline">{t.app.stageBadge}</span>
+      <div className="flex h-full min-w-0 flex-1 items-center" data-tauri-drag-region="">
+        <Tooltip label={tTitlebar('Acerca de CyberFiles', 'About CyberFiles')} placement="bottom">
+          <button
+            type="button"
+            data-titlebar-no-drag=""
+            aria-label={tTitlebar('Acerca de CyberFiles', 'About CyberFiles')}
+            onClick={onOpenAbout}
+            className="ml-3 flex h-9 min-w-0 items-center gap-2 rounded-md px-1.5 text-neutral-300 transition-colors hover:bg-neutral-800/80 hover:text-white"
+          >
+            <img src="/icon.png" alt="" aria-hidden="true" className="h-7 w-7 shrink-0 rounded-md" />
+            <span className="truncate text-[13px] font-semibold tracking-wide">{t.app.title}</span>
+            <span className="hidden rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-[9px] font-sans text-neutral-500 sm:inline">{t.app.stageBadge}</span>
+          </button>
+        </Tooltip>
+      </div>
+
+      <div className="flex h-full w-[min(23rem,40vw)] shrink-0 items-center gap-1.5" data-titlebar-no-drag="">
+        <button type="button" onClick={onOpenSearch} aria-label={t.findFiles.title} className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-cyan-900/80 bg-neutral-900 px-2.5 text-left text-xs text-neutral-400 transition-colors hover:border-cyan-700 hover:bg-neutral-800 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70">
+          <Search className="h-4 w-4 shrink-0 text-cyan-400" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate">{tTitlebar('Buscar archivos y contenido', 'Search files and content')}</span>
+          <kbd className="keyboard-hint hidden shrink-0 sm:inline">Ctrl+F</kbd>
         </button>
-      </Tooltip>
+        <Tooltip label={t.commandPalette.openTooltip} placement="bottom">
+          <button type="button" aria-label={t.commandPalette.open} onClick={onOpenCommandPalette} className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-2 text-neutral-300 transition-colors hover:border-cyan-700 hover:bg-neutral-800 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70">
+            <Keyboard className="h-4 w-4" aria-hidden="true" />
+            <kbd className="keyboard-hint hidden sm:inline">Ctrl+K</kbd>
+          </button>
+        </Tooltip>
+      </div>
 
-      <div className="h-full min-w-8 flex-1" data-tauri-drag-region="" aria-hidden="true" />
-
-      <div className="flex h-full shrink-0 items-center gap-1 pr-2" data-titlebar-no-drag="">
+      <div className="flex h-full min-w-0 flex-1 items-center justify-end gap-1 pr-2" data-titlebar-no-drag="">
         <Tooltip label={t.settings.openTooltip} placement="bottom">
           <button
             type="button"

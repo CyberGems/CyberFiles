@@ -8,7 +8,8 @@ import {
   LayoutGrid,
   List,
   StretchHorizontal,
-  Search,
+  ListTree,
+  LoaderCircle,
   Trash2,
   PanelsTopLeft,
   BarChart3,
@@ -19,7 +20,6 @@ import {
   FileText,
   FolderOpen,
   Terminal,
-  Keyboard,
 } from 'lucide-react';
 import { SYSTEM_HOME_PATH, ViewLayout, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
@@ -54,8 +54,10 @@ interface HeaderBarProps {
   onUndoAction: (id: string) => void;
   undoBusy: boolean;
   selectedCount: number;
-  onOpenSearch: () => void;
-  onOpenCommandPalette: () => void;
+  flatView: boolean;
+  flatViewAvailable: boolean;
+  flatViewLoading: boolean;
+  onToggleFlatView: () => void;
   onOpenWorkspaceManager: () => void;
   workspaceChangesPending: boolean;
 }
@@ -87,8 +89,10 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onUndoAction,
   undoBusy,
   selectedCount,
-  onOpenSearch,
-  onOpenCommandPalette,
+  flatView,
+  flatViewAvailable,
+  flatViewLoading,
+  onToggleFlatView,
   onOpenWorkspaceManager,
   workspaceChangesPending,
 }) => {
@@ -132,25 +136,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   return (
     <header className="min-h-14 bg-neutral-900/95 border-b border-neutral-800 px-3 py-2 flex items-center justify-between gap-3 select-none z-20 backdrop-blur-md">
       <div className="flex items-center gap-3 min-w-0">
-
-        <Tooltip label={t.findFiles.title}>
-          <button onClick={onOpenSearch} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-950 border border-cyan-800/70 hover:border-cyan-500 text-neutral-300 hover:text-cyan-300 transition-all shadow-inner flex-shrink-0">
-            <Search className="w-3.5 h-3.5 text-cyan-400" />
-            <span className="text-xs font-medium">{language === 'es' ? 'Buscar' : 'Search'}</span>
-            <kbd className="keyboard-hint">Ctrl+F</kbd>
-          </button>
-        </Tooltip>
-        <Tooltip label={t.commandPalette.openTooltip} placement="bottom">
-          <button
-            type="button"
-            aria-label={t.commandPalette.open}
-            onClick={onOpenCommandPalette}
-            className="flex h-8 w-auto flex-shrink-0 items-center justify-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-2 text-neutral-300 transition-colors hover:border-cyan-700 hover:bg-neutral-800 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70"
-          >
-            <Keyboard aria-hidden="true" className="h-4 w-4" />
-            <kbd className="keyboard-hint">Ctrl+K</kbd>
-          </button>
-        </Tooltip>
 
         <div className="header-actions flex items-center gap-1 overflow-x-auto min-w-0">
           <UndoHistoryMenu items={undoHistory} onUndo={onUndoAction} disabled={undoBusy} />
@@ -224,6 +209,13 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             </div>
           </>
         )}
+
+        <Tooltip label={t.toolbar.flatViewTooltip} placement="bottom">
+          <button type="button" aria-label={t.toolbar.flatView} aria-pressed={flatView} disabled={!flatViewAvailable} onClick={onToggleFlatView} className={flatView ? 'flex h-9 items-center gap-1.5 rounded-md border border-cyan-700/70 bg-cyan-950/70 px-2 text-xs font-medium text-cyan-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70 disabled:opacity-40' : 'flex h-9 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900 px-2 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70 disabled:cursor-not-allowed disabled:opacity-40'}>
+            {flatViewLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ListTree className="h-4 w-4" />}
+            <span>{t.toolbar.flatView}</span>
+          </button>
+        </Tooltip>
 
         <div className="view-choice-group flex items-center" role="group" aria-label={t.toolbar.viewModes}>
           <Tooltip label={t.toolbar.viewDetails}><button type="button" aria-label={t.toolbar.viewDetails} aria-pressed={viewMode === 'details'} onClick={() => onViewModeChange('details')} className="view-choice"><List className="h-4 w-4" /></button></Tooltip>

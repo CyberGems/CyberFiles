@@ -84,7 +84,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
@@ -537,6 +537,12 @@ interface NativeDirectoryState {
   counts?: NativeDirectoryCounts;
 }
 
+interface FlatDirectoryState extends NativeDirectoryState {
+  entries?: FileItem[];
+  skippedCount?: number;
+  error?: string;
+}
+
 function knownDirectoryCounts(tab: TabState, directory: NativeDirectoryState | undefined, showHiddenFiles: boolean) {
   if (tab.filterQuery.trim() || !directory?.counts) return null;
   const counts = directory.counts;
@@ -578,6 +584,7 @@ const createEmptyTab = (
   history: [],
   historyIndex: -1,
   filterQuery: '',
+  flatView: false,
   selectedIds: [],
   focusedId: null,
   sortField,
@@ -594,6 +601,7 @@ function restoreSessionTabs(snapshot: TabSessionSnapshot, pane: WorkspacePaneId,
     id: saved.id || `${pane}-restored-${index + 1}`,
     title: saved.currentPath === SYSTEM_HOME_PATH ? systemHomeTitle : saved.currentPath === RECYCLE_BIN_PATH ? recycleBinTitle : saved.title,
     filterQuery: '',
+    flatView: saved.flatView === true,
     selectedIds: [],
     focusedId: null,
   }));
@@ -606,7 +614,7 @@ function createSessionSnapshot(
   activeRightTabIndex: number,
   activePane: WorkspacePaneId,
 ): TabSessionSnapshot {
-  const saveTabs = (tabs: TabState[]) => tabs.map(({ id, title, customTitle, tabColor, lockClose, currentPath, history, historyIndex, sortField, sortOrder, groupBy, viewMode, folderStyle }) => {
+  const saveTabs = (tabs: TabState[]) => tabs.map(({ id, title, customTitle, tabColor, lockClose, currentPath, history, historyIndex, sortField, sortOrder, groupBy, viewMode, folderStyle, flatView }) => {
     const historyOffset = Math.max(0, history.length - 80);
     const savedHistory = history.slice(historyOffset);
     return {
@@ -623,6 +631,7 @@ function createSessionSnapshot(
       groupBy,
       viewMode,
       folderStyle,
+      flatView,
     };
   });
   return normalizeSessionSnapshot({
@@ -736,10 +745,19 @@ export default function App() {
   const browserRootPath = useRef('');
   const addingCustomQuickAccess = useRef(false);
   const [nativeDirectories, setNativeDirectories] = useState<Record<string, NativeDirectoryState>>({});
+  const [flatDirectories, setFlatDirectories] = useState<Record<string, FlatDirectoryState>>({});
+  const flatInFlight = useRef(new Set<string>());
+  const flatVersions = useRef(new Map<string, number>());
+  const staleFlatIds = useRef(new Map<string, Set<string>>());
+  const flatDirectoriesRef = useRef(flatDirectories);
+  flatDirectoriesRef.current = flatDirectories;
   const nativeLoadedDirectories = useRef(new Set<string>());
   const navigationViewTransitionSequence = useRef(0);
   const nativeInFlightDirectories = useRef(new Map<string, number>());
   const selectAllAfterLoad = useRef(new Set<string>());
+  const flatSelectAllAfterLoad = useRef(new Set<string>());
+  const showHiddenFilesRef = useRef(showHiddenFiles);
+  showHiddenFilesRef.current = showHiddenFiles;
   const nativeWorkspaceGeneration = useRef(0);
   const nativeOpeningWorkspace = useRef(false);
   const focusRefreshTimer = useRef<number | null>(null);
@@ -1236,7 +1254,7 @@ export default function App() {
   const currentTab = activeTabs[activeTabIndex] || activeTabs[0];
   const hiddenItemsCount = currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH || !isTauriDesktop()
     ? null
-    : nativeDirectories[getPathKey(currentTab.currentPath)]?.counts?.hiddenCount ?? null;
+    : (currentTab.flatView ? flatDirectories[getPathKey(currentTab.currentPath)] : nativeDirectories[getPathKey(currentTab.currentPath)])?.counts?.hiddenCount ?? null;
   const systemQuickAccess = useMemo<QuickAccessItem[]>(() => {
     const labels: Record<NativeLocation['id'], string> = {
       desktop: t.sidebar.desktop,
@@ -1930,13 +1948,117 @@ export default function App() {
     return { entries, hasMore: false };
   }, [allFiles]);
 
+  const invalidateFlatDirectories = useCallback((paths: string[]) => {
+    const affected = Object.keys(flatDirectoriesRef.current).filter(rootKey =>
+      paths.some(path => isSameOrDescendantPath(path, rootKey))
+    );
+    if (affected.length === 0) return;
+    for (const key of affected) {
+      flatVersions.current.set(key, (flatVersions.current.get(key) ?? 0) + 1);
+      const stale = staleFlatIds.current.get(key) ?? new Set<string>();
+      for (const item of flatDirectoriesRef.current[key]?.entries ?? []) stale.add(item.id);
+      staleFlatIds.current.set(key, stale);
+    }
+    setFlatDirectories(previous => {
+      const next = { ...previous };
+      for (const key of affected) delete next[key];
+      return next;
+    });
+  }, []);
+
+  const loadFlatDirectory = useCallback(async (path: string) => {
+    if (!isTauriDesktop()) return;
+    const key = getPathKey(path);
+    if (flatInFlight.current.has(key)) return;
+    flatInFlight.current.add(key);
+    const version = flatVersions.current.get(key) ?? 0;
+    const previousIds = new Set([
+      ...(flatDirectoriesRef.current[key]?.entries?.map(item => item.id) ?? []),
+      ...(staleFlatIds.current.get(key) ?? []),
+    ]);
+    const generation = nativeWorkspaceGeneration.current;
+    setFlatDirectories(previous => ({
+      ...previous,
+      [key]: { nextOffset: 0, hasMore: false, loading: true },
+    }));
+    try {
+      const listing = await listNativeFlatDirectory(path);
+      if (generation !== nativeWorkspaceGeneration.current || version !== (flatVersions.current.get(key) ?? 0)) return;
+      const newIds = new Set(listing.entries.map(item => item.id));
+      staleFlatIds.current.delete(key);
+      setAllFiles(previous => {
+        const byId = new Map(previous.map(item => [item.id, item]));
+        const retained = previous.filter(item => !newIds.has(item.id) && !previousIds.has(item.id));
+        const updated = listing.entries.map(item => ({ ...byId.get(item.id), ...item }));
+        return [...retained, ...updated];
+      });
+      setFlatDirectories(previous => ({
+        ...previous,
+        [key]: { entries: listing.entries, counts: listing.counts, skippedCount: listing.skippedCount, nextOffset: listing.entries.length, hasMore: false, loading: false },
+      }));
+      const pending = [...flatSelectAllAfterLoad.current].filter(value => value.endsWith(`\u0000${key}`));
+      const pendingSet = new Set(pending);
+      for (const value of pending) flatSelectAllAfterLoad.current.delete(value);
+      const reconcileSelection = (tabs: TabState[]) => tabs.map(tab => {
+        if (!tab.flatView || getPathKey(tab.currentPath) !== key) return tab;
+        if (pendingSet.has(`${tab.id}\u0000${key}`)) {
+          const query = tab.filterQuery.trim().toLowerCase();
+          const normalizedQuery = query.startsWith('*.') ? query.slice(2) : query.replace(/^\./, '');
+          const selectedIds = listing.entries
+            .filter(item => showHiddenFilesRef.current || !item.attributes?.includes('H'))
+            .filter(item => !query || item.name.toLowerCase().includes(query)
+              || item.path.toLowerCase().includes(query)
+              || item.extension.toLowerCase().includes(normalizedQuery)
+              || item.type.toLowerCase().includes(query))
+            .map(item => item.id);
+          return { ...tab, selectedIds, focusedId: selectedIds[0] ?? null };
+        }
+        const selectedIds = tab.selectedIds.filter(id => newIds.has(id));
+        if (selectedIds.length === tab.selectedIds.length) return tab;
+        const focusedId = tab.focusedId && selectedIds.includes(tab.focusedId) ? tab.focusedId : selectedIds[0] ?? null;
+        return { ...tab, selectedIds, focusedId };
+      });
+      setLeftTabs(reconcileSelection);
+      setRightTabs(reconcileSelection);
+    } catch (error) {
+      console.error('Flat directory scan failed:', path, error);
+      for (const value of flatSelectAllAfterLoad.current) {
+        if (value.endsWith(`\u0000${key}`)) flatSelectAllAfterLoad.current.delete(value);
+      }
+      if (generation === nativeWorkspaceGeneration.current && version === (flatVersions.current.get(key) ?? 0)) {
+        setFlatDirectories(previous => ({
+          ...previous,
+          [key]: { nextOffset: 0, hasMore: false, loading: false, error: error instanceof Error ? error.message : String(error) },
+        }));
+      }
+    } finally {
+      flatInFlight.current.delete(key);
+      if (generation !== nativeWorkspaceGeneration.current || version !== (flatVersions.current.get(key) ?? 0)) setFlatDirectories(previous => ({ ...previous }));
+    }
+  }, []);
+
+  useEffect(() => {
+    const visibleTabs = layout === 'single'
+      ? [activePane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex]]
+      : [leftTabs[activeLeftTabIndex], rightTabs[activeRightTabIndex]];
+    for (const tab of visibleTabs) {
+      if (!tab?.flatView || !tab.currentPath || tab.currentPath.startsWith('::')) continue;
+      const state = flatDirectories[getPathKey(tab.currentPath)];
+      if (!state || (!state.entries && !state.loading && !state.error)) void loadFlatDirectory(tab.currentPath);
+    }
+  }, [layout, activePane, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, flatDirectories, loadFlatDirectory]);
+
+  const filesById = useMemo(() => new Map([...allFiles, ...recycleBinItems].map(file => [file.id, file])), [allFiles, recycleBinItems]);
+
   // Get filtered & sorted files for a pane
   const getPaneDisplayFiles = useCallback((tabState: TabState) => {
     let items = tabState.currentPath === SYSTEM_HOME_PATH
       ? systemHomeItems
       : tabState.currentPath === RECYCLE_BIN_PATH
         ? recycleBinItems
-        : childrenByParent.get(getPathKey(tabState.currentPath)) ?? [];
+        : tabState.flatView
+          ? (flatDirectories[getPathKey(tabState.currentPath)]?.entries ?? []).map(item => filesById.get(item.id) ?? item)
+          : childrenByParent.get(getPathKey(tabState.currentPath)) ?? [];
 
     if (!showHiddenFiles) {
       items = items.filter(item => !item.attributes?.includes('H') && (isTauriDesktop() || !item.name.startsWith('.')));
@@ -1948,6 +2070,7 @@ export default function App() {
       const normalizedQuery = q.startsWith('*.') ? q.slice(2) : q.replace(/^\./, '');
       items = items.filter(i =>
         i.name.toLowerCase().includes(q) ||
+        (tabState.flatView && i.path.toLowerCase().includes(q)) ||
         i.extension.toLowerCase().includes(normalizedQuery) ||
         i.type.toLowerCase().includes(q)
       );
@@ -1970,18 +2093,16 @@ export default function App() {
       ];
     }
     return sortFiles(items, tabState.sortField, tabState.sortOrder);
-  }, [childrenByParent, recycleBinItems, showHiddenFiles, systemHomeItems]);
+  }, [childrenByParent, filesById, flatDirectories, recycleBinItems, showHiddenFiles, systemHomeItems]);
 
   const leftDisplayTab = leftTabs[activeLeftTabIndex];
   const rightDisplayTab = rightTabs[activeRightTabIndex];
   const leftDisplayFiles = useMemo(() => getPaneDisplayFiles(leftDisplayTab), [
-    getPaneDisplayFiles, leftDisplayTab.currentPath, leftDisplayTab.filterQuery, leftDisplayTab.sortField, leftDisplayTab.sortOrder,
+    getPaneDisplayFiles, leftDisplayTab.currentPath, leftDisplayTab.filterQuery, leftDisplayTab.sortField, leftDisplayTab.sortOrder, leftDisplayTab.flatView,
   ]);
   const rightDisplayFiles = useMemo(() => getPaneDisplayFiles(rightDisplayTab), [
-    getPaneDisplayFiles, rightDisplayTab.currentPath, rightDisplayTab.filterQuery, rightDisplayTab.sortField, rightDisplayTab.sortOrder,
+    getPaneDisplayFiles, rightDisplayTab.currentPath, rightDisplayTab.filterQuery, rightDisplayTab.sortField, rightDisplayTab.sortOrder, rightDisplayTab.flatView,
   ]);
-  const filesById = useMemo(() => new Map([...allFiles, ...recycleBinItems].map(file => [file.id, file])), [allFiles, recycleBinItems]);
-
   // Current item for the Preview Pane
   const activeDisplayFiles = activePane === 'left' ? leftDisplayFiles : rightDisplayFiles;
   const selectedItemsForDelete = currentTab.selectedIds.flatMap(id => {
@@ -2046,6 +2167,7 @@ export default function App() {
     const targetPath = newPath === SYSTEM_HOME_PATH || newPath === RECYCLE_BIN_PATH ? newPath : normalizeWindowsPath(newPath);
     const pathKey = getPathKey(targetPath);
     if (nativeOpeningWorkspace.current) return;
+    if (forceRefresh && targetPath !== SYSTEM_HOME_PATH && targetPath !== RECYCLE_BIN_PATH) invalidateFlatDirectories([targetPath]);
     const isDesktop = isTauriDesktop();
     const targetTabs = targetPane === 'left' ? leftTabs : rightTabs;
     const targetTabIndex = targetPane === 'left' ? activeLeftTabIndex : activeRightTabIndex;
@@ -2248,7 +2370,7 @@ export default function App() {
     } finally {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
-  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectory, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, newTabsNextToCurrent, rememberRecentFolder, navigationTransitionsEnabled, navigationTransitionStyle, showHiddenFiles]);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectory, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, newTabsNextToCurrent, rememberRecentFolder, navigationTransitionsEnabled, navigationTransitionStyle, showHiddenFiles, invalidateFlatDirectories]);
 
   const lastSessionReloadHandled = useRef(0);
   useEffect(() => {
@@ -2273,6 +2395,7 @@ export default function App() {
   }, [sessionReloadToken, activeLeftTabIndex, activeRightTabIndex, leftTabs, rightTabs, handleNavigate, refreshSystemHome, refreshRecycleBinContents]);
 
   const refreshChangedDirectories = useCallback(async (paths: string[]) => {
+    invalidateFlatDirectories(paths);
     const affectedKeys = new Set(paths.filter(Boolean).map(getPathKey));
     for (const key of affectedKeys) nativeLoadedDirectories.current.delete(key);
     const visible = [
@@ -2289,7 +2412,7 @@ export default function App() {
       const path = visible.find(entry => entry.pane + ':' + getPathKey(entry.path || '') === key)?.path;
       return path ? handleNavigate(path, pane, true) : Promise.resolve();
     }));
-  }, [activeLeftTabIndex, activeRightTabIndex, handleNavigate, leftTabs, rightTabs]);
+  }, [activeLeftTabIndex, activeRightTabIndex, handleNavigate, invalidateFlatDirectories, leftTabs, rightTabs]);
 
   const focusRefreshSnapshot = useRef({
     layout,
@@ -2721,7 +2844,8 @@ export default function App() {
 
   const handleSelectAllVisible = () => {
     const pathKey = getPathKey(currentTab.currentPath);
-    if (nativeDirectories[pathKey]?.loading) selectAllAfterLoad.current.add(`${activePane}:${pathKey}`);
+    if (currentTab.flatView && !currentTab.currentPath.startsWith('::') && !flatDirectories[pathKey]?.entries) flatSelectAllAfterLoad.current.add(`${currentTab.id}\u0000${pathKey}`);
+    else if (!currentTab.flatView && nativeDirectories[pathKey]?.loading) selectAllAfterLoad.current.add(`${activePane}:${pathKey}`);
     const visibleIds = activeDisplayFiles.map(file => file.id);
     updateActiveTab(tab => ({ ...tab, selectedIds: visibleIds, focusedId: visibleIds[0] || null }));
   };
@@ -3919,6 +4043,7 @@ export default function App() {
           .map(item => item.id)
       );
       if (removedPaths.length > 0) {
+        invalidateFlatDirectories(removedPaths.map(getParentPath));
         setAllFiles(previous => previous.filter(item => !removedPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath))));
         const clearRemovedSelections = (tabs: TabState[]) => tabs.map(tab => ({
           ...tab,
@@ -3984,7 +4109,7 @@ export default function App() {
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [allFiles, isFileOperationBusy, pendingDeleteItems, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecycleUnavailable, t.toolbar.undoUnavailable]);
+  }, [allFiles, invalidateFlatDirectories, isFileOperationBusy, pendingDeleteItems, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecycleUnavailable, t.toolbar.undoUnavailable]);
   const handleRequestEmptyRecycleBin = useCallback(() => {
     if (!recycleBinStatus?.available || recycleBinStatus.itemCount === 0) return;
     setIsEmptyRecycleBinConfirmOpen(true);
@@ -4119,6 +4244,8 @@ export default function App() {
       nativeRootPath.current = loaded.rootPath;
       systemHomeWorkspace.current = false;
       rememberRecentFolder(loaded.rootPath);
+      setFlatDirectories({});
+      staleFlatIds.current.clear();
       setNativeDirectories({
         [rootKey]: { nextOffset: loaded.nextOffset, hasMore: loaded.hasMore, loading: false, counts: loaded.counts },
       });
@@ -4502,8 +4629,12 @@ export default function App() {
     const item = filesById.get(id);
     return item ? [item] : [];
   });
-  const leftDirectoryState = nativeDirectories[getPathKey(leftTabs[activeLeftTabIndex].currentPath)];
-  const rightDirectoryState = nativeDirectories[getPathKey(rightTabs[activeRightTabIndex].currentPath)];
+  const leftDirectoryState = leftTabs[activeLeftTabIndex].flatView
+    ? flatDirectories[getPathKey(leftTabs[activeLeftTabIndex].currentPath)]
+    : nativeDirectories[getPathKey(leftTabs[activeLeftTabIndex].currentPath)];
+  const rightDirectoryState = rightTabs[activeRightTabIndex].flatView
+    ? flatDirectories[getPathKey(rightTabs[activeRightTabIndex].currentPath)]
+    : nativeDirectories[getPathKey(rightTabs[activeRightTabIndex].currentPath)];
   const leftKnownCounts = knownDirectoryCounts(leftTabs[activeLeftTabIndex], leftDirectoryState, showHiddenFiles);
   const rightKnownCounts = knownDirectoryCounts(rightTabs[activeRightTabIndex], rightDirectoryState, showHiddenFiles);
   const activeKnownCounts = activePane === 'left' ? leftKnownCounts : rightKnownCounts;
@@ -4701,6 +4832,8 @@ export default function App() {
       <WindowTitleBar
         showWindowControls={isTauriDesktop()}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenSearch={() => setIsSearchOpen(true)}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onOpenAbout={() => setIsAboutOpen(true)}
         onWindowControlError={() => showToast(t.core.windowControlFailed)}
@@ -4712,7 +4845,6 @@ export default function App() {
         onLayoutChange={setLayout}
         onOpenWorkspaceManager={() => setIsWorkspaceManagerOpen(true)}
         workspaceChangesPending={layoutDirty || sessionDirty}
-        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         viewMode={currentTab.viewMode}
         onViewModeChange={handleViewModeChange}
         relativeGraphsEnabled={relativeGraphsEnabled}
@@ -4737,7 +4869,14 @@ export default function App() {
         onUndoAction={handleUndoAction}
         undoBusy={undoBusy || isFileOperationBusy || transferOperations.some(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status))}
         selectedCount={selectedCount}
-        onOpenSearch={() => setIsSearchOpen(true)}
+        flatView={currentTab.flatView === true && !!currentTab.currentPath && !currentTab.currentPath.startsWith('::')}
+        flatViewAvailable={isTauriDesktop() && !!currentTab.currentPath && !currentTab.currentPath.startsWith('::')}
+        flatViewLoading={Boolean(currentTab.flatView && !currentTab.currentPath.startsWith('::') && (!flatDirectories[getPathKey(currentTab.currentPath)] || flatDirectories[getPathKey(currentTab.currentPath)].loading))}
+        onToggleFlatView={() => {
+          const key = getPathKey(currentTab.currentPath);
+          if (!currentTab.flatView && flatDirectories[key]?.error) invalidateFlatDirectories([currentTab.currentPath]);
+          updateActiveTab(tab => ({ ...tab, flatView: !tab.flatView, selectedIds: [], focusedId: null }));
+        }}
       />
 
       {/* 2. Main Workstation Area */}
@@ -4840,7 +4979,8 @@ export default function App() {
                   drives={drives}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
                   totalItemCount={leftKnownCounts?.totalCount}
-                  isLoadingDirectory={leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
+                  isLoadingDirectory={(leftDisplayTab.flatView && !leftAtSystemHome && !leftAtRecycleBin && !leftDirectoryState) || leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
+                  flatViewStatus={leftDisplayTab.flatView ? flatDirectories[getPathKey(leftDisplayTab.currentPath)] : undefined}
                   onLoadMore={leftAtRecycleBin ? () => void loadMoreRecycleBin() : undefined}
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'left')}
@@ -4904,7 +5044,8 @@ export default function App() {
                   drives={drives}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
                   totalItemCount={rightKnownCounts?.totalCount}
-                  isLoadingDirectory={rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
+                  isLoadingDirectory={(rightDisplayTab.flatView && !rightAtSystemHome && !rightAtRecycleBin && !rightDirectoryState) || rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
+                  flatViewStatus={rightDisplayTab.flatView ? flatDirectories[getPathKey(rightDisplayTab.currentPath)] : undefined}
                   onLoadMore={rightAtRecycleBin ? () => void loadMoreRecycleBin() : undefined}
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'right')}
@@ -4969,7 +5110,8 @@ export default function App() {
                   drives={drives}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
                   totalItemCount={leftKnownCounts?.totalCount}
-                  isLoadingDirectory={leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
+                  isLoadingDirectory={(leftDisplayTab.flatView && !leftAtSystemHome && !leftAtRecycleBin && !leftDirectoryState) || leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
+                  flatViewStatus={leftDisplayTab.flatView ? flatDirectories[getPathKey(leftDisplayTab.currentPath)] : undefined}
                   onLoadMore={leftAtRecycleBin ? () => void loadMoreRecycleBin() : undefined}
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'left')}
@@ -5029,7 +5171,8 @@ export default function App() {
                   drives={drives}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
                   totalItemCount={rightKnownCounts?.totalCount}
-                  isLoadingDirectory={rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
+                  isLoadingDirectory={(rightDisplayTab.flatView && !rightAtSystemHome && !rightAtRecycleBin && !rightDirectoryState) || rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
+                  flatViewStatus={rightDisplayTab.flatView ? flatDirectories[getPathKey(rightDisplayTab.currentPath)] : undefined}
                   onLoadMore={rightAtRecycleBin ? () => void loadMoreRecycleBin() : undefined}
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'right')}
@@ -5094,7 +5237,8 @@ export default function App() {
                   drives={drives}
                   hasMore={currentAtRecycleBin ? recycleBinPage.hasMore : (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.hasMore}
                   totalItemCount={activeKnownCounts?.totalCount}
-                  isLoadingDirectory={(activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.loading || (currentTab.currentPath === SYSTEM_HOME_PATH && systemHomeLoading) || (currentAtRecycleBin && recycleBinPage.loading)}
+                  isLoadingDirectory={(currentTab.flatView && !currentTab.currentPath.startsWith('::') && !(activePane === 'left' ? leftDirectoryState : rightDirectoryState)) || (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.loading || (currentTab.currentPath === SYSTEM_HOME_PATH && systemHomeLoading) || (currentAtRecycleBin && recycleBinPage.loading)}
+                  flatViewStatus={currentTab.flatView ? flatDirectories[getPathKey(currentTab.currentPath)] : undefined}
                   onLoadMore={currentAtRecycleBin ? () => void loadMoreRecycleBin() : undefined}
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, activePane)}
@@ -5146,6 +5290,7 @@ export default function App() {
         activePane={activePane}
         currentTab={currentTab}
         activeFiles={activeDisplayFiles}
+        isLoadingDirectory={Boolean(currentTab.flatView && !currentTab.currentPath.startsWith('::') && (!(activePane === 'left' ? leftDirectoryState : rightDirectoryState) || (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.loading || flatDirectories[getPathKey(currentTab.currentPath)]?.error))}
         hasMoreItems={currentAtRecycleBin ? recycleBinPage.hasMore : (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.hasMore ?? false}
         totalFileCount={activeKnownCounts?.fileCount}
         totalFolderCount={activeKnownCounts?.folderCount}

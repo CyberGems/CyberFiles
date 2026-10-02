@@ -478,6 +478,14 @@ struct DirectoryListing {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct FlatDirectoryListing {
+    entries: Vec<NativeFolderEntry>,
+    counts: DirectoryCounts,
+    skipped_count: usize,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct DirectoryCounts {
     file_count: usize,
     folder_count: usize,
@@ -2208,6 +2216,109 @@ async fn list_directory(path: String) -> Result<DirectoryListing, String> {
     })
     .await
     .map_err(|error| format!("Folder scan worker failed: {error}"))?
+}
+
+#[tauri::command]
+async fn list_flat_directory(path: String) -> Result<FlatDirectoryListing, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root =
+            fs::canonicalize(&path).map_err(|error| format!("Cannot access folder: {error}"))?;
+        if !root.is_dir() {
+            return Err("The selected location is not a folder.".to_string());
+        }
+        let mut entries = Vec::new();
+        let mut counts = DirectoryCounts {
+            file_count: 0,
+            folder_count: 0,
+            visible_file_count: 0,
+            visible_folder_count: 0,
+            hidden_count: 0,
+        };
+        let mut skipped_count = 0;
+        let mut stack = vec![(root.clone(), false)];
+        while let Some((directory, parent_hidden)) = stack.pop() {
+            let children = match fs::read_dir(&directory) {
+                Ok(children) => children,
+                Err(error) if directory == root => {
+                    return Err(format!("Cannot read folder: {error}"));
+                }
+                Err(_) => {
+                    skipped_count += 1;
+                    continue;
+                }
+            };
+            for child in children {
+                let child = match child {
+                    Ok(child) => child,
+                    Err(_) => {
+                        skipped_count += 1;
+                        continue;
+                    }
+                };
+                let entry_path = child.path();
+                let metadata = match fs::symlink_metadata(&entry_path) {
+                    Ok(metadata) => metadata,
+                    Err(_) => {
+                        skipped_count += 1;
+                        continue;
+                    }
+                };
+                if metadata.file_type().is_symlink() {
+                    continue;
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    use std::os::windows::fs::MetadataExt;
+                    if metadata.file_attributes() & 0x400 != 0 {
+                        continue;
+                    }
+                }
+                let is_folder = metadata.is_dir();
+                let is_hidden = parent_hidden || is_hidden_metadata(&metadata, &entry_path);
+                if is_hidden {
+                    counts.hidden_count += 1;
+                }
+                if is_folder {
+                    counts.folder_count += 1;
+                    if !is_hidden {
+                        counts.visible_folder_count += 1;
+                    }
+                    stack.push((entry_path.clone(), is_hidden));
+                } else {
+                    counts.file_count += 1;
+                    if !is_hidden {
+                        counts.visible_file_count += 1;
+                    }
+                }
+                let modified_ms = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                    .and_then(|duration| duration.as_millis().try_into().ok());
+                let created_ms = metadata
+                    .created()
+                    .ok()
+                    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                    .and_then(|duration| duration.as_millis().try_into().ok());
+                entries.push(NativeFolderEntry {
+                    name: child.file_name().to_string_lossy().to_string(),
+                    path: display_path(&entry_path),
+                    is_folder,
+                    is_hidden,
+                    size: if is_folder { 0 } else { metadata.len() },
+                    modified_ms,
+                    created_ms,
+                });
+            }
+        }
+        Ok(FlatDirectoryListing {
+            entries,
+            counts,
+            skipped_count,
+        })
+    })
+    .await
+    .map_err(|error| format!("Flat folder scan worker failed: {error}"))?
 }
 
 #[tauri::command]
@@ -5378,6 +5489,7 @@ fn main() {
             hide_main_window,
             quit_app,
             list_directory,
+            list_flat_directory,
             count_hidden_items,
             get_file_icons,
             calculate_folder_size,

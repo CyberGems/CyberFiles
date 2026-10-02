@@ -11,6 +11,7 @@ interface BottomStatusBarProps {
   currentTab: TabState;
   activeFiles: FileItem[];
   hasMoreItems: boolean;
+  isLoadingDirectory?: boolean;
   totalFileCount?: number;
   totalFolderCount?: number;
   hiddenItemsCount: number | null;
@@ -109,6 +110,7 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
   currentTab,
   activeFiles,
   hasMoreItems,
+  isLoadingDirectory = false,
   totalFileCount,
   totalFolderCount,
   hiddenItemsCount,
@@ -206,7 +208,7 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
   const localUsageColor = localUsedPct >= 90 ? 'bg-rose-500' : localUsedPct >= 75 ? 'bg-amber-400' : 'bg-cyan-400';
   const remainingPathCharacters = MAX_PATH_WINDOWS - pathLength;
   const formatCount = (value: number) => new Intl.NumberFormat(locale).format(value);
-  const loadedCount = (value: number, knownCount?: number) => knownCount === undefined
+  const loadedCount = (value: number, knownCount?: number) => isLoadingDirectory ? '…' : knownCount === undefined
     ? `${formatCount(value)}${hasMoreItems ? '+' : ''}`
     : formatCount(knownCount);
   const displayFileCount = loadedCount(fileItems.length, totalFileCount);

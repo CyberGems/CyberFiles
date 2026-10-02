@@ -44,6 +44,12 @@ interface LoadedNativeFolder {
   nextOffset: number;
 }
 
+interface LoadedNativeFlatFolder {
+  entries: NativeFolderEntry[];
+  counts: NativeDirectoryCounts;
+  skippedCount: number;
+}
+
 export interface NativeDirectoryCounts {
   fileCount: number;
   folderCount: number;
@@ -220,6 +226,11 @@ export async function listNativeDirectory(path: string): Promise<{ rootPath: str
     hasMore: result.hasMore,
     nextOffset: result.nextOffset,
   };
+}
+
+export async function listNativeFlatDirectory(path: string): Promise<{ entries: FileItem[]; counts: NativeDirectoryCounts; skippedCount: number }> {
+  const result = await invoke<LoadedNativeFlatFolder>('list_flat_directory', { path });
+  return { entries: mapNativeEntries(result.entries), counts: result.counts, skippedCount: result.skippedCount };
 }
 
 export async function countNativeHiddenItems(path: string): Promise<number> {

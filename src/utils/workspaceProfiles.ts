@@ -41,7 +41,7 @@ export interface LayoutSnapshot {
 
 export type SavedTabState = Pick<
   TabState,
-  'currentPath' | 'history' | 'historyIndex' | 'sortField' | 'sortOrder' | 'groupBy' | 'viewMode' | 'folderStyle' | 'customTitle' | 'tabColor' | 'lockClose'
+  'currentPath' | 'history' | 'historyIndex' | 'sortField' | 'sortOrder' | 'groupBy' | 'viewMode' | 'folderStyle' | 'customTitle' | 'tabColor' | 'lockClose' | 'flatView'
 > & { id: string; title: string };
 
 export interface TabSessionSnapshot {
@@ -190,6 +190,7 @@ function normalizeSavedTab(value: unknown, pane: WorkspacePaneId, index: number)
     customTitle: typeof raw.customTitle === 'string' ? raw.customTitle.slice(0, 80) : undefined,
     tabColor: typeof raw.tabColor === 'string' && /^#[0-9a-f]{6}$/i.test(raw.tabColor) ? raw.tabColor : undefined,
     lockClose: raw.lockClose === true,
+    flatView: raw.flatView === true,
     currentPath,
     history,
     historyIndex,

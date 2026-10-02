@@ -78,6 +78,7 @@ export interface TabState {
   history: string[];
   historyIndex: number;
   filterQuery: string;
+  flatView?: boolean;
   selectedIds: string[];
   focusedId: string | null;
   sortField: SortField;
