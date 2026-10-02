@@ -18,6 +18,7 @@ import {
   Search,
   Trash2,
   Eye,
+  EyeOff,
   X,
   Plus,
   GripVertical,
@@ -48,6 +49,12 @@ interface FolderTreeState {
   loading: boolean;
   loaded: boolean;
   error: boolean;
+}
+
+function hasHiddenAttribute(item: FileItem | null | undefined): boolean {
+  return Boolean(item && (
+    item.attributes?.toUpperCase().includes('H') === true || (!isTauriDesktop() && item.name.startsWith('.'))
+  ));
 }
 
 interface SidebarProps {
@@ -613,7 +620,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div key={item.id} className="flex min-w-0 items-center gap-2 py-1">
                 <span className="flex-shrink-0">{item.isFolder ? <FolderOpen className="h-3.5 w-3.5 text-amber-300" /> : getFileTypeIcon(item.type)}</span>
                 <div className="min-w-0 flex-1">
-                  <Tooltip label={item.name} placement="top"><p className="truncate text-[11px] font-medium text-neutral-200">{item.name}</p></Tooltip>
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <Tooltip label={item.name} placement="top"><p className="min-w-0 truncate text-[11px] font-medium text-neutral-200">{item.name}</p></Tooltip>
+                    {hasHiddenAttribute(item) && (
+                      <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-rose-500/30 bg-rose-950/40 px-1.5 py-0.5 text-[8px] font-medium text-rose-200">
+                        <EyeOff className="h-2.5 w-2.5" />
+                        {item.isFolder ? t.sidebar.hiddenFolder : t.sidebar.hiddenFile}
+                      </span>
+                    )}
+                  </div>
                   <Tooltip label={item.path} placement="top"><p className="truncate font-sans text-[9px] text-neutral-500">{item.path}</p></Tooltip>
                 </div>
               </div>
@@ -723,7 +738,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
             <FolderOpen className="h-5 w-5 text-amber-300" />
             <div className="min-w-0">
-              <p className="truncate text-[11px] font-medium text-neutral-200">{currentFolderName}</p>
+              <div className="flex min-w-0 items-center gap-1.5">
+                <p className="min-w-0 truncate text-[11px] font-medium text-neutral-200">{currentFolderName}</p>
+                {hasHiddenAttribute(currentFolderItem) && (
+                  <span className="inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-rose-500/30 bg-rose-950/40 px-1.5 py-0.5 text-[8px] font-medium text-rose-200">
+                    <EyeOff className="h-2.5 w-2.5" />
+                    {t.sidebar.hiddenFolder}
+                  </span>
+                )}
+              </div>
               <Tooltip label={currentPath} placement="right">
                 <p className="truncate font-sans text-[9px] text-neutral-500">{currentPath}</p>
               </Tooltip>

@@ -16,6 +16,7 @@ import {
   QuickAccessItem,
   QuickAccessSortMode,
   HiddenItemStyle,
+  NavigationTransitionStyle,
   RecentItemStyle,
   GroupByField,
   ArchiveExtractionMode,
@@ -106,6 +107,8 @@ const HIDDEN_ITEMS_STYLE_KEY = 'cyberfiles_hidden_items_style_v1';
 const IMAGE_TOOLTIP_THUMBNAILS_KEY = 'cyberfiles_image_tooltip_thumbnails_v1';
 const NOTIFICATION_BANNERS_KEY = 'cyberfiles_notification_banners_v1';
 const TOOLTIPS_ENABLED_KEY = 'cyberfiles_tooltips_enabled_v1';
+const NAVIGATION_TRANSITIONS_ENABLED_KEY = 'cyberfiles_navigation_transitions_enabled_v1';
+const NAVIGATION_TRANSITION_STYLE_KEY = 'cyberfiles_navigation_transition_style_v1';
 const RELATIVE_GRAPHS_ENABLED_KEY = 'cyberfiles_relative_graphs_enabled_v1';
 const DATE_FORMAT_KEY = 'cyberfiles_date_format_v1';
 const DATE_FORMAT_SYSTEM_DEFAULT_MIGRATION_KEY = 'cyberfiles_date_format_system_default_migrated_v1';
@@ -336,6 +339,15 @@ function readDateFormatPreference(): DateFormatMode {
     return saved === 'application' || saved === 'system' || saved === 'universal' ? saved : 'system';
   } catch {
     return 'system';
+  }
+}
+
+function readNavigationTransitionStyle(): NavigationTransitionStyle {
+  try {
+    const saved = window.localStorage.getItem(NAVIGATION_TRANSITION_STYLE_KEY);
+    return saved === 'dynamic' || saved === 'fade' ? saved : 'subtle';
+  } catch {
+    return 'subtle';
   }
 }
 
@@ -647,6 +659,8 @@ export default function App() {
   const [imageTooltipThumbnailsEnabled, setImageTooltipThumbnailsEnabled] = useState(() => readBooleanPreference(IMAGE_TOOLTIP_THUMBNAILS_KEY, true));
   const [notificationBannersEnabled, setNotificationBannersEnabled] = useState(() => readBooleanPreference(NOTIFICATION_BANNERS_KEY, true));
   const [tooltipsEnabled, setTooltipsEnabled] = useState(() => readBooleanPreference(TOOLTIPS_ENABLED_KEY, true));
+  const [navigationTransitionsEnabled, setNavigationTransitionsEnabled] = useState(() => readBooleanPreference(NAVIGATION_TRANSITIONS_ENABLED_KEY, true));
+  const [navigationTransitionStyle, setNavigationTransitionStyle] = useState<NavigationTransitionStyle>(readNavigationTransitionStyle);
   const [relativeGraphsEnabled, setRelativeGraphsEnabled] = useState(() => readBooleanPreference(RELATIVE_GRAPHS_ENABLED_KEY, true));
   const [showHiddenFiles, setShowHiddenFiles] = useState(() => readBooleanPreference(SHOW_HIDDEN_FILES_KEY, true));
   const [showFileExtensions, setShowFileExtensions] = useState(() => readBooleanPreference(SHOW_FILE_EXTENSIONS_KEY, true));
@@ -1700,6 +1714,15 @@ export default function App() {
       // Keep the selected behavior for the current session when storage is unavailable.
     }
   }, [tooltipsEnabled]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(NAVIGATION_TRANSITIONS_ENABLED_KEY, String(navigationTransitionsEnabled));
+      window.localStorage.setItem(NAVIGATION_TRANSITION_STYLE_KEY, navigationTransitionStyle);
+    } catch {
+      // Keep navigation transition preferences for the current session when storage is unavailable.
+    }
+  }, [navigationTransitionStyle, navigationTransitionsEnabled]);
 
   useEffect(() => {
     try {
@@ -4636,6 +4659,8 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
                   hiddenItemStyle={hiddenItemStyle}
+                  navigationTransitionsEnabled={navigationTransitionsEnabled}
+                  navigationTransitionStyle={navigationTransitionStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
@@ -4693,6 +4718,8 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
                   hiddenItemStyle={hiddenItemStyle}
+                  navigationTransitionsEnabled={navigationTransitionsEnabled}
+                  navigationTransitionStyle={navigationTransitionStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
@@ -4751,6 +4778,8 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
                   hiddenItemStyle={hiddenItemStyle}
+                  navigationTransitionsEnabled={navigationTransitionsEnabled}
+                  navigationTransitionStyle={navigationTransitionStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
@@ -4804,6 +4833,8 @@ export default function App() {
                   styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
                   hiddenItemStyle={hiddenItemStyle}
+                  navigationTransitionsEnabled={navigationTransitionsEnabled}
+                  navigationTransitionStyle={navigationTransitionStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
@@ -4862,6 +4893,8 @@ export default function App() {
                 styleLocked={folderStyleLocked}
                   recentItemStyle={recentItemStyle}
                   hiddenItemStyle={hiddenItemStyle}
+                  navigationTransitionsEnabled={navigationTransitionsEnabled}
+                  navigationTransitionStyle={navigationTransitionStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
@@ -5191,6 +5224,10 @@ export default function App() {
             onNotificationBannersEnabledChange={setNotificationBannersEnabled}
             tooltipsEnabled={tooltipsEnabled}
             onTooltipsEnabledChange={setTooltipsEnabled}
+            navigationTransitionsEnabled={navigationTransitionsEnabled}
+            onNavigationTransitionsEnabledChange={setNavigationTransitionsEnabled}
+            navigationTransitionStyle={navigationTransitionStyle}
+            onNavigationTransitionStyleChange={setNavigationTransitionStyle}
             dateFormat={dateFormat}
             onDateFormatChange={setDateFormat}
             startupBehavior={startupBehavior}

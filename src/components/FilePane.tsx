@@ -35,7 +35,7 @@ import {
   UnlockKeyhole,
   History,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
+import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, NavigationTransitionStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
@@ -56,6 +56,8 @@ interface FilePaneProps {
   styleLocked: boolean;
   recentItemStyle: RecentItemStyle;
   hiddenItemStyle: HiddenItemStyle;
+  navigationTransitionsEnabled: boolean;
+  navigationTransitionStyle: NavigationTransitionStyle;
   emptyAreaDoubleClickNavigatesUp: boolean;
   imageTooltipThumbnailsEnabled: boolean;
   showFileExtensions: boolean;
@@ -108,6 +110,17 @@ type RelativeGraphColumn = 'size' | 'created' | 'modified';
 type RelativeGraphWidths = Partial<Record<RelativeGraphColumn, number>>;
 type ResizableColumn = FileColumn;
 type FolderSizeState = { status: 'loading' | 'paused' | 'done' | 'error'; size?: number; entriesScanned?: number };
+type NavigationMotion = 'into' | 'up' | 'back' | 'forward' | 'other';
+
+function normalizeNavigationPath(path: string): string {
+  return path.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+}
+
+function isNavigationDescendant(path: string, possibleParent: string): boolean {
+  const child = normalizeNavigationPath(path);
+  const parent = normalizeNavigationPath(possibleParent);
+  return Boolean(parent) && child !== parent && child.startsWith(`${parent}\\`);
+}
 
 function getDisplayItemName(item: FileItem, showFileExtensions: boolean): string {
   if (showFileExtensions || item.isFolder) return item.name;
@@ -287,6 +300,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   styleLocked,
   recentItemStyle,
   hiddenItemStyle,
+  navigationTransitionsEnabled,
+  navigationTransitionStyle,
   emptyAreaDoubleClickNavigatesUp,
   imageTooltipThumbnailsEnabled,
   showFileExtensions,
@@ -386,6 +401,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const lastReportedColumnPreferences = useRef(JSON.stringify(columnPreferences));
   const suppressColumnSortRef = useRef(false);
   const previousPathRef = useRef(tab.currentPath);
+  const navigationSnapshotRef = useRef({
+    path: tab.currentPath,
+    historyIndex: tab.historyIndex,
+    historyLength: tab.history.length,
+  });
+  const navigationAnimationFrameRef = useRef<number | null>(null);
+  const [navigationMotion, setNavigationMotion] = useState<NavigationMotion | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const lastScrolledFocusedIdRef = useRef<string | null>(null);
   const columnHeadersRef = useRef<HTMLDivElement>(null);
@@ -541,6 +563,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   useEffect(() => () => {
     clearPendingDeselection();
+    if (navigationAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(navigationAnimationFrameRef.current);
+    }
     if (columnResizeFrameRef.current !== null) {
       window.cancelAnimationFrame(columnResizeFrameRef.current);
     }
@@ -549,6 +574,34 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }
   }, []);
 
+  useEffect(() => {
+    const previous = navigationSnapshotRef.current;
+    const current = {
+      path: tab.currentPath,
+      historyIndex: tab.historyIndex,
+      historyLength: tab.history.length,
+    };
+    navigationSnapshotRef.current = current;
+    if (previous.path === current.path) return;
+    if (!navigationTransitionsEnabled) {
+      setNavigationMotion(null);
+      return;
+    }
+
+    let motion: NavigationMotion = 'other';
+    if (previous.historyLength === current.historyLength && current.historyIndex < previous.historyIndex) motion = 'back';
+    else if (previous.historyLength === current.historyLength && current.historyIndex > previous.historyIndex) motion = 'forward';
+    else if (isNavigationDescendant(current.path, previous.path)) motion = 'into';
+    else if (isNavigationDescendant(previous.path, current.path)) motion = 'up';
+
+    setNavigationMotion(null);
+    if (navigationAnimationFrameRef.current !== null) window.cancelAnimationFrame(navigationAnimationFrameRef.current);
+    navigationAnimationFrameRef.current = window.requestAnimationFrame(() => {
+      setNavigationMotion(motion);
+      navigationAnimationFrameRef.current = null;
+    });
+  }, [navigationTransitionsEnabled, tab.currentPath, tab.historyIndex, tab.history.length]);
+
   const hasRecentActivity = (item: FileItem) => {
     const changedAt = Math.max(item.createdAtMs ?? 0, item.modifiedAtMs ?? 0);
     const age = Math.max(currentTime, Date.now()) - changedAt;
@@ -556,9 +609,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   const isRecentlyChanged = (item: FileItem) => recentItemStyle.enabled && hasRecentActivity(item);
-  const isHiddenItem = (item: FileItem) => hiddenItemStyle.enabled && (
+  const hasHiddenAttribute = (item: FileItem) => (
     item.attributes?.toUpperCase().includes('H') === true || (!isTauriDesktop() && item.name.startsWith('.'))
   );
+  const isHiddenItem = (item: FileItem) => hiddenItemStyle.enabled && hasHiddenAttribute(item);
 
   const getItemNameStyle = (item: FileItem, selected = false): React.CSSProperties | undefined => {
     const hidden = isHiddenItem(item);
@@ -630,6 +684,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {hasRecentActivity(item) && (
         <span className="mt-0.5 rounded-full border border-cyan-400/25 bg-cyan-950/50 px-2 py-0.5 text-[10px] text-cyan-200">
           {t.pane.itemTooltipRecentActivity}
+        </span>
+      )}
+      {hasHiddenAttribute(item) && (
+        <span className="mt-0.5 rounded-full border border-rose-400/30 bg-rose-950/45 px-2 py-0.5 text-[10px] text-rose-200">
+          {item.isFolder ? t.pane.itemTooltipHiddenFolder : t.pane.itemTooltipHiddenFile}
         </span>
       )}
       {additionalDetails}
@@ -1961,12 +2020,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* 5. File Items Viewport */}
       <div 
         ref={viewportRef}
-        className={`relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto py-0.5 select-none focus:outline-none ${marqueeBounds ? 'cursor-crosshair' : ''}`}
+        className={`relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto py-0.5 select-none focus:outline-none ${marqueeBounds ? 'cursor-crosshair' : ''} ${navigationMotion ? `cyberfiles-navigation-transition cyberfiles-navigation-${navigationTransitionStyle} cyberfiles-navigation-${navigationMotion}` : ''}`}
         tabIndex={0}
         onScroll={event => {
           if (!hasMore || isLoadingDirectory || !onLoadMore) return;
           const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
           if (scrollHeight - scrollTop - clientHeight <= Math.max(500, clientHeight)) onLoadMore();
+        }}
+        onAnimationEnd={event => {
+          if (event.target === event.currentTarget && event.animationName.startsWith('cyberfiles-navigation-')) {
+            setNavigationMotion(null);
+          }
         }}
         onClick={handleViewportClick}
         onContextMenu={handleViewportContextMenu}

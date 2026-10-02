@@ -380,13 +380,74 @@ html[data-theme='light'] [data-system-home-icon='network'] {
   animation: column-resize-guide-out 120ms ease-in both;
 }
 
+.cyberfiles-navigation-transition {
+  animation-duration: var(--cyberfiles-navigation-duration);
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+
+.cyberfiles-navigation-subtle {
+  --cyberfiles-navigation-duration: 155ms;
+  --cyberfiles-navigation-distance: 7px;
+  --cyberfiles-navigation-scale-in: 0.988;
+  --cyberfiles-navigation-scale-out: 1.012;
+}
+
+.cyberfiles-navigation-dynamic {
+  --cyberfiles-navigation-duration: 210ms;
+  --cyberfiles-navigation-distance: 16px;
+  --cyberfiles-navigation-scale-in: 0.965;
+  --cyberfiles-navigation-scale-out: 1.035;
+}
+
+.cyberfiles-navigation-fade {
+  --cyberfiles-navigation-duration: 130ms;
+  --cyberfiles-navigation-distance: 0px;
+  --cyberfiles-navigation-scale-in: 1;
+  --cyberfiles-navigation-scale-out: 1;
+}
+
+.cyberfiles-navigation-into { animation-name: cyberfiles-navigation-into; }
+.cyberfiles-navigation-up { animation-name: cyberfiles-navigation-up; }
+.cyberfiles-navigation-back { animation-name: cyberfiles-navigation-back; }
+.cyberfiles-navigation-forward { animation-name: cyberfiles-navigation-forward; }
+.cyberfiles-navigation-other { animation-name: cyberfiles-navigation-other; }
+
+@keyframes cyberfiles-navigation-into {
+  from { opacity: 0.22; transform: scale(var(--cyberfiles-navigation-scale-in)); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes cyberfiles-navigation-up {
+  from { opacity: 0.22; transform: scale(var(--cyberfiles-navigation-scale-out)); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes cyberfiles-navigation-back {
+  from { opacity: 0.22; transform: translateX(calc(-1 * var(--cyberfiles-navigation-distance))); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes cyberfiles-navigation-forward {
+  from { opacity: 0.22; transform: translateX(var(--cyberfiles-navigation-distance)); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes cyberfiles-navigation-other {
+  from { opacity: 0.18; }
+  to { opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   #root {
     transition: none;
   }
 
   .column-resize-guide-in,
-  .column-resize-guide-out {
+  .column-resize-guide-out,
+  .cyberfiles-navigation-transition {
     animation: none;
   }
 

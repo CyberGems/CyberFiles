@@ -54,6 +54,8 @@ export interface HiddenItemStyle {
   italic: boolean;
 }
 
+export type NavigationTransitionStyle = 'subtle' | 'dynamic' | 'fade';
+
 export type SortField = 'name' | 'size' | 'type' | 'createdDate' | 'modifiedDate' | 'extension';
 export type GroupByField = 'none' | 'name' | 'modifiedDate' | 'type' | 'size';
 export type SortOrder = 'asc' | 'desc';
