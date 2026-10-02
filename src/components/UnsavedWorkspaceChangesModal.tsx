@@ -15,6 +15,8 @@ interface UnsavedWorkspaceChangesModalProps {
   sessionChanged: boolean;
   layoutNeedsName: boolean;
   sessionNeedsName: boolean;
+  suggestedLayoutName: string;
+  suggestedSessionName: string;
   busy?: boolean;
   onSaveAndContinue: (names: WorkspaceChangesSaveNames) => void;
   onDiscardAndContinue: () => void;
@@ -27,6 +29,8 @@ export function UnsavedWorkspaceChangesModal({
   sessionChanged,
   layoutNeedsName,
   sessionNeedsName,
+  suggestedLayoutName,
+  suggestedSessionName,
   busy = false,
   onSaveAndContinue,
   onDiscardAndContinue,
@@ -48,8 +52,8 @@ export function UnsavedWorkspaceChangesModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    setLayoutName('');
-    setSessionName('');
+    setLayoutName(suggestedLayoutName);
+    setSessionName(suggestedSessionName);
     const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusTimer = window.setTimeout(() => {
       const firstInput = dialogRef.current?.querySelector<HTMLInputElement>('input:not(:disabled)');
@@ -86,7 +90,7 @@ export function UnsavedWorkspaceChangesModal({
       document.removeEventListener('keydown', handleKeyDown, true);
       previouslyFocused?.focus();
     };
-  }, [isOpen]);
+  }, [isOpen, suggestedLayoutName, suggestedSessionName]);
 
   if (!isOpen) return null;
 
@@ -158,7 +162,6 @@ export function UnsavedWorkspaceChangesModal({
               {layoutNeedsName && (
                 <label className="mt-3 block text-xs font-medium text-neutral-300">
                   {copy.saveAsLayout}
-                  <Tooltip label={copy.saveAsLayout} placement="top">
                     <input
                       value={layoutName}
                       onChange={event => setLayoutName(event.target.value)}
@@ -168,7 +171,6 @@ export function UnsavedWorkspaceChangesModal({
                       aria-keyshortcuts="Enter"
                       className="mt-1.5 w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2.5 text-sm text-neutral-100 outline-none transition-colors placeholder:text-neutral-600 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/15"
                     />
-                  </Tooltip>
                 </label>
               )}
             </section>
@@ -191,7 +193,6 @@ export function UnsavedWorkspaceChangesModal({
               {sessionNeedsName && (
                 <label className="mt-3 block text-xs font-medium text-neutral-300">
                   {copy.saveAsSession}
-                  <Tooltip label={copy.saveAsSession} placement="top">
                     <input
                       value={sessionName}
                       onChange={event => setSessionName(event.target.value)}
@@ -201,7 +202,6 @@ export function UnsavedWorkspaceChangesModal({
                       aria-keyshortcuts="Enter"
                       className="mt-1.5 w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2.5 text-sm text-neutral-100 outline-none transition-colors placeholder:text-neutral-600 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/15"
                     />
-                  </Tooltip>
                 </label>
               )}
             </section>

@@ -632,6 +632,14 @@ function createSessionSnapshot(
   });
 }
 
+function suggestUnusedProfileName(base: string, names: string[]): string {
+  const used = new Set(names.map(name => name.trim().toLocaleLowerCase()));
+  if (!used.has(base.toLocaleLowerCase())) return base;
+  let suffix = 2;
+  while (used.has(`${base} ${suffix}`.toLocaleLowerCase())) suffix += 1;
+  return `${base} ${suffix}`;
+}
+
 export default function App() {
   const { t, language } = useLanguage();
   const startsAtSystemHome = isTauriDesktop();
@@ -5317,6 +5325,8 @@ export default function App() {
         sessionChanged={pendingSessionChanged}
         layoutNeedsName={pendingLayoutChanged && activeLayoutId === DEFAULT_LAYOUT_PROFILE_ID}
         sessionNeedsName={pendingSessionChanged && activeSessionId === DEFAULT_SESSION_PROFILE_ID}
+        suggestedLayoutName={suggestUnusedProfileName(t.workspaceProfiles.suggestedLayoutName, workspaceStore.layouts.map(profile => profile.name))}
+        suggestedSessionName={suggestUnusedProfileName(t.workspaceProfiles.suggestedSessionName, workspaceStore.sessions.map(profile => profile.name))}
         onSaveAndContinue={savePendingWorkspaceChanges}
         onDiscardAndContinue={discardPendingWorkspaceChanges}
         onCancel={() => {
