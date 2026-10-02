@@ -39,6 +39,7 @@ interface LoadedNativeFolder {
   rootPath: string;
   rootName: string;
   entries: NativeFolderEntry[];
+  counts: NativeDirectoryCounts;
   hasMore: boolean;
   nextOffset: number;
 }
@@ -209,12 +210,13 @@ export async function chooseNativeFile(title = 'Choose a shortcut target'): Prom
   return typeof selected === 'string' ? selected : null;
 }
 
-export async function listNativeDirectory(path: string, offset = 0): Promise<{ rootPath: string; rootName: string; entries: FileItem[]; hasMore: boolean; nextOffset: number }> {
-  const result = await invoke<LoadedNativeFolder>('list_directory', { path, offset });
+export async function listNativeDirectory(path: string): Promise<{ rootPath: string; rootName: string; entries: FileItem[]; counts: NativeDirectoryCounts; hasMore: boolean; nextOffset: number }> {
+  const result = await invoke<LoadedNativeFolder>('list_directory', { path });
   return {
     rootPath: result.rootPath,
     rootName: result.rootName,
     entries: mapNativeEntries(result.entries),
+    counts: result.counts,
     hasMore: result.hasMore,
     nextOffset: result.nextOffset,
   };
@@ -223,11 +225,6 @@ export async function listNativeDirectory(path: string, offset = 0): Promise<{ r
 export async function countNativeHiddenItems(path: string): Promise<number> {
   if (!isTauriDesktop()) throw new Error('Native hidden-item counts are unavailable.');
   return invoke<number>('count_hidden_items', { path });
-}
-
-export async function countNativeDirectoryItems(path: string): Promise<NativeDirectoryCounts> {
-  if (!isTauriDesktop()) throw new Error('Native directory counts are unavailable.');
-  return invoke<NativeDirectoryCounts>('count_directory_items', { path });
 }
 
 export async function getNativeFileIcons(items: NativeFileIconRequest[], large: boolean): Promise<NativeFileIconGroup[]> {
@@ -346,7 +343,7 @@ export async function clearNativeFileClipboard(sequenceNumber: number): Promise<
   return invoke<boolean>('clear_file_clipboard', { sequenceNumber });
 }
 
-export async function loadNativeFolder(path: string): Promise<{ rootPath: string; rootName: string; files: FileItem[]; hasMore: boolean; nextOffset: number }> {
+export async function loadNativeFolder(path: string): Promise<{ rootPath: string; rootName: string; files: FileItem[]; counts: NativeDirectoryCounts; hasMore: boolean; nextOffset: number }> {
   const result = await listNativeDirectory(path);
   const root: FileItem = {
     id: `native-root-${encodeURIComponent(result.rootPath.toLowerCase())}`,
@@ -358,7 +355,7 @@ export async function loadNativeFolder(path: string): Promise<{ rootPath: string
     modifiedDate: '',
     extension: '',
   };
-  return { rootPath: result.rootPath, rootName: result.rootName, files: [root, ...result.entries], hasMore: result.hasMore, nextOffset: result.nextOffset };
+  return { rootPath: result.rootPath, rootName: result.rootName, files: [root, ...result.entries], counts: result.counts, hasMore: result.hasMore, nextOffset: result.nextOffset };
 }
 
 export async function listNativeDrives(): Promise<DriveInfo[]> {

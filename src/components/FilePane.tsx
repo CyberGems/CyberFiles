@@ -386,6 +386,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [columnDropTarget, setColumnDropTarget] = useState<FileColumn | null>(null);
   const [nativeFileIconState, setNativeFileIconState] = useState<{ scope: string; byItemId: Record<string, string> }>({ scope: '', byItemId: {} });
   const lastSingleClickOpenRef = useRef<{ itemId: string; timestamp: number } | null>(null);
+  const typeAheadRef = useRef({ query: '', at: 0 });
   const pendingDeselectionRef = useRef<number | null>(null);
   const latestTabRef = useRef(tab);
   latestTabRef.current = tab;
@@ -429,6 +430,24 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [marqueeBounds, setMarqueeBounds] = useState<MarqueeBounds | null>(null);
   const [marqueePreviewIds, setMarqueePreviewIds] = useState<string[] | null>(null);
   const [viewportScrollbarWidth, setViewportScrollbarWidth] = useState(0);
+  const [viewportWindow, setViewportWindow] = useState({ top: 0, height: 600, screenWidth: window.innerWidth });
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const update = () => setViewportWindow(previous => {
+      const next = { top: viewport.scrollTop, height: viewport.clientHeight, screenWidth: window.innerWidth };
+      return previous.top === next.top && previous.height === next.height && previous.screenWidth === next.screenWidth
+        ? previous : next;
+    });
+    update();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    observer?.observe(viewport);
+    window.addEventListener('resize', update);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [tab.currentPath, tab.id, effectiveViewMode]);
   useEffect(() => {
     if (tabStripPosition !== 'left' && tabStripPosition !== 'right') return;
     const list = verticalTabListRef.current;
@@ -443,63 +462,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const visibleFileColumns = columnLayout.order.filter(column =>
     columnLayout.visible.includes(column) || (editingItemId !== null && column === 'name'),
   );
-  const { requests: nativeFileIconRequests, key: nativeFileIconRequestKey } = React.useMemo(() => {
-    const requests: NativeFileIconRequest[] = [];
-    const keyParts: string[] = [];
-    files.forEach(item => {
-      if (item.isFolder || item.recycleBinId || !item.path) return;
-      requests.push({ id: item.id, path: item.path });
-      keyParts.push(`${item.id}\u0000${item.path}\u0000${item.modifiedAtMs ?? ''}`);
-    });
-    keyParts.sort();
-    return { requests, key: keyParts.join('\u0001') };
-  }, [files]);
-  nativeFileIconRequestsRef.current = nativeFileIconRequests;
-
-  useEffect(() => {
-    const generation = ++nativeFileIconGenerationRef.current;
-    const scope = nativeFileIconScope;
-    const iconRequests = nativeFileIconRequestsRef.current;
-    let cancelled = false;
-    let scheduledBatch: number | null = null;
-
-    setNativeFileIconState(previous => previous.scope === scope ? previous : { scope, byItemId: {} });
-    if (!isTauriDesktop() || isRecycleBin || iconRequests.length === 0) {
-      return () => { cancelled = true; };
-    }
-
-    let nextIndex = 0;
-    const loadNextIconBatch = async () => {
-      const batch = iconRequests.slice(nextIndex, nextIndex + 48);
-      nextIndex += batch.length;
-      try {
-        const groups = await getNativeFileIcons(batch, nativeFileIconSize === 'large');
-        if (cancelled || generation !== nativeFileIconGenerationRef.current) return;
-        setNativeFileIconState(previous => {
-          if (generation !== nativeFileIconGenerationRef.current) return previous;
-          const byItemId = previous.scope === scope ? previous.byItemId : {};
-          const nextByItemId = { ...byItemId };
-          groups.forEach(group => group.itemIds.forEach(id => { nextByItemId[id] = group.dataUrl; }));
-          return { scope, byItemId: nextByItemId };
-        });
-      } catch {
-        // Shell icons are an enhancement. Keep the generic file icons when a lookup fails.
-      }
-
-      if (!cancelled && generation === nativeFileIconGenerationRef.current && nextIndex < iconRequests.length) {
-        scheduledBatch = window.setTimeout(() => { void loadNextIconBatch(); }, 24);
-      }
-    };
-
-    if (nativeFileIconRequestKey) {
-      scheduledBatch = window.setTimeout(() => { void loadNextIconBatch(); }, 48);
-    }
-    return () => {
-      cancelled = true;
-      if (scheduledBatch !== null) window.clearTimeout(scheduledBatch);
-    };
-  }, [isRecycleBin, nativeFileIconRequestKey, nativeFileIconScope, nativeFileIconSize]);
-
   const relativeGraphWidths = React.useMemo(() => {
     const widths = new Map<string, RelativeGraphWidths>();
     if (!relativeGraphsEnabled || isSystemHome || effectiveViewMode !== 'details') return widths;
@@ -729,7 +691,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     + Math.max(0, visibleFileColumns.length - 1) * 8 + 18;
   const getFileTypeLabel = (item: FileItem) => t.pane.folderTypeLabels[item.type]
     .replace('{extension}', item.extension.toUpperCase()).trim();
-  const getGroupForItem = (item: FileItem): { id: string; label: string } => {
+  const getGroupForItem = React.useCallback((item: FileItem): { id: string; label: string } => {
     if (tab.groupBy === 'name') {
       const initial = item.name.trim().charAt(0).toLocaleUpperCase() || '#';
       return { id: initial, label: initial };
@@ -752,8 +714,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
       return { id: dateGroup, label: t.pane.groups[dateGroup] };
     }
     return { id: 'all', label: '' };
-  };
-  const fileGroups = (() => {
+  }, [tab.groupBy, t]);
+  const fileGroups = React.useMemo(() => {
     if (!tab.groupBy || tab.groupBy === 'none') return [{ id: 'all', label: '', items: files }];
     const groups = new Map<string, { id: string; label: string; items: FileItem[] }>();
     files.forEach(item => {
@@ -763,7 +725,113 @@ export const FilePane: React.FC<FilePaneProps> = ({
       else groups.set(group.id, { ...group, items: [item] });
     });
     return [...groups.values()];
-  })();
+  }, [files, getGroupForItem, tab.groupBy]);
+  const fileIndexById = React.useMemo(() => new Map(files.map((item, index) => [item.id, index])), [files]);
+  const virtualizeFiles = !isSystemHome && files.length > 300;
+  const virtualColumns = effectiveViewMode === 'details' ? 1
+    : effectiveViewMode === 'compact' ? viewportWindow.screenWidth >= 1024 ? 3 : viewportWindow.screenWidth >= 640 ? 2 : 1
+      : viewportWindow.screenWidth >= 1280 ? 5 : viewportWindow.screenWidth >= 768 ? 4 : viewportWindow.screenWidth >= 640 ? 3 : 2;
+  const rowStride = effectiveViewMode === 'details' ? 32 : effectiveViewMode === 'compact' ? 34 : 156;
+  const headingStride = effectiveViewMode === 'details' ? 30 : effectiveViewMode === 'compact' ? 32 : 40;
+  const focusedGroupPosition = React.useMemo(() => {
+    if (!tab.focusedId) return null;
+    for (const group of fileGroups) {
+      const index = group.items.findIndex(item => item.id === tab.focusedId);
+      if (index >= 0) return { groupId: group.id, index };
+    }
+    return null;
+  }, [fileGroups, tab.focusedId]);
+  let groupTop = 0;
+  const focusedVirtualOffset = new Map<string, number>();
+  const renderGroups = fileGroups.map(group => {
+    const collapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
+    const collapsed = collapsedGroups[collapseKey] === true;
+    const headingHeight = group.label ? headingStride : 0;
+    const rows = collapsed ? 0 : Math.ceil(group.items.length / virtualColumns);
+    const groupHeight = headingHeight + rows * rowStride;
+    const itemTop = groupTop + headingHeight;
+    if (tab.focusedId && focusedGroupPosition?.groupId === group.id && !collapsed) {
+      focusedVirtualOffset.set(tab.focusedId, itemTop + Math.floor(focusedGroupPosition.index / virtualColumns) * rowStride);
+    }
+    const groupStart = groupTop;
+    groupTop += groupHeight;
+    if (!virtualizeFiles) {
+      return { ...group, visibleItems: group.items, renderHeading: true, before: 0, after: 0 };
+    }
+    const bandStart = viewportWindow.top - 800;
+    const bandEnd = viewportWindow.top + viewportWindow.height + 800;
+    if (groupTop < bandStart || groupStart > bandEnd) {
+      return { ...group, visibleItems: [], renderHeading: false, before: groupHeight, after: 0 };
+    }
+    const firstRow = Math.max(0, Math.min(rows, Math.floor((bandStart - itemTop) / rowStride)));
+    const lastRow = Math.max(firstRow, Math.min(rows, Math.ceil((bandEnd - itemTop) / rowStride)));
+    return {
+      ...group,
+      visibleItems: collapsed ? [] : group.items.slice(firstRow * virtualColumns, lastRow * virtualColumns),
+      renderHeading: true,
+      before: firstRow * rowStride,
+      after: (rows - lastRow) * rowStride,
+    };
+  });
+  const renderedFiles = renderGroups.flatMap(group => group.visibleItems);
+
+  const { requests: nativeFileIconRequests, key: nativeFileIconRequestKey } = React.useMemo(() => {
+    const requests: NativeFileIconRequest[] = [];
+    const keyParts: string[] = [];
+    renderedFiles.forEach(item => {
+      if (item.isFolder || item.recycleBinId || !item.path) return;
+      requests.push({ id: item.id, path: item.path });
+      keyParts.push(`${item.id}\u0000${item.path}\u0000${item.modifiedAtMs ?? ''}`);
+    });
+    keyParts.sort();
+    return { requests, key: keyParts.join('\u0001') };
+  }, [renderedFiles]);
+  nativeFileIconRequestsRef.current = nativeFileIconRequests;
+
+  useEffect(() => {
+    const generation = ++nativeFileIconGenerationRef.current;
+    const scope = nativeFileIconScope;
+    const iconRequests = nativeFileIconRequestsRef.current;
+    let cancelled = false;
+    let scheduledBatch: number | null = null;
+
+    setNativeFileIconState(previous => previous.scope === scope ? previous : { scope, byItemId: {} });
+    if (!isTauriDesktop() || isRecycleBin || iconRequests.length === 0) {
+      return () => { cancelled = true; };
+    }
+
+    let nextIndex = 0;
+    const loadNextIconBatch = async () => {
+      const batch = iconRequests.slice(nextIndex, nextIndex + 48);
+      nextIndex += batch.length;
+      try {
+        const groups = await getNativeFileIcons(batch, nativeFileIconSize === 'large');
+        if (cancelled || generation !== nativeFileIconGenerationRef.current) return;
+        setNativeFileIconState(previous => {
+          if (generation !== nativeFileIconGenerationRef.current) return previous;
+          const byItemId = previous.scope === scope ? previous.byItemId : {};
+          const nextByItemId = { ...byItemId };
+          groups.forEach(group => group.itemIds.forEach(id => { nextByItemId[id] = group.dataUrl; }));
+          return { scope, byItemId: nextByItemId };
+        });
+      } catch {
+        // Shell icons are an enhancement. Keep the generic file icons when a lookup fails.
+      }
+
+      if (!cancelled && generation === nativeFileIconGenerationRef.current && nextIndex < iconRequests.length) {
+        scheduledBatch = window.setTimeout(() => { void loadNextIconBatch(); }, 24);
+      }
+    };
+
+    if (nativeFileIconRequestKey) {
+      scheduledBatch = window.setTimeout(() => { void loadNextIconBatch(); }, 48);
+    }
+    return () => {
+      cancelled = true;
+      if (scheduledBatch !== null) window.clearTimeout(scheduledBatch);
+    };
+  }, [isRecycleBin, nativeFileIconRequestKey, nativeFileIconScope, nativeFileIconSize]);
+
   const renderFileGroupHeading = (group: { id: string; label: string }) => {
     if (!group.label) return null;
     const key = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
@@ -775,7 +843,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           type="button"
           aria-expanded={!isCollapsed}
           onClick={() => setCollapsedGroups(previous => ({ ...previous, [key]: !previous[key] }))}
-          className="collapse-toggle sticky top-0 z-[1] col-span-full flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] font-semibold text-neutral-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+          className={`collapse-toggle sticky top-0 z-[1] col-span-full flex w-full ${virtualizeFiles ? 'h-7' : ''} items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] font-semibold text-neutral-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70`}
         >
           <ChevronDown className={`h-3.5 w-3.5 flex-shrink-0 text-neutral-500 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
           <span>{group.label} ({fileGroups.find(candidate => candidate.id === group.id)?.items.length ?? 0})</span>
@@ -966,13 +1034,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
       return;
     }
     if (lastScrolledFocusedIdRef.current === tab.focusedId) return;
-    const focusedItem = [...(viewportRef.current?.querySelectorAll<HTMLElement>('[data-file-item][data-file-id]') ?? [])]
+    const viewport = viewportRef.current;
+    if (virtualizeFiles && viewport) {
+      const offset = focusedVirtualOffset.get(tab.focusedId);
+      if (offset !== undefined && (offset < viewport.scrollTop || offset + rowStride > viewport.scrollTop + viewport.clientHeight)) {
+        viewport.scrollTop = Math.max(0, offset - Math.max(0, (viewport.clientHeight - rowStride) / 2));
+        return;
+      }
+    }
+    const focusedItem = [...(viewport?.querySelectorAll<HTMLElement>('[data-file-item][data-file-id]') ?? [])]
       .find(element => element.dataset.fileId === tab.focusedId);
     if (focusedItem) {
       focusedItem.scrollIntoView({ block: 'nearest' });
       lastScrolledFocusedIdRef.current = tab.focusedId;
     }
-  }, [files, tab.focusedId, tab.selectedIds]);
+  }, [files, tab.focusedId, tab.selectedIds, virtualizeFiles, viewportWindow.top, viewportWindow.height, collapsedGroups]);
 
   useEffect(() => {
     setPathInput(tab.currentPath);
@@ -1466,6 +1542,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   // Selection logic
   const handleItemClick = (e: React.MouseEvent, item: FileItem, index: number) => {
+    viewportRef.current?.focus({ preventScroll: true });
     onActivate();
     clearPendingDeselection();
 
@@ -1496,6 +1573,43 @@ export const FilePane: React.FC<FilePaneProps> = ({
     } else {
       onSelectItems([item.id], false, false);
     }
+  };
+
+  const handleTypeAhead = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!isActive || event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing || event.key.length !== 1 || files.length === 0) return;
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest('input, textarea, select, button, [contenteditable="true"]')) return;
+    if (!/[^\s]/u.test(event.key)) return;
+    const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase(language);
+    const now = Date.now();
+    const previous = typeAheadRef.current;
+    const withinSequence = now - previous.at < 1000;
+    const letter = normalize(event.key);
+    const repeatedLetter = withinSequence && previous.query === letter;
+    let query = withinSequence && !repeatedLetter ? previous.query + letter : letter;
+    let start = repeatedLetter ? Math.max(0, files.findIndex(item => item.id === tab.focusedId) + 1) : 0;
+    const findMatch = (prefix: string, from: number) => {
+      for (let offset = 0; offset < files.length; offset += 1) {
+        const item = files[(from + offset) % files.length];
+        if (normalize(item.name).startsWith(prefix)) return item;
+      }
+      return undefined;
+    };
+    let match = findMatch(query, start);
+    if (!match && query.length > 1) {
+      query = letter;
+      start = Math.max(0, files.findIndex(item => item.id === tab.focusedId) + 1);
+      match = findMatch(query, start);
+    }
+    typeAheadRef.current = { query, at: now };
+    if (!match) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const group = getGroupForItem(match);
+    const collapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
+    if (collapsedGroups[collapseKey]) setCollapsedGroups(previousGroups => ({ ...previousGroups, [collapseKey]: false }));
+    lastScrolledFocusedIdRef.current = null;
+    onSelectItems([match.id], false, false, true);
   };
 
   const handleConfiguredSingleClick = (event: React.MouseEvent, item: FileItem) => {
@@ -1532,6 +1646,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (target.closest('[data-file-item]')) return;
     clearPendingDeselection();
     if (target.closest('button, input, select, textarea, a, [contenteditable="true"]')) return;
+    viewportRef.current?.focus({ preventScroll: true });
     onBackgroundClick(event, paneId);
   };
 
@@ -1613,13 +1728,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   const visibleSelectedIds = marqueePreviewIds ?? tab.selectedIds;
-  const selectedFiles = files.filter(f => visibleSelectedIds.includes(f.id));
-  const selectedBytes = selectedFiles.reduce((acc, f) => acc + f.size, 0);
+  const visibleSelectedIdSet = React.useMemo(() => new Set(visibleSelectedIds), [visibleSelectedIds]);
+  const selectedFiles = React.useMemo(() => files.filter(file => visibleSelectedIdSet.has(file.id)), [files, visibleSelectedIdSet]);
+  const selectedBytes = React.useMemo(() => selectedFiles.reduce((total, file) => total + file.size, 0), [selectedFiles]);
 
-  const folderBytes = files.filter(file => !file.isFolder).reduce((acc, file) => acc + file.size, 0);
+  const folderBytes = React.useMemo(() => files.reduce((total, file) => total + (file.isFolder ? 0 : file.size), 0), [files]);
 
   const renderSystemHomeCard = (item: FileItem, index: number, category: 'folder' | 'drive' | 'network') => {
-    const selected = visibleSelectedIds.includes(item.id);
+    const selected = visibleSelectedIdSet.has(item.id);
     const drive = category === 'folder' ? undefined : drives.find(candidate => item.id === `system-drive-${candidate.id}`);
     let icon: React.ReactNode;
     if (drive?.type === 'network') icon = <Network className="h-7 w-7" />;
@@ -2132,11 +2248,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
         className={`relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto py-0.5 select-none focus:outline-none ${marqueeBounds ? 'cursor-crosshair' : ''}`}
         tabIndex={0}
         onScroll={event => {
-          if (!hasMore || isLoadingDirectory || !onLoadMore) return;
           const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+          setViewportWindow(previous => previous.top === scrollTop ? previous : { ...previous, top: scrollTop });
+          if (!hasMore || isLoadingDirectory || !onLoadMore) return;
           if (scrollHeight - scrollTop - clientHeight <= Math.max(500, clientHeight)) onLoadMore();
         }}
         onClick={handleViewportClick}
+        onKeyDown={handleTypeAhead}
         onContextMenu={handleViewportContextMenu}
         onDoubleClick={handleViewportDoubleClick}
         onPointerDown={handleMarqueePointerDown}
@@ -2208,15 +2326,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </div>
         ) : effectiveViewMode === 'details' ? (
           <div className="space-y-0.5 px-4">
-            {fileGroups.map(group => {
+            {renderGroups.map(group => {
               const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
               const groupCollapsed = collapsedGroups[groupCollapseKey] === true;
               return (
               <React.Fragment key={`file-group-${groupCollapseKey}`}>
-              {renderFileGroupHeading(group)}
-              {!groupCollapsed && group.items.map(item => {
-              const idx = files.indexOf(item);
-              const isSelected = visibleSelectedIds.includes(item.id);
+              {group.renderHeading && renderFileGroupHeading(group)}
+              {group.before > 0 && <div aria-hidden="true" className="col-span-full" style={{ height: group.before }} />}
+              {!groupCollapsed && group.visibleItems.map(item => {
+              const idx = fileIndexById.get(item.id) ?? 0;
+              const isSelected = visibleSelectedIdSet.has(item.id);
               const isEditing = editingItemId === item.id;
               const isZebra = idx % 2 === 1;
 
@@ -2237,7 +2356,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth}px`, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`grid min-h-[30px] items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors ${
+                  className={`grid min-h-[30px] ${virtualizeFiles ? 'h-[30px]' : ''} items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-700/60 text-neutral-100 font-medium'
                       : isZebra
@@ -2307,20 +2426,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 </div>
               );
               })}
+              {group.after > 0 && <div aria-hidden="true" className="col-span-full" style={{ height: group.after }} />}
               </React.Fragment>
               );
             })}
           </div>
         ) : effectiveViewMode === 'compact' ? (
           <div className="grid grid-cols-1 gap-x-2 gap-y-1 p-1.5 sm:grid-cols-2 lg:grid-cols-3">
-            {fileGroups.map(group => {
+            {renderGroups.map(group => {
               const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
               const groupCollapsed = collapsedGroups[groupCollapseKey] === true;
               return <React.Fragment key={`compact-group-${groupCollapseKey}`}>
-              {renderFileGroupHeading(group)}
-              {!groupCollapsed && group.items.map(item => {
-              const idx = files.indexOf(item);
-              const isSelected = visibleSelectedIds.includes(item.id);
+              {group.renderHeading && renderFileGroupHeading(group)}
+              {group.before > 0 && <div aria-hidden="true" className="col-span-full" style={{ height: group.before }} />}
+              {!groupCollapsed && group.visibleItems.map(item => {
+              const idx = fileIndexById.get(item.id) ?? 0;
+              const isSelected = visibleSelectedIdSet.has(item.id);
               return (
                 <div
                   key={item.id}
@@ -2338,7 +2459,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`flex min-w-0 items-center gap-2 rounded border px-2 py-1.5 text-xs transition-colors ${
+                  className={`flex min-w-0 ${virtualizeFiles ? 'h-[30px]' : ''} items-center gap-2 rounded border px-2 py-1.5 text-xs transition-colors ${
                     isSelected
                       ? 'border-cyan-700/60 bg-cyan-950/70 text-neutral-100'
                       : 'border-transparent text-neutral-300 hover:border-neutral-800 hover:bg-neutral-800/60 hover:text-neutral-100'
@@ -2358,20 +2479,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 </div>
               );
               })}
+              {group.after > 0 && <div aria-hidden="true" className="col-span-full" style={{ height: group.after }} />}
               </React.Fragment>;
             })}
           </div>
         ) : (
           /* Icons / Grid View */
           <div className="grid grid-cols-2 gap-3 p-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
-            {fileGroups.map(group => {
+            {renderGroups.map(group => {
               const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
               const groupCollapsed = collapsedGroups[groupCollapseKey] === true;
               return <React.Fragment key={`icons-group-${groupCollapseKey}`}>
-              {renderFileGroupHeading(group)}
-              {!groupCollapsed && group.items.map(item => {
-              const idx = files.indexOf(item);
-              const isSelected = visibleSelectedIds.includes(item.id);
+              {group.renderHeading && renderFileGroupHeading(group)}
+              {group.before > 0 && <div aria-hidden="true" className="col-span-full" style={{ height: group.before }} />}
+              {!groupCollapsed && group.visibleItems.map(item => {
+              const idx = fileIndexById.get(item.id) ?? 0;
+              const isSelected = visibleSelectedIdSet.has(item.id);
 
               return (
                 <div
@@ -2384,7 +2507,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`flex min-w-0 flex-col items-center justify-start gap-1.5 rounded-lg border p-2.5 text-center cursor-pointer transition-colors ${
+                  className={`flex min-w-0 ${virtualizeFiles ? 'h-36' : ''} flex-col items-center justify-start gap-1.5 rounded-lg border p-2.5 text-center cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-600/70 text-neutral-100 shadow'
                       : 'border-neutral-800/40 bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60 hover:border-neutral-700'
@@ -2414,6 +2537,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 </div>
               );
               })}
+              {group.after > 0 && <div aria-hidden="true" className="col-span-full" style={{ height: group.after }} />}
               </React.Fragment>;
             })}
           </div>

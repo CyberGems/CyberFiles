@@ -471,6 +471,7 @@ struct DirectoryListing {
     root_path: String,
     root_name: String,
     entries: Vec<NativeFolderEntry>,
+    counts: DirectoryCounts,
     has_more: bool,
     next_offset: usize,
 }
@@ -484,8 +485,6 @@ struct DirectoryCounts {
     visible_folder_count: usize,
     hidden_count: usize,
 }
-
-const DIRECTORY_PAGE_SIZE: usize = 400;
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -2124,7 +2123,7 @@ fn is_hidden_metadata(metadata: &fs::Metadata, _path: &Path) -> bool {
 }
 
 #[tauri::command]
-async fn list_directory(path: String, offset: usize) -> Result<DirectoryListing, String> {
+async fn list_directory(path: String) -> Result<DirectoryListing, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let root =
             fs::canonicalize(&path).map_err(|error| format!("Cannot access folder: {error}"))?;
@@ -2138,28 +2137,43 @@ async fn list_directory(path: String, offset: usize) -> Result<DirectoryListing,
             .unwrap_or_else(|| root.to_string_lossy().to_string());
         let read_dir =
             fs::read_dir(&root).map_err(|error| format!("Cannot read folder: {error}"))?;
-        // Read only one page and do not recurse. The blocking filesystem work runs
-        // off the UI thread so slow disks and network folders remain responsive.
-        let raw_entries: Vec<_> = read_dir
-            .flatten()
-            .skip(offset)
-            .take(DIRECTORY_PAGE_SIZE + 1)
-            .collect();
-        let has_more = raw_entries.len() > DIRECTORY_PAGE_SIZE;
-        let page_len = raw_entries.len().min(DIRECTORY_PAGE_SIZE);
-        let mut entries = Vec::with_capacity(page_len);
+        // Enumerate the complete folder off the UI thread. The frontend renders
+        // only the visible rows, but selection and sorting need every entry.
+        let mut entries = Vec::new();
+        let mut counts = DirectoryCounts {
+            file_count: 0,
+            folder_count: 0,
+            visible_file_count: 0,
+            visible_folder_count: 0,
+            hidden_count: 0,
+        };
 
-        for entry in raw_entries.into_iter().take(page_len) {
+        for entry in read_dir {
+            let entry = entry.map_err(|error| format!("Cannot read folder entry: {error}"))?;
             let entry_path = entry.path();
-            let Ok(metadata) = fs::symlink_metadata(&entry_path) else {
-                continue;
-            };
+            let metadata = fs::symlink_metadata(&entry_path)
+                .map_err(|error| format!("Cannot read folder entry metadata: {error}"))?;
             // Do not follow links outside the user-selected workspace.
             if metadata.file_type().is_symlink() {
                 continue;
             }
 
             let is_folder = metadata.is_dir();
+            let is_hidden = is_hidden_metadata(&metadata, &entry_path);
+            if is_hidden {
+                counts.hidden_count += 1;
+            }
+            if is_folder {
+                counts.folder_count += 1;
+                if !is_hidden {
+                    counts.visible_folder_count += 1;
+                }
+            } else {
+                counts.file_count += 1;
+                if !is_hidden {
+                    counts.visible_file_count += 1;
+                }
+            }
             let modified_ms = metadata
                 .modified()
                 .ok()
@@ -2175,19 +2189,21 @@ async fn list_directory(path: String, offset: usize) -> Result<DirectoryListing,
                 name: entry.file_name().to_string_lossy().to_string(),
                 path: display_path(&entry_path),
                 is_folder,
-                is_hidden: is_hidden_metadata(&metadata, &entry_path),
+                is_hidden,
                 size: if is_folder { 0 } else { metadata.len() },
                 modified_ms,
                 created_ms,
             });
         }
 
+        let next_offset = entries.len();
         Ok(DirectoryListing {
             root_path: display_path(&root),
             root_name,
             entries,
-            has_more,
-            next_offset: offset + page_len,
+            counts,
+            has_more: false,
+            next_offset,
         })
     })
     .await
@@ -2219,53 +2235,6 @@ async fn count_hidden_items(path: String) -> Result<usize, String> {
     })
     .await
     .map_err(|error| format!("Hidden item count worker failed: {error}"))?
-}
-
-#[tauri::command]
-async fn count_directory_items(path: String) -> Result<DirectoryCounts, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let root = fs::canonicalize(&path)
-            .map_err(|error| format!("Cannot access folder: {error}"))?;
-        if !root.is_dir() {
-            return Err("The selected location is not a folder.".to_string());
-        }
-
-        let entries = fs::read_dir(&root)
-            .map_err(|error| format!("Cannot read folder: {error}"))?;
-        let mut counts = DirectoryCounts {
-            file_count: 0,
-            folder_count: 0,
-            visible_file_count: 0,
-            visible_folder_count: 0,
-            hidden_count: 0,
-        };
-        for entry in entries {
-            let Ok(entry) = entry else { continue };
-            let entry_path = entry.path();
-            let Ok(metadata) = fs::symlink_metadata(&entry_path) else { continue };
-            if metadata.file_type().is_symlink() {
-                continue;
-            }
-            let hidden = is_hidden_metadata(&metadata, &entry_path);
-            if hidden {
-                counts.hidden_count += 1;
-            }
-            if metadata.is_dir() {
-                counts.folder_count += 1;
-                if !hidden {
-                    counts.visible_folder_count += 1;
-                }
-            } else {
-                counts.file_count += 1;
-                if !hidden {
-                    counts.visible_file_count += 1;
-                }
-            }
-        }
-        Ok(counts)
-    })
-    .await
-    .map_err(|error| format!("Directory count worker failed: {error}"))?
 }
 
 #[derive(Serialize)]
@@ -5410,7 +5379,6 @@ fn main() {
             quit_app,
             list_directory,
             count_hidden_items,
-            count_directory_items,
             get_file_icons,
             calculate_folder_size,
             calculate_folder_size_bounded,

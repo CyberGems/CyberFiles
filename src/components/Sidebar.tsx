@@ -211,7 +211,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       };
     });
     try {
-      const page = await listNativeDirectory(path, offset);
+      const page = await listNativeDirectory(path);
       setFolderTreeStates(previous => {
         const current = previous[path];
         const folders = page.entries.filter(entry => entry.isFolder);
