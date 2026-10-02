@@ -102,6 +102,7 @@ const ONBOARDING_STORAGE_KEY = 'cyberfiles_onboarding_complete';
 const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
 const PANEL_VIEW_PREFERENCES_KEY = 'cyberfiles_panel_view_preferences_v1';
 const EMPTY_AREA_DOUBLE_CLICK_KEY = 'cyberfiles_empty_area_double_click_navigate_up';
+const MOUSE_GESTURES_ENABLED_KEY = 'cyberfiles_mouse_gestures_enabled_v1';
 const FOLDER_STYLE_LOCKED_KEY = 'cyberfiles_folder_style_locked';
 const SIDEBAR_LOCATIONS_NEW_TAB_KEY = 'cyberfiles_sidebar_locations_open_in_new_tab_v1';
 const NEW_TABS_NEXT_TO_CURRENT_KEY = 'cyberfiles_new_tabs_next_to_current_v1';
@@ -815,6 +816,7 @@ export default function App() {
   const [previewOpen, setPreviewOpen] = useState<boolean>(initialPanelPreferences.previewOpen);
   const [activePane, setActivePane] = useState<WorkspacePaneId>(initialSessionSnapshot?.activePane ?? initialPanelPreferences.activePane);
   const [emptyAreaDoubleClickNavigatesUp, setEmptyAreaDoubleClickNavigatesUp] = useState(readEmptyAreaDoubleClickPreference);
+  const [mouseGesturesEnabled, setMouseGesturesEnabled] = useState(() => readBooleanPreference(MOUSE_GESTURES_ENABLED_KEY, true));
 
   // Notifications / Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -1858,6 +1860,14 @@ export default function App() {
       // Keep the in-memory preference when browser storage is unavailable.
     }
   }, [emptyAreaDoubleClickNavigatesUp]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(MOUSE_GESTURES_ENABLED_KEY, String(mouseGesturesEnabled));
+    } catch {
+      // Keep the current preference for this session if storage is unavailable.
+    }
+  }, [mouseGesturesEnabled]);
 
   const inactiveTabs = activePane === 'left' ? rightTabs : leftTabs;
   const setInactiveTabs = activePane === 'left' ? setRightTabs : setLeftTabs;
@@ -5004,6 +5014,7 @@ export default function App() {
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
+                  mouseGesturesEnabled={mouseGesturesEnabled}
                   onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('left')}
                   tab={leftTabs[activeLeftTabIndex]}
@@ -5070,6 +5081,7 @@ export default function App() {
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
+                  mouseGesturesEnabled={mouseGesturesEnabled}
                   onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('right')}
                   tab={rightTabs[activeRightTabIndex]}
@@ -5137,6 +5149,7 @@ export default function App() {
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
+                  mouseGesturesEnabled={mouseGesturesEnabled}
                   onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('left')}
                   tab={leftTabs[activeLeftTabIndex]}
@@ -5199,6 +5212,7 @@ export default function App() {
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
+                  mouseGesturesEnabled={mouseGesturesEnabled}
                   onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('right')}
                   tab={rightTabs[activeRightTabIndex]}
@@ -5266,6 +5280,7 @@ export default function App() {
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
+                  mouseGesturesEnabled={mouseGesturesEnabled}
                 onStyleLockToggle={toggleFolderStyleLock}
                 onActivate={() => {}}
                 tab={currentTab}
@@ -5617,7 +5632,9 @@ export default function App() {
             instancePreferencesError={instancePreferencesError}
             onInstancePreferencesChange={changeInstancePreferences}
             emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
+            mouseGesturesEnabled={mouseGesturesEnabled}
             onEmptyAreaDoubleClickNavigatesUpChange={setEmptyAreaDoubleClickNavigatesUp}
+            onMouseGesturesEnabledChange={setMouseGesturesEnabled}
             folderStyleLocked={folderStyleLocked}
             onFolderStyleLockedChange={handleFolderStyleLockChange}
             recentItemStyle={recentItemStyle}

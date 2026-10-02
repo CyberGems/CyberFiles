@@ -28,6 +28,8 @@ interface SettingsModalProps {
   onInstancePreferencesChange: (allowMultipleInstances: boolean) => Promise<void>;
   emptyAreaDoubleClickNavigatesUp: boolean;
   onEmptyAreaDoubleClickNavigatesUpChange: (enabled: boolean) => void;
+  mouseGesturesEnabled: boolean;
+  onMouseGesturesEnabledChange: (enabled: boolean) => void;
   folderStyleLocked: boolean;
   onFolderStyleLockedChange: (enabled: boolean) => void;
   recentItemStyle: RecentItemStyle;
@@ -114,6 +116,8 @@ export function SettingsModal({
   onInstancePreferencesChange,
   emptyAreaDoubleClickNavigatesUp,
   onEmptyAreaDoubleClickNavigatesUpChange,
+  mouseGesturesEnabled,
+  onMouseGesturesEnabledChange,
   folderStyleLocked,
   onFolderStyleLockedChange,
   recentItemStyle,
@@ -618,6 +622,21 @@ export function SettingsModal({
               <span>
                 <span className="block font-medium text-neutral-200">{t.settings.emptyAreaDoubleClickUp}</span>
                 <span className="mt-1 block">{t.settings.emptyAreaDoubleClickDescription}</span>
+              </span>
+            </label>
+          </div>
+
+          <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+            <label className="flex cursor-pointer items-start gap-2.5">
+              <input
+                type="checkbox"
+                checked={mouseGesturesEnabled}
+                onChange={event => onMouseGesturesEnabledChange(event.target.checked)}
+                className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+              />
+              <span>
+                <span className="block font-medium text-neutral-200">{t.settings.mouseGestures}</span>
+                <span className="mt-1 block">{t.settings.mouseGesturesDescription}</span>
               </span>
             </label>
           </div>

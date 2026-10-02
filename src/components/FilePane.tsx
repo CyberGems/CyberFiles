@@ -63,6 +63,7 @@ interface FilePaneProps {
   navigationTransitionsEnabled: boolean;
   navigationTransitionStyle: NavigationTransitionStyle;
   emptyAreaDoubleClickNavigatesUp: boolean;
+  mouseGesturesEnabled: boolean;
   imageTooltipThumbnailsEnabled: boolean;
   showFileExtensions: boolean;
   singleClickOpens: boolean;
@@ -186,6 +187,19 @@ interface MarqueeDrag {
   initialIds: string[];
   hasMoved: boolean;
 }
+
+interface MouseGestureDrag {
+  pointerId: number;
+  target: Element;
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+  moved: boolean;
+}
+
+const MOUSE_GESTURE_MENU_TOLERANCE = 12;
+const MOUSE_GESTURE_MIN_DISTANCE = 48;
 
 const COLLAPSED_SYSTEM_HOME_SECTIONS_KEY = 'cyberfiles_system_home_collapsed_sections_v1';
 const FILE_COLUMNS: FileColumn[] = ['extension', 'name', 'type', 'size', 'created', 'modified'];
@@ -315,6 +329,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   navigationTransitionsEnabled,
   navigationTransitionStyle,
   emptyAreaDoubleClickNavigatesUp,
+  mouseGesturesEnabled,
   imageTooltipThumbnailsEnabled,
   showFileExtensions,
   singleClickOpens,
@@ -435,6 +450,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const lastScrolledFocusedIdRef = useRef<string | null>(null);
   const columnHeadersRef = useRef<HTMLDivElement>(null);
   const marqueeDragRef = useRef<MarqueeDrag | null>(null);
+  const mouseGestureDragRef = useRef<MouseGestureDrag | null>(null);
+  const replayingGestureContextMenuRef = useRef(false);
+  const suppressGestureContextMenuUntilRef = useRef(0);
   const marqueePreviewIdsRef = useRef<string[] | null>(null);
   const suppressViewportClickRef = useRef(false);
   const [marqueeBounds, setMarqueeBounds] = useState<MarqueeBounds | null>(null);
@@ -1759,6 +1777,90 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (!singleClickOpens || item.recycleBinId) onItemDoubleClick(item);
   };
 
+  const handleMouseGesturePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!mouseGesturesEnabled || event.pointerType !== 'mouse' || event.button !== 2 || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+    const control = target.closest('button, a');
+    if (control && !control.hasAttribute('data-file-item')) return;
+    suppressGestureContextMenuUntilRef.current = 0;
+    mouseGestureDragRef.current = {
+      pointerId: event.pointerId,
+      target,
+      startX: event.clientX,
+      startY: event.clientY,
+      endX: event.clientX,
+      endY: event.clientY,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const handleMouseGesturePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = mouseGestureDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    drag.endX = event.clientX;
+    drag.endY = event.clientY;
+    if (Math.hypot(drag.endX - drag.startX, drag.endY - drag.startY) > MOUSE_GESTURE_MENU_TOLERANCE) {
+      drag.moved = true;
+      event.preventDefault();
+    }
+  };
+
+  const finishMouseGesture = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = mouseGestureDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    mouseGestureDragRef.current = null;
+    suppressGestureContextMenuUntilRef.current = Date.now() + 300;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (event.type === 'pointercancel') return;
+
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (!drag.moved && Math.hypot(dx, dy) <= MOUSE_GESTURE_MENU_TOLERANCE) {
+      if (!drag.target.isConnected) return;
+      replayingGestureContextMenuRef.current = true;
+      try {
+        drag.target.dispatchEvent(new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          clientX: drag.startX,
+          clientY: drag.startY,
+        }));
+      } finally {
+        replayingGestureContextMenuRef.current = false;
+      }
+      return;
+    }
+
+    if (Math.hypot(dx, dy) < MOUSE_GESTURE_MIN_DISTANCE) return;
+    if (Math.abs(dx) > Math.abs(dy) * 1.35) {
+      onActivate();
+      if (dx < 0) onNavigateBack();
+      else onNavigateForward();
+    } else if (dy < 0 && Math.abs(dy) > Math.abs(dx) * 1.35) {
+      onActivate();
+      onNavigateUp();
+    }
+  };
+
+  const handleMouseGestureContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (replayingGestureContextMenuRef.current || event.button !== 2) return;
+    if (mouseGestureDragRef.current || Date.now() < suppressGestureContextMenuUntilRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+
+  const handleMouseGestureLostCapture = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (mouseGestureDragRef.current?.pointerId === event.pointerId) {
+      mouseGestureDragRef.current = null;
+      suppressGestureContextMenuUntilRef.current = Date.now() + 300;
+    }
+  };
+
   const handleViewportContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest('[data-file-item], button, input, select, textarea, a')) return;
     onBackgroundContextMenu(event, paneId);
@@ -2411,7 +2513,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
         onClick={handleViewportClick}
         onKeyDown={handleViewportKeyDown}
         onContextMenu={handleViewportContextMenu}
+        onContextMenuCapture={handleMouseGestureContextMenu}
         onDoubleClick={handleViewportDoubleClick}
+        onPointerDownCapture={handleMouseGesturePointerDown}
+        onPointerMoveCapture={handleMouseGesturePointerMove}
+        onPointerUpCapture={finishMouseGesture}
+        onPointerCancelCapture={finishMouseGesture}
+        onLostPointerCapture={handleMouseGestureLostCapture}
         onPointerDown={handleMarqueePointerDown}
         onPointerMove={handleMarqueePointerMove}
         onPointerUp={finishMarqueeSelection}
