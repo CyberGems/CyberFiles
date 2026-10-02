@@ -75,6 +75,7 @@ interface FilePaneProps {
   onAddTab: () => void;
   onCloseTab: (index: number) => void;
   onTabContextMenu: (index: number, x: number, y: number) => void;
+  onTabStripContextMenu: (x: number, y: number) => void;
   files: FileItem[];
   recentFolderPaths: string[];
   onClearRecentFolders: () => void;
@@ -326,6 +327,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onAddTab,
   onCloseTab,
   onTabContextMenu,
+  onTabStripContextMenu,
   files,
   recentFolderPaths,
   onClearRecentFolders,
@@ -1988,6 +1990,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         role="button"
         tabIndex={isTabActive ? 0 : -1}
         aria-pressed={isTabActive}
+        data-folder-tab="true"
         data-active-folder-tab={isTabActive ? 'true' : undefined}
         aria-label={tabName}
         onClick={event => { event.stopPropagation(); onActivate(); onSelectTab(idx); }}
@@ -2039,16 +2042,42 @@ export const FilePane: React.FC<FilePaneProps> = ({
       </div>
     );
   };
+  const isBlankTabStripTarget = (target: EventTarget | null) =>
+    target instanceof Element && !target.closest('[data-folder-tab], button, a, input, select, textarea, [contenteditable="true"]');
+  const handleTabStripDoubleClick = (event: React.MouseEvent<HTMLElement>) => {
+    if (!doubleClickTabBar || !isBlankTabStripTarget(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onActivate();
+    onAddTab();
+  };
+  const handleTabStripContextMenu = (event: React.MouseEvent<HTMLElement>) => {
+    if (!isBlankTabStripTarget(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onActivate();
+    onTabStripContextMenu(event.clientX, event.clientY);
+  };
+  const handleTabStripKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Tab') event.stopPropagation();
+    if (event.target !== event.currentTarget) return;
+    if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+      event.preventDefault();
+      event.stopPropagation();
+      const bounds = event.currentTarget.getBoundingClientRect();
+      onActivate();
+      onTabStripContextMenu(bounds.left + 16, bounds.top + 16);
+    }
+  };
   const tabStrip = (
       <div
         role="group"
         aria-label={t.tabMenu.tabsLabel}
-        className={`flex shrink-0 items-center bg-neutral-950/90 border-neutral-800 px-1 overflow-x-auto no-scrollbar select-none ${tabStripPosition === 'bottom' ? 'border-t pb-1' : 'border-b pt-1'}`}
-        onKeyDown={event => { if (event.key === 'Tab') event.stopPropagation(); }}
-        onDoubleClick={event => {
-          if (!doubleClickTabBar) return;
-          if (event.target === event.currentTarget || (event.target instanceof HTMLElement && event.target.dataset.tabStripSpace === 'true')) { onActivate(); onAddTab(); }
-        }}
+        tabIndex={0}
+        className={`flex shrink-0 items-center bg-neutral-950/90 border-neutral-800 px-1 overflow-x-auto no-scrollbar select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400 ${tabStripPosition === 'bottom' ? 'border-t pb-1' : 'border-b pt-1'}`}
+        onKeyDown={handleTabStripKeyDown}
+        onDoubleClick={handleTabStripDoubleClick}
+        onContextMenu={handleTabStripContextMenu}
       >
         <div data-tab-strip-space="true" className="flex items-center gap-0.5 flex-1 min-w-0">
           {tabs.map((tabItem, idx) => renderFolderTab(tabItem, idx, false))}
@@ -2080,13 +2109,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
     <aside
       role="group"
       aria-label={t.tabMenu.tabsLabel}
-      className={`flex min-h-0 shrink-0 flex-col bg-neutral-950/85 ${tabStripPosition === 'left' ? 'border-r border-neutral-800' : 'border-l border-neutral-800'}`}
+      tabIndex={0}
+      className={`flex min-h-0 shrink-0 flex-col bg-neutral-950/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400 ${tabStripPosition === 'left' ? 'border-r border-neutral-800' : 'border-l border-neutral-800'}`}
       style={{ width: 'clamp(104px, 22%, 184px)' }}
-      onKeyDown={event => { if (event.key === 'Tab') event.stopPropagation(); }}
-      onDoubleClick={event => {
-        if (!doubleClickTabBar) return;
-        if (event.target === event.currentTarget || (event.target instanceof HTMLElement && event.target.dataset.tabStripSpace === 'true')) { onActivate(); onAddTab(); }
-      }}
+      onKeyDown={handleTabStripKeyDown}
+      onDoubleClick={handleTabStripDoubleClick}
+      onContextMenu={handleTabStripContextMenu}
     >
       <div className="flex shrink-0 items-center justify-between gap-1 border-b border-neutral-800 px-2.5 py-2">
         <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.tabMenu.tabsShort}</span>

@@ -39,6 +39,7 @@ import {
 import { ArchiveExtractionMode, DriveInfo, FileItem, FileType, QuickAccessItem, QuickAccessSortMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
 import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus } from '../utils/nativeFileSystem';
+import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { useLanguage } from '../locales/LanguageContext';
 import { dismissAllTooltips, Tooltip } from './Tooltip';
 
@@ -170,6 +171,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [showLauncherWithSelection, setShowLauncherWithSelection] = useState(false);
   const [showCurrentFolderContext, setShowCurrentFolderContext] = useState(() => currentPath !== SYSTEM_HOME_PATH && currentPath !== RECYCLE_BIN_PATH);
   const [folderContextPath, setFolderContextPath] = useState(currentPath);
+  const [currentFolderContent, setCurrentFolderContent] = useState<{ path: string; status: 'loading' | 'done' | 'error'; summary?: FolderContentSummary } | null>(null);
   const showSelectionContext = selectedItems.length > 0 && !showLauncherWithSelection;
   const currentFolderName = currentFolderItem?.name || currentPath.replace(/[\/]+$/, '').split(/[\/]/).pop() || currentPath;
   const currentFolderFiles = currentFolderItems.filter(item => !item.isFolder);
@@ -341,6 +343,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
   useEffect(() => {
     if (selectedItems.length === 0) setShowLauncherWithSelection(false);
   }, [selectedItems.length]);
+
+  useEffect(() => {
+    if (!showCurrentFolderContext || currentPath === SYSTEM_HOME_PATH || currentPath === RECYCLE_BIN_PATH) {
+      setCurrentFolderContent(null);
+      return;
+    }
+    let cancelled = false;
+    setCurrentFolderContent({ path: currentPath, status: 'loading' });
+    void loadFolderContentSummary(currentFolderItem ?? { path: currentPath }).then(
+      summary => {
+        if (!cancelled) setCurrentFolderContent({ path: currentPath, status: 'done', summary });
+      },
+      () => {
+        if (!cancelled) setCurrentFolderContent({ path: currentPath, status: 'error' });
+      },
+    );
+    return () => { cancelled = true; };
+  }, [currentPath, currentFolderItem?.handle, showCurrentFolderContext]);
 
   useEffect(() => {
     if (folderContextPath === currentPath) return;
@@ -750,6 +770,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <Tooltip label={currentPath} placement="right">
                 <p className="truncate font-sans text-[9px] text-neutral-500">{currentPath}</p>
               </Tooltip>
+            </div>
+            <div className="flex items-start justify-between gap-2 border-t border-neutral-800 pt-2 text-[10px]">
+              <span className="text-neutral-500">{t.pane.folderContentTypeLabel}</span>
+              <span className="text-right font-medium text-cyan-200">
+                {currentFolderContent?.path === currentPath && currentFolderContent.status === 'done' && currentFolderContent.summary
+                  ? formatFolderContentLabel(currentFolderContent.summary, t.pane.folderContentKinds)
+                  : currentFolderContent?.path === currentPath && currentFolderContent.status === 'error'
+                    ? t.pane.folderTooltipCountFailed
+                    : t.pane.folderTooltipCounting}
+              </span>
             </div>
           </div>
           <div className="space-y-1.5">

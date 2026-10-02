@@ -50,6 +50,7 @@ import { PreviewPane } from './components/PreviewPane';
 import { BottomStatusBar } from './components/BottomStatusBar';
 import { ContextMenu } from './components/ContextMenu';
 import { TabContextMenu, type TabMenuAction } from './components/TabContextMenu';
+import { TabStripContextMenu, type TabStripMenuAction } from './components/TabStripContextMenu';
 import { CreateItemModal, type NewItemKind } from './components/CreateItemModal';
 import { CreateZipModal } from './components/CreateZipModal';
 import { TextInputContextMenu } from './components/TextInputContextMenu';
@@ -105,7 +106,7 @@ const FOLDER_STYLE_LOCKED_KEY = 'cyberfiles_folder_style_locked';
 const SIDEBAR_LOCATIONS_NEW_TAB_KEY = 'cyberfiles_sidebar_locations_open_in_new_tab_v1';
 const NEW_TABS_NEXT_TO_CURRENT_KEY = 'cyberfiles_new_tabs_next_to_current_v1';
 const SHOW_NEW_TAB_BUTTON_KEY = 'cyberfiles_show_new_tab_button_v1';
-const DOUBLE_CLICK_TAB_BAR_KEY = 'cyberfiles_double_click_tab_bar_v1';
+const DOUBLE_CLICK_TAB_BAR_KEY = 'cyberfiles_double_click_tab_bar_v2';
 const RECENT_ITEMS_BOLD_KEY = 'cyberfiles_bold_recent_items_v1';
 const RECENT_ITEMS_STYLE_KEY = 'cyberfiles_recent_items_style_v1';
 const HIDDEN_ITEMS_STYLE_KEY = 'cyberfiles_hidden_items_style_v1';
@@ -686,7 +687,7 @@ export default function App() {
   const [sidebarLocationsOpenInNewTab, setSidebarLocationsOpenInNewTab] = useState(() => readBooleanPreference(SIDEBAR_LOCATIONS_NEW_TAB_KEY, true));
   const [newTabsNextToCurrent, setNewTabsNextToCurrent] = useState(() => readBooleanPreference(NEW_TABS_NEXT_TO_CURRENT_KEY, true));
   const [showNewTabButton, setShowNewTabButton] = useState(() => readBooleanPreference(SHOW_NEW_TAB_BUTTON_KEY, true));
-  const [doubleClickTabBar, setDoubleClickTabBar] = useState(() => readBooleanPreference(DOUBLE_CLICK_TAB_BAR_KEY, false));
+  const [doubleClickTabBar, setDoubleClickTabBar] = useState(() => readBooleanPreference(DOUBLE_CLICK_TAB_BAR_KEY, true));
   const [recentItemStyle, setRecentItemStyle] = useState<RecentItemStyle>(readRecentItemStyle);
   const [hiddenItemStyle, setHiddenItemStyle] = useState<HiddenItemStyle>(readHiddenItemStyle);
   const [imageTooltipThumbnailsEnabled, setImageTooltipThumbnailsEnabled] = useState(() => readBooleanPreference(IMAGE_TOOLTIP_THUMBNAILS_KEY, true));
@@ -1245,6 +1246,7 @@ export default function App() {
   // Context Menu state
   const [contextMenuPos, setContextMenuPos] = useState<ContextMenuPosition | null>(null);
   const [tabMenuTarget, setTabMenuTarget] = useState<{ pane: WorkspacePaneId; tabId: string; x: number; y: number } | null>(null);
+  const [tabStripMenuTarget, setTabStripMenuTarget] = useState<{ pane: WorkspacePaneId; x: number; y: number } | null>(null);
   const [closedTabs, setClosedTabs] = useState<Array<{ pane: WorkspacePaneId; tab: TabState; index: number }>>([]);
 
   // Helper references to active pane and inactive pane
@@ -2702,6 +2704,24 @@ export default function App() {
     return !workspaceRoot || systemHomeWorkspace.current || isSameOrDescendantPath(parent, workspaceRoot);
   };
 
+  const reopenClosedTab = () => {
+    const closed = closedTabs.at(-1);
+    if (closed) {
+      const targetTabs = closed.pane === 'left' ? leftTabs : rightTabs;
+      const setTargetTabs = closed.pane === 'left' ? setLeftTabs : setRightTabs;
+      const setTargetIndex = closed.pane === 'left' ? setActiveLeftTabIndex : setActiveRightTabIndex;
+      const insertIndex = Math.min(closed.index, targetTabs.length);
+      setTargetTabs(previous => {
+        const next = [...previous];
+        next.splice(Math.min(insertIndex, next.length), 0, { ...closed.tab, id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}` });
+        return next;
+      });
+      setTargetIndex(insertIndex);
+      setActivePane(closed.pane);
+      setClosedTabs(previous => previous.slice(0, -1));
+    }
+  };
+
   const handleTabMenuAction = (action: TabMenuAction, value?: string) => {
     if (!tabMenuTarget) return;
     const { pane, tabId } = tabMenuTarget;
@@ -2760,21 +2780,7 @@ export default function App() {
         }, index);
       }
     } else if (action === 'reopen') {
-      const closed = closedTabs.at(-1);
-      if (closed) {
-        const targetTabs = closed.pane === 'left' ? leftTabs : rightTabs;
-        const setTargetTabs = closed.pane === 'left' ? setLeftTabs : setRightTabs;
-        const setTargetIndex = closed.pane === 'left' ? setActiveLeftTabIndex : setActiveRightTabIndex;
-        const insertIndex = Math.min(closed.index, targetTabs.length);
-        setTargetTabs(previous => {
-          const next = [...previous];
-          next.splice(Math.min(insertIndex, next.length), 0, { ...closed.tab, id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}` });
-          return next;
-        });
-        setTargetIndex(insertIndex);
-        setActivePane(closed.pane);
-        setClosedTabs(previous => previous.slice(0, -1));
-      }
+      reopenClosedTab();
     } else if (action === 'rename') {
       setSourceTabs(previous => previous.map(item => item.id === tabId ? { ...item, customTitle: value?.trim() || undefined } : item));
     } else if (action === 'color') {
@@ -2796,6 +2802,26 @@ export default function App() {
       setIsSettingsOpen(true);
     }
     setTabMenuTarget(null);
+  };
+
+  const handleTabStripMenuAction = (action: TabStripMenuAction) => {
+    if (!tabStripMenuTarget) return;
+    if (action === 'new') {
+      handleAddTab(tabStripMenuTarget.pane);
+      setActivePane(tabStripMenuTarget.pane);
+    } else if (action === 'reopen') {
+      reopenClosedTab();
+    } else if (action === 'toggleNewButton') {
+      setShowNewTabButton(value => !value);
+    } else if (action === 'toggleDoubleClick') {
+      setDoubleClickTabBar(value => !value);
+    } else if (action === 'top' || action === 'bottom' || action === 'left' || action === 'right') {
+      setTabStripPosition(action);
+    } else if (action === 'settings') {
+      setFocusTabSettingsRequest(previous => previous + 1);
+      setIsSettingsOpen(true);
+    }
+    setTabStripMenuTarget(null);
   };
 
   // Selection handler
@@ -4969,7 +4995,8 @@ export default function App() {
                   onSelectTab={(idx) => setActiveLeftTabIndex(idx)}
                   onAddTab={() => handleAddTab('left')}
                   onCloseTab={(idx) => handleCloseTab('left', idx)}
-                  onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabMenuTarget({ pane: 'left', tabId: leftTabs[idx].id, x, y }); }}
+                  onTabStripContextMenu={(x, y) => { setContextMenuPos(null); setTabMenuTarget(null); setTabStripMenuTarget({ pane: 'left', x, y }); }}
+                  onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabStripMenuTarget(null); setTabMenuTarget({ pane: 'left', tabId: leftTabs[idx].id, x, y }); }}
                   files={leftDisplayFiles}
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
@@ -5034,7 +5061,8 @@ export default function App() {
                   onSelectTab={(idx) => setActiveRightTabIndex(idx)}
                   onAddTab={() => handleAddTab('right')}
                   onCloseTab={(idx) => handleCloseTab('right', idx)}
-                  onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabMenuTarget({ pane: 'right', tabId: rightTabs[idx].id, x, y }); }}
+                  onTabStripContextMenu={(x, y) => { setContextMenuPos(null); setTabMenuTarget(null); setTabStripMenuTarget({ pane: 'right', x, y }); }}
+                  onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabStripMenuTarget(null); setTabMenuTarget({ pane: 'right', tabId: rightTabs[idx].id, x, y }); }}
                   files={rightDisplayFiles}
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
@@ -5100,7 +5128,8 @@ export default function App() {
                   onSelectTab={(idx) => setActiveLeftTabIndex(idx)}
                   onAddTab={() => handleAddTab('left')}
                   onCloseTab={(idx) => handleCloseTab('left', idx)}
-                  onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabMenuTarget({ pane: 'left', tabId: leftTabs[idx].id, x, y }); }}
+                  onTabStripContextMenu={(x, y) => { setContextMenuPos(null); setTabMenuTarget(null); setTabStripMenuTarget({ pane: 'left', x, y }); }}
+                  onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabStripMenuTarget(null); setTabMenuTarget({ pane: 'left', tabId: leftTabs[idx].id, x, y }); }}
                   files={leftDisplayFiles}
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
@@ -5161,7 +5190,8 @@ export default function App() {
                   onSelectTab={(idx) => setActiveRightTabIndex(idx)}
                   onAddTab={() => handleAddTab('right')}
                   onCloseTab={(idx) => handleCloseTab('right', idx)}
-                  onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabMenuTarget({ pane: 'right', tabId: rightTabs[idx].id, x, y }); }}
+                  onTabStripContextMenu={(x, y) => { setContextMenuPos(null); setTabMenuTarget(null); setTabStripMenuTarget({ pane: 'right', x, y }); }}
+                  onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabStripMenuTarget(null); setTabMenuTarget({ pane: 'right', tabId: rightTabs[idx].id, x, y }); }}
                   files={rightDisplayFiles}
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
@@ -5227,7 +5257,8 @@ export default function App() {
                 onSelectTab={(idx) => (activePane === 'left' ? setActiveLeftTabIndex(idx) : setActiveRightTabIndex(idx))}
                 onAddTab={() => handleAddTab(activePane)}
                 onCloseTab={(idx) => handleCloseTab(activePane, idx)}
-                onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabMenuTarget({ pane: activePane, tabId: activeTabs[idx].id, x, y }); }}
+                onTabStripContextMenu={(x, y) => { setContextMenuPos(null); setTabMenuTarget(null); setTabStripMenuTarget({ pane: activePane, x, y }); }}
+                onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabStripMenuTarget(null); setTabMenuTarget({ pane: activePane, tabId: activeTabs[idx].id, x, y }); }}
                   files={activeDisplayFiles}
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
@@ -5312,6 +5343,19 @@ export default function App() {
       )}
 
       {/* Context Menu */}
+      {tabStripMenuTarget && (
+        <TabStripContextMenu
+          key={`${tabStripMenuTarget.pane}:${tabStripMenuTarget.x}:${tabStripMenuTarget.y}`}
+          x={tabStripMenuTarget.x}
+          y={tabStripMenuTarget.y}
+          canReopen={closedTabs.length > 0}
+          position={tabStripPosition}
+          showNewTabButton={showNewTabButton}
+          doubleClickTabBar={doubleClickTabBar}
+          onAction={handleTabStripMenuAction}
+          onClose={() => setTabStripMenuTarget(null)}
+        />
+      )}
       {tabMenuTarget && tabMenuTab && (
         <TabContextMenu
           key={`${tabMenuTarget.pane}:${tabMenuTarget.tabId}:${tabMenuTarget.x}:${tabMenuTarget.y}`}
