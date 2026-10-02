@@ -49,6 +49,7 @@ import { PaneSplitter } from './components/PaneSplitter';
 import { PreviewPane } from './components/PreviewPane';
 import { BottomStatusBar } from './components/BottomStatusBar';
 import { ContextMenu } from './components/ContextMenu';
+import { TabContextMenu, type TabMenuAction } from './components/TabContextMenu';
 import { CreateItemModal, type NewItemKind } from './components/CreateItemModal';
 import { CreateZipModal } from './components/CreateZipModal';
 import { TextInputContextMenu } from './components/TextInputContextMenu';
@@ -103,6 +104,8 @@ const EMPTY_AREA_DOUBLE_CLICK_KEY = 'cyberfiles_empty_area_double_click_navigate
 const FOLDER_STYLE_LOCKED_KEY = 'cyberfiles_folder_style_locked';
 const SIDEBAR_LOCATIONS_NEW_TAB_KEY = 'cyberfiles_sidebar_locations_open_in_new_tab_v1';
 const NEW_TABS_NEXT_TO_CURRENT_KEY = 'cyberfiles_new_tabs_next_to_current_v1';
+const SHOW_NEW_TAB_BUTTON_KEY = 'cyberfiles_show_new_tab_button_v1';
+const DOUBLE_CLICK_TAB_BAR_KEY = 'cyberfiles_double_click_tab_bar_v1';
 const RECENT_ITEMS_BOLD_KEY = 'cyberfiles_bold_recent_items_v1';
 const RECENT_ITEMS_STYLE_KEY = 'cyberfiles_recent_items_style_v1';
 const HIDDEN_ITEMS_STYLE_KEY = 'cyberfiles_hidden_items_style_v1';
@@ -601,12 +604,15 @@ function createSessionSnapshot(
   activeRightTabIndex: number,
   activePane: WorkspacePaneId,
 ): TabSessionSnapshot {
-  const saveTabs = (tabs: TabState[]) => tabs.map(({ id, title, currentPath, history, historyIndex, sortField, sortOrder, groupBy, viewMode, folderStyle }) => {
+  const saveTabs = (tabs: TabState[]) => tabs.map(({ id, title, customTitle, tabColor, lockClose, currentPath, history, historyIndex, sortField, sortOrder, groupBy, viewMode, folderStyle }) => {
     const historyOffset = Math.max(0, history.length - 80);
     const savedHistory = history.slice(historyOffset);
     return {
       id,
       title: currentPath === SYSTEM_HOME_PATH || currentPath === RECYCLE_BIN_PATH ? currentPath : title,
+      customTitle,
+      tabColor,
+      lockClose,
       currentPath,
       history: savedHistory,
       historyIndex: Math.max(-1, Math.min(historyIndex - historyOffset, savedHistory.length - 1)),
@@ -660,6 +666,8 @@ export default function App() {
   const [folderStyleLocked, setFolderStyleLocked] = useState(readFolderStyleLockPreference);
   const [sidebarLocationsOpenInNewTab, setSidebarLocationsOpenInNewTab] = useState(() => readBooleanPreference(SIDEBAR_LOCATIONS_NEW_TAB_KEY, true));
   const [newTabsNextToCurrent, setNewTabsNextToCurrent] = useState(() => readBooleanPreference(NEW_TABS_NEXT_TO_CURRENT_KEY, true));
+  const [showNewTabButton, setShowNewTabButton] = useState(() => readBooleanPreference(SHOW_NEW_TAB_BUTTON_KEY, true));
+  const [doubleClickTabBar, setDoubleClickTabBar] = useState(() => readBooleanPreference(DOUBLE_CLICK_TAB_BAR_KEY, false));
   const [recentItemStyle, setRecentItemStyle] = useState<RecentItemStyle>(readRecentItemStyle);
   const [hiddenItemStyle, setHiddenItemStyle] = useState<HiddenItemStyle>(readHiddenItemStyle);
   const [imageTooltipThumbnailsEnabled, setImageTooltipThumbnailsEnabled] = useState(() => readBooleanPreference(IMAGE_TOOLTIP_THUMBNAILS_KEY, true));
@@ -953,6 +961,7 @@ export default function App() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [focusTabSettingsRequest, setFocusTabSettingsRequest] = useState(0);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
   const [rememberCloseChoice, setRememberCloseChoice] = useState(false);
@@ -1207,6 +1216,8 @@ export default function App() {
 
   // Context Menu state
   const [contextMenuPos, setContextMenuPos] = useState<ContextMenuPosition | null>(null);
+  const [tabMenuTarget, setTabMenuTarget] = useState<{ pane: WorkspacePaneId; tabId: string; x: number; y: number } | null>(null);
+  const [closedTabs, setClosedTabs] = useState<Array<{ pane: WorkspacePaneId; tab: TabState; index: number }>>([]);
 
   // Helper references to active pane and inactive pane
   const activeTabs = activePane === 'left' ? leftTabs : rightTabs;
@@ -1687,6 +1698,15 @@ export default function App() {
 
   useEffect(() => {
     try {
+      window.localStorage.setItem(SHOW_NEW_TAB_BUTTON_KEY, String(showNewTabButton));
+      window.localStorage.setItem(DOUBLE_CLICK_TAB_BAR_KEY, String(doubleClickTabBar));
+    } catch {
+      // Keep tab bar preferences in memory when storage is unavailable.
+    }
+  }, [showNewTabButton, doubleClickTabBar]);
+
+  useEffect(() => {
+    try {
       window.localStorage.setItem(RECENT_ITEMS_STYLE_KEY, JSON.stringify(recentItemStyle));
       window.localStorage.setItem(RECENT_ITEMS_BOLD_KEY, String(recentItemStyle.enabled));
     } catch {
@@ -2065,6 +2085,9 @@ export default function App() {
       const newTab: TabState = {
         ...sourceTab,
         id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        customTitle: undefined,
+        tabColor: undefined,
+        lockClose: false,
         currentPath: targetPath,
         title: folderName,
         history: newHistory.length > 0 ? newHistory : [targetPath],
@@ -2516,14 +2539,18 @@ export default function App() {
   }, [activePane, handleNavigate, updateActiveTab, touchFileAccessed]);
 
   // Tab management
-  const handleAddTab = (pane: 'left' | 'right') => {
+  const handleAddTab = (pane: 'left' | 'right', sourceIndex?: number) => {
     const sourceTabs = pane === 'left' ? leftTabs : rightTabs;
-    const currentActive = sourceTabs[pane === 'left' ? activeLeftTabIndex : activeRightTabIndex];
+    const activeIndex = sourceIndex ?? (pane === 'left' ? activeLeftTabIndex : activeRightTabIndex);
+    const currentActive = sourceTabs[activeIndex];
     const baseStyle = folderStyleLocked ? getTabFolderStyle(currentActive) : DEFAULT_FOLDER_STYLE;
     const newPath = isTauriDesktop() ? SYSTEM_HOME_PATH : currentActive.currentPath;
     const newTab: TabState = {
       ...currentActive,
       id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      customTitle: undefined,
+      tabColor: undefined,
+      lockClose: false,
       title: isTauriDesktop() ? t.sidebar.thisPc : `${currentActive.title} (2)`,
       currentPath: newPath,
       history: isTauriDesktop() ? [SYSTEM_HOME_PATH] : currentActive.history,
@@ -2534,7 +2561,6 @@ export default function App() {
       selectedIds: [],
       focusedId: null,
     };
-    const activeIndex = pane === 'left' ? activeLeftTabIndex : activeRightTabIndex;
     const insertIndex = newTabsNextToCurrent ? activeIndex + 1 : sourceTabs.length;
     if (pane === 'left') {
       setLeftTabs(prev => {
@@ -2553,18 +2579,133 @@ export default function App() {
     }
   };
 
-  const handleCloseTab = (pane: 'left' | 'right', indexToClose: number) => {
+  const closeTabIndices = (pane: WorkspacePaneId, indices: number[]) => {
     const sourceTabs = pane === 'left' ? leftTabs : rightTabs;
-    if (sourceTabs.length <= 1) return; // Keep at least 1 tab
-
-    const newTabs = sourceTabs.filter((_, idx) => idx !== indexToClose);
+    const requested = new Set(indices);
+    const closable = sourceTabs.flatMap((tab, index) => requested.has(index) && !tab.lockClose ? [index] : []);
+    if (closable.length === 0 || sourceTabs.length <= 1) return;
+    if (closable.length === sourceTabs.length) closable.pop();
+    const closing = new Set(closable);
+    const removed = sourceTabs.flatMap((tab, index) => closing.has(index) ? [{ pane, tab, index }] : []);
+    const newTabs = sourceTabs.filter((_, index) => !closing.has(index));
+    const oldActiveIndex = pane === 'left' ? activeLeftTabIndex : activeRightTabIndex;
+    const oldActiveId = sourceTabs[oldActiveIndex]?.id;
+    const retainedActiveIndex = newTabs.findIndex(tab => tab.id === oldActiveId);
+    const nextActiveIndex = retainedActiveIndex >= 0 ? retainedActiveIndex : Math.min(oldActiveIndex, newTabs.length - 1);
+    setClosedTabs(previous => [...previous, ...removed].slice(-20));
     if (pane === 'left') {
       setLeftTabs(newTabs);
-      setActiveLeftTabIndex(Math.min(activeLeftTabIndex, newTabs.length - 1));
+      setActiveLeftTabIndex(nextActiveIndex);
     } else {
       setRightTabs(newTabs);
-      setActiveRightTabIndex(Math.min(activeRightTabIndex, newTabs.length - 1));
+      setActiveRightTabIndex(nextActiveIndex);
     }
+  };
+
+  const handleCloseTab = (pane: WorkspacePaneId, indexToClose: number) => closeTabIndices(pane, [indexToClose]);
+
+  const canOpenTabParent = (tab: TabState) => {
+    if (!tab.currentPath || tab.currentPath === SYSTEM_HOME_PATH || tab.currentPath === RECYCLE_BIN_PATH) return false;
+    const parent = getParentPath(tab.currentPath);
+    if (!parent || getPathKey(parent) === getPathKey(tab.currentPath)) return false;
+    const workspaceRoot = isTauriDesktop() ? nativeRootPath.current : browserRootPath.current;
+    return !workspaceRoot || systemHomeWorkspace.current || isSameOrDescendantPath(parent, workspaceRoot);
+  };
+
+  const handleTabMenuAction = (action: TabMenuAction, value?: string) => {
+    if (!tabMenuTarget) return;
+    const { pane, tabId } = tabMenuTarget;
+    const sourceTabs = pane === 'left' ? leftTabs : rightTabs;
+    const index = sourceTabs.findIndex(tab => tab.id === tabId);
+    if (index < 0) return;
+    const tab = sourceTabs[index];
+    const setSourceTabs = pane === 'left' ? setLeftTabs : setRightTabs;
+    const insertCopy = (targetPane: WorkspacePaneId, copiedTab: TabState, afterIndex: number, forceRight = false) => {
+      const targetTabs = targetPane === 'left' ? leftTabs : rightTabs;
+      const setTargetTabs = targetPane === 'left' ? setLeftTabs : setRightTabs;
+      const setTargetIndex = targetPane === 'left' ? setActiveLeftTabIndex : setActiveRightTabIndex;
+      const insertIndex = forceRight || newTabsNextToCurrent ? afterIndex + 1 : targetTabs.length;
+      setTargetTabs(previous => {
+        const next = [...previous];
+        next.splice(Math.min(insertIndex, next.length), 0, copiedTab);
+        return next;
+      });
+      setTargetIndex(insertIndex);
+      setActivePane(targetPane);
+    };
+    if (action === 'new') {
+      handleAddTab(pane, index);
+      setActivePane(pane);
+    } else if (action === 'duplicate' || action === 'duplicateRight' || action === 'duplicateOpposite') {
+      const targetPane = action === 'duplicateOpposite' ? (pane === 'left' ? 'right' : 'left') : pane;
+      const targetIndex = action === 'duplicateOpposite' ? (targetPane === 'left' ? activeLeftTabIndex : activeRightTabIndex) : index;
+      insertCopy(targetPane, {
+        ...tab,
+        id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        lockClose: false,
+        history: [...tab.history],
+        selectedIds: [],
+        focusedId: null,
+      }, targetIndex, action === 'duplicateRight');
+      if (action === 'duplicateOpposite' && layout === 'single') setLayout('dual-vertical');
+    } else if (action === 'parent') {
+      const parent = getParentPath(tab.currentPath);
+      if (canOpenTabParent(tab)) {
+        const rememberedStyle = folderStyleLocked ? getTabFolderStyle(tab) : DEFAULT_FOLDER_STYLE;
+        insertCopy(pane, {
+          ...tab,
+          id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          title: parent.split(/\\|\//).filter(Boolean).pop() || parent,
+          customTitle: undefined,
+          tabColor: undefined,
+          lockClose: false,
+          currentPath: parent,
+          history: [parent],
+          historyIndex: 0,
+          ...styleForPath(parent, rememberedStyle),
+          folderStyle: rememberedStyle,
+          filterQuery: '',
+          selectedIds: [],
+          focusedId: null,
+        }, index);
+      }
+    } else if (action === 'reopen') {
+      const closed = closedTabs.at(-1);
+      if (closed) {
+        const targetTabs = closed.pane === 'left' ? leftTabs : rightTabs;
+        const setTargetTabs = closed.pane === 'left' ? setLeftTabs : setRightTabs;
+        const setTargetIndex = closed.pane === 'left' ? setActiveLeftTabIndex : setActiveRightTabIndex;
+        const insertIndex = Math.min(closed.index, targetTabs.length);
+        setTargetTabs(previous => {
+          const next = [...previous];
+          next.splice(Math.min(insertIndex, next.length), 0, { ...closed.tab, id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}` });
+          return next;
+        });
+        setTargetIndex(insertIndex);
+        setActivePane(closed.pane);
+        setClosedTabs(previous => previous.slice(0, -1));
+      }
+    } else if (action === 'rename') {
+      setSourceTabs(previous => previous.map(item => item.id === tabId ? { ...item, customTitle: value?.trim() || undefined } : item));
+    } else if (action === 'color') {
+      setSourceTabs(previous => previous.map(item => item.id === tabId ? { ...item, tabColor: value || undefined } : item));
+    } else if (action === 'lock') {
+      setSourceTabs(previous => previous.map(item => item.id === tabId ? { ...item, lockClose: !item.lockClose } : item));
+    } else if (action === 'close') {
+      handleCloseTab(pane, index);
+    } else if (action === 'closeLeft') {
+      closeTabIndices(pane, sourceTabs.flatMap((_, candidate) => candidate < index ? [candidate] : []));
+    } else if (action === 'closeRight') {
+      closeTabIndices(pane, sourceTabs.flatMap((_, candidate) => candidate > index ? [candidate] : []));
+    } else if (action === 'closeOthers') {
+      closeTabIndices(pane, sourceTabs.flatMap((_, candidate) => candidate !== index ? [candidate] : []));
+    } else if (action === 'top' || action === 'bottom') {
+      setTabStripPosition(action);
+    } else if (action === 'settings') {
+      setFocusTabSettingsRequest(previous => previous + 1);
+      setIsSettingsOpen(true);
+    }
+    setTabMenuTarget(null);
   };
 
   // Selection handler
@@ -4466,7 +4607,7 @@ export default function App() {
     { id: 'settings', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.settings, keywords: 'preferences options', onSelect: () => setIsSettingsOpen(true) },
     { id: 'workspaces', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.workspaces, keywords: 'workspace profiles sessions layouts', onSelect: () => setIsWorkspaceManagerOpen(true) },
     { id: 'new-tab', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.newTab, shortcut: 'Ctrl+T', keywords: 'tab add create', onSelect: () => handleAddTab(activePane) },
-    { id: 'close-tab', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.closeTab, shortcut: 'Ctrl+W', disabled: activeTabs.length <= 1, disabledReason: activeTabs.length <= 1 ? t.commandPalette.disabled.lastTab : undefined, keywords: 'tab remove', onSelect: () => handleCloseTab(activePane, activeTabIndex) },
+    { id: 'close-tab', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.closeTab, shortcut: 'Ctrl+W', disabled: activeTabs.length <= 1 || Boolean(currentTab.lockClose), disabledReason: activeTabs.length <= 1 ? t.commandPalette.disabled.lastTab : currentTab.lockClose ? t.tabMenu.protected : undefined, keywords: 'tab remove', onSelect: () => handleCloseTab(activePane, activeTabIndex) },
     { id: 'navigate-up', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.goUp, shortcut: 'Backspace', disabled: !canNavigateUpFromCurrent, disabledReason: canNavigateUpFromCurrent ? undefined : t.commandPalette.disabled.noParentFolder, keywords: 'parent folder back up', onSelect: () => handleNavigateUp(activePane) },
     { id: 'switch-pane', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.switchPane, shortcut: 'Tab', keywords: 'left right panel', onSelect: () => setActivePane(pane => pane === 'left' ? 'right' : 'left') },
     { id: 'select-all', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.selectAll, shortcut: 'Ctrl+A', disabled: activeDisplayFiles.length === 0, disabledReason: activeDisplayFiles.length === 0 ? t.commandPalette.disabled.noVisibleItems : undefined, keywords: 'select everything', onSelect: () => updateActiveTab(tab => ({ ...tab, selectedIds: activeDisplayFiles.map(file => file.id), focusedId: activeDisplayFiles[0]?.id ?? null })) },
@@ -4579,6 +4720,12 @@ export default function App() {
     ...paletteRecentFolders,
     ...paletteWindowsCommands,
   ];
+
+  const tabMenuTabs = tabMenuTarget?.pane === 'left' ? leftTabs : rightTabs;
+  const tabMenuIndex = tabMenuTarget ? tabMenuTabs.findIndex(tab => tab.id === tabMenuTarget.tabId) : -1;
+  const tabMenuTab = tabMenuIndex >= 0 ? tabMenuTabs[tabMenuIndex] : null;
+  const tabMenuClosableLeft = tabMenuIndex >= 0 ? tabMenuTabs.slice(0, tabMenuIndex).filter(tab => !tab.lockClose).length : 0;
+  const tabMenuClosableRight = tabMenuIndex >= 0 ? tabMenuTabs.slice(tabMenuIndex + 1).filter(tab => !tab.lockClose).length : 0;
 
   return (
     <TooltipPreferenceContext.Provider value={tooltipsEnabled}>
@@ -4697,6 +4844,8 @@ export default function App() {
                 <FilePane
                   paneId="left"
                   tabStripPosition={tabStripPosition}
+                  showNewTabButton={showNewTabButton}
+                  doubleClickTabBar={doubleClickTabBar}
                   columnPreferences={paneColumnPreferences.left}
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
@@ -4716,6 +4865,7 @@ export default function App() {
                   onSelectTab={(idx) => setActiveLeftTabIndex(idx)}
                   onAddTab={() => handleAddTab('left')}
                   onCloseTab={(idx) => handleCloseTab('left', idx)}
+                  onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabMenuTarget({ pane: 'left', tabId: leftTabs[idx].id, x, y }); }}
                   files={leftDisplayFiles}
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
@@ -4757,6 +4907,8 @@ export default function App() {
                 <FilePane
                   paneId="right"
                   tabStripPosition={tabStripPosition}
+                  showNewTabButton={showNewTabButton}
+                  doubleClickTabBar={doubleClickTabBar}
                   columnPreferences={paneColumnPreferences.right}
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
@@ -4776,6 +4928,7 @@ export default function App() {
                   onSelectTab={(idx) => setActiveRightTabIndex(idx)}
                   onAddTab={() => handleAddTab('right')}
                   onCloseTab={(idx) => handleCloseTab('right', idx)}
+                  onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabMenuTarget({ pane: 'right', tabId: rightTabs[idx].id, x, y }); }}
                   files={rightDisplayFiles}
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
@@ -4818,6 +4971,8 @@ export default function App() {
                 <FilePane
                   paneId="left"
                   tabStripPosition={tabStripPosition}
+                  showNewTabButton={showNewTabButton}
+                  doubleClickTabBar={doubleClickTabBar}
                   columnPreferences={paneColumnPreferences.left}
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
@@ -4837,6 +4992,7 @@ export default function App() {
                   onSelectTab={(idx) => setActiveLeftTabIndex(idx)}
                   onAddTab={() => handleAddTab('left')}
                   onCloseTab={(idx) => handleCloseTab('left', idx)}
+                  onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabMenuTarget({ pane: 'left', tabId: leftTabs[idx].id, x, y }); }}
                   files={leftDisplayFiles}
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
@@ -4874,6 +5030,8 @@ export default function App() {
                 <FilePane
                   paneId="right"
                   tabStripPosition={tabStripPosition}
+                  showNewTabButton={showNewTabButton}
+                  doubleClickTabBar={doubleClickTabBar}
                   columnPreferences={paneColumnPreferences.right}
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
@@ -4893,6 +5051,7 @@ export default function App() {
                   onSelectTab={(idx) => setActiveRightTabIndex(idx)}
                   onAddTab={() => handleAddTab('right')}
                   onCloseTab={(idx) => handleCloseTab('right', idx)}
+                  onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabMenuTarget({ pane: 'right', tabId: rightTabs[idx].id, x, y }); }}
                   files={rightDisplayFiles}
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
@@ -4935,6 +5094,8 @@ export default function App() {
                 key={activePane}
                 paneId={activePane}
                 tabStripPosition={tabStripPosition}
+                showNewTabButton={showNewTabButton}
+                doubleClickTabBar={doubleClickTabBar}
                 columnPreferences={paneColumnPreferences[activePane]}
                 isActive={true}
                 styleLocked={folderStyleLocked}
@@ -4954,6 +5115,7 @@ export default function App() {
                 onSelectTab={(idx) => (activePane === 'left' ? setActiveLeftTabIndex(idx) : setActiveRightTabIndex(idx))}
                 onAddTab={() => handleAddTab(activePane)}
                 onCloseTab={(idx) => handleCloseTab(activePane, idx)}
+                onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabMenuTarget({ pane: activePane, tabId: activeTabs[idx].id, x, y }); }}
                   files={activeDisplayFiles}
                   recentFolderPaths={recentFolderPaths}
                   onClearRecentFolders={clearRecentFolderHistory}
@@ -5032,6 +5194,23 @@ export default function App() {
       )}
 
       {/* Context Menu */}
+      {tabMenuTarget && tabMenuTab && (
+        <TabContextMenu
+          key={`${tabMenuTarget.pane}:${tabMenuTarget.tabId}:${tabMenuTarget.x}:${tabMenuTarget.y}`}
+          x={tabMenuTarget.x}
+          y={tabMenuTarget.y}
+          tab={tabMenuTab}
+          canOpenParent={canOpenTabParent(tabMenuTab)}
+          canReopen={closedTabs.length > 0}
+          closableLeft={tabMenuClosableLeft}
+          closableRight={tabMenuClosableRight}
+          closableOthers={tabMenuClosableLeft + tabMenuClosableRight}
+          canClose={tabMenuTabs.length > 1 && !tabMenuTab.lockClose}
+          position={tabStripPosition}
+          onAction={handleTabMenuAction}
+          onClose={() => setTabMenuTarget(null)}
+        />
+      )}
       <ContextMenu
         position={contextMenuPos}
         viewMode={contextPaneTab.viewMode}
@@ -5244,7 +5423,8 @@ export default function App() {
         <Suspense fallback={null}>
           <SettingsModal
             isOpen={isSettingsOpen}
-            onClose={() => setIsSettingsOpen(false)}
+            focusTabSettingsRequest={focusTabSettingsRequest}
+            onClose={() => { setIsSettingsOpen(false); setFocusTabSettingsRequest(0); }}
             globalShortcut={globalShortcutSettings}
             globalShortcutLoaded={globalShortcutLoaded}
             globalShortcutSupported={globalShortcutSupported}
@@ -5292,12 +5472,18 @@ export default function App() {
             onNewTabsNextToCurrentChange={setNewTabsNextToCurrent}
             tabStripPosition={tabStripPosition}
             onTabStripPositionChange={setTabStripPosition}
+            showNewTabButton={showNewTabButton}
+            onShowNewTabButtonChange={setShowNewTabButton}
+            doubleClickTabBar={doubleClickTabBar}
+            onDoubleClickTabBarChange={setDoubleClickTabBar}
             onShowAbout={() => {
               setIsSettingsOpen(false);
+              setFocusTabSettingsRequest(0);
               setIsAboutOpen(true);
             }}
             onShowOnboarding={() => {
               setIsSettingsOpen(false);
+              setFocusTabSettingsRequest(0);
               setIsOnboardingOpen(true);
             }}
           />

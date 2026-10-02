@@ -71,6 +71,9 @@ export const RECYCLE_BIN_PATH = '::cyberfiles-recycle-bin::';
 export interface TabState {
   id: string;
   title: string;
+  customTitle?: string;
+  tabColor?: string;
+  lockClose?: boolean;
   currentPath: string;
   history: string[];
   historyIndex: number;

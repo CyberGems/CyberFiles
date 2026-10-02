@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, Info, Keyboard, Palette, RotateCcw, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { type AppTheme, useTheme } from '../themes/ThemeContext';
@@ -12,6 +12,7 @@ import { ColorValueEditor } from './ColorValueEditor';
 
 interface SettingsModalProps {
   isOpen: boolean;
+  focusTabSettingsRequest: number;
   onClose: () => void;
   onShowOnboarding: () => void;
   onShowAbout: () => void;
@@ -62,6 +63,10 @@ interface SettingsModalProps {
   onNewTabsNextToCurrentChange: (enabled: boolean) => void;
   tabStripPosition: TabStripPosition;
   onTabStripPositionChange: (position: TabStripPosition) => void;
+  showNewTabButton: boolean;
+  onShowNewTabButtonChange: (enabled: boolean) => void;
+  doubleClickTabBar: boolean;
+  onDoubleClickTabBarChange: (enabled: boolean) => void;
 }
 
 const themes: AppTheme[] = ['cyberfiles', 'gray', 'light'];
@@ -93,6 +98,7 @@ function keyFromEvent(event: KeyboardEvent): string | null {
 
 export function SettingsModal({
   isOpen,
+  focusTabSettingsRequest,
   onClose,
   onShowOnboarding,
   onShowAbout,
@@ -143,8 +149,16 @@ export function SettingsModal({
   onNewTabsNextToCurrentChange,
   tabStripPosition,
   onTabStripPositionChange,
+  showNewTabButton,
+  onShowNewTabButtonChange,
+  doubleClickTabBar,
+  onDoubleClickTabBarChange,
 }: SettingsModalProps) {
   const { t, language, setLanguage } = useLanguage();
+  const tabSettingsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (isOpen && focusTabSettingsRequest > 0) tabSettingsRef.current?.scrollIntoView({ block: 'start' });
+  }, [isOpen, focusTabSettingsRequest]);
   const { theme, setTheme } = useTheme();
   const recentItemTextColor = recentItemStyle.textColor === 'auto'
     ? RECENT_ITEM_AUTO_COLORS[theme]
@@ -514,7 +528,7 @@ export function SettingsModal({
             </div>
           </div>
 
-          <div className="border-t border-neutral-800 pt-4">
+          <div ref={tabSettingsRef} className="border-t border-neutral-800 pt-4">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.navigationSection}</div>
             <div className="space-y-2">
               <fieldset className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-3 text-xs text-neutral-400">
@@ -529,6 +543,24 @@ export function SettingsModal({
                   ))}
                 </div>
               </fieldset>
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                <label className="flex cursor-pointer items-start gap-2.5">
+                  <input type="checkbox" checked={showNewTabButton} onChange={event => onShowNewTabButtonChange(event.target.checked)} className="mt-0.5 h-4 w-4 flex-shrink-0 accent-cyan-400" />
+                  <span>
+                    <span className="block font-medium text-neutral-200">{t.settings.showNewTabButton}</span>
+                    <span className="mt-1 block">{t.settings.showNewTabButtonDescription}</span>
+                  </span>
+                </label>
+              </div>
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                <label className="flex cursor-pointer items-start gap-2.5">
+                  <input type="checkbox" checked={doubleClickTabBar} onChange={event => onDoubleClickTabBarChange(event.target.checked)} className="mt-0.5 h-4 w-4 flex-shrink-0 accent-cyan-400" />
+                  <span>
+                    <span className="block font-medium text-neutral-200">{t.settings.doubleClickTabBar}</span>
+                    <span className="mt-1 block">{t.settings.doubleClickTabBarDescription}</span>
+                  </span>
+                </label>
+              </div>
               <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
                 <label className="flex cursor-pointer items-start gap-2.5">
                   <input
