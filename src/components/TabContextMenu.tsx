@@ -5,7 +5,7 @@ import { useLanguage } from '../locales/LanguageContext';
 import type { TabState } from '../types';
 import type { TabStripPosition } from '../utils/workspaceProfiles';
 
-export type TabMenuAction = 'new' | 'duplicate' | 'duplicateRight' | 'duplicateOpposite' | 'parent' | 'reopen' | 'rename' | 'color' | 'lock' | 'closeLeft' | 'closeRight' | 'closeOthers' | 'close' | 'top' | 'bottom' | 'settings';
+export type TabMenuAction = 'new' | 'duplicate' | 'duplicateRight' | 'duplicateOpposite' | 'parent' | 'reopen' | 'rename' | 'color' | 'lock' | 'closeLeft' | 'closeRight' | 'closeOthers' | 'close' | 'top' | 'bottom' | 'left' | 'right' | 'settings';
 
 interface TabContextMenuProps {
   x: number;
@@ -31,6 +31,7 @@ export function TabContextMenu({ x, y, tab, canOpenParent, canReopen, closableLe
   const [screenPosition, setScreenPosition] = useState({ left: x, top: y });
   const [section, setSection] = useState<'main' | 'rename' | 'color'>('main');
   const [name, setName] = useState(tab.customTitle ?? '');
+  const vertical = position === 'left' || position === 'right';
 
   useLayoutEffect(() => {
     const menu = menuRef.current;
@@ -148,7 +149,7 @@ export function TabContextMenu({ x, y, tab, canOpenParent, canReopen, closableLe
         <>
           {item('new', t.tabMenu.newTab, <Plus className="h-4 w-4" />)}
           {item('duplicate', t.tabMenu.duplicate, <Copy className="h-4 w-4" />)}
-          {item('duplicateRight', t.tabMenu.duplicateRight, <ArrowRight className="h-4 w-4" />)}
+          {item('duplicateRight', vertical ? t.tabMenu.duplicateBelow : t.tabMenu.duplicateRight, vertical ? <ArrowDown className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />)}
           {item('duplicateOpposite', t.tabMenu.duplicateOpposite, <Copy className="h-4 w-4" />)}
           {item('parent', t.tabMenu.openParent, <FolderUp className="h-4 w-4" />, !canOpenParent)}
           {item('reopen', t.tabMenu.reopen, <RotateCcw className="h-4 w-4" />, !canReopen)}
@@ -157,14 +158,16 @@ export function TabContextMenu({ x, y, tab, canOpenParent, canReopen, closableLe
           <button type="button" role="menuitem" onClick={() => setSection('color')} className="flex w-full items-center gap-2.5 rounded px-3 py-2 text-left text-xs text-neutral-200 hover:bg-cyan-950/50 focus-visible:bg-cyan-950/50"><span className="flex h-4 w-4 items-center justify-center text-cyan-400"><Palette className="h-4 w-4" /></span>{t.tabMenu.color}</button>
           {item('lock', tab.lockClose ? t.tabMenu.unlock : t.tabMenu.lock, tab.lockClose ? <UnlockKeyhole className="h-4 w-4" /> : <LockKeyhole className="h-4 w-4" />, false, Boolean(tab.lockClose))}
           {separator}
-          {item('closeLeft', t.tabMenu.closeLeft, <ArrowLeft className="h-4 w-4" />, closableLeft === 0)}
-          {item('closeRight', t.tabMenu.closeRight, <ArrowRight className="h-4 w-4" />, closableRight === 0)}
+          {item('closeLeft', vertical ? t.tabMenu.closeAbove : t.tabMenu.closeLeft, vertical ? <ArrowUp className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />, closableLeft === 0)}
+          {item('closeRight', vertical ? t.tabMenu.closeBelow : t.tabMenu.closeRight, vertical ? <ArrowDown className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />, closableRight === 0)}
           {item('closeOthers', t.tabMenu.closeOthers, <X className="h-4 w-4" />, closableOthers === 0)}
           {item('close', t.tabMenu.close, <X className="h-4 w-4" />, !canClose)}
           {separator}
           <div className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.tabMenu.position}</div>
           {item('top', t.tabMenu.top, <ArrowUp className="h-4 w-4" />, false, position === 'top')}
           {item('bottom', t.tabMenu.bottom, <ArrowDown className="h-4 w-4" />, false, position === 'bottom')}
+          {item('left', t.tabMenu.left, <ArrowLeft className="h-4 w-4" />, false, position === 'left')}
+          {item('right', t.tabMenu.right, <ArrowRight className="h-4 w-4" />, false, position === 'right')}
           {separator}
           {item('settings', t.tabMenu.settings, <Settings2 className="h-4 w-4" />)}
           {tab.lockClose && <div className="px-3 py-1 text-[10px] text-neutral-500">{t.tabMenu.protected}</div>}

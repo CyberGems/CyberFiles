@@ -291,7 +291,7 @@ function readPanelViewPreferences(): PanelViewPreferences {
     if (!saved || typeof saved !== 'object') return DEFAULT_PANEL_VIEW_PREFERENCES;
     return {
       layout: saved.layout === 'dual-horizontal' || saved.layout === 'single' ? saved.layout : 'dual-vertical',
-      tabStripPosition: saved.tabStripPosition === 'bottom' ? 'bottom' : 'top',
+      tabStripPosition: saved.tabStripPosition === 'bottom' || saved.tabStripPosition === 'left' || saved.tabStripPosition === 'right' ? saved.tabStripPosition : 'top',
       previewOpen: typeof saved.previewOpen === 'boolean' ? saved.previewOpen : true,
       activePane: saved.activePane === 'right' ? 'right' : 'left',
       leftViewMode: isViewMode(saved.leftViewMode) ? saved.leftViewMode : 'details',
@@ -2711,7 +2711,7 @@ export default function App() {
       closeTabIndices(pane, sourceTabs.flatMap((_, candidate) => candidate > index ? [candidate] : []));
     } else if (action === 'closeOthers') {
       closeTabIndices(pane, sourceTabs.flatMap((_, candidate) => candidate !== index ? [candidate] : []));
-    } else if (action === 'top' || action === 'bottom') {
+    } else if (action === 'top' || action === 'bottom' || action === 'left' || action === 'right') {
       setTabStripPosition(action);
     } else if (action === 'settings') {
       setFocusTabSettingsRequest(previous => previous + 1);

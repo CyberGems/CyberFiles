@@ -420,6 +420,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const pendingNavigationRef = useRef<{ tabId: string; path: string; motion: NavigationMotion } | null>(null);
   const [navigationTransition, setNavigationTransition] = useState<{ tabId: string; path: string; motion: NavigationMotion } | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const verticalTabListRef = useRef<HTMLDivElement>(null);
   const lastScrolledFocusedIdRef = useRef<string | null>(null);
   const columnHeadersRef = useRef<HTMLDivElement>(null);
   const marqueeDragRef = useRef<MarqueeDrag | null>(null);
@@ -428,6 +429,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [marqueeBounds, setMarqueeBounds] = useState<MarqueeBounds | null>(null);
   const [marqueePreviewIds, setMarqueePreviewIds] = useState<string[] | null>(null);
   const [viewportScrollbarWidth, setViewportScrollbarWidth] = useState(0);
+  useEffect(() => {
+    if (tabStripPosition !== 'left' && tabStripPosition !== 'right') return;
+    const list = verticalTabListRef.current;
+    const active = list?.querySelector<HTMLElement>('[data-active-folder-tab="true"]');
+    if (!list || !active) return;
+    const listBounds = list.getBoundingClientRect();
+    const tabBounds = active.getBoundingClientRect();
+    if (tabBounds.top < listBounds.top) list.scrollTop += tabBounds.top - listBounds.top;
+    else if (tabBounds.bottom > listBounds.bottom) list.scrollTop += tabBounds.bottom - listBounds.bottom;
+  }, [activeTabIndex, tabStripPosition, tabs[activeTabIndex]?.id]);
 
   const visibleFileColumns = columnLayout.order.filter(column =>
     columnLayout.visible.includes(column) || (editingItemId !== null && column === 'name'),
@@ -1722,6 +1733,69 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const itemCountLabel = hasMore && totalItemCount !== undefined
     ? t.pane.loadedOfTotal.replace('{loaded}', String(files.length)).replace('{total}', String(totalItemCount))
     : t.pane.itemsCount.replace('{count}', visibleItemCount);
+  const renderFolderTab = (tabItem: TabState, idx: number, vertical: boolean) => {
+    const isTabActive = idx === activeTabIndex;
+    const tabName = tabItem.customTitle || tabItem.title || t.pane.noFolderOpen;
+    const previousKey = vertical ? 'ArrowUp' : 'ArrowLeft';
+    const nextKey = vertical ? 'ArrowDown' : 'ArrowRight';
+    const tooltipPlacement = vertical ? (tabStripPosition === 'left' ? 'right' : 'left') : (tabStripPosition === 'bottom' ? 'top' : 'bottom');
+    return (
+      <div
+        key={tabItem.id}
+        role="button"
+        tabIndex={isTabActive ? 0 : -1}
+        aria-pressed={isTabActive}
+        data-active-folder-tab={isTabActive ? 'true' : undefined}
+        aria-label={tabName}
+        onClick={event => { event.stopPropagation(); onActivate(); onSelectTab(idx); }}
+        onKeyDown={event => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            event.stopPropagation();
+            onActivate();
+            onSelectTab(idx);
+          } else if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+            event.preventDefault();
+            event.stopPropagation();
+            const bounds = event.currentTarget.getBoundingClientRect();
+            onTabContextMenu(idx, bounds.left + 16, bounds.bottom);
+          } else if (event.key === previousKey || event.key === nextKey) {
+            event.preventDefault();
+            event.stopPropagation();
+            const next = (idx + (event.key === nextKey ? 1 : -1) + tabs.length) % tabs.length;
+            onActivate();
+            onSelectTab(next);
+            event.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="button"][aria-pressed]')[next]?.focus();
+          }
+        }}
+        onContextMenu={event => {
+          event.preventDefault();
+          event.stopPropagation();
+          onTabContextMenu(idx, event.clientX, event.clientY);
+        }}
+        className={vertical
+          ? `group flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition-colors outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 ${isTabActive ? 'border-cyan-600/65 bg-cyan-950/45 text-cyan-100 shadow-sm shadow-cyan-950/30' : 'border-transparent bg-neutral-900/35 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-800/70 hover:text-neutral-100'}`
+          : `group flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium cursor-pointer border-x transition-colors max-w-[180px] min-w-[100px] ${tabStripPosition === 'bottom' ? 'rounded-b-md border-b' : 'rounded-t-md border-t'} ${isTabActive ? 'bg-neutral-900 border-neutral-700 text-neutral-100 relative z-10' : 'bg-neutral-950/40 border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/40'}`}
+      >
+        <Folder className={`h-3.5 w-3.5 shrink-0 ${isTabActive ? 'text-cyan-400' : 'text-neutral-500'}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined} />
+        <span className={`truncate text-[11px] ${vertical ? 'min-w-0 flex-1' : ''}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined}>{tabName}</span>
+        {tabItem.lockClose && <LockKeyhole aria-label={t.tabMenu.lock} className="ml-auto h-3 w-3 shrink-0 text-amber-300/80" />}
+        {tabs.length > 1 && !tabItem.lockClose && (
+          <Tooltip label={t.pane.closeTab} placement={tooltipPlacement}>
+            <button
+              type="button"
+              aria-label={`${t.pane.closeTab}: ${tabName}`}
+              onClick={event => { event.stopPropagation(); onCloseTab(idx); }}
+              className={`ml-auto shrink-0 rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 focus-visible:opacity-100 ${vertical ? 'opacity-50 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Tooltip>
+        )}
+      </div>
+    );
+  };
   const tabStrip = (
       <div
         role="group"
@@ -1730,75 +1804,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
         onKeyDown={event => { if (event.key === 'Tab') event.stopPropagation(); }}
         onDoubleClick={event => {
           if (!doubleClickTabBar) return;
-          if (event.target === event.currentTarget || (event.target instanceof HTMLElement && event.target.dataset.tabStripSpace === 'true')) onAddTab();
+          if (event.target === event.currentTarget || (event.target instanceof HTMLElement && event.target.dataset.tabStripSpace === 'true')) { onActivate(); onAddTab(); }
         }}
       >
         <div data-tab-strip-space="true" className="flex items-center gap-0.5 flex-1 min-w-0">
-          {tabs.map((tabItem, idx) => {
-            const isTabActive = idx === activeTabIndex;
-            return (
-              <div
-                key={tabItem.id}
-                role="button"
-                tabIndex={isTabActive ? 0 : -1}
-                aria-pressed={isTabActive}
-                aria-label={tabItem.customTitle || tabItem.title || t.pane.noFolderOpen}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectTab(idx);
-                }}
-                onKeyDown={event => {
-                  if (event.target !== event.currentTarget) return;
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onSelectTab(idx);
-                  } else if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const bounds = event.currentTarget.getBoundingClientRect();
-                    onTabContextMenu(idx, bounds.left + 16, bounds.bottom);
-                  } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const next = (idx + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
-                    onSelectTab(next);
-                    event.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="button"][aria-pressed]')[next]?.focus();
-                  }
-                }}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onTabContextMenu(idx, e.clientX, e.clientY);
-                }}
-                className={`group flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium cursor-pointer border-x transition-colors max-w-[180px] min-w-[100px] ${tabStripPosition === 'bottom' ? 'rounded-b-md border-b' : 'rounded-t-md border-t'} ${
-                  isTabActive
-                    ? 'bg-neutral-900 border-neutral-700 text-neutral-100 relative z-10'
-                    : 'bg-neutral-950/40 border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/40'
-                }`}
-              >
-                <Folder className={`w-3.5 h-3.5 flex-shrink-0 ${isTabActive ? 'text-cyan-400' : 'text-neutral-500'}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined} />
-                <span className="truncate text-[11px]" style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined}>{tabItem.customTitle || tabItem.title || t.pane.noFolderOpen}</span>
-                {tabItem.lockClose && <LockKeyhole aria-label={t.tabMenu.lock} className="ml-auto h-3 w-3 shrink-0 text-amber-300/80" />}
-
-                {tabs.length > 1 && !tabItem.lockClose && (
-                  <Tooltip label={t.pane.closeTab} placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
-                    <button
-                      type="button"
-                      aria-label={`${t.pane.closeTab}: ${tabItem.customTitle || tabItem.title || t.pane.noFolderOpen}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onCloseTab(idx);
-                      }}
-                      className="ml-auto opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Tooltip>
-                )}
-              </div>
-            );
-          })}
+          {tabs.map((tabItem, idx) => renderFolderTab(tabItem, idx, false))}
 
           {showNewTabButton && <Tooltip label={`${t.pane.addTab} (Ctrl+T)`} placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
             <button
@@ -1806,6 +1816,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               aria-label={t.pane.addTab}
               onClick={(e) => {
                 e.stopPropagation();
+                onActivate();
                 onAddTab();
               }}
               className="inline-flex items-center gap-1.5 p-1.5 ml-1 text-neutral-400 hover:text-cyan-300 hover:bg-neutral-800 rounded transition-colors"
@@ -1822,6 +1833,34 @@ export const FilePane: React.FC<FilePaneProps> = ({
       </div>
   );
 
+  const verticalTabStrip = (
+    <aside
+      role="group"
+      aria-label={t.tabMenu.tabsLabel}
+      className={`flex min-h-0 shrink-0 flex-col bg-neutral-950/85 ${tabStripPosition === 'left' ? 'border-r border-neutral-800' : 'border-l border-neutral-800'}`}
+      style={{ width: 'clamp(104px, 22%, 184px)' }}
+      onKeyDown={event => { if (event.key === 'Tab') event.stopPropagation(); }}
+      onDoubleClick={event => {
+        if (!doubleClickTabBar) return;
+        if (event.target === event.currentTarget || (event.target instanceof HTMLElement && event.target.dataset.tabStripSpace === 'true')) { onActivate(); onAddTab(); }
+      }}
+    >
+      <div className="flex shrink-0 items-center justify-between gap-1 border-b border-neutral-800 px-2.5 py-2">
+        <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.tabMenu.tabsShort}</span>
+        {showNewTabButton && (
+          <Tooltip label={`${t.pane.addTab} (Ctrl+T)`} placement={tabStripPosition === 'left' ? 'right' : 'left'}>
+            <button type="button" aria-label={t.pane.addTab} onClick={event => { event.stopPropagation(); onActivate(); onAddTab(); }} className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-cyan-950/60 hover:text-cyan-200">
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
+        )}
+      </div>
+      <div ref={verticalTabListRef} data-tab-strip-space="true" className="flex min-h-0 flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto p-1.5">
+        {tabs.map((tabItem, idx) => renderFolderTab(tabItem, idx, true))}
+      </div>
+    </aside>
+  );
+
   return (
     <div
       onClick={onActivate}
@@ -1835,6 +1874,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
       onDrop={(e) => handleDrop(e)}
     >
       {tabStripPosition === 'top' && tabStrip}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {tabStripPosition === 'left' && verticalTabStrip}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
       {/* 2. Navigation & Breadcrumb Bar */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 bg-neutral-900 border-b border-neutral-800 text-xs select-none">
@@ -2391,6 +2433,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
         </div>
         </div>
         </div>
+      </div>
+        </div>
+        {tabStripPosition === 'right' && verticalTabStrip}
       </div>
 
       {tabStripPosition === 'bottom' && tabStrip}

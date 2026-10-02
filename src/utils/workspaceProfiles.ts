@@ -5,7 +5,7 @@ export const DEFAULT_LAYOUT_PROFILE_ID = 'builtin-default-layout';
 export const DEFAULT_SESSION_PROFILE_ID = 'builtin-default-session';
 
 export type WorkspacePaneId = 'left' | 'right';
-export type TabStripPosition = 'top' | 'bottom';
+export type TabStripPosition = 'top' | 'bottom' | 'left' | 'right';
 export type StartupBehavior = 'continue' | 'home' | 'session';
 export type FileColumnId = 'extension' | 'name' | 'type' | 'size' | 'created' | 'modified';
 
@@ -144,7 +144,7 @@ export function normalizeLayoutSnapshot(value: unknown): LayoutSnapshot {
   };
   return {
     layout: raw.layout === 'dual-horizontal' || raw.layout === 'single' ? raw.layout : 'dual-vertical',
-    tabStripPosition: raw.tabStripPosition === 'bottom' ? 'bottom' : 'top',
+    tabStripPosition: raw.tabStripPosition === 'bottom' || raw.tabStripPosition === 'left' || raw.tabStripPosition === 'right' ? raw.tabStripPosition : 'top',
     previewOpen: typeof raw.previewOpen === 'boolean' ? raw.previewOpen : DEFAULT_LAYOUT_SNAPSHOT.previewOpen,
     verticalSplitPercent: clampNumber(raw.verticalSplitPercent, 50, 20, 80),
     horizontalSplitPercent: clampNumber(raw.horizontalSplitPercent, 50, 20, 80),

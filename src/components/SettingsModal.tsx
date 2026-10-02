@@ -535,10 +535,10 @@ export function SettingsModal({
                 <legend className="px-1 font-medium text-neutral-200">{t.settings.tabStripPosition}</legend>
                 <p className="mb-2 leading-relaxed">{t.settings.tabStripPositionDescription}</p>
                 <div className="grid grid-cols-2 gap-2">
-                  {(['top', 'bottom'] as const).map(position => (
+                  {(['top', 'bottom', 'left', 'right'] as const).map(position => (
                     <label key={position} className={tabStripPosition === position ? 'flex cursor-pointer items-center gap-2 rounded-md border border-cyan-700 bg-cyan-950/45 px-3 py-2 text-cyan-100' : 'flex cursor-pointer items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900/60 px-3 py-2 text-neutral-300 transition-colors hover:border-neutral-600'}>
                       <input type="radio" name="tab-strip-position" value={position} checked={tabStripPosition === position} onChange={() => onTabStripPositionChange(position)} className="h-4 w-4 accent-cyan-400" />
-                      <span>{position === 'top' ? t.settings.tabStripTop : t.settings.tabStripBottom}</span>
+                      <span>{position === 'top' ? t.settings.tabStripTop : position === 'bottom' ? t.settings.tabStripBottom : position === 'left' ? t.settings.tabStripLeft : t.settings.tabStripRight}</span>
                     </label>
                   ))}
                 </div>
