@@ -318,7 +318,7 @@ export function WorkspaceManagerModal(props: WorkspaceManagerModalProps) {
         onMouseDown={event => event.stopPropagation()}
         className="workspace-manager-dialog flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-neutral-700/80 bg-[#0c1119] shadow-2xl shadow-black/60 focus:outline-none"
       >
-        <header className="relative flex items-start justify-between gap-4 overflow-hidden border-b border-neutral-800 px-5 py-4 sm:px-6 sm:py-5">
+        <header className="relative flex shrink-0 items-start justify-between gap-4 border-b border-neutral-800 px-5 py-4 sm:px-6 sm:py-5">
           <div aria-hidden="true" className="pointer-events-none absolute -left-8 -top-20 h-40 w-80 rounded-full bg-cyan-500/10 blur-3xl" />
           <div className="relative min-w-0">
             <h2 id="workspace-manager-title" className="text-base font-semibold tracking-tight text-neutral-100 sm:text-lg">{copy.title}</h2>
@@ -384,7 +384,7 @@ export function WorkspaceManagerModal(props: WorkspaceManagerModalProps) {
           </section>
         </div>
 
-        <footer className="flex justify-end border-t border-neutral-800 bg-neutral-950/30 px-4 py-3 sm:px-6">
+        <footer className="flex shrink-0 justify-end border-t border-neutral-800 bg-neutral-950/30 px-4 py-3 sm:px-6">
           <DialogButton size="compact" onClick={props.onClose}>{copy.close}</DialogButton>
         </footer>
       </section>

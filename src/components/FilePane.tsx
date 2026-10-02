@@ -48,10 +48,11 @@ import {
   FILE_COLUMN_LAYOUT_STORAGE_KEY,
   FILE_COLUMN_WIDTHS_STORAGE_KEY,
 } from '../utils/fileColumnPreferences';
-import type { PaneColumnsSnapshot } from '../utils/workspaceProfiles';
+import type { PaneColumnsSnapshot, TabStripPosition } from '../utils/workspaceProfiles';
 
 interface FilePaneProps {
   paneId: 'left' | 'right';
+  tabStripPosition: TabStripPosition;
   isActive: boolean;
   styleLocked: boolean;
   recentItemStyle: RecentItemStyle;
@@ -296,6 +297,7 @@ function ImageFileThumbnail({
 
 export const FilePane: React.FC<FilePaneProps> = ({
   paneId,
+  tabStripPosition,
   isActive,
   styleLocked,
   recentItemStyle,
@@ -1708,20 +1710,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
     );
   };
 
-  return (
-    <div 
-      onClick={onActivate}
-      className={`flex flex-col h-full bg-neutral-900/60 overflow-hidden relative border transition-colors ${
-        isActive 
-          ? 'border-cyan-500/50 shadow-sm shadow-cyan-950/40' 
-          : 'border-neutral-800/80 opacity-90'
-      } ${isDragOver ? 'ring-2 ring-cyan-400/80 bg-cyan-950/20' : ''}`}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={(e) => handleDrop(e)}
-    >
-      {/* 1. File tabs header */}
-      <div className="flex items-center bg-neutral-950/90 border-b border-neutral-800 px-1 pt-1 overflow-x-auto no-scrollbar select-none">
+  const tabStrip = (
+      <div className={`flex shrink-0 items-center bg-neutral-950/90 border-neutral-800 px-1 overflow-x-auto no-scrollbar select-none ${tabStripPosition === 'bottom' ? 'border-t pb-1' : 'border-b pt-1'}`}>
         <div className="flex items-center gap-0.5 flex-1 min-w-0">
           {tabs.map((tabItem, idx) => {
             const isTabActive = idx === activeTabIndex;
@@ -1732,9 +1722,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   e.stopPropagation();
                   onSelectTab(idx);
                 }}
-                className={`group flex items-center gap-1.5 px-3 py-1.5 rounded-t-md text-xs font-medium cursor-pointer border-t border-x transition-colors max-w-[180px] min-w-[100px] ${
+                className={`group flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium cursor-pointer border-x transition-colors max-w-[180px] min-w-[100px] ${tabStripPosition === 'bottom' ? 'rounded-b-md border-b' : 'rounded-t-md border-t'} ${
                   isTabActive
-                    ? 'bg-neutral-900 border-neutral-700 text-neutral-100 border-b-transparent relative z-10'
+                    ? 'bg-neutral-900 border-neutral-700 text-neutral-100 relative z-10'
                     : 'bg-neutral-950/40 border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/40'
                 }`}
               >
@@ -1742,8 +1732,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 <span className="truncate text-[11px]">{tabItem.title || t.pane.noFolderOpen}</span>
 
                 {tabs.length > 1 && (
-                  <Tooltip label={t.pane.closeTab} placement="bottom">
+                  <Tooltip label={t.pane.closeTab} placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
                     <button
+                      type="button"
+                      aria-label={`${t.pane.closeTab}: ${tabItem.title || t.pane.noFolderOpen}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         onCloseTab(idx);
@@ -1758,9 +1750,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
             );
           })}
 
-          {/* Add Tab Button */}
-          <Tooltip label={`${t.pane.addTab} (Ctrl+T)`} placement="bottom">
+          <Tooltip label={`${t.pane.addTab} (Ctrl+T)`} placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
             <button
+              type="button"
+              aria-label={t.pane.addTab}
               onClick={(e) => {
                 e.stopPropagation();
                 onAddTab();
@@ -1777,6 +1770,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <span>{paneId === 'left' ? t.statusBar.leftPane : t.statusBar.rightPane}</span>
         </div>
       </div>
+  );
+
+  return (
+    <div
+      onClick={onActivate}
+      className={`flex flex-col h-full bg-neutral-900/60 overflow-hidden relative border transition-colors ${
+        isActive
+          ? 'border-cyan-500/50 shadow-sm shadow-cyan-950/40'
+          : 'border-neutral-800/80 opacity-90'
+      } ${isDragOver ? 'ring-2 ring-cyan-400/80 bg-cyan-950/20' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={(e) => handleDrop(e)}
+    >
+      {tabStripPosition === 'top' && tabStrip}
 
       {/* 2. Navigation & Breadcrumb Bar */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 bg-neutral-900 border-b border-neutral-800 text-xs select-none">
@@ -2334,6 +2342,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
         </div>
         </div>
       </div>
+
+      {tabStripPosition === 'bottom' && tabStrip}
 
       {/* 6. Footer Status Bar with Mini Storage Distribution Strip */}
       <div className="px-2.5 py-1 bg-neutral-950 border-t border-neutral-800 text-[10px] font-sans text-neutral-400 flex items-center justify-between select-none gap-2">

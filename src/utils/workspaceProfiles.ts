@@ -5,6 +5,7 @@ export const DEFAULT_LAYOUT_PROFILE_ID = 'builtin-default-layout';
 export const DEFAULT_SESSION_PROFILE_ID = 'builtin-default-session';
 
 export type WorkspacePaneId = 'left' | 'right';
+export type TabStripPosition = 'top' | 'bottom';
 export type StartupBehavior = 'continue' | 'home' | 'session';
 export type FileColumnId = 'extension' | 'name' | 'type' | 'size' | 'created' | 'modified';
 
@@ -29,6 +30,7 @@ export interface PaneColumnsSnapshot {
 
 export interface LayoutSnapshot {
   layout: ViewLayout;
+  tabStripPosition: TabStripPosition;
   previewOpen: boolean;
   verticalSplitPercent: number;
   horizontalSplitPercent: number;
@@ -83,6 +85,7 @@ export interface WorkspaceProfileStore {
 
 export const DEFAULT_LAYOUT_SNAPSHOT: LayoutSnapshot = {
   layout: 'dual-vertical',
+  tabStripPosition: 'top',
   previewOpen: true,
   verticalSplitPercent: 50,
   horizontalSplitPercent: 50,
@@ -141,6 +144,7 @@ export function normalizeLayoutSnapshot(value: unknown): LayoutSnapshot {
   };
   return {
     layout: raw.layout === 'dual-horizontal' || raw.layout === 'single' ? raw.layout : 'dual-vertical',
+    tabStripPosition: raw.tabStripPosition === 'bottom' ? 'bottom' : 'top',
     previewOpen: typeof raw.previewOpen === 'boolean' ? raw.previewOpen : DEFAULT_LAYOUT_SNAPSHOT.previewOpen,
     verticalSplitPercent: clampNumber(raw.verticalSplitPercent, 50, 20, 80),
     horizontalSplitPercent: clampNumber(raw.horizontalSplitPercent, 50, 20, 80),

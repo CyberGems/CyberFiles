@@ -94,6 +94,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
   const [speed, setSpeed] = useState(0);
   const [speedHistory, setSpeedHistory] = useState<number[]>([]);
   const [passwordValues, setPasswordValues] = useState<Record<string, string>>({});
+  const panelRef = useRef<HTMLElement>(null);
   const lastSample = useRef<{ time: number; bytes: number } | null>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
   const activeOperation = operations.find(operation => ['running', 'paused', 'cancelling'].includes(operation.status));
@@ -108,6 +109,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
   const firstPasswordOperation = passwordOperations[0];
   const previousPendingCount = useRef(pendingCount);
   const title = isSpanish ? 'Operaciones de archivos' : 'File operations';
+  const openActivityLabel = isSpanish ? 'Abrir centro de operaciones' : 'Open activity center';
 
   useEffect(() => {
     if (!firstPasswordOperation) return;
@@ -154,14 +156,28 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
     }
   }, [activeOperation?.status, activeOperation?.bytesCopied]);
 
+  useEffect(() => {
+    if (hidden && isExpanded) setIsExpanded(false);
+  }, [hidden, isExpanded]);
+
+  useEffect(() => {
+    if (!isExpanded || hidden) return;
+    const closeOnOutsideClick = (event: PointerEvent) => {
+      if (!panelRef.current?.contains(event.target as Node)) setIsExpanded(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick, true);
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick, true);
+  }, [isExpanded, hidden]);
+
   if (hidden) return null;
 
-  if (operations.length === 0 && !isExpanded) {
+  if (!isExpanded) {
     return createPortal(
       <aside className="pointer-events-none fixed bottom-4 right-4 z-[120]" aria-label={title}>
-        <Tooltip label={isSpanish ? 'Abrir centro de operaciones' : 'Open activity center'} placement="left">
-          <button type="button" onClick={() => setIsExpanded(true)} aria-label={isSpanish ? 'Abrir centro de operaciones' : 'Open activity center'} className="pointer-events-auto grid h-11 w-11 place-items-center rounded-xl border border-neutral-700 bg-neutral-900 text-cyan-300 shadow-xl shadow-black/40 transition hover:border-cyan-700 hover:bg-neutral-800">
+        <Tooltip label={openActivityLabel} placement="left">
+          <button type="button" onClick={() => setIsExpanded(true)} aria-label={pendingCount > 0 ? `${openActivityLabel}, ${pendingCount} ${isSpanish ? (pendingCount === 1 ? 'pendiente' : 'pendientes') : 'pending'}` : openActivityLabel} className="pointer-events-auto relative grid h-11 w-11 place-items-center rounded-xl border border-neutral-700 bg-neutral-900 text-cyan-300 shadow-xl shadow-black/40 transition hover:border-cyan-700 hover:bg-neutral-800">
             <ListChecks className="h-5 w-5" />
+            {pendingCount > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 grid min-h-4 min-w-4 place-items-center rounded-full border border-neutral-950 bg-cyan-500 px-0.5 text-[9px] font-semibold text-neutral-950">{pendingCount > 9 ? '9+' : pendingCount}</span>}
           </button>
         </Tooltip>
       </aside>,
@@ -184,7 +200,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
   const currentItemLabel = activeOperation?.currentItem || activeOperation?.sourcePaths[0] || (isSpanish ? 'Preparando…' : 'Preparing…');
   const remainingLabel = remaining === null ? '—' : elapsedLabel(remaining, language);
   return createPortal(
-    <aside className="pointer-events-none fixed bottom-4 right-4 z-[120] flex max-h-[min(80vh,800px)] w-[min(760px,calc(100vw-2rem))] flex-col items-end" aria-label={title}>
+    <aside ref={panelRef} className="pointer-events-none fixed bottom-4 right-4 z-[120] flex max-h-[min(80vh,800px)] w-[min(760px,calc(100vw-2rem))] flex-col items-end" aria-label={title}>
       <section className="pointer-events-auto flex max-h-[80vh] w-full flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 text-neutral-100 shadow-2xl shadow-black/50">
         <header className="flex items-center gap-3 border-b border-neutral-700 px-4 py-3">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-cyan-950/70 text-cyan-300"><ListChecks className="h-5 w-5" /></span>
@@ -193,8 +209,8 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
             <p className="text-xs text-neutral-400">{pendingCount > 0 ? (isSpanish ? `${pendingCount} pendiente${pendingCount === 1 ? '' : 's'}` : `${pendingCount} pending`) : (isSpanish ? 'Sin operaciones pendientes' : 'No pending operations')}</p>
           </div>
           {activeOperation && <span className="rounded-md border border-neutral-700 px-2 py-1 font-mono text-xs text-cyan-200">{percent}%</span>}
-          <Tooltip label={isPinned ? (isSpanish ? 'Desfijar panel' : 'Unpin panel') : (isSpanish ? 'Fijar panel abierto' : 'Keep panel open')} placement="top">
-            <button type="button" aria-label={isPinned ? (isSpanish ? 'Desfijar panel' : 'Unpin panel') : (isSpanish ? 'Fijar panel abierto' : 'Keep panel open')} aria-pressed={isPinned} onClick={() => { setIsPinned(value => !value); if (!isPinned) setIsExpanded(true); }} className={`grid h-8 w-8 place-items-center rounded-md transition ${isPinned ? 'bg-cyan-950/70 text-cyan-300' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100'}`}><Pin className="h-4 w-4" /></button>
+          <Tooltip label={isPinned ? (isSpanish ? 'Dejar de mantener abierto al finalizar' : 'Stop keeping open after completion') : (isSpanish ? 'Mantener abierto al finalizar' : 'Keep open after completion')} placement="top">
+            <button type="button" aria-label={isPinned ? (isSpanish ? 'Dejar de mantener abierto al finalizar' : 'Stop keeping open after completion') : (isSpanish ? 'Mantener abierto al finalizar' : 'Keep open after completion')} aria-pressed={isPinned} onClick={() => { setIsPinned(value => !value); if (!isPinned) setIsExpanded(true); }} className={`grid h-8 w-8 place-items-center rounded-md transition ${isPinned ? 'bg-cyan-950/70 text-cyan-300' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100'}`}><Pin className="h-4 w-4" /></button>
           </Tooltip>
           {recentOperations.length > 0 && <Tooltip label={isSpanish ? 'Limpiar historial' : 'Clear history'} placement="top"><button type="button" aria-label={isSpanish ? 'Limpiar historial' : 'Clear history'} onClick={onClearHistory} className="grid h-8 w-8 place-items-center rounded-md text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-100"><Trash2 className="h-4 w-4" /></button></Tooltip>}
           <Tooltip label={isExpanded ? (isSpanish ? 'Minimizar' : 'Minimize') : (isSpanish ? 'Expandir' : 'Expand')} placement="top">

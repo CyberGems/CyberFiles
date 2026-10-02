@@ -6,7 +6,7 @@ import { Tooltip } from './Tooltip';
 import { DialogButton } from './DialogButton';
 import { type HiddenItemStyle, type NavigationTransitionStyle, type RecentItemStyle } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
-import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile } from '../utils/workspaceProfiles';
+import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
 import { ColorValueEditor } from './ColorValueEditor';
 
 
@@ -60,6 +60,8 @@ interface SettingsModalProps {
   onSidebarLocationsOpenInNewTabChange: (enabled: boolean) => void;
   newTabsNextToCurrent: boolean;
   onNewTabsNextToCurrentChange: (enabled: boolean) => void;
+  tabStripPosition: TabStripPosition;
+  onTabStripPositionChange: (position: TabStripPosition) => void;
 }
 
 const themes: AppTheme[] = ['cyberfiles', 'gray', 'light'];
@@ -139,6 +141,8 @@ export function SettingsModal({
   onSidebarLocationsOpenInNewTabChange,
   newTabsNextToCurrent,
   onNewTabsNextToCurrentChange,
+  tabStripPosition,
+  onTabStripPositionChange,
 }: SettingsModalProps) {
   const { t, language, setLanguage } = useLanguage();
   const { theme, setTheme } = useTheme();
@@ -513,6 +517,18 @@ export function SettingsModal({
           <div className="border-t border-neutral-800 pt-4">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.navigationSection}</div>
             <div className="space-y-2">
+              <fieldset className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-3 text-xs text-neutral-400">
+                <legend className="px-1 font-medium text-neutral-200">{t.settings.tabStripPosition}</legend>
+                <p className="mb-2 leading-relaxed">{t.settings.tabStripPositionDescription}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['top', 'bottom'] as const).map(position => (
+                    <label key={position} className={tabStripPosition === position ? 'flex cursor-pointer items-center gap-2 rounded-md border border-cyan-700 bg-cyan-950/45 px-3 py-2 text-cyan-100' : 'flex cursor-pointer items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900/60 px-3 py-2 text-neutral-300 transition-colors hover:border-neutral-600'}>
+                      <input type="radio" name="tab-strip-position" value={position} checked={tabStripPosition === position} onChange={() => onTabStripPositionChange(position)} className="h-4 w-4 accent-cyan-400" />
+                      <span>{position === 'top' ? t.settings.tabStripTop : t.settings.tabStripBottom}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
               <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
                 <label className="flex cursor-pointer items-start gap-2.5">
                   <input

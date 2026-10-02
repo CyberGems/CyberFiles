@@ -76,6 +76,7 @@ import {
   type LayoutSnapshot,
   type PaneColumnsSnapshot,
   type StartupBehavior,
+  type TabStripPosition,
   type TabSessionProfile,
   type TabSessionSnapshot,
   type WorkspacePaneId,
@@ -149,6 +150,7 @@ const DEFAULT_HIDDEN_ITEM_STYLE: HiddenItemStyle = {
 
 interface PanelViewPreferences {
   layout: ViewLayout;
+  tabStripPosition: TabStripPosition;
   previewOpen: boolean;
   activePane: 'left' | 'right';
   leftViewMode: ViewMode;
@@ -193,6 +195,7 @@ interface UndoRecord extends UndoHistoryItem {
 
 const DEFAULT_PANEL_VIEW_PREFERENCES: PanelViewPreferences = {
   layout: 'dual-vertical',
+  tabStripPosition: 'top',
   previewOpen: true,
   activePane: 'left',
   leftViewMode: 'details',
@@ -215,6 +218,7 @@ function initialWorkspaceProfileStore(): WorkspaceProfileStore {
     let needsWrite = false;
     const snapshot: LayoutSnapshot = {
       layout: legacy.layout,
+      tabStripPosition: legacy.tabStripPosition,
       previewOpen: legacy.previewOpen,
       verticalSplitPercent: legacy.verticalSplitPercent,
       horizontalSplitPercent: legacy.horizontalSplitPercent,
@@ -285,6 +289,7 @@ function readPanelViewPreferences(): PanelViewPreferences {
     if (!saved || typeof saved !== 'object') return DEFAULT_PANEL_VIEW_PREFERENCES;
     return {
       layout: saved.layout === 'dual-horizontal' || saved.layout === 'single' ? saved.layout : 'dual-vertical',
+      tabStripPosition: saved.tabStripPosition === 'bottom' ? 'bottom' : 'top',
       previewOpen: typeof saved.previewOpen === 'boolean' ? saved.previewOpen : true,
       activePane: saved.activePane === 'right' ? 'right' : 'left',
       leftViewMode: isViewMode(saved.leftViewMode) ? saved.leftViewMode : 'details',
@@ -765,6 +770,7 @@ export default function App() {
 
   // Layout & Global View Modes
   const [layout, setLayout] = useState<ViewLayout>(initialPanelPreferences.layout);
+  const [tabStripPosition, setTabStripPosition] = useState<TabStripPosition>(initialPanelPreferences.tabStripPosition);
   const [verticalSplitPercent, setVerticalSplitPercent] = useState(initialPanelPreferences.verticalSplitPercent);
   const [horizontalSplitPercent, setHorizontalSplitPercent] = useState(initialPanelPreferences.horizontalSplitPercent);
   const [previewSplitPercent, setPreviewSplitPercent] = useState(initialPanelPreferences.previewSplitPercent);
@@ -1290,13 +1296,14 @@ export default function App() {
   const rightSort = rightTabs[activeRightTabIndex] ?? rightTabs[0];
   const currentLayoutSnapshot = useMemo<LayoutSnapshot>(() => ({
     layout,
+    tabStripPosition,
     previewOpen,
     verticalSplitPercent,
     horizontalSplitPercent,
     previewSplitPercent,
     sidebarSplitPercent,
     columns: paneColumnPreferences,
-  }), [layout, previewOpen, verticalSplitPercent, horizontalSplitPercent, previewSplitPercent, sidebarSplitPercent, paneColumnPreferences]);
+  }), [layout, tabStripPosition, previewOpen, verticalSplitPercent, horizontalSplitPercent, previewSplitPercent, sidebarSplitPercent, paneColumnPreferences]);
   const currentSessionSnapshot = useMemo(() => createSessionSnapshot(leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, activePane), [leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, activePane]);
   const activeLayoutProfile = workspaceStore.layouts.find(profile => profile.id === activeLayoutId);
   const activeSessionProfile = workspaceStore.sessions.find(profile => profile.id === activeSessionId);
@@ -1323,6 +1330,7 @@ export default function App() {
   const applyLayoutSnapshot = useCallback((rawSnapshot: LayoutSnapshot) => {
     const snapshot = normalizeLayoutSnapshot(rawSnapshot);
     setLayout(snapshot.layout);
+    setTabStripPosition(snapshot.tabStripPosition);
     setPreviewOpen(snapshot.previewOpen);
     setVerticalSplitPercent(snapshot.verticalSplitPercent);
     setHorizontalSplitPercent(snapshot.horizontalSplitPercent);
@@ -1634,6 +1642,7 @@ export default function App() {
     try {
       window.localStorage.setItem(PANEL_VIEW_PREFERENCES_KEY, JSON.stringify({
         layout,
+        tabStripPosition,
         previewOpen,
         activePane,
         leftViewMode,
@@ -1650,7 +1659,7 @@ export default function App() {
     } catch {
       // Preference persistence is optional if browser storage is unavailable.
     }
-  }, [layout, previewOpen, activePane, leftViewMode, rightViewMode, leftSort.sortField, leftSort.sortOrder, rightSort.sortField, rightSort.sortOrder, verticalSplitPercent, horizontalSplitPercent, previewSplitPercent, sidebarSplitPercent]);
+  }, [layout, tabStripPosition, previewOpen, activePane, leftViewMode, rightViewMode, leftSort.sortField, leftSort.sortOrder, rightSort.sortField, rightSort.sortOrder, verticalSplitPercent, horizontalSplitPercent, previewSplitPercent, sidebarSplitPercent]);
 
   useEffect(() => {
     try {
@@ -4687,6 +4696,7 @@ export default function App() {
               <div className="min-w-0 min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="left"
+                  tabStripPosition={tabStripPosition}
                   columnPreferences={paneColumnPreferences.left}
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
@@ -4746,6 +4756,7 @@ export default function App() {
               <div className="min-w-0 min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="right"
+                  tabStripPosition={tabStripPosition}
                   columnPreferences={paneColumnPreferences.right}
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
@@ -4806,6 +4817,7 @@ export default function App() {
               <div className="min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="left"
+                  tabStripPosition={tabStripPosition}
                   columnPreferences={paneColumnPreferences.left}
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
@@ -4861,6 +4873,7 @@ export default function App() {
               <div className="min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="right"
+                  tabStripPosition={tabStripPosition}
                   columnPreferences={paneColumnPreferences.right}
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
@@ -4921,6 +4934,7 @@ export default function App() {
               <FilePane
                 key={activePane}
                 paneId={activePane}
+                tabStripPosition={tabStripPosition}
                 columnPreferences={paneColumnPreferences[activePane]}
                 isActive={true}
                 styleLocked={folderStyleLocked}
@@ -5087,7 +5101,7 @@ export default function App() {
         />
       )}
       {pendingZipCreation && <CreateZipModal key={pendingZipCreation.targetPath + ':' + pendingZipCreation.sourcePaths.join('|')} defaultName={pendingZipCreation.defaultName} itemCount={pendingZipCreation.sourcePaths.length} targetPath={pendingZipCreation.targetPath} onClose={() => setPendingZipCreation(null)} onChooseTarget={async () => { try { return await chooseNativeFolder(t.contextMenu.chooseTargetFolder); } catch (error) { showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))); return null; } }} onSubmit={handleCreateZip} />}
-      <FileOperationModal hidden={isOnboardingOpen} operations={transferOperations} language={language} onTogglePause={jobId => { void toggleTransferPause(jobId); }} onCancel={jobId => { void cancelTransfer(jobId); }} onSubmitPassword={submitArchivePassword} onClearHistory={clearTransferHistory} />
+      <FileOperationModal hidden={isOnboardingOpen || isWorkspaceManagerOpen || isUnsavedWorkspaceChangesOpen || isSettingsOpen || isAboutOpen || isCloseDialogOpen} operations={transferOperations} language={language} onTogglePause={jobId => { void toggleTransferPause(jobId); }} onCancel={jobId => { void cancelTransfer(jobId); }} onSubmitPassword={submitArchivePassword} onClearHistory={clearTransferHistory} />
       <TextInputContextMenu />
 
       <WorkspaceManagerModal
@@ -5276,6 +5290,8 @@ export default function App() {
             onSidebarLocationsOpenInNewTabChange={setSidebarLocationsOpenInNewTab}
             newTabsNextToCurrent={newTabsNextToCurrent}
             onNewTabsNextToCurrentChange={setNewTabsNextToCurrent}
+            tabStripPosition={tabStripPosition}
+            onTabStripPositionChange={setTabStripPosition}
             onShowAbout={() => {
               setIsSettingsOpen(false);
               setIsAboutOpen(true);
