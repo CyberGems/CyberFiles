@@ -596,7 +596,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {selectedItems.length === 1 ? t.sidebar.oneItemSelected : t.sidebar.manyItemsSelected.replace('{count}', String(selectedItems.length))}
           </span>
           <Tooltip label={t.sidebar.showSelectionActions} placement="right">
-            <button type="button" onClick={() => setShowLauncherWithSelection(false)} aria-label={t.sidebar.showSelectionActions} className="rounded p-1 text-cyan-300 transition-colors hover:bg-cyan-900/40">
+            <button type="button" onClick={() => setShowLauncherWithSelection(false)} aria-label={t.sidebar.showSelectionActions} className="rounded p-1 text-cyan-300 transition-colors hover:bg-cyan-950/70">
               <ListChecks className="h-4 w-4" />
             </button>
           </Tooltip>

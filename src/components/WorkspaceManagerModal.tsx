@@ -261,7 +261,7 @@ export function WorkspaceManagerModal(props: WorkspaceManagerModalProps) {
     const saveLabel = isLayout ? copy.saveCurrentLayout : copy.saveCurrentSession;
     const updateLabel = isLayout ? copy.updateCurrentLayout : copy.updateCurrentSession;
     return (
-      <section className="rounded-2xl border border-neutral-800 bg-[#101720] p-4 shadow-lg shadow-black/10 sm:p-5">
+      <section className="rounded-2xl border border-neutral-800 bg-[var(--cyberfiles-workspace-card-background)] p-4 shadow-lg shadow-black/10 sm:p-5">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-900/70 bg-cyan-950/35 text-cyan-300">
             {isLayout ? <LayoutTemplate className="h-5 w-5" /> : <FolderSync className="h-5 w-5" />}
@@ -316,7 +316,7 @@ export function WorkspaceManagerModal(props: WorkspaceManagerModalProps) {
         aria-describedby="workspace-manager-description"
         onKeyDown={handleDialogKeyDown}
         onMouseDown={event => event.stopPropagation()}
-        className="workspace-manager-dialog flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-neutral-700/80 bg-[#0c1119] shadow-2xl shadow-black/60 focus:outline-none"
+        className="workspace-manager-dialog flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-neutral-700/80 bg-[var(--cyberfiles-workspace-dialog-background)] shadow-2xl shadow-black/60 focus:outline-none"
       >
         <header className="relative flex shrink-0 items-start justify-between gap-4 border-b border-neutral-800 px-5 py-4 sm:px-6 sm:py-5">
           <div aria-hidden="true" className="pointer-events-none absolute -left-8 -top-20 h-40 w-80 rounded-full bg-cyan-500/10 blur-3xl" />

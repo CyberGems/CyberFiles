@@ -274,7 +274,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
                   </button>
                 </Tooltip>
                 <Tooltip label={isSpanish ? 'Cancelar operación y limpiar el elemento parcial' : 'Cancel operation and remove the partial item'} placement="top">
-                  <button type="button" disabled={activeOperation.status === 'cancelling'} onClick={() => onCancel(activeOperation.jobId)} className="inline-flex h-9 items-center gap-2 rounded-md border border-rose-800/80 bg-rose-950/50 px-3 text-sm text-rose-200 transition hover:bg-rose-900/70 disabled:opacity-50">
+                  <button type="button" disabled={activeOperation.status === 'cancelling'} onClick={() => onCancel(activeOperation.jobId)} className="inline-flex h-9 items-center gap-2 rounded-md border border-rose-800/80 bg-rose-950/50 px-3 text-sm text-rose-200 transition hover:bg-rose-950/70 disabled:opacity-50">
                     <X className="h-4 w-4" />{isSpanish ? 'Cancelar' : 'Cancel'}
                   </button>
                 </Tooltip>

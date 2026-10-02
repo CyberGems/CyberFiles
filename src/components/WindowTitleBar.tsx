@@ -140,7 +140,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
             data-titlebar-no-drag=""
             aria-label={tTitlebar('Acerca de CyberFiles', 'About CyberFiles')}
             onClick={onOpenAbout}
-            className="ml-3 flex h-9 min-w-0 items-center gap-2 rounded-md px-1.5 text-neutral-300 transition-colors hover:bg-neutral-800/80 hover:text-white"
+            className="ml-3 flex h-9 min-w-0 items-center gap-2 rounded-md px-1.5 text-neutral-300 transition-colors hover:bg-neutral-800/80 hover:text-neutral-100"
           >
             <img src="/icon.png" alt="" aria-hidden="true" className="h-7 w-7 shrink-0 rounded-md" />
             <span className="truncate text-[13px] font-semibold tracking-wide">{t.app.title}</span>

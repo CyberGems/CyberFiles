@@ -624,7 +624,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
                             e.stopPropagation();
                             handleNavigateToResult(file);
                           }}
-                          className="flex items-center gap-1 px-2 py-1 rounded bg-cyan-950 hover:bg-cyan-900 border border-cyan-800/80 text-cyan-300 font-medium text-[11px] cursor-pointer"
+                          className="flex items-center gap-1 px-2 py-1 rounded bg-cyan-950 hover:bg-cyan-950/70 border border-cyan-800/80 text-cyan-300 font-medium text-[11px] cursor-pointer"
                         >
                           <span>{t.findFiles.navigateToFile}</span>
                           <ArrowRight className="w-3 h-3" />

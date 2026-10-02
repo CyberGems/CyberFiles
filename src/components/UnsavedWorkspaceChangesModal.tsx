@@ -114,7 +114,7 @@ export function UnsavedWorkspaceChangesModal({
         aria-modal="true"
         aria-labelledby="unsaved-workspace-title"
         aria-describedby="unsaved-workspace-description"
-        className="w-full max-w-xl overflow-hidden rounded-2xl border border-amber-900/60 bg-[#0c1018] shadow-2xl shadow-black/50"
+        className="w-full max-w-xl overflow-hidden rounded-2xl border border-amber-900/60 bg-[var(--cyberfiles-dialog-background)] shadow-2xl shadow-black/50"
         onMouseDown={event => event.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-4 border-b border-neutral-800/90 px-5 py-4 sm:px-6">

@@ -110,7 +110,7 @@ export function CloseWindowModal({
         aria-modal="true"
         aria-labelledby="close-window-title"
         aria-describedby="close-window-description"
-        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-700/80 bg-[#0c1018] shadow-2xl shadow-black/50"
+        className="w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-700/80 bg-[var(--cyberfiles-dialog-background)] shadow-2xl shadow-black/50"
         onMouseDown={event => event.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-4 px-5 pt-5 sm:px-7 sm:pt-7">

@@ -316,7 +316,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
             <button
               onClick={handleApply}
               disabled={changedCount === 0}
-              className="px-4 py-1.5 rounded-md bg-cyan-500 hover:bg-cyan-400 text-black font-semibold disabled:opacity-40 disabled:hover:bg-cyan-500 transition-colors flex items-center gap-1.5 shadow-lg shadow-cyan-500/20"
+              className="px-4 py-1.5 rounded-md bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-semibold disabled:opacity-40 disabled:hover:bg-cyan-500 transition-colors flex items-center gap-1.5 shadow-lg shadow-cyan-500/20"
             >
               <Check className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>Aplicar Renombrado</span>
