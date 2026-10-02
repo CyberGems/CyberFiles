@@ -2676,7 +2676,7 @@ export default function App() {
   };
 
   // Selection handler
-  const handleSelectItems = (pane: 'left' | 'right', ids: string[], isAdditive = false, isRange = false, replaceExactly = false) => {
+  const handleSelectItems = (pane: 'left' | 'right', ids: string[], isAdditive = false, isRange = false, replaceExactly = false, focusedId?: string) => {
     setActivePane(pane);
     updatePaneTab(pane, tab => {
       let newSelection = [...tab.selectedIds];
@@ -2714,7 +2714,7 @@ export default function App() {
       return {
         ...tab,
         selectedIds: newSelection,
-        focusedId: ids[0] && newSelection.includes(ids[0]) ? ids[0] : newSelection[0] || null,
+        focusedId: focusedId && newSelection.includes(focusedId) ? focusedId : ids[0] && newSelection.includes(ids[0]) ? ids[0] : newSelection[0] || null,
       };
     });
   };
@@ -4849,7 +4849,7 @@ export default function App() {
                   onNavigateForward={() => handleNavigateForward('left')}
                   onNavigateUp={() => handleNavigateUp('left')}
                   onFilterChange={(q) => updatePaneTab('left', t => ({ ...t, filterQuery: q }))}
-                  onSelectItems={(ids, additive, range) => handleSelectItems('left', ids, additive, range)}
+                  onSelectItems={(ids, additive, range, replaceExactly, focusedId) => handleSelectItems('left', ids, additive, range, replaceExactly, focusedId)}
                   onSortChange={field => updatePaneTab('left', tab => toggleTabSort(tab, field))}
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'left')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'left')}
@@ -4913,7 +4913,7 @@ export default function App() {
                   onNavigateForward={() => handleNavigateForward('right')}
                   onNavigateUp={() => handleNavigateUp('right')}
                   onFilterChange={(q) => updatePaneTab('right', t => ({ ...t, filterQuery: q }))}
-                  onSelectItems={(ids, additive, range) => handleSelectItems('right', ids, additive, range)}
+                  onSelectItems={(ids, additive, range, replaceExactly, focusedId) => handleSelectItems('right', ids, additive, range, replaceExactly, focusedId)}
                   onSortChange={field => updatePaneTab('right', tab => toggleTabSort(tab, field))}
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'right')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'right')}
@@ -4978,7 +4978,7 @@ export default function App() {
                   onNavigateForward={() => handleNavigateForward('left')}
                   onNavigateUp={() => handleNavigateUp('left')}
                   onFilterChange={(q) => updatePaneTab('left', t => ({ ...t, filterQuery: q }))}
-                  onSelectItems={(ids, additive, range) => handleSelectItems('left', ids, additive, range)}
+                  onSelectItems={(ids, additive, range, replaceExactly, focusedId) => handleSelectItems('left', ids, additive, range, replaceExactly, focusedId)}
                   onSortChange={field => updatePaneTab('left', tab => toggleTabSort(tab, field))}
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'left')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'left')}
@@ -5038,7 +5038,7 @@ export default function App() {
                   onNavigateForward={() => handleNavigateForward('right')}
                   onNavigateUp={() => handleNavigateUp('right')}
                   onFilterChange={(q) => updatePaneTab('right', t => ({ ...t, filterQuery: q }))}
-                  onSelectItems={(ids, additive, range) => handleSelectItems('right', ids, additive, range)}
+                  onSelectItems={(ids, additive, range, replaceExactly, focusedId) => handleSelectItems('right', ids, additive, range, replaceExactly, focusedId)}
                   onSortChange={field => updatePaneTab('right', tab => toggleTabSort(tab, field))}
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'right')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'right')}
@@ -5103,7 +5103,7 @@ export default function App() {
                 onNavigateForward={() => handleNavigateForward(activePane)}
                 onNavigateUp={() => handleNavigateUp(activePane)}
                 onFilterChange={(q) => updateActiveTab(t => ({ ...t, filterQuery: q }))}
-                onSelectItems={(ids, additive, range) => handleSelectItems(activePane, ids, additive, range)}
+                onSelectItems={(ids, additive, range, replaceExactly, focusedId) => handleSelectItems(activePane, ids, additive, range, replaceExactly, focusedId)}
                 onSortChange={field => updateActiveTab(tab => toggleTabSort(tab, field))}
                 onItemDoubleClick={(item) => handleItemDoubleClick(item, activePane)}
                 onItemContextMenu={(e, item) => handleItemContextMenu(e, item, activePane)}

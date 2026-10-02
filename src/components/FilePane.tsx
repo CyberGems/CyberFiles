@@ -92,7 +92,7 @@ interface FilePaneProps {
   onNavigateForward: () => void;
   onNavigateUp: () => void;
   onFilterChange: (query: string) => void;
-  onSelectItems: (ids: string[], isAdditive?: boolean, isRange?: boolean, replaceExactly?: boolean) => void;
+  onSelectItems: (ids: string[], isAdditive?: boolean, isRange?: boolean, replaceExactly?: boolean, focusedId?: string) => void;
   onSortChange: (field: SortField) => void;
   onItemDoubleClick: (item: FileItem) => void;
   onItemContextMenu: (e: React.MouseEvent, item: FileItem) => void;
@@ -387,6 +387,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [nativeFileIconState, setNativeFileIconState] = useState<{ scope: string; byItemId: Record<string, string> }>({ scope: '', byItemId: {} });
   const lastSingleClickOpenRef = useRef<{ itemId: string; timestamp: number } | null>(null);
   const typeAheadRef = useRef({ query: '', at: 0 });
+  const selectionAnchorsRef = useRef(new Map<string, string>());
   const pendingDeselectionRef = useRef<number | null>(null);
   const latestTabRef = useRef(tab);
   latestTabRef.current = tab;
@@ -726,6 +727,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
     });
     return [...groups.values()];
   }, [files, getGroupForItem, tab.groupBy]);
+  const navigableFiles = React.useMemo(() => fileGroups.flatMap(group =>
+    collapsedGroups[`${paneId}:${tab.id}:${tab.groupBy}:${group.id}`] ? [] : group.items
+  ), [fileGroups, collapsedGroups, paneId, tab.id, tab.groupBy]);
+  const selectionContext = `${tab.id}\u0000${tab.currentPath}`;
+  const navigableIdSet = React.useMemo(() => new Set(navigableFiles.map(item => item.id)), [navigableFiles]);
+  const selectedIdSet = React.useMemo(() => new Set(tab.selectedIds), [tab.selectedIds]);
   const fileIndexById = React.useMemo(() => new Map(files.map((item, index) => [item.id, index])), [files]);
   const virtualizeFiles = !isSystemHome && files.length > 300;
   const virtualColumns = effectiveViewMode === 'details' ? 1
@@ -1540,11 +1547,31 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }
   };
 
+  // Selection ranges follow the full displayed order, including virtual rows.
+  const selectRangeTo = (anchorId: string, targetId: string, additive = false) => {
+    const anchorIndex = navigableFiles.findIndex(item => item.id === anchorId);
+    const targetIndex = navigableFiles.findIndex(item => item.id === targetId);
+    if (targetIndex < 0) return;
+    const start = anchorIndex < 0 ? targetIndex : Math.min(anchorIndex, targetIndex);
+    const end = anchorIndex < 0 ? targetIndex : Math.max(anchorIndex, targetIndex);
+    const rangeIds = navigableFiles.slice(start, end + 1).map(item => item.id);
+    const selectedIds = additive ? [...new Set([...tab.selectedIds, ...rangeIds])] : rangeIds;
+    onSelectItems(selectedIds, false, false, true, targetId);
+  };
+
+  const currentSelectionAnchor = (fallbackId: string) => {
+    const savedId = selectionAnchorsRef.current.get(selectionContext);
+    if (savedId && selectedIdSet.has(savedId) && navigableIdSet.has(savedId)) return savedId;
+    return tab.focusedId && navigableIdSet.has(tab.focusedId)
+      ? tab.focusedId : tab.selectedIds.find(id => navigableIdSet.has(id)) ?? fallbackId;
+  };
+
   // Selection logic
   const handleItemClick = (e: React.MouseEvent, item: FileItem, index: number) => {
     viewportRef.current?.focus({ preventScroll: true });
     onActivate();
     clearPendingDeselection();
+    if (!e.shiftKey) selectionAnchorsRef.current.set(selectionContext, item.id);
 
     // A second click completes the open gesture; keep the selection from its first click.
     if (e.detail > 1) return;
@@ -1566,12 +1593,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
       return;
     }
 
-    if (e.ctrlKey || e.metaKey) {
-      onSelectItems([item.id], true, false);
-    } else if (e.shiftKey) {
-      onSelectItems([item.id], false, true);
+    if (e.shiftKey) {
+      const anchorId = currentSelectionAnchor(item.id);
+      selectionAnchorsRef.current.set(selectionContext, anchorId);
+      selectRangeTo(anchorId, item.id, e.ctrlKey || e.metaKey);
     } else {
-      onSelectItems([item.id], false, false);
+      onSelectItems([item.id], e.ctrlKey || e.metaKey, false);
     }
   };
 
@@ -1609,7 +1636,48 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const collapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
     if (collapsedGroups[collapseKey]) setCollapsedGroups(previousGroups => ({ ...previousGroups, [collapseKey]: false }));
     lastScrolledFocusedIdRef.current = null;
-    onSelectItems([match.id], false, false, true);
+    selectionAnchorsRef.current.set(selectionContext, match.id);
+    onSelectItems([match.id], false, false, true, match.id);
+  };
+
+  const handleViewportKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest('input, textarea, select, button, [contenteditable]:not([contenteditable="false"])')) return;
+    if (event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing || !isActive || navigableFiles.length === 0) {
+      handleTypeAhead(event);
+      return;
+    }
+    const key = event.key;
+    const grid = effectiveViewMode !== 'details';
+    if (!['Home', 'End', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', ...(grid ? ['ArrowLeft', 'ArrowRight'] : [])].includes(key)) {
+      handleTypeAhead(event);
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const focusedIndex = navigableFiles.findIndex(item => item.id === tab.focusedId);
+    const currentIndex = focusedIndex >= 0 ? focusedIndex : navigableFiles.findIndex(item => selectedIdSet.has(item.id));
+    const lastIndex = navigableFiles.length - 1;
+    const pageRows = Math.max(1, Math.floor((viewportRef.current?.clientHeight ?? 600) / rowStride));
+    const pageStep = pageRows * virtualColumns;
+    let targetIndex = currentIndex < 0 ? 0 : currentIndex;
+    if (key === 'Home') targetIndex = 0;
+    else if (key === 'End') targetIndex = lastIndex;
+    else if (key === 'ArrowDown') targetIndex = currentIndex < 0 ? 0 : Math.min(lastIndex, targetIndex + (grid ? virtualColumns : 1));
+    else if (key === 'ArrowUp') targetIndex = currentIndex < 0 ? 0 : Math.max(0, targetIndex - (grid ? virtualColumns : 1));
+    else if (key === 'ArrowRight') targetIndex = currentIndex < 0 ? 0 : Math.min(lastIndex, targetIndex + 1);
+    else if (key === 'ArrowLeft') targetIndex = currentIndex < 0 ? 0 : Math.max(0, targetIndex - 1);
+    else if (key === 'PageDown') targetIndex = currentIndex < 0 ? 0 : Math.min(lastIndex, targetIndex + pageStep);
+    else if (key === 'PageUp') targetIndex = currentIndex < 0 ? 0 : Math.max(0, targetIndex - pageStep);
+    const targetItem = navigableFiles[targetIndex];
+    if (event.shiftKey) {
+      const anchorId = currentSelectionAnchor(navigableFiles[currentIndex >= 0 ? currentIndex : 0].id);
+      selectionAnchorsRef.current.set(selectionContext, anchorId);
+      selectRangeTo(anchorId, targetItem.id);
+    } else {
+      selectionAnchorsRef.current.set(selectionContext, targetItem.id);
+      onSelectItems([targetItem.id], false, false, true, targetItem.id);
+    }
   };
 
   const handleConfiguredSingleClick = (event: React.MouseEvent, item: FileItem) => {
@@ -1647,6 +1715,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     clearPendingDeselection();
     if (target.closest('button, input, select, textarea, a, [contenteditable="true"]')) return;
     viewportRef.current?.focus({ preventScroll: true });
+    selectionAnchorsRef.current.delete(selectionContext);
     onBackgroundClick(event, paneId);
   };
 
@@ -2254,7 +2323,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           if (scrollHeight - scrollTop - clientHeight <= Math.max(500, clientHeight)) onLoadMore();
         }}
         onClick={handleViewportClick}
-        onKeyDown={handleTypeAhead}
+        onKeyDown={handleViewportKeyDown}
         onContextMenu={handleViewportContextMenu}
         onDoubleClick={handleViewportDoubleClick}
         onPointerDown={handleMarqueePointerDown}
@@ -2344,6 +2413,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   key={item.id}
                   data-file-item="true"
                   data-file-id={item.id}
+                  data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
                   draggable={!item.recycleBinId}
                   onDragStart={(e) => handleDragStart(e, item)}
                   onDrop={(e) => {
@@ -2356,7 +2426,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth}px`, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`grid min-h-[30px] ${virtualizeFiles ? 'h-[30px]' : ''} items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors ${
+                  className={`grid min-h-[30px] ${virtualizeFiles ? 'h-[30px]' : ''} items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors data-[focused=true]:ring-1 data-[focused=true]:ring-inset data-[focused=true]:ring-cyan-300/70 ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-700/60 text-neutral-100 font-medium'
                       : isZebra
@@ -2447,6 +2517,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   key={item.id}
                   data-file-item="true"
                   data-file-id={item.id}
+                  data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
                   draggable={!item.recycleBinId}
                   onDragStart={event => handleDragStart(event, item)}
                   onDrop={event => {
@@ -2459,7 +2530,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`flex min-w-0 ${virtualizeFiles ? 'h-[30px]' : ''} items-center gap-2 rounded border px-2 py-1.5 text-xs transition-colors ${
+                  className={`flex min-w-0 ${virtualizeFiles ? 'h-[30px]' : ''} items-center gap-2 rounded border px-2 py-1.5 text-xs transition-colors data-[focused=true]:ring-1 data-[focused=true]:ring-inset data-[focused=true]:ring-cyan-300/70 ${
                     isSelected
                       ? 'border-cyan-700/60 bg-cyan-950/70 text-neutral-100'
                       : 'border-transparent text-neutral-300 hover:border-neutral-800 hover:bg-neutral-800/60 hover:text-neutral-100'
@@ -2501,13 +2572,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   key={item.id}
                   data-file-item="true"
                   data-file-id={item.id}
+                  data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
                   draggable={!item.recycleBinId}
                   onDragStart={(e) => handleDragStart(e, item)}
                   onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`flex min-w-0 ${virtualizeFiles ? 'h-36' : ''} flex-col items-center justify-start gap-1.5 rounded-lg border p-2.5 text-center cursor-pointer transition-colors ${
+                  className={`flex min-w-0 ${virtualizeFiles ? 'h-36' : ''} flex-col items-center justify-start gap-1.5 rounded-lg border p-2.5 text-center cursor-pointer transition-colors data-[focused=true]:ring-1 data-[focused=true]:ring-inset data-[focused=true]:ring-cyan-300/70 ${
                     isSelected
                       ? 'bg-cyan-950/70 border-cyan-600/70 text-neutral-100 shadow'
                       : 'border-neutral-800/40 bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60 hover:border-neutral-700'
