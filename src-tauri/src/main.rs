@@ -475,6 +475,16 @@ struct DirectoryListing {
     next_offset: usize,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DirectoryCounts {
+    file_count: usize,
+    folder_count: usize,
+    visible_file_count: usize,
+    visible_folder_count: usize,
+    hidden_count: usize,
+}
+
 const DIRECTORY_PAGE_SIZE: usize = 400;
 
 #[derive(Serialize, Clone)]
@@ -2209,6 +2219,53 @@ async fn count_hidden_items(path: String) -> Result<usize, String> {
     })
     .await
     .map_err(|error| format!("Hidden item count worker failed: {error}"))?
+}
+
+#[tauri::command]
+async fn count_directory_items(path: String) -> Result<DirectoryCounts, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let root = fs::canonicalize(&path)
+            .map_err(|error| format!("Cannot access folder: {error}"))?;
+        if !root.is_dir() {
+            return Err("The selected location is not a folder.".to_string());
+        }
+
+        let entries = fs::read_dir(&root)
+            .map_err(|error| format!("Cannot read folder: {error}"))?;
+        let mut counts = DirectoryCounts {
+            file_count: 0,
+            folder_count: 0,
+            visible_file_count: 0,
+            visible_folder_count: 0,
+            hidden_count: 0,
+        };
+        for entry in entries {
+            let Ok(entry) = entry else { continue };
+            let entry_path = entry.path();
+            let Ok(metadata) = fs::symlink_metadata(&entry_path) else { continue };
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            let hidden = is_hidden_metadata(&metadata, &entry_path);
+            if hidden {
+                counts.hidden_count += 1;
+            }
+            if metadata.is_dir() {
+                counts.folder_count += 1;
+                if !hidden {
+                    counts.visible_folder_count += 1;
+                }
+            } else {
+                counts.file_count += 1;
+                if !hidden {
+                    counts.visible_file_count += 1;
+                }
+            }
+        }
+        Ok(counts)
+    })
+    .await
+    .map_err(|error| format!("Directory count worker failed: {error}"))?
 }
 
 #[derive(Serialize)]
@@ -5353,6 +5410,7 @@ fn main() {
             quit_app,
             list_directory,
             count_hidden_items,
+            count_directory_items,
             get_file_icons,
             calculate_folder_size,
             calculate_folder_size_bounded,

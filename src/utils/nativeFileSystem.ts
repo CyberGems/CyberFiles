@@ -43,6 +43,14 @@ interface LoadedNativeFolder {
   nextOffset: number;
 }
 
+export interface NativeDirectoryCounts {
+  fileCount: number;
+  folderCount: number;
+  visibleFileCount: number;
+  visibleFolderCount: number;
+  hiddenCount: number;
+}
+
 interface NativeDrive {
   id: string;
   letter: string;
@@ -215,6 +223,11 @@ export async function listNativeDirectory(path: string, offset = 0): Promise<{ r
 export async function countNativeHiddenItems(path: string): Promise<number> {
   if (!isTauriDesktop()) throw new Error('Native hidden-item counts are unavailable.');
   return invoke<number>('count_hidden_items', { path });
+}
+
+export async function countNativeDirectoryItems(path: string): Promise<NativeDirectoryCounts> {
+  if (!isTauriDesktop()) throw new Error('Native directory counts are unavailable.');
+  return invoke<NativeDirectoryCounts>('count_directory_items', { path });
 }
 
 export async function getNativeFileIcons(items: NativeFileIconRequest[], large: boolean): Promise<NativeFileIconGroup[]> {

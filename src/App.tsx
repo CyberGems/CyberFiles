@@ -84,7 +84,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, countNativeHiddenItems, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, countNativeDirectoryItems, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
@@ -118,7 +118,6 @@ const RELATIVE_GRAPHS_ENABLED_KEY = 'cyberfiles_relative_graphs_enabled_v1';
 const DATE_FORMAT_KEY = 'cyberfiles_date_format_v1';
 const DATE_FORMAT_SYSTEM_DEFAULT_MIGRATION_KEY = 'cyberfiles_date_format_system_default_migrated_v1';
 const SHOW_HIDDEN_FILES_KEY = 'cyberfiles_show_hidden_files_v1';
-const EMPTY_FILE_ITEMS: FileItem[] = [];
 const SHOW_FILE_EXTENSIONS_KEY = 'cyberfiles_show_file_extensions_v1';
 const LAST_TERMINAL_OPTION_KEY = 'cyberfiles_last_terminal_option_v1';
 const STARTUP_BEHAVIOR_KEY = 'cyberfiles_startup_behavior_v1';
@@ -535,6 +534,15 @@ interface NativeDirectoryState {
   nextOffset: number;
   hasMore: boolean;
   loading: boolean;
+  counts?: NativeDirectoryCounts;
+}
+
+function knownDirectoryCounts(tab: TabState, directory: NativeDirectoryState | undefined, showHiddenFiles: boolean) {
+  if (tab.filterQuery.trim() || !directory?.counts) return null;
+  const counts = directory.counts;
+  const fileCount = showHiddenFiles ? counts.fileCount : counts.visibleFileCount;
+  const folderCount = showHiddenFiles ? counts.folderCount : counts.visibleFolderCount;
+  return { fileCount, folderCount, totalCount: fileCount + folderCount };
 }
 
 interface BrowserDirectoryCursor {
@@ -739,8 +747,25 @@ export default function App() {
   const navigationViewTransitionSequence = useRef(0);
   const nativeInFlightDirectories = useRef(new Map<string, number>());
   const nativeWorkspaceGeneration = useRef(0);
+  const directoryCountRequestSequence = useRef(0);
+  const latestDirectoryCountRequests = useRef(new Map<string, number>());
   const nativeOpeningWorkspace = useRef(false);
   const focusRefreshTimer = useRef<number | null>(null);
+
+  const requestDirectoryCounts = useCallback((path: string, generation: number) => {
+    if (!isTauriDesktop()) return;
+    const pathKey = getPathKey(path);
+    const requestId = ++directoryCountRequestSequence.current;
+    latestDirectoryCountRequests.current.set(pathKey, requestId);
+    void countNativeDirectoryItems(path).then(counts => {
+      if (generation !== nativeWorkspaceGeneration.current || latestDirectoryCountRequests.current.get(pathKey) !== requestId) return;
+      setNativeDirectories(previous => previous[pathKey]
+        ? { ...previous, [pathKey]: { ...previous[pathKey], counts } }
+        : previous);
+    }).catch(error => {
+      if (generation === nativeWorkspaceGeneration.current) console.warn('Could not count items in the current folder:', error);
+    });
+  }, []);
 
   const systemHomeItems = useMemo<FileItem[]>(() => {
     const locationLabels: Record<NativeLocation['id'], string> = {
@@ -1232,33 +1257,9 @@ export default function App() {
   const setActiveTabs = activePane === 'left' ? setLeftTabs : setRightTabs;
   const activeTabIndex = activePane === 'left' ? activeLeftTabIndex : activeRightTabIndex;
   const currentTab = activeTabs[activeTabIndex] || activeTabs[0];
-  const currentDirectoryItems = childrenByParent.get(getPathKey(currentTab.currentPath)) ?? EMPTY_FILE_ITEMS;
-  const [nativeHiddenItemsResult, setNativeHiddenItemsResult] = useState<{ pathKey: string; count: number } | null>(null);
-  useEffect(() => {
-    const path = currentTab.currentPath;
-    if (!isTauriDesktop() || !path || path === SYSTEM_HOME_PATH || path === RECYCLE_BIN_PATH) return;
-
-    let cancelled = false;
-    const timeout = window.setTimeout(() => {
-      void countNativeHiddenItems(path)
-        .then(count => {
-          if (!cancelled) setNativeHiddenItemsResult({ pathKey: getPathKey(path), count });
-        })
-        .catch(error => {
-          if (!cancelled) console.warn('Could not count hidden items in the current folder:', error);
-        });
-    }, 250);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeout);
-    };
-  }, [currentTab.currentPath, currentDirectoryItems]);
   const hiddenItemsCount = currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH || !isTauriDesktop()
     ? null
-    : nativeHiddenItemsResult?.pathKey === getPathKey(currentTab.currentPath)
-      ? nativeHiddenItemsResult.count
-      : null;
+    : nativeDirectories[getPathKey(currentTab.currentPath)]?.counts?.hiddenCount ?? null;
   const systemQuickAccess = useMemo<QuickAccessItem[]>(() => {
     const labels: Record<NativeLocation['id'], string> = {
       desktop: t.sidebar.desktop,
@@ -2194,7 +2195,7 @@ export default function App() {
 
     const generation = nativeWorkspaceGeneration.current;
     nativeInFlightDirectories.current.set(pathKey, generation);
-    setNativeDirectories(previous => ({ ...previous, [pathKey]: { ...(previous[pathKey] || { nextOffset: 0, hasMore: false }), loading: true } }));
+    setNativeDirectories(previous => ({ ...previous, [pathKey]: { ...(previous[pathKey] || { nextOffset: 0, hasMore: false }), counts: forceRefresh ? undefined : previous[pathKey]?.counts, loading: true } }));
     try {
       const listing = isDesktop
         ? await listNativeDirectory(targetPath)
@@ -2239,8 +2240,10 @@ export default function App() {
             : listing.entries.length,
           hasMore: listing.hasMore,
           loading: false,
+          counts: forceRefresh ? undefined : previous[pathKey]?.counts,
         },
       }));
+      requestDirectoryCounts(targetPath, generation);
     } catch {
       if (generation === nativeWorkspaceGeneration.current) {
         setNativeDirectories(previous => ({
@@ -2252,7 +2255,7 @@ export default function App() {
     } finally {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
-  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectoryPage, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, newTabsNextToCurrent, rememberRecentFolder, navigationTransitionsEnabled, navigationTransitionStyle]);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectoryPage, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, newTabsNextToCurrent, rememberRecentFolder, navigationTransitionsEnabled, navigationTransitionStyle, requestDirectoryCounts]);
 
   const lastSessionReloadHandled = useRef(0);
   useEffect(() => {
@@ -2388,6 +2391,7 @@ export default function App() {
             : directory.nextOffset + listing.entries.length,
           hasMore: listing.hasMore,
           loading: false,
+          counts: previous[pathKey]?.counts,
         },
       }));
     } catch {
@@ -4161,6 +4165,7 @@ export default function App() {
       setNativeDirectories({
         [rootKey]: { nextOffset: loaded.nextOffset, hasMore: loaded.hasMore, loading: false },
       });
+      requestDirectoryCounts(loaded.rootPath, generation);
       setAllFiles(loaded.files);
       setQuickAccess([{
         id: `qa-${encodeURIComponent(loaded.rootPath.toLowerCase())}`,
@@ -4173,10 +4178,8 @@ export default function App() {
       openWorkspaceRoot(loaded.rootPath, loaded.rootName);
       completeOnboarding();
       const count = loaded.files.length - 1;
-      const suffix = loaded.hasMore
-        ? (language === 'es' ? ', primeros 400. Desplázate hacia abajo para cargar más automáticamente.' : ', first 400. Scroll down to load more automatically.')
-        : '';
-      showToast(`${language === 'es' ? 'Carpeta cargada' : 'Folder loaded'}: "${loaded.rootName}" (${count} ${language === 'es' ? 'elementos' : 'items'})${suffix}`);
+      const suffix = loaded.hasMore ? ` ${t.pane.moreItemsOnScroll}` : '';
+      showToast(`${language === 'es' ? 'Carpeta cargada' : 'Folder loaded'}: "${loaded.rootName}" (${count}${loaded.hasMore ? '+' : ''} ${language === 'es' ? 'elementos' : 'items'}).${suffix}`);
     } catch (error: any) {
       nativeOpeningWorkspace.current = false;
       if (error.name !== 'AbortError') {
@@ -4550,6 +4553,9 @@ export default function App() {
   });
   const leftDirectoryState = nativeDirectories[getPathKey(leftTabs[activeLeftTabIndex].currentPath)];
   const rightDirectoryState = nativeDirectories[getPathKey(rightTabs[activeRightTabIndex].currentPath)];
+  const leftKnownCounts = knownDirectoryCounts(leftTabs[activeLeftTabIndex], leftDirectoryState, showHiddenFiles);
+  const rightKnownCounts = knownDirectoryCounts(rightTabs[activeRightTabIndex], rightDirectoryState, showHiddenFiles);
+  const activeKnownCounts = activePane === 'left' ? leftKnownCounts : rightKnownCounts;
   const leftAtSystemHome = leftTabs[activeLeftTabIndex].currentPath === SYSTEM_HOME_PATH;
   const rightAtSystemHome = rightTabs[activeRightTabIndex].currentPath === SYSTEM_HOME_PATH;
   const leftAtRecycleBin = leftTabs[activeLeftTabIndex].currentPath === RECYCLE_BIN_PATH;
@@ -4882,6 +4888,7 @@ export default function App() {
                   dateFormat={dateFormat}
                   drives={drives}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
+                  totalItemCount={leftKnownCounts?.totalCount}
                   isLoadingDirectory={leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
                   onLoadMore={() => leftAtRecycleBin ? void loadMoreRecycleBin() : void loadMoreNativeDirectory(leftTabs[activeLeftTabIndex].currentPath)}
                   allFiles={allFiles}
@@ -4945,6 +4952,7 @@ export default function App() {
                   dateFormat={dateFormat}
                   drives={drives}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
+                  totalItemCount={rightKnownCounts?.totalCount}
                   isLoadingDirectory={rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
                   onLoadMore={() => rightAtRecycleBin ? void loadMoreRecycleBin() : void loadMoreNativeDirectory(rightTabs[activeRightTabIndex].currentPath)}
                   allFiles={allFiles}
@@ -5009,6 +5017,7 @@ export default function App() {
                   dateFormat={dateFormat}
                   drives={drives}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
+                  totalItemCount={leftKnownCounts?.totalCount}
                   isLoadingDirectory={leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
                   onLoadMore={() => leftAtRecycleBin ? void loadMoreRecycleBin() : void loadMoreNativeDirectory(leftTabs[activeLeftTabIndex].currentPath)}
                   allFiles={allFiles}
@@ -5068,6 +5077,7 @@ export default function App() {
                   dateFormat={dateFormat}
                   drives={drives}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
+                  totalItemCount={rightKnownCounts?.totalCount}
                   isLoadingDirectory={rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
                   onLoadMore={() => rightAtRecycleBin ? void loadMoreRecycleBin() : void loadMoreNativeDirectory(rightTabs[activeRightTabIndex].currentPath)}
                   allFiles={allFiles}
@@ -5132,6 +5142,7 @@ export default function App() {
                   dateFormat={dateFormat}
                   drives={drives}
                   hasMore={currentAtRecycleBin ? recycleBinPage.hasMore : (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.hasMore}
+                  totalItemCount={activeKnownCounts?.totalCount}
                   isLoadingDirectory={(activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.loading || (currentTab.currentPath === SYSTEM_HOME_PATH && systemHomeLoading) || (currentAtRecycleBin && recycleBinPage.loading)}
                   onLoadMore={() => currentAtRecycleBin ? void loadMoreRecycleBin() : void loadMoreNativeDirectory(currentTab.currentPath)}
                   allFiles={allFiles}
@@ -5184,6 +5195,9 @@ export default function App() {
         activePane={activePane}
         currentTab={currentTab}
         activeFiles={activeDisplayFiles}
+        hasMoreItems={currentAtRecycleBin ? recycleBinPage.hasMore : (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.hasMore ?? false}
+        totalFileCount={activeKnownCounts?.fileCount}
+        totalFolderCount={activeKnownCounts?.folderCount}
         hiddenItemsCount={hiddenItemsCount}
         showHiddenFiles={showHiddenFiles}
         drives={drives}

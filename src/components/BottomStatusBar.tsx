@@ -10,6 +10,9 @@ interface BottomStatusBarProps {
   activePane: 'left' | 'right';
   currentTab: TabState;
   activeFiles: FileItem[];
+  hasMoreItems: boolean;
+  totalFileCount?: number;
+  totalFolderCount?: number;
   hiddenItemsCount: number | null;
   showHiddenFiles: boolean;
   drives: DriveInfo[];
@@ -105,6 +108,9 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
   activePane,
   currentTab,
   activeFiles,
+  hasMoreItems,
+  totalFileCount,
+  totalFolderCount,
   hiddenItemsCount,
   showHiddenFiles,
   drives,
@@ -200,6 +206,12 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
   const localUsageColor = localUsedPct >= 90 ? 'bg-rose-500' : localUsedPct >= 75 ? 'bg-amber-400' : 'bg-cyan-400';
   const remainingPathCharacters = MAX_PATH_WINDOWS - pathLength;
   const formatCount = (value: number) => new Intl.NumberFormat(locale).format(value);
+  const loadedCount = (value: number, knownCount?: number) => knownCount === undefined
+    ? `${formatCount(value)}${hasMoreItems ? '+' : ''}`
+    : formatCount(knownCount);
+  const displayFileCount = loadedCount(fileItems.length, totalFileCount);
+  const displayFolderCount = loadedCount(folderItems.length, totalFolderCount);
+  const displayTotalCount = loadedCount(activeFiles.length, totalFileCount === undefined || totalFolderCount === undefined ? undefined : totalFileCount + totalFolderCount);
   const selectedItemCount = selectedFileItems.length + selectedFolderItems.length;
   const shortcutsTooltip = (
     <StatusTooltipCard
@@ -334,11 +346,11 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
           </>
         ) : (
           <>
-            <Tooltip label={<StatusTooltipCard icon={<File className="h-4 w-4" />} title={t.statusBar.files} primary={`${formatCount(selectedFileItems.length)} / ${formatCount(fileItems.length)}`} rows={[{ label: t.statusBar.selected, value: formatCount(selectedFileItems.length), tone: 'cyan' }, { label: t.statusBar.inFolder, value: formatCount(fileItems.length) }]} />} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-400 font-bold">{language === 'es' ? 'Archivos:' : 'Files:'}</span><span className="text-yellow-300 font-bold">{selectedFileItems.length}/{fileItems.length}</span></div></Tooltip>
+            <Tooltip label={<StatusTooltipCard icon={<File className="h-4 w-4" />} title={t.statusBar.files} primary={`${formatCount(selectedFileItems.length)} / ${displayFileCount}`} rows={[{ label: t.statusBar.selected, value: formatCount(selectedFileItems.length), tone: 'cyan' }, { label: t.statusBar.inFolder, value: displayFileCount }]} />} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-400 font-bold">{language === 'es' ? 'Archivos:' : 'Files:'}</span><span className="text-yellow-300 font-bold">{selectedFileItems.length}/{displayFileCount}</span></div></Tooltip>
 
-            <Tooltip label={<StatusTooltipCard icon={<Folder className="h-4 w-4" />} title={t.statusBar.folders} primary={`${formatCount(selectedFolderItems.length)} / ${formatCount(folderItems.length)}`} rows={[{ label: t.statusBar.selected, value: formatCount(selectedFolderItems.length), tone: 'cyan' }, { label: t.statusBar.inFolder, value: formatCount(folderItems.length) }]} />} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-400 font-bold">{language === 'es' ? 'Carpetas:' : 'Folders:'}</span><span className="text-yellow-300 font-bold">{selectedFolderItems.length}/{folderItems.length}</span></div></Tooltip>
+            <Tooltip label={<StatusTooltipCard icon={<Folder className="h-4 w-4" />} title={t.statusBar.folders} primary={`${formatCount(selectedFolderItems.length)} / ${displayFolderCount}`} rows={[{ label: t.statusBar.selected, value: formatCount(selectedFolderItems.length), tone: 'cyan' }, { label: t.statusBar.inFolder, value: displayFolderCount }]} />} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-400 font-bold">{language === 'es' ? 'Carpetas:' : 'Folders:'}</span><span className="text-yellow-300 font-bold">{selectedFolderItems.length}/{displayFolderCount}</span></div></Tooltip>
 
-            <Tooltip label={<StatusTooltipCard icon={<List className="h-4 w-4" />} title={t.statusBar.folderContents} primary={formatCount(activeFiles.length)} rows={[{ label: t.statusBar.files, value: formatCount(fileItems.length) }, { label: t.statusBar.folders, value: formatCount(folderItems.length) }, { label: t.statusBar.selected, value: formatCount(selectedItemCount), tone: 'cyan' }]} />} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-400 font-bold">Total:</span><span className="text-yellow-300 font-bold">{activeFiles.length}</span></div></Tooltip>
+            <Tooltip label={<StatusTooltipCard icon={<List className="h-4 w-4" />} title={t.statusBar.folderContents} primary={displayTotalCount} description={hasMoreItems ? t.pane.moreItemsAvailable : undefined} rows={[{ label: t.statusBar.files, value: displayFileCount }, { label: t.statusBar.folders, value: displayFolderCount }, { label: t.statusBar.selected, value: formatCount(selectedItemCount), tone: 'cyan' }]} />} placement="top"><div className="flex items-center gap-1 px-2 py-0.5 bg-neutral-950 border border-neutral-800 text-[10px] whitespace-nowrap"><span className="text-yellow-400 font-bold">Total:</span><span className="text-yellow-300 font-bold">{displayTotalCount}</span></div></Tooltip>
             {hiddenItemsCount !== null && hiddenItemsCount > 0 && (
               <Tooltip
                 label={(

@@ -82,6 +82,7 @@ interface FilePaneProps {
   dateFormat: DateFormatMode;
   drives: DriveInfo[];
   hasMore?: boolean;
+  totalItemCount?: number;
   isLoadingDirectory?: boolean;
   onLoadMore?: () => void;
   allFiles: FileItem[];
@@ -330,6 +331,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   dateFormat,
   drives,
   hasMore = false,
+  totalItemCount,
   isLoadingDirectory = false,
   onLoadMore,
   onNavigate,
@@ -1716,6 +1718,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
     );
   };
 
+  const visibleItemCount = `${files.length}${hasMore ? '+' : ''}`;
+  const itemCountLabel = hasMore && totalItemCount !== undefined
+    ? t.pane.loadedOfTotal.replace('{loaded}', String(files.length)).replace('{total}', String(totalItemCount))
+    : t.pane.itemsCount.replace('{count}', visibleItemCount);
   const tabStrip = (
       <div
         role="group"
@@ -1986,7 +1992,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         </div>
 
         <div className="text-[10px] text-neutral-400 font-sans whitespace-nowrap">
-          {files.length} elem.
+          {itemCountLabel}
         </div>
       </div>
 
@@ -2392,10 +2398,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* 6. Footer Status Bar with Mini Storage Distribution Strip */}
       <div className="px-2.5 py-1 bg-neutral-950 border-t border-neutral-800 text-[10px] font-sans text-neutral-400 flex items-center justify-between select-none gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
-          <span>{files.length} objetos</span>
+          <span>{itemCountLabel}</span>
           {selectedFiles.length > 0 ? (
             <span className="text-cyan-300 font-semibold truncate">
-              {selectedFiles.length} selec. ({formatFileSize(selectedBytes)})
+              {t.pane.selectedCount.replace('{count}', String(selectedFiles.length))} ({formatFileSize(selectedBytes)})
             </span>
           ) : (
             <span className="text-neutral-500 hidden sm:inline">
