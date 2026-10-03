@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Compass, Info, Keyboard, Palette, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
+import { Check, Compass, FolderOpen, Info, Keyboard, Palette, RotateCcw, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { type AppTheme, useTheme } from '../themes/ThemeContext';
 import { Tooltip } from './Tooltip';
 import { DialogButton } from './DialogButton';
-import { type HiddenItemStyle, type NavigationTransitionStyle, type RecentItemStyle } from '../types';
+import { type GroupByField, type HiddenItemStyle, type NavigationTransitionStyle, type RecentItemStyle, type SortField, type SortOrder, type ViewMode } from '../types';
+import type { FolderStylePreference, SavedFolderStyles } from '../utils/folderStylePreferences';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
 import { ColorValueEditor } from './ColorValueEditor';
@@ -32,6 +33,9 @@ interface SettingsModalProps {
   onMouseGesturesEnabledChange: (enabled: boolean) => void;
   folderStyleLocked: boolean;
   onFolderStyleLockedChange: (enabled: boolean) => void;
+  savedFolderStyles: SavedFolderStyles;
+  onSavedFolderStyleChange: (path: string, style: FolderStylePreference) => boolean;
+  onSavedFolderStyleRemove: (path: string) => boolean;
   recentItemStyle: RecentItemStyle;
   onRecentItemStyleChange: (style: RecentItemStyle) => void;
   onRecentItemStyleReset: () => void;
@@ -72,8 +76,8 @@ interface SettingsModalProps {
 }
 
 const themes: AppTheme[] = ['cyberfiles', 'gray', 'light'];
-type SettingsTab = 'general' | 'appearance' | 'navigation' | 'shortcuts';
-const settingsTabs: SettingsTab[] = ['general', 'appearance', 'navigation', 'shortcuts'];
+type SettingsTab = 'general' | 'appearance' | 'navigation' | 'folders' | 'shortcuts';
+const settingsTabs: SettingsTab[] = ['general', 'appearance', 'navigation', 'folders', 'shortcuts'];
 const RECENT_ITEM_AUTO_COLORS: Record<AppTheme, string> = {
   cyberfiles: '#fef3c7',
   gray: '#e5e5e5',
@@ -122,6 +126,9 @@ export function SettingsModal({
   onMouseGesturesEnabledChange,
   folderStyleLocked,
   onFolderStyleLockedChange,
+  savedFolderStyles,
+  onSavedFolderStyleChange,
+  onSavedFolderStyleRemove,
   recentItemStyle,
   onRecentItemStyleChange,
   onRecentItemStyleReset,
@@ -162,6 +169,7 @@ export function SettingsModal({
 }: SettingsModalProps) {
   const { t, language, setLanguage } = useLanguage();
   const [tab, setTab] = useState<SettingsTab>('general');
+  const [folderStyleDrafts, setFolderStyleDrafts] = useState<Record<string, FolderStylePreference>>({});
   const contentRef = useRef<HTMLDivElement>(null);
   const tabSettingsRef = useRef<HTMLDivElement>(null);
   const lastFocusTabSettingsRequest = useRef(0);
@@ -177,6 +185,17 @@ export function SettingsModal({
     setIsRecordingShortcut(false);
     setShortcutCaptureError(null);
     contentRef.current?.scrollTo({ top: 0 });
+  };
+  const savedStyleEntries = Object.entries(savedFolderStyles).sort(([first], [second]) => first.localeCompare(second));
+  const updateFolderStyleDraft = (key: string, changes: Partial<FolderStylePreference>) => {
+    setFolderStyleDrafts(previous => ({ ...previous, [key]: { ...(previous[key] ?? savedFolderStyles[key]), ...changes } }));
+  };
+  const clearFolderStyleDraft = (key: string) => {
+    setFolderStyleDrafts(previous => {
+      const next = { ...previous };
+      delete next[key];
+      return next;
+    });
   };
   const { theme, setTheme } = useTheme();
   const recentItemTextColor = recentItemStyle.textColor === 'auto'
@@ -269,6 +288,7 @@ export function SettingsModal({
                 { id: 'general', label: t.settings.generalTab, icon: <SlidersHorizontal className="h-3.5 w-3.5" /> },
                 { id: 'appearance', label: t.settings.appearance, icon: <Palette className="h-3.5 w-3.5" /> },
                 { id: 'navigation', label: t.settings.navigationTab, icon: <Compass className="h-3.5 w-3.5" /> },
+                { id: 'folders', label: t.settings.foldersTab, icon: <FolderOpen className="h-3.5 w-3.5" /> },
                 { id: 'shortcuts', label: t.settings.shortcutsTab, icon: <Keyboard className="h-3.5 w-3.5" /> },
               ] as const).map(item => (
                 <button
@@ -912,7 +932,7 @@ export function SettingsModal({
 
             </>
           )}
-          {tab === 'navigation' && (
+          {tab === 'folders' && (
             <>
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
             <label className="flex cursor-pointer items-start gap-2.5">
@@ -929,6 +949,82 @@ export function SettingsModal({
             </label>
           </div>
 
+          <section aria-labelledby="saved-folder-styles-heading" className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <h3 id="saved-folder-styles-heading" className="text-xs font-semibold text-neutral-100">{t.settings.savedFolderStylesTitle}</h3>
+              <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-[10px] text-neutral-400">{savedStyleEntries.length}</span>
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-neutral-400">{t.settings.savedFolderStylesDescription}</p>
+            {savedStyleEntries.length === 0 ? (
+              <p className="mt-3 rounded-md border border-dashed border-neutral-700 px-3 py-4 text-xs leading-relaxed text-neutral-400">{t.settings.savedFolderStylesEmpty}</p>
+            ) : (
+              <div className="mt-3 space-y-3">
+                {savedStyleEntries.map(([key, savedStyle]) => {
+                  const draft = folderStyleDrafts[key] ?? savedStyle;
+                  const displayPath = savedStyle.displayPath ?? key;
+                  const folderName = displayPath.split(/[\\/]/).filter(Boolean).at(-1) ?? displayPath;
+                  const isDirty = draft.viewMode !== savedStyle.viewMode || draft.sortField !== savedStyle.sortField
+                    || draft.sortOrder !== savedStyle.sortOrder || draft.groupBy !== savedStyle.groupBy;
+                  return (
+                    <div key={key} className="rounded-lg border border-neutral-700/70 bg-neutral-900/70 p-3">
+                      <div className="flex min-w-0 items-start gap-2">
+                        <FolderOpen className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" aria-hidden="true" />
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold text-neutral-100">{folderName}</div>
+                          <div className="mt-0.5 break-all font-mono text-[10px] text-neutral-400">{displayPath}</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <label className="text-[10px] font-medium text-neutral-400">
+                          {t.settings.savedFolderStyleView}
+                          <select value={draft.viewMode} onChange={event => updateFolderStyleDraft(key, { viewMode: event.target.value as ViewMode })} className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-200">
+                            <option value="details">{t.toolbar.viewDetails}</option>
+                            <option value="compact">{t.toolbar.viewCompact}</option>
+                            <option value="icons">{t.toolbar.viewIcons}</option>
+                          </select>
+                        </label>
+                        <label className="text-[10px] font-medium text-neutral-400">
+                          {t.settings.savedFolderStyleSort}
+                          <select value={draft.sortField} onChange={event => updateFolderStyleDraft(key, { sortField: event.target.value as SortField })} className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-200">
+                            {([
+                              ['name', t.pane.columns.name],
+                              ['modifiedDate', t.pane.columns.modified],
+                              ['createdDate', t.pane.columns.created],
+                              ['type', t.pane.columns.type],
+                              ['size', t.pane.columns.size],
+                              ['extension', t.pane.columns.extension],
+                            ] as const).map(([field, label]) => <option key={field} value={field}>{label}</option>)}
+                          </select>
+                        </label>
+                        <label className="text-[10px] font-medium text-neutral-400">
+                          {t.settings.savedFolderStyleOrder}
+                          <select value={draft.sortOrder} onChange={event => updateFolderStyleDraft(key, { sortOrder: event.target.value as SortOrder })} className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-200">
+                            <option value="asc">{t.contextMenu.ascending}</option>
+                            <option value="desc">{t.contextMenu.descending}</option>
+                          </select>
+                        </label>
+                        <label className="text-[10px] font-medium text-neutral-400">
+                          {t.settings.savedFolderStyleGroup}
+                          <select value={draft.groupBy} onChange={event => updateFolderStyleDraft(key, { groupBy: event.target.value as GroupByField })} className="mt-1 w-full rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-xs text-neutral-200">
+                            <option value="none">{t.contextMenu.groupNone}</option>
+                            <option value="name">{t.pane.columns.name}</option>
+                            <option value="modifiedDate">{t.pane.columns.modified}</option>
+                            <option value="type">{t.pane.columns.type}</option>
+                            <option value="size">{t.pane.columns.size}</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div className="mt-3 flex flex-wrap justify-end gap-2 border-t border-neutral-800 pt-3">
+                        {isDirty && <button type="button" onClick={() => clearFolderStyleDraft(key)} className="rounded-md border border-neutral-700 px-2.5 py-1.5 text-[11px] text-neutral-300 hover:bg-neutral-800">{t.settings.savedFolderStyleDiscard}</button>}
+                        <button type="button" disabled={!isDirty} onClick={() => { if (onSavedFolderStyleChange(displayPath, draft)) clearFolderStyleDraft(key); }} className="rounded-md border border-cyan-700/70 bg-cyan-950/40 px-2.5 py-1.5 text-[11px] text-cyan-200 hover:bg-cyan-950/70 disabled:cursor-not-allowed disabled:opacity-40">{t.settings.savedFolderStyleSave}</button>
+                        <button type="button" onClick={() => { if (onSavedFolderStyleRemove(displayPath)) clearFolderStyleDraft(key); }} className="inline-flex items-center gap-1 rounded-md border border-rose-900/70 px-2.5 py-1.5 text-[11px] text-rose-300 hover:bg-rose-950/40"><Trash2 className="h-3 w-3" />{t.settings.savedFolderStyleRemove}</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
             </>
           )}
           {tab === 'general' && (

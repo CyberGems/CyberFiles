@@ -33,6 +33,10 @@ test('folder styles persist by path and invalid entries are ignored', () => {
   try {
     writeSavedFolderStyles(styles);
     assert.deepEqual(readSavedFolderStyles(), styles);
+    writeSavedFolderStyles({ [folderStylePathKey(downloadsPath)]: { ...downloadsStyle, displayPath: downloadsPath } });
+    const restored = readSavedFolderStyles();
+    assert.equal(restored[folderStylePathKey(downloadsPath)].displayPath, 'C:\\Users\\Carlos\\Downloads');
+    assert.deepEqual(resolveFolderStyle(downloadsPath, defaultStyle, restored), downloadsStyle);
     values.set('cyberfiles_saved_folder_styles_v1', JSON.stringify({ ...styles, 'C:/Invalid': { ...downloadsStyle, groupBy: 'unknown' } }));
     assert.deepEqual(readSavedFolderStyles(), styles);
   } finally {

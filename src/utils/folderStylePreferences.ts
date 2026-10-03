@@ -8,7 +8,7 @@ export interface FolderStylePreference {
   groupBy: GroupByField;
 }
 
-export type SavedFolderStyles = Record<string, FolderStylePreference>;
+export type SavedFolderStyles = Record<string, FolderStylePreference & { displayPath?: string }>;
 
 const STORAGE_KEY = 'cyberfiles_saved_folder_styles_v1';
 const SORT_FIELDS: SortField[] = ['name', 'size', 'type', 'createdDate', 'modifiedDate', 'extension'];
@@ -18,8 +18,14 @@ export function folderStylePathKey(path: string): string {
   return normalizeWindowsPath(path).replace(/[\\/]+$/, '').toLowerCase();
 }
 
+export function savedFolderStyleForPath(path: string, savedStyles: SavedFolderStyles): FolderStylePreference | undefined {
+  const saved = savedStyles[folderStylePathKey(path)];
+  if (!saved) return undefined;
+  return { viewMode: saved.viewMode, sortField: saved.sortField, sortOrder: saved.sortOrder, groupBy: saved.groupBy };
+}
+
 export function resolveFolderStyle(path: string, inherited: FolderStylePreference, savedStyles: SavedFolderStyles): FolderStylePreference {
-  return savedStyles[folderStylePathKey(path)] ?? {
+  return savedFolderStyleForPath(path, savedStyles) ?? {
     ...inherited,
     viewMode: isMediaPreviewPath(path) ? 'icons' : inherited.viewMode,
   };
@@ -53,7 +59,17 @@ export function readSavedFolderStyles(): SavedFolderStyles {
     const styles: SavedFolderStyles = {};
     for (const [path, style] of Object.entries(raw)) {
       if (path && path.length <= 32767 && !path.startsWith('::') && isFolderStylePreference(style)) {
-        styles[folderStylePathKey(path)] = style;
+        const savedStyle = style as FolderStylePreference & { displayPath?: unknown };
+        const displayPath = typeof savedStyle.displayPath === 'string' && folderStylePathKey(savedStyle.displayPath) === folderStylePathKey(path)
+          ? normalizeWindowsPath(savedStyle.displayPath)
+          : undefined;
+        styles[folderStylePathKey(path)] = {
+          viewMode: style.viewMode,
+          sortField: style.sortField,
+          sortOrder: style.sortOrder,
+          groupBy: style.groupBy,
+          ...(displayPath ? { displayPath } : {}),
+        };
       }
     }
     return styles;

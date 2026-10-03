@@ -63,7 +63,7 @@ import type { UndoHistoryItem } from './components/UndoHistoryMenu';
 
 import { useLanguage } from './locales/LanguageContext';
 import { readPaneColumnPreferences, writePaneColumnPreferences } from './utils/fileColumnPreferences';
-import { folderStylePathKey, folderStyleToCarry, readSavedFolderStyles, resolveFolderStyle, writeSavedFolderStyles, type SavedFolderStyles } from './utils/folderStylePreferences';
+import { folderStylePathKey, folderStyleToCarry, readSavedFolderStyles, resolveFolderStyle, savedFolderStyleForPath, writeSavedFolderStyles, type SavedFolderStyles } from './utils/folderStylePreferences';
 import {
   createProfileId,
   DEFAULT_LAYOUT_PROFILE_ID,
@@ -619,8 +619,8 @@ function restoreSessionTabs(snapshot: TabSessionSnapshot, pane: WorkspacePaneId,
     flatView: saved.flatView === true,
     selectedIds: [],
     focusedId: null,
-    ...(savedStyles[folderStylePathKey(saved.currentPath)] ?? {}),
-    folderStyle: savedStyles[folderStylePathKey(saved.currentPath)] ?? saved.folderStyle,
+    ...(savedFolderStyleForPath(saved.currentPath, savedStyles) ?? {}),
+    folderStyle: savedFolderStyleForPath(saved.currentPath, savedStyles) ?? saved.folderStyle,
     folderStyleOnEntry: saved.folderStyleOnEntry
       ? { ...saved.folderStyleOnEntry, groupBy: saved.folderStyleOnEntry.groupBy ?? 'none' }
       : saved.folderStyle
@@ -4769,24 +4769,23 @@ export default function App() {
     ? leftTabs[activeLeftTabIndex]
     : rightTabs[activeRightTabIndex];
 
-  const saveCurrentFolderStyle = () => {
-    const path = contextPaneTab.currentPath;
+  const saveFolderStyleForPath = (path: string, style: FolderStyle) => {
     const key = folderStylePathKey(path);
-    if (!path || path.startsWith('::')) return;
-    const style = getCurrentFolderStyle(contextPaneTab);
-    const nextStyles = { ...savedFolderStyles, [key]: style };
+    if (!path || path.startsWith('::')) return false;
+    const folderStyle = { viewMode: style.viewMode, sortField: style.sortField, sortOrder: style.sortOrder, groupBy: style.groupBy };
+    const nextStyles = { ...savedFolderStyles, [key]: { ...folderStyle, displayPath: normalizeWindowsPath(path) } };
     try {
       writeSavedFolderStyles(nextStyles);
     } catch {
       showToast(t.contextMenu.folderStyleSaveFailed);
-      return;
+      return false;
     }
     const updateOpenTabs = (tabs: TabState[]) => tabs.map(tab => {
       if (folderStylePathKey(tab.currentPath) !== key) return tab;
       return {
         ...tab,
-        ...style,
-        folderStyle: style,
+        ...folderStyle,
+        folderStyle,
         folderStyleOnEntry: tab.folderStyleOnEntry ?? DEFAULT_FOLDER_STYLE,
       };
     });
@@ -4794,18 +4793,19 @@ export default function App() {
     setLeftTabs(updateOpenTabs);
     setRightTabs(updateOpenTabs);
     showToast(t.contextMenu.folderStyleSaved);
+    return true;
   };
 
-  const removeCurrentFolderStyle = () => {
-    const key = folderStylePathKey(contextPaneTab.currentPath);
-    if (!savedFolderStyles[key]) return;
+  const removeFolderStyleForPath = (path: string) => {
+    const key = folderStylePathKey(path);
+    if (!savedFolderStyles[key]) return false;
     const nextStyles = { ...savedFolderStyles };
     delete nextStyles[key];
     try {
       writeSavedFolderStyles(nextStyles);
     } catch {
-      showToast(t.contextMenu.folderStyleSaveFailed);
-      return;
+      showToast(t.contextMenu.folderStyleRemoveFailed);
+      return false;
     }
     const updateOpenTabs = (tabs: TabState[]) => tabs.map(tab => {
       if (folderStylePathKey(tab.currentPath) !== key) return tab;
@@ -4821,7 +4821,11 @@ export default function App() {
     setLeftTabs(updateOpenTabs);
     setRightTabs(updateOpenTabs);
     showToast(t.contextMenu.folderStyleRemoved);
+    return true;
   };
+
+  const saveCurrentFolderStyle = () => saveFolderStyleForPath(contextPaneTab.currentPath, getCurrentFolderStyle(contextPaneTab));
+  const removeCurrentFolderStyle = () => removeFolderStyleForPath(contextPaneTab.currentPath);
 
   const isCommandLocation = (path: string) => Boolean(path) && path !== SYSTEM_HOME_PATH && path !== RECYCLE_BIN_PATH && !path.startsWith('::');
   const currentParentPath = isCommandLocation(currentTab.currentPath) ? getParentPath(currentTab.currentPath) : '';
@@ -5759,6 +5763,9 @@ export default function App() {
             onMouseGesturesEnabledChange={setMouseGesturesEnabled}
             folderStyleLocked={folderStyleLocked}
             onFolderStyleLockedChange={handleFolderStyleLockChange}
+            savedFolderStyles={savedFolderStyles}
+            onSavedFolderStyleChange={saveFolderStyleForPath}
+            onSavedFolderStyleRemove={removeFolderStyleForPath}
             recentItemStyle={recentItemStyle}
             hiddenItemStyle={hiddenItemStyle}
             onRecentItemStyleChange={setRecentItemStyle}
