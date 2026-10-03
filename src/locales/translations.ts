@@ -300,6 +300,9 @@ export const translations = {
     },
     settings: {
       title: 'Configuración',
+      generalTab: 'General',
+      navigationTab: 'Navegación',
+      shortcutsTab: 'Atajos',
       subtitle: 'Preferencias visuales y de navegación de esta aplicación',
       appearance: 'Apariencia',
       language: 'Idioma',
@@ -1356,6 +1359,9 @@ export const translations = {
     },
     settings: {
       title: 'Settings',
+      generalTab: 'General',
+      navigationTab: 'Navigation',
+      shortcutsTab: 'Shortcuts',
       subtitle: 'Appearance and navigation preferences for this application',
       appearance: 'Appearance',
       language: 'Language',

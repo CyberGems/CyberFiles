@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, Info, Keyboard, Palette, RotateCcw, X } from 'lucide-react';
+import { Check, Compass, Info, Keyboard, Palette, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { type AppTheme, useTheme } from '../themes/ThemeContext';
 import { Tooltip } from './Tooltip';
@@ -72,6 +72,8 @@ interface SettingsModalProps {
 }
 
 const themes: AppTheme[] = ['cyberfiles', 'gray', 'light'];
+type SettingsTab = 'general' | 'appearance' | 'navigation' | 'shortcuts';
+const settingsTabs: SettingsTab[] = ['general', 'appearance', 'navigation', 'shortcuts'];
 const RECENT_ITEM_AUTO_COLORS: Record<AppTheme, string> = {
   cyberfiles: '#fef3c7',
   gray: '#e5e5e5',
@@ -159,10 +161,23 @@ export function SettingsModal({
   onDoubleClickTabBarChange,
 }: SettingsModalProps) {
   const { t, language, setLanguage } = useLanguage();
+  const [tab, setTab] = useState<SettingsTab>('general');
+  const contentRef = useRef<HTMLDivElement>(null);
   const tabSettingsRef = useRef<HTMLDivElement>(null);
+  const lastFocusTabSettingsRequest = useRef(0);
   useEffect(() => {
-    if (isOpen && focusTabSettingsRequest > 0) tabSettingsRef.current?.scrollIntoView({ block: 'start' });
+    if (!isOpen || focusTabSettingsRequest <= lastFocusTabSettingsRequest.current) return;
+    lastFocusTabSettingsRequest.current = focusTabSettingsRequest;
+    setTab('navigation');
+    const frame = window.requestAnimationFrame(() => tabSettingsRef.current?.scrollIntoView({ block: 'start' }));
+    return () => window.cancelAnimationFrame(frame);
   }, [isOpen, focusTabSettingsRequest]);
+  const selectTab = (nextTab: SettingsTab) => {
+    setTab(nextTab);
+    setIsRecordingShortcut(false);
+    setShortcutCaptureError(null);
+    contentRef.current?.scrollTo({ top: 0 });
+  };
   const { theme, setTheme } = useTheme();
   const recentItemTextColor = recentItemStyle.textColor === 'auto'
     ? RECENT_ITEM_AUTO_COLORS[theme]
@@ -222,12 +237,12 @@ export function SettingsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-[80] flex items-center justify-end bg-black/70 backdrop-blur-sm" onMouseDown={onClose}>
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-title"
-        className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl"
+        className="cyberfiles-settings-panel flex h-full w-full max-w-[720px] flex-col overflow-hidden border-l border-neutral-700 bg-neutral-900 shadow-2xl"
         onMouseDown={event => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-neutral-800 px-5 py-4">
@@ -247,7 +262,47 @@ export function SettingsModal({
           </Tooltip>
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto p-5">
+        <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+          <aside className="shrink-0 border-b border-neutral-800 bg-neutral-950/55 p-2.5 sm:flex sm:w-40 sm:flex-col sm:border-b-0 sm:border-r">
+            <div role="tablist" aria-label={t.settings.title} className="flex gap-1 overflow-x-auto sm:flex-col sm:overflow-y-auto">
+              {([
+                { id: 'general', label: t.settings.generalTab, icon: <SlidersHorizontal className="h-3.5 w-3.5" /> },
+                { id: 'appearance', label: t.settings.appearance, icon: <Palette className="h-3.5 w-3.5" /> },
+                { id: 'navigation', label: t.settings.navigationTab, icon: <Compass className="h-3.5 w-3.5" /> },
+                { id: 'shortcuts', label: t.settings.shortcutsTab, icon: <Keyboard className="h-3.5 w-3.5" /> },
+              ] as const).map(item => (
+                <button
+                  key={item.id}
+                  id={'settings-tab-' + item.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === item.id}
+                  aria-controls="settings-tab-panel"
+                  tabIndex={tab === item.id ? 0 : -1}
+                  onClick={() => selectTab(item.id)}
+                  onKeyDown={event => {
+                    const currentIndex = settingsTabs.indexOf(item.id);
+                    const nextIndex = event.key === 'Home' ? 0
+                      : event.key === 'End' ? settingsTabs.length - 1
+                        : event.key === 'ArrowDown' || event.key === 'ArrowRight' ? (currentIndex + 1) % settingsTabs.length
+                          : event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? (currentIndex - 1 + settingsTabs.length) % settingsTabs.length
+                            : -1;
+                    if (nextIndex < 0) return;
+                    event.preventDefault();
+                    selectTab(settingsTabs[nextIndex]);
+                    document.getElementById('settings-tab-' + settingsTabs[nextIndex])?.focus();
+                  }}
+                  className={'flex shrink-0 items-center gap-2 rounded-md border px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide transition-colors sm:w-full ' + (tab === item.id ? 'border-cyan-600/60 bg-cyan-950/45 text-cyan-200' : 'border-transparent text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100')}
+                >
+                  {item.icon}
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </aside>
+          <div id="settings-tab-panel" ref={contentRef} role="tabpanel" aria-labelledby={'settings-tab-' + tab} tabIndex={0} className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto p-5">
+          {tab === 'appearance' && (
+            <>
           <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">{t.settings.appearance}</div>
           <div role="radiogroup" aria-label={t.settings.appearance} className="grid gap-2.5 sm:grid-cols-3">
             {themes.map(option => {
@@ -281,6 +336,10 @@ export function SettingsModal({
             })}
           </div>
 
+            </>
+          )}
+          {tab === 'general' && (
+            <>
           <div className="border-t border-neutral-800 pt-4">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">{t.settings.language}</div>
             <div className="mt-2 inline-flex rounded-lg border border-neutral-700 bg-neutral-950/60 p-1">
@@ -361,6 +420,10 @@ export function SettingsModal({
             )}
           </div>
 
+            </>
+          )}
+          {tab === 'appearance' && (
+            <>
           <div className="border-t border-neutral-800 pt-4">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.interfaceSection}</div>
             <div className="space-y-2">
@@ -446,6 +509,10 @@ export function SettingsModal({
               </div>
             </div>
           </div>
+            </>
+          )}
+          {tab === 'shortcuts' && (
+            <>
           <div className="border-t border-neutral-800 pt-4">
             <div className="flex items-start gap-2">
               <Keyboard className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-300" />
@@ -506,6 +573,10 @@ export function SettingsModal({
             </p>
           </div>
 
+            </>
+          )}
+          {tab === 'general' && (
+            <>
           <div className="border-t border-neutral-800 pt-4">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.instancesSection}</div>
             <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
@@ -532,6 +603,10 @@ export function SettingsModal({
             </div>
           </div>
 
+            </>
+          )}
+          {tab === 'navigation' && (
+            <>
           <div ref={tabSettingsRef} className="border-t border-neutral-800 pt-4">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.navigationSection}</div>
             <div className="space-y-2">
@@ -626,6 +701,10 @@ export function SettingsModal({
             </label>
           </div>
 
+            </>
+          )}
+          {tab === 'shortcuts' && (
+            <>
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
             <label className="flex cursor-pointer items-start gap-2.5">
               <input
@@ -641,6 +720,10 @@ export function SettingsModal({
             </label>
           </div>
 
+            </>
+          )}
+          {tab === 'appearance' && (
+            <>
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5">
@@ -827,6 +910,10 @@ export function SettingsModal({
               </label>
           </div>
 
+            </>
+          )}
+          {tab === 'navigation' && (
+            <>
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
             <label className="flex cursor-pointer items-start gap-2.5">
               <input
@@ -842,8 +929,15 @@ export function SettingsModal({
             </label>
           </div>
 
+            </>
+          )}
+          {tab === 'general' && (
+            <>
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
             {t.settings.persistenceNote}
+          </div>
+            </>
+          )}
           </div>
         </div>
 

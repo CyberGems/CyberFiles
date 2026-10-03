@@ -631,3 +631,15 @@ html[data-cyberfiles-navigation-pane]::view-transition-new(cyberfiles-navigation
     transition: none;
   }
 }
+@keyframes cyberfiles-settings-enter {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.cyberfiles-settings-panel {
+  animation: cyberfiles-settings-enter 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cyberfiles-settings-panel { animation: none; }
+}
