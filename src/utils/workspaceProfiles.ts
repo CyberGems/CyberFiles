@@ -41,7 +41,7 @@ export interface LayoutSnapshot {
 
 export type SavedTabState = Pick<
   TabState,
-  'currentPath' | 'history' | 'historyIndex' | 'sortField' | 'sortOrder' | 'groupBy' | 'viewMode' | 'folderStyle' | 'customTitle' | 'tabColor' | 'lockClose' | 'flatView'
+  'currentPath' | 'history' | 'historyIndex' | 'sortField' | 'sortOrder' | 'groupBy' | 'viewMode' | 'folderStyle' | 'folderStyleOnEntry' | 'customTitle' | 'tabColor' | 'lockClose' | 'flatView'
 > & { id: string; title: string };
 
 export interface TabSessionSnapshot {
@@ -182,6 +182,13 @@ function normalizeSavedTab(value: unknown, pane: WorkspacePaneId, index: number)
     groupBy: normalizeGroupBy(rawFolderStyle.groupBy ?? raw.groupBy),
     viewMode: normalizeViewMode(rawFolderStyle.viewMode),
   } : { sortField, sortOrder, groupBy, viewMode };
+  const rawStyleOnEntry = raw.folderStyleOnEntry && typeof raw.folderStyleOnEntry === 'object' ? raw.folderStyleOnEntry : undefined;
+  const folderStyleOnEntry = rawStyleOnEntry ? {
+    sortField: normalizeSortField(rawStyleOnEntry.sortField),
+    sortOrder: rawStyleOnEntry.sortOrder === 'desc' ? 'desc' as const : 'asc' as const,
+    groupBy: normalizeGroupBy(rawStyleOnEntry.groupBy),
+    viewMode: normalizeViewMode(rawStyleOnEntry.viewMode),
+  } : undefined;
   const currentPath = typeof raw.currentPath === 'string' ? raw.currentPath : '';
   const historyIndex = clampNumber(raw.historyIndex, history.length - 1, -1, Math.max(-1, history.length - 1));
   return {
@@ -199,6 +206,7 @@ function normalizeSavedTab(value: unknown, pane: WorkspacePaneId, index: number)
     groupBy,
     viewMode,
     folderStyle,
+    folderStyleOnEntry,
   };
 }
 

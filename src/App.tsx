@@ -63,6 +63,7 @@ import type { UndoHistoryItem } from './components/UndoHistoryMenu';
 
 import { useLanguage } from './locales/LanguageContext';
 import { readPaneColumnPreferences, writePaneColumnPreferences } from './utils/fileColumnPreferences';
+import { folderStylePathKey, folderStyleToCarry, readSavedFolderStyles, resolveFolderStyle, writeSavedFolderStyles, type SavedFolderStyles } from './utils/folderStylePreferences';
 import {
   createProfileId,
   DEFAULT_LAYOUT_PROFILE_ID,
@@ -492,6 +493,10 @@ function styleForPath(path: string, style: FolderStyle) {
   return { ...style, viewMode: isMediaPreviewPath(path) ? 'icons' as ViewMode : style.viewMode };
 }
 
+function displayedStyleForPath(path: string, style: FolderStyle, savedStyles: SavedFolderStyles): FolderStyle {
+  return resolveFolderStyle(path, style, savedStyles);
+}
+
 function readRecentFolderPaths(): string[] {
   try {
     const saved: unknown = JSON.parse(window.localStorage.getItem(RECENT_FOLDER_PATHS_KEY) || 'null');
@@ -521,6 +526,14 @@ function getTabFolderStyle(tab: TabState): FolderStyle {
     sortOrder: tab.folderStyle?.sortOrder ?? tab.sortOrder,
     groupBy: tab.folderStyle?.groupBy ?? tab.groupBy ?? 'none',
   };
+}
+
+function getCurrentFolderStyle(tab: TabState): FolderStyle {
+  return { viewMode: tab.viewMode, sortField: tab.sortField, sortOrder: tab.sortOrder, groupBy: tab.groupBy ?? 'none' };
+}
+
+function getNavigationFolderStyle(tab: TabState, locked: boolean, savedStyles: SavedFolderStyles): FolderStyle {
+  return folderStyleToCarry(tab.currentPath, getTabFolderStyle(tab), tab.folderStyleOnEntry, locked, savedStyles, DEFAULT_FOLDER_STYLE);
 }
 
 function setTabViewMode(tab: TabState, viewMode: ViewMode): TabState {
@@ -596,7 +609,7 @@ const createEmptyTab = (
   folderStyle: { sortField, sortOrder, groupBy: 'none', viewMode },
 });
 
-function restoreSessionTabs(snapshot: TabSessionSnapshot, pane: WorkspacePaneId, systemHomeTitle: string, recycleBinTitle: string): TabState[] {
+function restoreSessionTabs(snapshot: TabSessionSnapshot, pane: WorkspacePaneId, systemHomeTitle: string, recycleBinTitle: string, savedStyles: SavedFolderStyles): TabState[] {
   const savedTabs = pane === 'left' ? snapshot.leftTabs : snapshot.rightTabs;
   return savedTabs.map((saved, index) => ({
     ...saved,
@@ -606,6 +619,13 @@ function restoreSessionTabs(snapshot: TabSessionSnapshot, pane: WorkspacePaneId,
     flatView: saved.flatView === true,
     selectedIds: [],
     focusedId: null,
+    ...(savedStyles[folderStylePathKey(saved.currentPath)] ?? {}),
+    folderStyle: savedStyles[folderStylePathKey(saved.currentPath)] ?? saved.folderStyle,
+    folderStyleOnEntry: saved.folderStyleOnEntry
+      ? { ...saved.folderStyleOnEntry, groupBy: saved.folderStyleOnEntry.groupBy ?? 'none' }
+      : saved.folderStyle
+        ? { ...saved.folderStyle, groupBy: saved.folderStyle.groupBy ?? 'none' }
+        : undefined,
   }));
 }
 
@@ -616,7 +636,7 @@ function createSessionSnapshot(
   activeRightTabIndex: number,
   activePane: WorkspacePaneId,
 ): TabSessionSnapshot {
-  const saveTabs = (tabs: TabState[]) => tabs.map(({ id, title, customTitle, tabColor, lockClose, currentPath, history, historyIndex, sortField, sortOrder, groupBy, viewMode, folderStyle, flatView }) => {
+  const saveTabs = (tabs: TabState[]) => tabs.map(({ id, title, customTitle, tabColor, lockClose, currentPath, history, historyIndex, sortField, sortOrder, groupBy, viewMode, folderStyle, folderStyleOnEntry, flatView }) => {
     const historyOffset = Math.max(0, history.length - 80);
     const savedHistory = history.slice(historyOffset);
     return {
@@ -633,6 +653,7 @@ function createSessionSnapshot(
       groupBy,
       viewMode,
       folderStyle,
+      folderStyleOnEntry,
       flatView,
     };
   });
@@ -685,6 +706,7 @@ export default function App() {
   const [columnPreferencesRevision, setColumnPreferencesRevision] = useState(0);
   const [sessionReloadToken, setSessionReloadToken] = useState(initialSessionProfile ? 1 : 0);
   const [folderStyleLocked, setFolderStyleLocked] = useState(readFolderStyleLockPreference);
+  const [savedFolderStyles, setSavedFolderStyles] = useState<SavedFolderStyles>(readSavedFolderStyles);
   const [sidebarLocationsOpenInNewTab, setSidebarLocationsOpenInNewTab] = useState(() => readBooleanPreference(SIDEBAR_LOCATIONS_NEW_TAB_KEY, true));
   const [newTabsNextToCurrent, setNewTabsNextToCurrent] = useState(() => readBooleanPreference(NEW_TABS_NEXT_TO_CURRENT_KEY, true));
   const [showNewTabButton, setShowNewTabButton] = useState(() => readBooleanPreference(SHOW_NEW_TAB_BUTTON_KEY, true));
@@ -942,24 +964,25 @@ export default function App() {
 
   // Left Pane State & Tabs
   const [leftTabs, setLeftTabs] = useState<TabState[]>([
-    ...restoreSessionTabs(initialSessionSnapshot, 'left', t.sidebar.thisPc, t.sidebar.recycleBinTitle),
+    ...restoreSessionTabs(initialSessionSnapshot, 'left', t.sidebar.thisPc, t.sidebar.recycleBinTitle, savedFolderStyles),
   ]);
   const [activeLeftTabIndex, setActiveLeftTabIndex] = useState(initialSessionSnapshot?.activeLeftTabIndex ?? 0);
 
   // Right Pane State & Tabs
   const [rightTabs, setRightTabs] = useState<TabState[]>([
-    ...restoreSessionTabs(initialSessionSnapshot, 'right', t.sidebar.thisPc, t.sidebar.recycleBinTitle),
+    ...restoreSessionTabs(initialSessionSnapshot, 'right', t.sidebar.thisPc, t.sidebar.recycleBinTitle, savedFolderStyles),
   ]);
   const [activeRightTabIndex, setActiveRightTabIndex] = useState(initialSessionSnapshot?.activeRightTabIndex ?? 0);
 
   const resetTabsToDefaultFolderStyle = useCallback((tabs: TabState[]) => tabs.map(tab => {
-    const defaultStyle = styleForPath(tab.currentPath, DEFAULT_FOLDER_STYLE);
+    const defaultStyle = displayedStyleForPath(tab.currentPath, DEFAULT_FOLDER_STYLE, savedFolderStyles);
     return {
       ...tab,
       ...defaultStyle,
       folderStyle: { ...DEFAULT_FOLDER_STYLE },
+      folderStyleOnEntry: { ...DEFAULT_FOLDER_STYLE },
     };
-  }), []);
+  }), [savedFolderStyles]);
 
   const handleFolderStyleLockChange = useCallback((enabled: boolean) => {
     if (!enabled) {
@@ -1369,13 +1392,13 @@ export default function App() {
 
   const applySessionSnapshot = useCallback((snapshot: TabSessionSnapshot) => {
     const normalized = normalizeSessionSnapshot(snapshot);
-    setLeftTabs(restoreSessionTabs(normalized, 'left', t.sidebar.thisPc, t.sidebar.recycleBinTitle));
-    setRightTabs(restoreSessionTabs(normalized, 'right', t.sidebar.thisPc, t.sidebar.recycleBinTitle));
+    setLeftTabs(restoreSessionTabs(normalized, 'left', t.sidebar.thisPc, t.sidebar.recycleBinTitle, savedFolderStyles));
+    setRightTabs(restoreSessionTabs(normalized, 'right', t.sidebar.thisPc, t.sidebar.recycleBinTitle, savedFolderStyles));
     setActiveLeftTabIndex(normalized.activeLeftTabIndex);
     setActiveRightTabIndex(normalized.activeRightTabIndex);
     setActivePane(normalized.activePane);
     setSessionReloadToken(token => token + 1);
-  }, [t.sidebar.thisPc, t.sidebar.recycleBinTitle]);
+  }, [t.sidebar.thisPc, t.sidebar.recycleBinTitle, savedFolderStyles]);
 
   const persistProfileStoreForActive = useCallback((next: WorkspaceProfileStore, nextLayoutId: string, nextSessionId: string, nextWorkspaceId: string | null) => {
     persistWorkspaceStore({
@@ -2227,7 +2250,8 @@ export default function App() {
         : targetPath.split(/\\|\//).filter(Boolean).pop() || targetPath;
     if (openInNewTab) {
       const sourceTab = targetTab ?? createEmptyTab(`tab-source-${Date.now()}`);
-      const rememberedStyle = folderStyleLocked ? getTabFolderStyle(sourceTab) : DEFAULT_FOLDER_STYLE;
+      const rememberedStyle = getNavigationFolderStyle(sourceTab, folderStyleLocked, savedFolderStyles);
+      const targetStyle = displayedStyleForPath(targetPath, rememberedStyle, savedFolderStyles);
       const newHistory = getPathKey(sourceTab.currentPath) === pathKey
         ? sourceTab.history.slice()
         : [...sourceTab.history.slice(0, sourceTab.historyIndex + 1), targetPath].slice(-MAX_TAB_HISTORY_ENTRIES);
@@ -2241,8 +2265,9 @@ export default function App() {
         title: folderName,
         history: newHistory.length > 0 ? newHistory : [targetPath],
         historyIndex: newHistory.length > 0 ? newHistory.length - 1 : 0,
-        ...styleForPath(targetPath, rememberedStyle),
+        ...targetStyle,
         folderStyle: rememberedStyle,
+        folderStyleOnEntry: rememberedStyle,
         filterQuery: '',
         selectedIds: [],
         focusedId: null,
@@ -2271,15 +2296,17 @@ export default function App() {
         const newHistory = historyIndexOverride === undefined
           ? [...tab.history.slice(0, tab.historyIndex + 1), targetPath].slice(-MAX_TAB_HISTORY_ENTRIES)
           : tab.history;
-        const rememberedStyle = folderStyleLocked ? getTabFolderStyle(tab) : DEFAULT_FOLDER_STYLE;
+        const rememberedStyle = getNavigationFolderStyle(tab, folderStyleLocked, savedFolderStyles);
+        const targetStyle = displayedStyleForPath(targetPath, rememberedStyle, savedFolderStyles);
         return {
           ...tab,
           currentPath: targetPath,
           title: folderName,
           history: newHistory,
           historyIndex: historyIndexOverride ?? newHistory.length - 1,
-          ...styleForPath(targetPath, rememberedStyle),
+          ...targetStyle,
           folderStyle: rememberedStyle,
+          folderStyleOnEntry: rememberedStyle,
           filterQuery: '',
           selectedIds: returnedFolder ? [returnedFolder.id] : [],
           focusedId: returnedFolder?.id ?? null,
@@ -2414,7 +2441,7 @@ export default function App() {
     } finally {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
-  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, systemHomeItems, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectory, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, newTabsNextToCurrent, rememberRecentFolder, navigationTransitionsEnabled, navigationTransitionStyle, showHiddenFiles, invalidateFlatDirectories]);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, systemHomeItems, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectory, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, savedFolderStyles, newTabsNextToCurrent, rememberRecentFolder, navigationTransitionsEnabled, navigationTransitionStyle, showHiddenFiles, invalidateFlatDirectories]);
 
   const lastSessionReloadHandled = useRef(0);
   useEffect(() => {
@@ -2528,15 +2555,17 @@ export default function App() {
 
   const openWorkspaceRoot = useCallback((rootPath: string, rootName: string) => {
     const resetTabs = (tabs: TabState[]) => tabs.map(tab => {
-      const rememberedStyle = folderStyleLocked ? getTabFolderStyle(tab) : DEFAULT_FOLDER_STYLE;
+      const rememberedStyle = getNavigationFolderStyle(tab, folderStyleLocked, savedFolderStyles);
+      const targetStyle = displayedStyleForPath(rootPath, rememberedStyle, savedFolderStyles);
       return {
         ...tab,
         title: rootName,
         currentPath: rootPath,
         history: [rootPath],
         historyIndex: 0,
-        ...styleForPath(rootPath, rememberedStyle),
+        ...targetStyle,
         folderStyle: rememberedStyle,
+        folderStyleOnEntry: rememberedStyle,
         filterQuery: '',
         selectedIds: [],
         focusedId: null,
@@ -2544,7 +2573,7 @@ export default function App() {
     });
     setLeftTabs(resetTabs);
     setRightTabs(resetTabs);
-  }, [folderStyleLocked]);
+  }, [folderStyleLocked, savedFolderStyles]);
 
   const activateSystemHome = useCallback(() => {
     completeOnboarding();
@@ -2677,8 +2706,9 @@ export default function App() {
     const sourceTabs = pane === 'left' ? leftTabs : rightTabs;
     const activeIndex = sourceIndex ?? (pane === 'left' ? activeLeftTabIndex : activeRightTabIndex);
     const currentActive = sourceTabs[activeIndex];
-    const baseStyle = folderStyleLocked ? getTabFolderStyle(currentActive) : DEFAULT_FOLDER_STYLE;
+    const baseStyle = getNavigationFolderStyle(currentActive, folderStyleLocked, savedFolderStyles);
     const newPath = isTauriDesktop() ? SYSTEM_HOME_PATH : currentActive.currentPath;
+    const newStyle = displayedStyleForPath(newPath, baseStyle, savedFolderStyles);
     const newTab: TabState = {
       ...currentActive,
       id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -2689,8 +2719,9 @@ export default function App() {
       currentPath: newPath,
       history: isTauriDesktop() ? [SYSTEM_HOME_PATH] : currentActive.history,
       historyIndex: isTauriDesktop() ? 0 : currentActive.historyIndex,
-      ...styleForPath(newPath, baseStyle),
+      ...newStyle,
       folderStyle: baseStyle,
+      folderStyleOnEntry: baseStyle,
       filterQuery: '',
       selectedIds: [],
       focusedId: null,
@@ -2803,7 +2834,8 @@ export default function App() {
     } else if (action === 'parent') {
       const parent = getParentPath(tab.currentPath);
       if (canOpenTabParent(tab)) {
-        const rememberedStyle = folderStyleLocked ? getTabFolderStyle(tab) : DEFAULT_FOLDER_STYLE;
+        const rememberedStyle = getNavigationFolderStyle(tab, folderStyleLocked, savedFolderStyles);
+        const targetStyle = displayedStyleForPath(parent, rememberedStyle, savedFolderStyles);
         insertCopy(pane, {
           ...tab,
           id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -2814,8 +2846,9 @@ export default function App() {
           currentPath: parent,
           history: [parent],
           historyIndex: 0,
-          ...styleForPath(parent, rememberedStyle),
+          ...targetStyle,
           folderStyle: rememberedStyle,
+          folderStyleOnEntry: rememberedStyle,
           filterQuery: '',
           selectedIds: [],
           focusedId: null,
@@ -4736,6 +4769,60 @@ export default function App() {
     ? leftTabs[activeLeftTabIndex]
     : rightTabs[activeRightTabIndex];
 
+  const saveCurrentFolderStyle = () => {
+    const path = contextPaneTab.currentPath;
+    const key = folderStylePathKey(path);
+    if (!path || path.startsWith('::')) return;
+    const style = getCurrentFolderStyle(contextPaneTab);
+    const nextStyles = { ...savedFolderStyles, [key]: style };
+    try {
+      writeSavedFolderStyles(nextStyles);
+    } catch {
+      showToast(t.contextMenu.folderStyleSaveFailed);
+      return;
+    }
+    const updateOpenTabs = (tabs: TabState[]) => tabs.map(tab => {
+      if (folderStylePathKey(tab.currentPath) !== key) return tab;
+      return {
+        ...tab,
+        ...style,
+        folderStyle: style,
+        folderStyleOnEntry: tab.folderStyleOnEntry ?? DEFAULT_FOLDER_STYLE,
+      };
+    });
+    setSavedFolderStyles(nextStyles);
+    setLeftTabs(updateOpenTabs);
+    setRightTabs(updateOpenTabs);
+    showToast(t.contextMenu.folderStyleSaved);
+  };
+
+  const removeCurrentFolderStyle = () => {
+    const key = folderStylePathKey(contextPaneTab.currentPath);
+    if (!savedFolderStyles[key]) return;
+    const nextStyles = { ...savedFolderStyles };
+    delete nextStyles[key];
+    try {
+      writeSavedFolderStyles(nextStyles);
+    } catch {
+      showToast(t.contextMenu.folderStyleSaveFailed);
+      return;
+    }
+    const updateOpenTabs = (tabs: TabState[]) => tabs.map(tab => {
+      if (folderStylePathKey(tab.currentPath) !== key) return tab;
+      const inheritedStyle = folderStyleLocked ? tab.folderStyleOnEntry ?? DEFAULT_FOLDER_STYLE : DEFAULT_FOLDER_STYLE;
+      return {
+        ...tab,
+        ...styleForPath(tab.currentPath, inheritedStyle),
+        folderStyle: inheritedStyle,
+        folderStyleOnEntry: inheritedStyle,
+      };
+    });
+    setSavedFolderStyles(nextStyles);
+    setLeftTabs(updateOpenTabs);
+    setRightTabs(updateOpenTabs);
+    showToast(t.contextMenu.folderStyleRemoved);
+  };
+
   const isCommandLocation = (path: string) => Boolean(path) && path !== SYSTEM_HOME_PATH && path !== RECYCLE_BIN_PATH && !path.startsWith('::');
   const currentParentPath = isCommandLocation(currentTab.currentPath) ? getParentPath(currentTab.currentPath) : '';
   const activeWorkspaceRoot = isTauriDesktop() ? nativeRootPath.current : browserRootPath.current;
@@ -5460,6 +5547,9 @@ export default function App() {
         onRefresh={() => void handleNavigate(contextPaneTab.currentPath, contextPane, true)}
         onClearFilter={() => updatePaneTab(contextPane, tab => ({ ...tab, filterQuery: '' }))}
         onViewModeChange={mode => updatePaneTab(contextPane, tab => setTabViewMode(tab, mode))}
+        hasSavedFolderStyle={Boolean(savedFolderStyles[folderStylePathKey(contextPaneTab.currentPath)])}
+        onSaveFolderStyle={saveCurrentFolderStyle}
+        onRemoveFolderStyle={removeCurrentFolderStyle}
         onPreview={(item) => {
           touchFileAccessed(item.id);
           setPreviewOpen(true);

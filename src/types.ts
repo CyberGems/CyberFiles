@@ -91,6 +91,12 @@ export interface TabState {
     groupBy?: GroupByField;
     viewMode: ViewMode;
   };
+  folderStyleOnEntry?: {
+    sortField: SortField;
+    sortOrder: SortOrder;
+    groupBy: GroupByField;
+    viewMode: ViewMode;
+  };
 }
 
 export interface DriveInfo {

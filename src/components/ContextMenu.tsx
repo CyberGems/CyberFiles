@@ -5,6 +5,7 @@ import {
   ClipboardPaste,
   ChevronRight,
   BookmarkPlus,
+  BookmarkX,
   Copy,
   Edit3,
   Eye,
@@ -47,6 +48,9 @@ interface ContextMenuProps {
   onRefresh: () => void;
   onClearFilter: () => void;
   onViewModeChange: (mode: ViewMode) => void;
+  hasSavedFolderStyle: boolean;
+  onSaveFolderStyle: () => void;
+  onRemoveFolderStyle: () => void;
   onPreview: (item: FileItem) => void;
   supportsArchiveExtraction: boolean;
   onExtractArchive: (item: FileItem, mode: ArchiveExtractionMode) => void;
@@ -84,6 +88,9 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onRefresh,
   onClearFilter,
   onViewModeChange,
+  hasSavedFolderStyle,
+  onSaveFolderStyle,
+  onRemoveFolderStyle,
   onPreview,
   supportsArchiveExtraction,
   onExtractArchive,
@@ -136,7 +143,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const isSystemLocation = Boolean(item && (item.id.startsWith('system-drive-') || item.id.startsWith('system-location-')));
   const menuWidth = 264;
   const archiveItem = Boolean(item && !item.isFolder && ["zip", "rar"].includes(item.extension.toLowerCase()));
-  const menuHeight = isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? (supportsArchiveCreation ? 410 : 370) : item ? (archiveItem && supportsArchiveExtraction ? (supportsArchiveCreation ? 450 : 410) : supportsArchiveCreation ? 360 : 330) : sortMenuOpen ? 600 : groupMenuOpen ? 580 : newMenuOpen ? 460 : 440;
+  const menuHeight = (isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? (supportsArchiveCreation ? 410 : 370) : item ? (archiveItem && supportsArchiveExtraction ? (supportsArchiveCreation ? 450 : 410) : supportsArchiveCreation ? 360 : 330) : sortMenuOpen ? 600 : groupMenuOpen ? 580 : newMenuOpen ? 460 : 440) + (!item && canModifyFolder ? (hasSavedFolderStyle ? 76 : 42) : 0);
   const adjustedX = Math.max(8, Math.min(position.x, window.innerWidth - menuWidth - 8));
   const adjustedY = Math.max(8, Math.min(position.y, window.innerHeight - menuHeight - 8));
 
@@ -271,6 +278,13 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             <ViewMenuButton icon={<StretchHorizontal className="h-3.5 w-3.5" />} label={t.toolbar.viewCompact} selected={viewMode === 'compact'} onClick={() => { onViewModeChange('compact'); onClose(); }} />
             <ViewMenuButton icon={<LayoutGrid className="h-3.5 w-3.5" />} label={t.toolbar.viewIcons} selected={viewMode === 'icons'} onClick={() => { onViewModeChange('icons'); onClose(); }} />
           </div>
+          {canModifyFolder && <>
+            <MenuDivider />
+            <div className="py-0.5">
+              <MenuButton icon={<BookmarkPlus className="h-3.5 w-3.5 text-cyan-300" />} label={hasSavedFolderStyle ? t.contextMenu.updateFolderStyle : t.contextMenu.saveFolderStyle} onClick={() => { onSaveFolderStyle(); onClose(); }} />
+              {hasSavedFolderStyle && <MenuButton icon={<BookmarkX className="h-3.5 w-3.5 text-amber-300" />} label={t.contextMenu.removeFolderStyle} onClick={() => { onRemoveFolderStyle(); onClose(); }} />}
+            </div>
+          </>}
         </>
       )}
     </div>
