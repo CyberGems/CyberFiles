@@ -170,17 +170,6 @@ interface PanelViewPreferences {
   sidebarSplitPercent: number;
 }
 
-interface GlobalShortcutSettingsState {
-  enabled: boolean;
-  shortcut: string;
-  registered: boolean;
-}
-
-interface InstancePreferencesState {
-  allowMultipleInstances: boolean;
-  supported: boolean;
-}
-
 type PendingWorkspaceAction =
   | { type: 'quit'; remember: boolean }
   | { type: 'layout'; id: string }
@@ -1022,21 +1011,6 @@ export default function App() {
   const [isWorkspaceManagerOpen, setIsWorkspaceManagerOpen] = useState(false);
   const [isUnsavedWorkspaceChangesOpen, setIsUnsavedWorkspaceChangesOpen] = useState(false);
   const [pendingWorkspaceAction, setPendingWorkspaceAction] = useState<PendingWorkspaceAction | null>(null);
-  const [globalShortcutSettings, setGlobalShortcutSettings] = useState<GlobalShortcutSettingsState>({
-    enabled: true,
-    shortcut: DEFAULT_GLOBAL_SHORTCUT,
-    registered: false,
-  });
-  const [globalShortcutLoaded, setGlobalShortcutLoaded] = useState(false);
-  const [globalShortcutSupported, setGlobalShortcutSupported] = useState(false);
-  const [globalShortcutError, setGlobalShortcutError] = useState<string | null>(null);
-  const [instancePreferences, setInstancePreferences] = useState<InstancePreferencesState>({
-    allowMultipleInstances: false,
-    supported: false,
-  });
-  const [instancePreferencesLoaded, setInstancePreferencesLoaded] = useState(false);
-  const [instancePreferencesSupported, setInstancePreferencesSupported] = useState(false);
-  const [instancePreferencesError, setInstancePreferencesError] = useState<string | null>(null);
   const closeActionInProgress = useRef(false);
   const requestQuitWithUnsavedChangesRef = useRef<(remember: boolean) => void>(() => {});
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(() => {
@@ -1115,65 +1089,6 @@ export default function App() {
   useEffect(() => {
     if (isTauriDesktop()) void setNativeTrayLanguage(language).catch(() => {});
   }, [language]);
-
-  useEffect(() => {
-    if (!isTauriDesktop()) {
-      setGlobalShortcutLoaded(true);
-      return;
-    }
-    setGlobalShortcutSupported(true);
-    void invoke<GlobalShortcutSettingsState>('get_global_shortcut_settings')
-      .then(settings => setGlobalShortcutSettings(settings))
-      .catch(() => setGlobalShortcutError(t.settings.shortcutUnavailable))
-      .finally(() => setGlobalShortcutLoaded(true));
-  }, [t.settings.shortcutUnavailable]);
-
-  const changeGlobalShortcutSettings = useCallback(async (settings: Pick<GlobalShortcutSettingsState, 'enabled' | 'shortcut'>) => {
-    if (!isTauriDesktop()) {
-      setGlobalShortcutError(t.settings.shortcutDesktopOnly);
-      return;
-    }
-    setGlobalShortcutError(null);
-    try {
-      const saved = await invoke<GlobalShortcutSettingsState>('set_global_shortcut_settings', settings);
-      setGlobalShortcutSettings(saved);
-    } catch {
-      setGlobalShortcutError(t.settings.shortcutRegisterError);
-      throw new Error(t.settings.shortcutRegisterError);
-    }
-  }, [t.settings.shortcutDesktopOnly, t.settings.shortcutRegisterError]);
-
-  useEffect(() => {
-    if (!isTauriDesktop()) {
-      setInstancePreferencesLoaded(true);
-      return;
-    }
-    void invoke<InstancePreferencesState>('get_instance_preferences')
-      .then(saved => {
-        setInstancePreferences(saved);
-        setInstancePreferencesSupported(saved.supported);
-      })
-      .catch(() => setInstancePreferencesError(t.settings.instancePreferencesUnavailable))
-      .finally(() => setInstancePreferencesLoaded(true));
-  }, [t.settings.instancePreferencesUnavailable]);
-
-  const changeInstancePreferences = useCallback(async (allowMultipleInstances: boolean) => {
-    if (!isTauriDesktop()) {
-      setInstancePreferencesError(t.settings.instancePreferencesDesktopOnly);
-      return;
-    }
-    setInstancePreferencesError(null);
-    try {
-      const saved = await invoke<InstancePreferencesState>('set_instance_preferences', {
-        allowMultipleInstances,
-      });
-      setInstancePreferences(saved);
-      setInstancePreferencesSupported(saved.supported);
-    } catch {
-      setInstancePreferencesError(t.settings.instancePreferencesSaveError);
-      throw new Error(t.settings.instancePreferencesSaveError);
-    }
-  }, [t.settings.instancePreferencesDesktopOnly, t.settings.instancePreferencesSaveError]);
 
   const runCloseAction = useCallback(async (choice: 'hide' | 'quit', remember = rememberCloseChoice) => {
     if (choice === 'quit' && transferOperationsRef.current.some(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status))) {
@@ -5664,16 +5579,6 @@ export default function App() {
             isOpen={isSettingsOpen}
             focusTabSettingsRequest={focusTabSettingsRequest}
             onClose={() => { setIsSettingsOpen(false); setFocusTabSettingsRequest(0); }}
-            globalShortcut={globalShortcutSettings}
-            globalShortcutLoaded={globalShortcutLoaded}
-            globalShortcutSupported={globalShortcutSupported}
-            globalShortcutError={globalShortcutError}
-            onGlobalShortcutChange={changeGlobalShortcutSettings}
-            instancePreferences={instancePreferences}
-            instancePreferencesLoaded={instancePreferencesLoaded}
-            instancePreferencesSupported={instancePreferencesSupported}
-            instancePreferencesError={instancePreferencesError}
-            onInstancePreferencesChange={changeInstancePreferences}
             emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
             mouseGesturesEnabled={mouseGesturesEnabled}
             onEmptyAreaDoubleClickNavigatesUpChange={setEmptyAreaDoubleClickNavigatesUp}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Compass, FolderOpen, Info, Keyboard, Palette, RotateCcw, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import { useLanguage } from '../locales/LanguageContext';
 import { type AppTheme, useTheme } from '../themes/ThemeContext';
 import { Tooltip } from './Tooltip';
@@ -8,25 +9,36 @@ import { type GroupByField, type HiddenItemStyle, type NavigationTransitionStyle
 import type { FolderStylePreference, SavedFolderStyles } from '../utils/folderStylePreferences';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
+import { isTauriDesktop } from '../utils/nativeFileSystem';
 import { ColorValueEditor } from './ColorValueEditor';
 
+interface GlobalShortcutSettingsState {
+  enabled: boolean;
+  shortcut: string;
+  registered: boolean;
+}
+
+interface InstancePreferencesState {
+  allowMultipleInstances: boolean;
+  supported?: boolean;
+}
 
 interface SettingsModalProps {
   isOpen: boolean;
   focusTabSettingsRequest: number;
   onClose: () => void;
-  onShowOnboarding: () => void;
-  onShowAbout: () => void;
-  globalShortcut: { enabled: boolean; shortcut: string; registered: boolean };
-  globalShortcutLoaded: boolean;
-  globalShortcutSupported: boolean;
-  globalShortcutError: string | null;
-  onGlobalShortcutChange: (settings: { enabled: boolean; shortcut: string }) => Promise<void>;
-  instancePreferences: { allowMultipleInstances: boolean };
-  instancePreferencesLoaded: boolean;
-  instancePreferencesSupported: boolean;
-  instancePreferencesError: string | null;
-  onInstancePreferencesChange: (allowMultipleInstances: boolean) => Promise<void>;
+  onShowOnboarding?: () => void;
+  onShowAbout?: () => void;
+  globalShortcut?: GlobalShortcutSettingsState;
+  globalShortcutLoaded?: boolean;
+  globalShortcutSupported?: boolean;
+  globalShortcutError?: string | null;
+  onGlobalShortcutChange?: (settings: { enabled: boolean; shortcut: string }) => Promise<void>;
+  instancePreferences?: { allowMultipleInstances: boolean };
+  instancePreferencesLoaded?: boolean;
+  instancePreferencesSupported?: boolean;
+  instancePreferencesError?: string | null;
+  onInstancePreferencesChange?: (allowMultipleInstances: boolean) => Promise<void>;
   emptyAreaDoubleClickNavigatesUp: boolean;
   onEmptyAreaDoubleClickNavigatesUpChange: (enabled: boolean) => void;
   mouseGesturesEnabled: boolean;
@@ -108,18 +120,18 @@ export function SettingsModal({
   isOpen,
   focusTabSettingsRequest,
   onClose,
-  onShowOnboarding,
-  onShowAbout,
-  globalShortcut,
-  globalShortcutLoaded,
-  globalShortcutSupported,
-  globalShortcutError,
-  onGlobalShortcutChange,
-  instancePreferences,
-  instancePreferencesLoaded,
-  instancePreferencesSupported,
-  instancePreferencesError,
-  onInstancePreferencesChange,
+  onShowOnboarding = () => {},
+  onShowAbout = () => {},
+  globalShortcut: propGlobalShortcut,
+  globalShortcutLoaded: propGlobalShortcutLoaded,
+  globalShortcutSupported: propGlobalShortcutSupported,
+  globalShortcutError: propGlobalShortcutError,
+  onGlobalShortcutChange: propOnGlobalShortcutChange,
+  instancePreferences: propInstancePreferences,
+  instancePreferencesLoaded: propInstancePreferencesLoaded,
+  instancePreferencesSupported: propInstancePreferencesSupported,
+  instancePreferencesError: propInstancePreferencesError,
+  onInstancePreferencesChange: propOnInstancePreferencesChange,
   emptyAreaDoubleClickNavigatesUp,
   onEmptyAreaDoubleClickNavigatesUpChange,
   mouseGesturesEnabled,
@@ -204,6 +216,100 @@ export function SettingsModal({
   const hiddenItemTextColor = hiddenItemStyle.textColor === 'auto'
     ? HIDDEN_ITEM_AUTO_COLORS[theme]
     : hiddenItemStyle.textColor;
+  const [internalGlobalShortcut, setInternalGlobalShortcut] = useState<GlobalShortcutSettingsState>({
+    enabled: true,
+    shortcut: 'Alt+Shift+F',
+    registered: false,
+  });
+  const [internalGlobalShortcutLoaded, setInternalGlobalShortcutLoaded] = useState(false);
+  const [internalGlobalShortcutSupported, setInternalGlobalShortcutSupported] = useState(false);
+  const [internalGlobalShortcutError, setInternalGlobalShortcutError] = useState<string | null>(null);
+
+  const [internalInstancePreferences, setInternalInstancePreferences] = useState<InstancePreferencesState>({
+    allowMultipleInstances: true,
+    supported: false,
+  });
+  const [internalInstancePreferencesLoaded, setInternalInstancePreferencesLoaded] = useState(false);
+  const [internalInstancePreferencesSupported, setInternalInstancePreferencesSupported] = useState(false);
+  const [internalInstancePreferencesError, setInternalInstancePreferencesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (propGlobalShortcut === undefined) {
+      if (!isTauriDesktop()) {
+        setInternalGlobalShortcutLoaded(true);
+      } else {
+        setInternalGlobalShortcutSupported(true);
+        void invoke<GlobalShortcutSettingsState>('get_global_shortcut_settings')
+          .then(settings => setInternalGlobalShortcut(settings))
+          .catch(() => setInternalGlobalShortcutError(t.settings.shortcutUnavailable))
+          .finally(() => setInternalGlobalShortcutLoaded(true));
+      }
+    }
+    if (propInstancePreferences === undefined) {
+      if (!isTauriDesktop()) {
+        setInternalInstancePreferencesLoaded(true);
+      } else {
+        void invoke<InstancePreferencesState>('get_instance_preferences')
+          .then(saved => {
+            setInternalInstancePreferences(saved);
+            setInternalInstancePreferencesSupported(saved.supported ?? true);
+          })
+          .catch(() => setInternalInstancePreferencesError(t.settings.instancePreferencesUnavailable))
+          .finally(() => setInternalInstancePreferencesLoaded(true));
+      }
+    }
+  }, [isOpen, propGlobalShortcut, propInstancePreferences, t.settings.shortcutUnavailable, t.settings.instancePreferencesUnavailable]);
+
+  const globalShortcut = propGlobalShortcut ?? internalGlobalShortcut;
+  const globalShortcutLoaded = propGlobalShortcutLoaded ?? internalGlobalShortcutLoaded;
+  const globalShortcutSupported = propGlobalShortcutSupported ?? internalGlobalShortcutSupported;
+  const globalShortcutError = propGlobalShortcutError ?? internalGlobalShortcutError;
+
+  const instancePreferences = propInstancePreferences ?? internalInstancePreferences;
+  const instancePreferencesLoaded = propInstancePreferencesLoaded ?? internalInstancePreferencesLoaded;
+  const instancePreferencesSupported = propInstancePreferencesSupported ?? internalInstancePreferencesSupported;
+  const instancePreferencesError = propInstancePreferencesError ?? internalInstancePreferencesError;
+
+  const handleGlobalShortcutChange = async (settings: Pick<GlobalShortcutSettingsState, 'enabled' | 'shortcut'>) => {
+    if (propOnGlobalShortcutChange) {
+      await propOnGlobalShortcutChange(settings);
+      return;
+    }
+    if (!isTauriDesktop()) {
+      setInternalGlobalShortcutError(t.settings.shortcutDesktopOnly);
+      return;
+    }
+    setInternalGlobalShortcutError(null);
+    try {
+      const saved = await invoke<GlobalShortcutSettingsState>('set_global_shortcut_settings', settings);
+      setInternalGlobalShortcut(saved);
+    } catch {
+      setInternalGlobalShortcutError(t.settings.shortcutRegisterError);
+      throw new Error(t.settings.shortcutRegisterError);
+    }
+  };
+
+  const handleInstancePreferencesChange = async (allowMultipleInstances: boolean) => {
+    if (propOnInstancePreferencesChange) {
+      await propOnInstancePreferencesChange(allowMultipleInstances);
+      return;
+    }
+    if (!isTauriDesktop()) {
+      setInternalInstancePreferencesError(t.settings.instancePreferencesDesktopOnly);
+      return;
+    }
+    setInternalInstancePreferencesError(null);
+    try {
+      const saved = await invoke<InstancePreferencesState>('set_instance_preferences', { allowMultipleInstances });
+      setInternalInstancePreferences(saved);
+      setInternalInstancePreferencesSupported(saved.supported ?? true);
+    } catch {
+      setInternalInstancePreferencesError(t.settings.instancePreferencesSaveError);
+      throw new Error(t.settings.instancePreferencesSaveError);
+    }
+  };
+
   const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
   const [shortcutCaptureError, setShortcutCaptureError] = useState<string | null>(null);
 
@@ -236,12 +342,12 @@ export function SettingsModal({
       const shortcut = [...modifiers, key].join('+');
       setIsRecordingShortcut(false);
       setShortcutCaptureError(null);
-      void onGlobalShortcutChange({ enabled: globalShortcut.enabled, shortcut }).catch(() => {});
+      void handleGlobalShortcutChange({ enabled: globalShortcut.enabled, shortcut }).catch(() => {});
     };
 
     window.addEventListener('keydown', handleShortcutKeyDown, true);
     return () => window.removeEventListener('keydown', handleShortcutKeyDown, true);
-  }, [isOpen, isRecordingShortcut, globalShortcut.enabled, onGlobalShortcutChange, t.settings.shortcutNeedsModifier]);
+  }, [isOpen, isRecordingShortcut, globalShortcut.enabled, handleGlobalShortcutChange, t.settings.shortcutNeedsModifier]);
 
   useEffect(() => {
     if (!isOpen) setIsRecordingShortcut(false);
@@ -547,7 +653,7 @@ export function SettingsModal({
                 type="checkbox"
                 checked={globalShortcut.enabled}
                 disabled={!globalShortcutLoaded || !globalShortcutSupported}
-                onChange={event => void onGlobalShortcutChange({ enabled: event.target.checked, shortcut: globalShortcut.shortcut }).catch(() => {})}
+                onChange={event => void handleGlobalShortcutChange({ enabled: event.target.checked, shortcut: globalShortcut.shortcut }).catch(() => {})}
                 className="h-4 w-4 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
               />
               {t.settings.hotkeyEnabled}
@@ -573,7 +679,7 @@ export function SettingsModal({
                 onClick={() => {
                   setIsRecordingShortcut(false);
                   setShortcutCaptureError(null);
-                  void onGlobalShortcutChange({ enabled: true, shortcut: 'Alt+Shift+F' }).catch(() => {});
+                  void handleGlobalShortcutChange({ enabled: true, shortcut: 'Alt+Shift+F' }).catch(() => {});
                 }}
                 className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -605,7 +711,7 @@ export function SettingsModal({
                     type="checkbox"
                     checked={instancePreferences.allowMultipleInstances}
                     disabled={!instancePreferencesLoaded || !instancePreferencesSupported}
-                    onChange={event => void onInstancePreferencesChange(event.target.checked).catch(() => {})}
+                    onChange={event => void handleInstancePreferencesChange(event.target.checked).catch(() => {})}
                     className="h-4 w-4 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400 disabled:cursor-not-allowed"
                   />
                   {t.settings.multipleInstancesAllowed}
