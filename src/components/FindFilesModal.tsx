@@ -19,12 +19,14 @@ import {
   Layers, 
   Filter,
   Clock,
-  HardDrive
+  HardDrive,
+  LoaderCircle
 } from 'lucide-react';
 import { FileItem, SearchMatch } from '../types';
 import { formatFileSize, getFileExtension } from '../utils/fileSystem';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { searchFileSystem, SearchOptions } from '../utils/searchIndex';
+import { isTauriDesktop, listNativeFlatDirectory } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 
@@ -99,6 +101,9 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [searchHistory, setSearchHistory] = useState<string[]>(readSearchHistory);
   const [isSearchHistoryOpen, setIsSearchHistoryOpen] = useState(false);
+  const [diskFiles, setDiskFiles] = useState<FileItem[]>([]);
+  const [isScanningDisk, setIsScanningDisk] = useState(false);
+  const scanGenerationRef = useRef(0);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -121,8 +126,42 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
       setExtensionFilter('');
       setSelectedIndex(0);
       setCopiedId(null);
+      setDiskFiles([]);
+      setIsScanningDisk(false);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (
+      !isOpen ||
+      scope !== 'current' ||
+      !currentPath ||
+      currentPath.startsWith('::') ||
+      currentPath === 'system://home' ||
+      currentPath === 'system://recycle-bin' ||
+      !isTauriDesktop()
+    ) {
+      setDiskFiles([]);
+      setIsScanningDisk(false);
+      return;
+    }
+
+    const currentGeneration = ++scanGenerationRef.current;
+    setIsScanningDisk(true);
+    void listNativeFlatDirectory(currentPath)
+      .then((result) => {
+        if (scanGenerationRef.current === currentGeneration) {
+          setDiskFiles(result.entries);
+          setIsScanningDisk(false);
+        }
+      })
+      .catch(() => {
+        if (scanGenerationRef.current === currentGeneration) {
+          setDiskFiles([]);
+          setIsScanningDisk(false);
+        }
+      });
+  }, [isOpen, scope, currentPath]);
 
   useEffect(() => {
     try {
@@ -142,6 +181,13 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
     return () => window.clearTimeout(timeoutId);
   }, [query, isOpen]);
 
+  const combinedFiles = useMemo(() => {
+    if (scope !== 'current' || diskFiles.length === 0) return allFiles;
+    const diskPathSet = new Set(diskFiles.map((file) => file.path.toLowerCase()));
+    const remaining = allFiles.filter((file) => !diskPathSet.has(file.path.toLowerCase()));
+    return [...diskFiles, ...remaining];
+  }, [allFiles, diskFiles, scope]);
+
   // Execute search
   const searchResults = useMemo(() => {
     const options: SearchOptions = {
@@ -156,8 +202,8 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
     };
     const hasFilters = sizeFilter !== 'all' || typeFilter !== 'all' || extensionFilter.trim().length > 0;
     if (!query.trim() && !hasFilters) return { matches: [], totalScanned: 0, durationMs: 0 };
-    return searchFileSystem(allFiles, options);
-  }, [allFiles, query, searchContent, scope, currentPath, sizeFilter, typeFilter, caseSensitive, useRegex, extensionFilter]);
+    return searchFileSystem(combinedFiles, options);
+  }, [combinedFiles, query, searchContent, scope, currentPath, sizeFilter, typeFilter, caseSensitive, useRegex, extensionFilter]);
 
   // Reset selected index when query or filters change
   useEffect(() => {
@@ -441,6 +487,12 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
                 <Folder className="w-3 h-3 text-amber-400" />
                 <span className="truncate max-w-[180px]">{t.findFiles.currentFolder.replace('{name}', currentPath.split('\\').pop() || currentPath)}</span>
               </button>
+              {isScanningDisk && (
+                <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-cyan-400 font-medium">
+                  <LoaderCircle className="w-3 h-3 animate-spin" />
+                  <span>{t.findFiles.scanningDisk}</span>
+                </span>
+              )}
             </div>
 
             {/* Content Search Toggle */}
@@ -459,13 +511,13 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
 
             {/* Size Filter Dropdown */}
             <div className="flex items-center gap-1">
-              <span className="text-[11px] text-neutral-400">Tamaño:</span>
+              <span className="text-[11px] text-neutral-400">{t.findFiles.size}</span>
               <select
                 value={sizeFilter}
                 onChange={(e) => setSizeFilter(e.target.value as any)}
                 className="bg-neutral-950 text-neutral-300 border border-neutral-800 rounded px-1.5 py-0.5 text-[11px] outline-none"
               >
-                <option value="all">Cualquier tamaño</option>
+                <option value="all">{t.findFiles.anySize}</option>
                 <option value="tiny">&lt; 10 KB</option>
                 <option value="small">10 KB - 100 KB</option>
                 <option value="medium">100 KB - 5 MB</option>
@@ -476,20 +528,20 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
 
             {/* Type Filter Dropdown */}
             <div className="flex items-center gap-1">
-              <span className="text-[11px] text-neutral-400">Tipo:</span>
+              <span className="text-[11px] text-neutral-400">{t.findFiles.type}</span>
               <select
                 value={typeFilter}
                 onChange={(e) => setTypeFilter(e.target.value as any)}
                 className="bg-neutral-950 text-neutral-300 border border-neutral-800 rounded px-1.5 py-0.5 text-[11px] outline-none"
               >
-                <option value="all">Todos los tipos</option>
-                <option value="code">Código (.rs, .ts, .json)</option>
-                <option value="text">Documentos de texto</option>
-                <option value="image">Imágenes</option>
-                <option value="executable">Ejecutables (.exe, .bat)</option>
-                <option value="audio">Audio</option>
-                <option value="video">Video</option>
-                <option value="folder">Solo carpetas</option>
+                <option value="all">{t.findFiles.allTypes}</option>
+                <option value="code">{t.findFiles.typeCode}</option>
+                <option value="text">{t.findFiles.typeText}</option>
+                <option value="image">{t.findFiles.typeImage}</option>
+                <option value="executable">{t.findFiles.typeExecutable}</option>
+                <option value="audio">{t.findFiles.typeAudio}</option>
+                <option value="video">{t.findFiles.typeVideo}</option>
+                <option value="folder">{t.findFiles.typeFolder}</option>
               </select>
             </div>
           </div>
