@@ -21,7 +21,7 @@ The portable edition requires the Microsoft Edge WebView2 Evergreen Runtime. The
 ## Features
 
 - Browse real Windows drives and common user folders from a unified This PC view.
-- Browse large directories with additional items loaded automatically as you scroll, while folder totals remain accurate.
+- Browse large directories with high performance using virtualized rendering, while folder totals remain accurate.
 - Use dual vertical, dual horizontal, or single-pane layouts, with independent tabs and navigation history.
 - Switch between details, compact, and icon-grid views. Resize details columns and optionally keep the current view style while navigating.
 - Preview common text, Markdown, HTML, and image files, plus the contents of ZIP and RAR archives.

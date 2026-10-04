@@ -766,7 +766,6 @@ export default function App() {
   }, [recentFolderPaths]);
   const nativeRootPath = useRef(startsAtSystemHome ? SYSTEM_HOME_PATH : '');
   const systemHomeWorkspace = useRef(startsAtSystemHome);
-  const browserRootPath = useRef('');
   const addingCustomQuickAccess = useRef(false);
   const [nativeDirectories, setNativeDirectories] = useState<Record<string, NativeDirectoryState>>({});
   const [flatDirectories, setFlatDirectories] = useState<Record<string, FlatDirectoryState>>({});
@@ -1929,59 +1928,6 @@ export default function App() {
     }
   }, [activeLeftTabIndex, activeRightTabIndex]);
 
-  const listBrowserDirectory = useCallback(async (path: string, explicitHandle?: any) => {
-    const pathKey = getPathKey(path);
-    const directoryHandle = explicitHandle ?? allFiles.find(item => getPathKey(item.path) === pathKey && item.isFolder)?.handle;
-    if (!directoryHandle || directoryHandle.kind !== 'directory') {
-      throw new Error('The browser folder handle is not available.');
-    }
-
-    const mapEntry = async (entry: any): Promise<FileItem> => {
-      const isFolder = entry.kind === 'directory';
-      const itemPath = joinWindowsPath(path, entry.name);
-      let size = 0;
-      let modifiedDate = '';
-      let modifiedAtMs: number | undefined;
-      if (!isFolder) {
-        try {
-          const file = await entry.getFile();
-          size = file.size;
-          modifiedAtMs = file.lastModified || undefined;
-          modifiedDate = file.lastModified
-            ? formatLocalDateTime(file.lastModified)
-            : '';
-        } catch {
-          // The entry can disappear or lose access while a page is being read.
-        }
-      }
-      return {
-        id: `browser-${encodeURIComponent(itemPath.toLowerCase())}`,
-        name: entry.name,
-        path: itemPath,
-        isFolder,
-        type: detectFileType(entry.name, isFolder),
-        size,
-        modifiedDate,
-        modifiedAtMs,
-        extension: isFolder ? '' : getFileExtension(entry.name),
-        handle: entry as FileSystemHandle,
-      };
-    };
-    const entries: FileItem[] = [];
-    const iterator: AsyncIterator<any> = directoryHandle.values();
-    let batchHandles: any[] = [];
-    while (true) {
-      const next = await iterator.next();
-      if (next.done) break;
-      batchHandles.push(next.value);
-      if (batchHandles.length === 64) {
-        entries.push(...await Promise.all(batchHandles.map(mapEntry)));
-        batchHandles = [];
-      }
-    }
-    if (batchHandles.length > 0) entries.push(...await Promise.all(batchHandles.map(mapEntry)));
-    return { entries, hasMore: false };
-  }, [allFiles]);
 
   const invalidateFlatDirectories = useCallback((paths: string[]) => {
     const affected = Object.keys(flatDirectoriesRef.current).filter(rootKey =>
@@ -2203,11 +2149,9 @@ export default function App() {
     const pathKey = getPathKey(targetPath);
     if (nativeOpeningWorkspace.current) return;
     if (forceRefresh && targetPath !== SYSTEM_HOME_PATH && targetPath !== RECYCLE_BIN_PATH) invalidateFlatDirectories([targetPath]);
-    const isDesktop = isTauriDesktop();
-    if (targetPath === SYSTEM_HOME_PATH && isDesktop) {
+    if (targetPath === SYSTEM_HOME_PATH) {
       systemHomeWorkspace.current = true;
       nativeRootPath.current = SYSTEM_HOME_PATH;
-      browserRootPath.current = '';
     }
     const targetTabs = targetPane === 'left' ? leftTabs : rightTabs;
     const targetTabIndex = targetPane === 'left' ? activeLeftTabIndex : activeRightTabIndex;
@@ -2237,7 +2181,7 @@ export default function App() {
         .find(item => item.isFolder && getPathKey(item.path) === getPathKey(returnedFolderPath))
       : undefined;
     const systemWorkspace = systemHomeWorkspace.current || targetTab?.history.includes(SYSTEM_HOME_PATH) === true;
-    const workspaceRoot = isDesktop ? nativeRootPath.current : browserRootPath.current;
+    const workspaceRoot = nativeRootPath.current;
     if (targetPath !== RECYCLE_BIN_PATH && workspaceRoot && !systemWorkspace && !isSameOrDescendantPath(targetPath, workspaceRoot)) {
       showToast(language === 'es' ? 'Abre una unidad o carpeta para cambiar el espacio de trabajo.' : 'Open a drive or folder to change the workspace.');
       return;
@@ -2364,9 +2308,7 @@ export default function App() {
     nativeInFlightDirectories.current.set(pathKey, generation);
     setNativeDirectories(previous => ({ ...previous, [pathKey]: { ...(previous[pathKey] || { nextOffset: 0, hasMore: false }), counts: forceRefresh ? undefined : previous[pathKey]?.counts, loading: true } }));
     try {
-      const listing = isDesktop
-        ? await listNativeDirectory(targetPath)
-        : await listBrowserDirectory(targetPath);
+      const listing = await listNativeDirectory(targetPath);
       if (generation !== nativeWorkspaceGeneration.current) return;
       const newEntryPaths = new Set(listing.entries.map(item => getPathKey(item.path)));
       setAllFiles(previous => {
@@ -2410,7 +2352,7 @@ export default function App() {
             : listing.entries.length,
           hasMore: listing.hasMore,
           loading: false,
-          counts: isDesktop ? (listing as Awaited<ReturnType<typeof listNativeDirectory>>).counts : undefined,
+          counts: listing.counts,
         },
       }));
 
@@ -2421,7 +2363,7 @@ export default function App() {
           const query = tab.filterQuery.trim() ? tab.filterQuery.toLowerCase() : '';
           const normalizedQuery = query.startsWith('*.') ? query.slice(2) : query.replace(/^\./, '');
           const selectedIds = listing.entries
-            .filter(item => showHiddenFiles || (!item.attributes?.includes('H') && (isDesktop || !item.name.startsWith('.'))))
+            .filter(item => showHiddenFiles || (!item.attributes?.includes('H') && !item.name.startsWith('.')))
             .filter(item => !query || item.name.toLowerCase().includes(query)
               || item.extension.toLowerCase().includes(normalizedQuery)
               || item.type.toLowerCase().includes(query))
@@ -2441,7 +2383,7 @@ export default function App() {
     } finally {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
-  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, systemHomeItems, leftTabs, rightTabs, updatePaneTab, language, listBrowserDirectory, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, savedFolderStyles, newTabsNextToCurrent, rememberRecentFolder, navigationTransitionsEnabled, navigationTransitionStyle, showHiddenFiles, invalidateFlatDirectories]);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, systemHomeItems, leftTabs, rightTabs, updatePaneTab, language, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, savedFolderStyles, newTabsNextToCurrent, rememberRecentFolder, navigationTransitionsEnabled, navigationTransitionStyle, showHiddenFiles, invalidateFlatDirectories]);
 
   const lastSessionReloadHandled = useRef(0);
   useEffect(() => {
@@ -2581,7 +2523,6 @@ export default function App() {
 
     systemHomeWorkspace.current = true;
     nativeRootPath.current = SYSTEM_HOME_PATH;
-    browserRootPath.current = '';
     nativeWorkspaceGeneration.current += 1;
     nativeOpeningWorkspace.current = false;
     nativeLoadedDirectories.current.clear();
@@ -2773,7 +2714,7 @@ export default function App() {
     if (!tab.currentPath || tab.currentPath === SYSTEM_HOME_PATH || tab.currentPath === RECYCLE_BIN_PATH) return false;
     const parent = getParentPath(tab.currentPath);
     if (!parent || getPathKey(parent) === getPathKey(tab.currentPath)) return false;
-    const workspaceRoot = isTauriDesktop() ? nativeRootPath.current : browserRootPath.current;
+    const workspaceRoot = nativeRootPath.current;
     return !workspaceRoot || systemHomeWorkspace.current || isSameOrDescendantPath(parent, workspaceRoot);
   };
 
@@ -4337,7 +4278,6 @@ export default function App() {
       const loaded = await loadNativeFolder(selectedPath);
       if (generation !== nativeWorkspaceGeneration.current) return;
       const rootKey = getPathKey(loaded.rootPath);
-      browserRootPath.current = '';
       nativeLoadedDirectories.current.clear();
       nativeLoadedDirectories.current.add(rootKey);
       nativeInFlightDirectories.current.clear();
@@ -4378,7 +4318,6 @@ export default function App() {
       // navigation so Back/Forward retain their per-tab history.
       systemHomeWorkspace.current = true;
       nativeRootPath.current = SYSTEM_HOME_PATH;
-      browserRootPath.current = '';
     }
     void handleNavigate(path, activePane, false, openInNewTab);
   }, [activePane, handleNavigate, sidebarLocationsOpenInNewTab]);
@@ -4419,19 +4358,10 @@ export default function App() {
     try {
       let path = '';
       let name = '';
-      if (isTauriDesktop()) {
-        const selectedPath = await chooseNativeFolder(t.sidebar.addQuickAccessDialogTitle);
-        if (!selectedPath) return;
-        path = selectedPath;
-        name = path.split(/\\|\//).filter(Boolean).pop() || path;
-      } else {
-        if (!browserRootPath.current || currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH) {
-          showToast(t.sidebar.quickAccessNeedFolder);
-          return;
-        }
-        path = currentTab.currentPath;
-        name = currentTab.title || path.split(/\\|\//).filter(Boolean).pop() || path;
-      }
+      const selectedPath = await chooseNativeFolder(t.sidebar.addQuickAccessDialogTitle);
+      if (!selectedPath) return;
+      path = selectedPath;
+      name = path.split(/\\|\//).filter(Boolean).pop() || path;
       addCustomQuickAccessPath(path, name);
     } catch (error) {
       if ((error as DOMException)?.name === 'AbortError') return;
@@ -4446,30 +4376,18 @@ export default function App() {
   }, [addCustomQuickAccessPath]);
   const handleOpenCustomQuickAccess = useCallback((item: QuickAccessItem, openInNewTab = sidebarLocationsOpenInNewTab) => {
     if (item.path === SYSTEM_HOME_PATH) {
-      if (!isTauriDesktop()) return;
       systemHomeWorkspace.current = true;
       nativeRootPath.current = SYSTEM_HOME_PATH;
-      browserRootPath.current = '';
       void handleNavigate(item.path, activePane, false, openInNewTab);
       return;
     }
 
-    if (isTauriDesktop()) {
-      if (!systemHomeWorkspace.current && nativeRootPath.current && !isSameOrDescendantPath(item.path, nativeRootPath.current)) {
-        systemHomeWorkspace.current = true;
-        nativeRootPath.current = SYSTEM_HOME_PATH;
-        browserRootPath.current = '';
-      }
-      void handleNavigate(item.path, activePane, false, openInNewTab);
-      return;
-    }
-
-    if (!browserRootPath.current || !isSameOrDescendantPath(item.path, browserRootPath.current)) {
-      showToast(t.sidebar.quickAccessReopenRoot.replace('{name}', item.name));
-      return;
+    if (!systemHomeWorkspace.current && nativeRootPath.current && !isSameOrDescendantPath(item.path, nativeRootPath.current)) {
+      systemHomeWorkspace.current = true;
+      nativeRootPath.current = SYSTEM_HOME_PATH;
     }
     void handleNavigate(item.path, activePane, false, openInNewTab);
-  }, [activePane, handleNavigate, showToast, sidebarLocationsOpenInNewTab, t.sidebar.quickAccessReopenRoot]);
+  }, [activePane, handleNavigate, sidebarLocationsOpenInNewTab]);
 
   const handleRenameCustomQuickAccess = useCallback((id: string, name: string) => {
     setCustomQuickAccess(previous => previous.map(item => item.id === id ? { ...item, name: name.trim().slice(0, 80) } : item));
@@ -4829,7 +4747,7 @@ export default function App() {
 
   const isCommandLocation = (path: string) => Boolean(path) && path !== SYSTEM_HOME_PATH && path !== RECYCLE_BIN_PATH && !path.startsWith('::');
   const currentParentPath = isCommandLocation(currentTab.currentPath) ? getParentPath(currentTab.currentPath) : '';
-  const activeWorkspaceRoot = isTauriDesktop() ? nativeRootPath.current : browserRootPath.current;
+  const activeWorkspaceRoot = nativeRootPath.current;
   const canNavigateUpFromCurrent = currentTab.currentPath === RECYCLE_BIN_PATH
     ? currentTab.historyIndex > 0 || systemHomeWorkspace.current
     : currentTab.currentPath !== SYSTEM_HOME_PATH && (
@@ -4867,7 +4785,6 @@ export default function App() {
     }
     systemHomeWorkspace.current = true;
     nativeRootPath.current = SYSTEM_HOME_PATH;
-    browserRootPath.current = '';
     void handleNavigate(folder.path, activePane);
   };
 
