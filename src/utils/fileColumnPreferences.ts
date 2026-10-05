@@ -14,8 +14,8 @@ export const DEFAULT_FILE_COLUMN_WIDTHS: FileColumnWidthsSnapshot = {
   name: null,
   type: 148,
   size: 84,
-  created: 116,
-  modified: 116,
+  created: 140,
+  modified: 140,
 };
 
 const COLUMNS: FileColumnId[] = ['extension', 'name', 'type', 'size', 'created', 'modified'];
