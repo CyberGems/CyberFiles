@@ -367,6 +367,18 @@ html[data-theme='light'] [data-system-home-icon='network'] {
 .theme-preview-cyberfiles span:first-child { background: #05080e; }
 .theme-preview-cyberfiles span:nth-child(2) { background: linear-gradient(135deg, #101b2d, #0b1220); }
 .theme-preview-cyberfiles span:last-child { background: #0b1220; border-top: 2px solid #22d3ee; }
+#root button:not([data-file-item="true"]):not([role="separator"]):not(:disabled),
+#root [role="button"]:not([data-file-item="true"]):not([aria-disabled="true"]),
+#root select:not(:disabled),
+#root summary {
+  cursor: pointer;
+}
+
+#root button:disabled,
+#root [role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 #root button:not([data-file-item="true"]):not([role="separator"]) {
   transform-origin: center;
   transition-property: scale, color, background-color, border-color, box-shadow, opacity;

@@ -22,11 +22,11 @@ function summarize(counts: NativeFolderChildCounts): FolderContentSummary {
   }
   if (counts.folderCount > 0) return { ...snapshot, kind: 'mixed' };
 
-  let onlyType: FileType | null = null;
+  let onlyType: Exclude<FileType, 'folder'> | null = null;
   const extensions = Object.entries(counts.extensionCounts).filter(([, count]) => count > 0);
   for (const [extension] of extensions) {
     const detected = detectFileType(extension ? `file.${extension}` : 'file', false);
-    const type = detected === 'folder' ? 'unknown' : detected;
+    const type: Exclude<FileType, 'folder'> = detected === 'folder' ? 'unknown' : detected;
     if (onlyType !== null && onlyType !== type) return { ...snapshot, kind: 'mixed' };
     onlyType = type;
   }
@@ -41,7 +41,7 @@ async function readFolderContents(item: Pick<FileItem, 'path' | 'handle'>): Prom
   const handle = item.handle as FileSystemDirectoryHandle | undefined;
   if (!handle || handle.kind !== 'directory') throw new Error('Folder handle unavailable.');
   const counts: NativeFolderChildCounts = { fileCount: 0, folderCount: 0, extensionCounts: {} };
-  for await (const child of handle.values()) {
+  for await (const child of (handle as any).values()) {
     if (child.kind === 'directory') {
       counts.folderCount += 1;
     } else {
