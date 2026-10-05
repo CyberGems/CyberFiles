@@ -61,6 +61,7 @@ function hasHiddenAttribute(item: FileItem | null | undefined): boolean {
 }
 
 interface SidebarProps {
+  activeTabId?: string;
   drives: DriveInfo[];
   quickAccess: QuickAccessItem[];
   onAddQuickAccess?: () => void;
@@ -115,6 +116,7 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
+  activeTabId,
   drives,
   quickAccess,
   onAddQuickAccess,
@@ -380,16 +382,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return () => { cancelled = true; };
   }, [currentPath, currentFolderItem?.handle]);
 
+  const previousTabIdRef = React.useRef(activeTabId);
+  useEffect(() => {
+    if (previousTabIdRef.current !== activeTabId) {
+      previousTabIdRef.current = activeTabId;
+      setFolderContextPath(currentPath);
+      if (currentPath === SYSTEM_HOME_PATH || currentPath === RECYCLE_BIN_PATH) {
+        setActiveTab('tree');
+      } else if (contextReactivityEnabled) {
+        setActiveTab('context');
+      }
+    }
+  }, [activeTabId, currentPath, contextReactivityEnabled]);
+
   useEffect(() => {
     if (folderContextPath === currentPath) return;
     setFolderContextPath(currentPath);
-    if (!contextReactivityEnabled) return;
     if (currentPath === SYSTEM_HOME_PATH || currentPath === RECYCLE_BIN_PATH) {
-      if (selectedItems.length === 0) {
+      if (currentPath === SYSTEM_HOME_PATH || selectedItems.length === 0) {
         setActiveTab('tree');
       }
       return;
     }
+    if (!contextReactivityEnabled) return;
     setActiveTab('context');
   }, [currentPath, folderContextPath, selectedItems.length, contextReactivityEnabled]);
 

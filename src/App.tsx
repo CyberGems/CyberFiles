@@ -4979,6 +4979,7 @@ export default function App() {
       <div className="relative grid min-h-0 min-w-0 flex-1 overflow-hidden" style={{ gridTemplateColumns: 'minmax(0, ' + sidebarSplitPercent + 'fr) 8px minmax(0, ' + (100 - sidebarSplitPercent) + 'fr)' }}>
         {/* Left Sidebar (Drives, Quick Access & Recent Files) */}
         <Sidebar
+          activeTabId={currentTab.id}
           drives={drives}
           quickAccess={sidebarQuickAccess}
           onAddQuickAccess={handleAddCustomQuickAccess}

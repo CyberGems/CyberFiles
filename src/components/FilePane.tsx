@@ -1441,7 +1441,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             return resizeFileColumns(widths, column, event.key === 'ArrowRight' ? 10 : -10);
           });
         }}
-        className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize touch-none outline-none before:pointer-events-none before:absolute before:left-1/2 before:top-1/2 before:h-5 before:w-1 before:-translate-x-1/2 before:-translate-y-1/2 before:rounded-full before:bg-transparent before:transition-colors after:pointer-events-none after:absolute after:bottom-1 after:left-1/2 after:top-1 after:w-0.5 after:-translate-x-1/2 after:rounded-full after:bg-neutral-700/80 after:transition-colors group-hover:before:bg-neutral-500/70 group-hover:after:bg-neutral-500 hover:before:bg-cyan-300 hover:after:bg-cyan-300 focus-visible:before:bg-cyan-300 focus-visible:after:bg-cyan-300"
+        className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize touch-none outline-none"
       />
     </Tooltip>
   );
@@ -2749,7 +2749,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 >
                   <span data-file-column-header={column} className="min-w-0 truncate">{columnLabel(column)}</span>
                   <DirectionIcon aria-hidden="true" className={`h-3 w-3 flex-shrink-0 ${isSorted ? 'text-cyan-400' : 'text-neutral-600'}`} />
-                  {resizeHandle(column, columnLabel(column))}
+                  {!isLast && resizeHandle(column, columnLabel(column))}
                 </div>
               </Tooltip>
             );
