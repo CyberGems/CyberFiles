@@ -196,6 +196,23 @@ html[data-theme='gray'] [data-file-item='true'][data-focused='true'] {
   outline-color: #737373;
 }
 
+/* Vertical add tab button */
+html[data-theme='gray'] .vertical-add-tab-btn {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: #9e9e9e;
+}
+
+html[data-theme='gray'] .vertical-add-tab-btn:hover {
+  border-color: #666666 !important;
+  background: #2a2a2a !important;
+  color: #ffffff !important;
+}
+
+html[data-theme='gray'] .vertical-add-tab-btn:hover svg {
+  color: #ffffff !important;
+}
+
 html[data-theme='light'] {
   color-scheme: light;
   --cyberfiles-recent-item-color: #8a5b00;

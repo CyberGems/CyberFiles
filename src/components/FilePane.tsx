@@ -2436,6 +2436,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
       </div>
       <div ref={verticalTabListRef} data-tab-strip-space="true" className="flex min-h-0 flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto p-1.5">
         {tabs.map((tabItem, idx) => renderFolderTab(tabItem, idx, true))}
+        {showNewTabButton && (
+          <Tooltip label={`${t.pane.addTab} (Ctrl+T)`} placement={tabStripPosition === 'left' ? 'right' : 'left'}>
+            <button
+              type="button"
+              aria-label={t.pane.addTab}
+              onClick={event => { event.stopPropagation(); onActivate(); onAddTab(); }}
+              className="vertical-add-tab-btn group mt-0.5 flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-neutral-800/80 bg-neutral-900/30 px-2.5 py-1.5 text-left text-xs font-medium text-neutral-400 transition-all hover:border-cyan-600/60 hover:bg-cyan-950/30 hover:text-cyan-200 outline-none focus-visible:ring-1 focus-visible:ring-cyan-400"
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0 text-neutral-500 transition-colors group-hover:text-cyan-300" />
+              <span className="truncate text-[11px]">{t.pane.addTab}</span>
+            </button>
+          </Tooltip>
+        )}
       </div>
     </aside>
   );
