@@ -21,6 +21,7 @@ import {
   RecentItemStyle,
   GroupByField,
   ArchiveExtractionMode,
+  TabCloseButtonMode,
 } from './types';
 import {
   getChildItems, 
@@ -109,6 +110,7 @@ const SIDEBAR_LOCATIONS_NEW_TAB_KEY = 'cyberfiles_sidebar_locations_open_in_new_
 const NEW_TABS_NEXT_TO_CURRENT_KEY = 'cyberfiles_new_tabs_next_to_current_v1';
 const SHOW_NEW_TAB_BUTTON_KEY = 'cyberfiles_show_new_tab_button_v1';
 const DOUBLE_CLICK_TAB_BAR_KEY = 'cyberfiles_double_click_tab_bar_v2';
+const TAB_CLOSE_BUTTON_MODE_KEY = 'cyberfiles_tab_close_button_mode_v1';
 const RECENT_ITEMS_BOLD_KEY = 'cyberfiles_bold_recent_items_v1';
 const RECENT_ITEMS_STYLE_KEY = 'cyberfiles_recent_items_style_v1';
 const HIDDEN_ITEMS_STYLE_KEY = 'cyberfiles_hidden_items_style_v1';
@@ -700,6 +702,10 @@ export default function App() {
   const [newTabsNextToCurrent, setNewTabsNextToCurrent] = useState(() => readBooleanPreference(NEW_TABS_NEXT_TO_CURRENT_KEY, true));
   const [showNewTabButton, setShowNewTabButton] = useState(() => readBooleanPreference(SHOW_NEW_TAB_BUTTON_KEY, true));
   const [doubleClickTabBar, setDoubleClickTabBar] = useState(() => readBooleanPreference(DOUBLE_CLICK_TAB_BAR_KEY, true));
+  const [tabCloseButtonMode, setTabCloseButtonMode] = useState<TabCloseButtonMode>(() => {
+    const val = window.localStorage.getItem(TAB_CLOSE_BUTTON_MODE_KEY);
+    return val === 'always' || val === 'active' ? val : 'hover';
+  });
   const [recentItemStyle, setRecentItemStyle] = useState<RecentItemStyle>(readRecentItemStyle);
   const [hiddenItemStyle, setHiddenItemStyle] = useState<HiddenItemStyle>(readHiddenItemStyle);
   const [imageTooltipThumbnailsEnabled, setImageTooltipThumbnailsEnabled] = useState(() => readBooleanPreference(IMAGE_TOOLTIP_THUMBNAILS_KEY, true));
@@ -1645,10 +1651,11 @@ export default function App() {
     try {
       window.localStorage.setItem(SHOW_NEW_TAB_BUTTON_KEY, String(showNewTabButton));
       window.localStorage.setItem(DOUBLE_CLICK_TAB_BAR_KEY, String(doubleClickTabBar));
+      window.localStorage.setItem(TAB_CLOSE_BUTTON_MODE_KEY, tabCloseButtonMode);
     } catch {
       // Keep tab bar preferences in memory when storage is unavailable.
     }
-  }, [showNewTabButton, doubleClickTabBar]);
+  }, [showNewTabButton, doubleClickTabBar, tabCloseButtonMode]);
 
   useEffect(() => {
     try {
@@ -4958,6 +4965,7 @@ export default function App() {
                   tabStripPosition={tabStripPosition}
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
+                  tabCloseButtonMode={tabCloseButtonMode}
                   columnPreferences={paneColumnPreferences.left}
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
@@ -5025,6 +5033,7 @@ export default function App() {
                   tabStripPosition={tabStripPosition}
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
+                  tabCloseButtonMode={tabCloseButtonMode}
                   columnPreferences={paneColumnPreferences.right}
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
@@ -5093,6 +5102,7 @@ export default function App() {
                   tabStripPosition={tabStripPosition}
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
+                  tabCloseButtonMode={tabCloseButtonMode}
                   columnPreferences={paneColumnPreferences.left}
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
@@ -5156,6 +5166,7 @@ export default function App() {
                   tabStripPosition={tabStripPosition}
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
+                  tabCloseButtonMode={tabCloseButtonMode}
                   columnPreferences={paneColumnPreferences.right}
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
@@ -5224,6 +5235,7 @@ export default function App() {
                 tabStripPosition={tabStripPosition}
                 showNewTabButton={showNewTabButton}
                 doubleClickTabBar={doubleClickTabBar}
+                tabCloseButtonMode={tabCloseButtonMode}
                 columnPreferences={paneColumnPreferences[activePane]}
                 isActive={true}
                 styleLocked={folderStyleLocked}
@@ -5625,6 +5637,8 @@ export default function App() {
             onShowNewTabButtonChange={setShowNewTabButton}
             doubleClickTabBar={doubleClickTabBar}
             onDoubleClickTabBarChange={setDoubleClickTabBar}
+            tabCloseButtonMode={tabCloseButtonMode}
+            onTabCloseButtonModeChange={setTabCloseButtonMode}
             onShowAbout={() => {
               setIsSettingsOpen(false);
               setFocusTabSettingsRequest(0);

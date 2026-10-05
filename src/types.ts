@@ -55,6 +55,7 @@ export interface HiddenItemStyle {
 }
 
 export type NavigationTransitionStyle = 'subtle' | 'dynamic' | 'fade';
+export type TabCloseButtonMode = 'hover' | 'always' | 'active';
 
 export type SortField = 'name' | 'size' | 'type' | 'createdDate' | 'modifiedDate' | 'extension';
 export type GroupByField = 'none' | 'name' | 'modifiedDate' | 'type' | 'size';

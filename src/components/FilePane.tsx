@@ -36,7 +36,7 @@ import {
   History,
   Home,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, NavigationTransitionStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle } from '../types';
+import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, NavigationTransitionStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
@@ -58,6 +58,7 @@ interface FilePaneProps {
   tabStripPosition: TabStripPosition;
   showNewTabButton: boolean;
   doubleClickTabBar: boolean;
+  tabCloseButtonMode?: TabCloseButtonMode;
   isActive: boolean;
   styleLocked: boolean;
   recentItemStyle: RecentItemStyle;
@@ -325,6 +326,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   tabStripPosition,
   showNewTabButton,
   doubleClickTabBar,
+  tabCloseButtonMode = 'hover',
   isActive,
   styleLocked,
   recentItemStyle,
@@ -459,6 +461,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const verticalTabListRef = useRef<HTMLDivElement>(null);
   const lastScrolledFocusedIdRef = useRef<string | null>(null);
   const columnHeadersRef = useRef<HTMLDivElement>(null);
+  const horizontalScrollContainerRef = useRef<HTMLDivElement>(null);
   const marqueeDragRef = useRef<MarqueeDrag | null>(null);
   const mouseGestureDragRef = useRef<MouseGestureDrag | null>(null);
   const replayingGestureContextMenuRef = useRef(false);
@@ -623,6 +626,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       pendingNavigationRef.current = { tabId: current.tabId, path: current.path, motion };
       setNavigationTransition(null);
       if (viewportRef.current) viewportRef.current.scrollTop = 0;
+      if (horizontalScrollContainerRef.current) horizontalScrollContainerRef.current.scrollLeft = 0;
     }
 
     if (!navigationTransitionsEnabled) {
@@ -1180,11 +1184,23 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }
     const focusedItem = [...(viewport?.querySelectorAll<HTMLElement>('[data-file-item][data-file-id]') ?? [])]
       .find(element => element.dataset.fileId === tab.focusedId);
-    if (focusedItem) {
-      focusedItem.scrollIntoView({ block: 'nearest' });
+    if (focusedItem && viewport) {
+      const itemTop = focusedItem.offsetTop;
+      const itemHeight = focusedItem.offsetHeight;
+      if (itemTop < viewport.scrollTop) {
+        viewport.scrollTop = itemTop;
+      } else if (itemTop + itemHeight > viewport.scrollTop + viewport.clientHeight) {
+        viewport.scrollTop = itemTop + itemHeight - viewport.clientHeight;
+      }
       lastScrolledFocusedIdRef.current = tab.focusedId;
     }
   }, [files, tab.focusedId, tab.selectedIds, virtualizeFiles, viewportWindow.top, viewportWindow.height, collapsedGroups]);
+
+  useEffect(() => {
+    if (horizontalScrollContainerRef.current) {
+      horizontalScrollContainerRef.current.scrollLeft = 0;
+    }
+  }, [tab.currentPath, tab.id]);
 
   useEffect(() => {
     setPathInput(tab.currentPath);
@@ -2343,7 +2359,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
               type="button"
               aria-label={`${t.pane.closeTab}: ${tabName}`}
               onClick={event => { event.stopPropagation(); onCloseTab(idx); }}
-              className={`ml-auto shrink-0 rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 focus-visible:opacity-100 ${vertical ? 'opacity-50 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+              className={`ml-auto shrink-0 rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 focus-visible:opacity-100 ${
+                tabCloseButtonMode === 'always'
+                  ? 'opacity-60 hover:opacity-100'
+                  : tabCloseButtonMode === 'active'
+                    ? (isTabActive ? 'opacity-60 group-hover:opacity-100' : 'opacity-0 group-hover:opacity-100')
+                    : 'opacity-0 group-hover:opacity-100'
+              }`}
             >
               <X className="h-3 w-3" />
             </button>
@@ -2697,7 +2719,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         </div>
       </div>
 
-      <div className={`flex min-h-0 flex-1 flex-col ${isSystemHome ? 'overflow-x-hidden' : 'overflow-x-auto'} overflow-y-hidden`}>
+      <div ref={horizontalScrollContainerRef} className={`flex min-h-0 flex-1 flex-col ${isSystemHome ? 'overflow-x-hidden' : 'overflow-x-auto'} overflow-y-hidden`}>
         <div className="flex min-h-0 flex-1 flex-col" style={{ width: !isSystemHome && effectiveViewMode === 'details' ? `max(100%, ${detailsTableMinimumWidth}px)` : '100%' }}>
       {/* 4. Column Headers (Details View) */}
       {effectiveViewMode === 'details' && !isSystemHome && (
@@ -2925,13 +2947,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth}px`, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`grid h-[30px] items-center gap-2 rounded-md border px-2 text-xs cursor-pointer transition-colors ${
+                  className={`relative grid h-[30px] items-center gap-2 rounded-md border border-transparent px-2 text-xs cursor-pointer transition-colors ${
                     isSelected
-                      ? 'bg-cyan-500/15 hover:bg-cyan-500/20 border-cyan-400/40 text-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]'
+                      ? 'bg-cyan-500/20 hover:bg-cyan-500/25 text-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]'
                       : isZebra
-                        ? 'bg-neutral-900/30 border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
-                        : 'bg-transparent border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
-                  } ${isActive && tab.focusedId === item.id ? (isSelected ? 'border-cyan-400/70 ring-1 ring-cyan-400/25' : 'ring-1 ring-cyan-400/40') : ''}`}
+                        ? 'bg-neutral-900/30 text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
+                        : 'bg-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
+                  } ${isActive && tab.focusedId === item.id ? 'before:absolute before:left-0.5 before:top-1.5 before:bottom-1.5 before:w-[3px] before:rounded-full before:bg-cyan-400' : ''}`}
                 >
                   {visibleFileColumns.map(column => {
                     if (column === 'extension') {
@@ -3030,11 +3052,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`flex min-w-0 h-[30px] items-center gap-2 rounded-md border px-2 py-1 text-xs transition-colors ${
+                  className={`relative flex min-w-0 h-[30px] items-center gap-2 rounded-md border border-transparent px-2 py-1 text-xs transition-colors ${
                     isSelected
-                      ? 'border-cyan-400/40 bg-cyan-500/15 hover:bg-cyan-500/20 text-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]'
-                      : 'border-transparent text-neutral-300 hover:border-neutral-800 hover:bg-neutral-800/60 hover:text-neutral-100'
-                  } ${isActive && tab.focusedId === item.id ? (isSelected ? 'border-cyan-400/70 ring-1 ring-cyan-400/25' : 'ring-1 ring-cyan-400/40') : ''}`}
+                      ? 'bg-cyan-500/20 hover:bg-cyan-500/25 text-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]'
+                      : 'text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
+                  } ${isActive && tab.focusedId === item.id ? 'before:absolute before:left-0.5 before:top-1.5 before:bottom-1.5 before:w-[3px] before:rounded-full before:bg-cyan-400' : ''}`}
                 >
                   <span className="flex-shrink-0">{getDisplayFileIcon(item)}</span>
                   {editingItemId === item.id ? (
@@ -3082,11 +3104,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onMouseEnter={() => handleFolderTooltipMouseEnter(item)}
                   onMouseLeave={() => handleFolderTooltipMouseLeave(item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`flex min-w-0 ${virtualizeFiles ? 'h-36' : ''} flex-col items-center justify-start gap-1.5 rounded-lg border p-2.5 text-center cursor-pointer transition-colors ${
+                  className={`relative flex min-w-0 ${virtualizeFiles ? 'h-36' : ''} flex-col items-center justify-start gap-1.5 rounded-lg border border-transparent p-2.5 text-center cursor-pointer transition-colors ${
                     isSelected
-                      ? 'bg-cyan-500/15 hover:bg-cyan-500/20 border-cyan-400/50 text-neutral-100 shadow-md shadow-cyan-950/20'
-                      : 'border-neutral-800/40 bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60 hover:border-neutral-700'
-                  } ${isActive && tab.focusedId === item.id ? (isSelected ? 'border-cyan-400/80 ring-1 ring-cyan-400/30' : 'ring-1 ring-cyan-400/40') : ''}`}
+                      ? 'bg-cyan-500/20 hover:bg-cyan-500/25 text-neutral-100 shadow-md shadow-cyan-950/20'
+                      : 'bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60'
+                  } ${isActive && tab.focusedId === item.id ? 'before:absolute before:top-1 before:left-1/2 before:-translate-x-1/2 before:w-6 before:h-[3px] before:rounded-full before:bg-cyan-400' : ''}`}
                 >
                   <div className="flex w-full items-center justify-center">
                     {item.type === 'image' ? (

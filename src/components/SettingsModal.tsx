@@ -5,7 +5,7 @@ import { useLanguage } from '../locales/LanguageContext';
 import { type AppTheme, useTheme } from '../themes/ThemeContext';
 import { Tooltip } from './Tooltip';
 import { DialogButton } from './DialogButton';
-import { type GroupByField, type HiddenItemStyle, type NavigationTransitionStyle, type RecentItemStyle, type SortField, type SortOrder, type ViewMode } from '../types';
+import { type GroupByField, type HiddenItemStyle, type NavigationTransitionStyle, type RecentItemStyle, type SortField, type SortOrder, type TabCloseButtonMode, type ViewMode } from '../types';
 import type { FolderStylePreference, SavedFolderStyles } from '../utils/folderStylePreferences';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
@@ -85,6 +85,8 @@ interface SettingsModalProps {
   onShowNewTabButtonChange: (enabled: boolean) => void;
   doubleClickTabBar: boolean;
   onDoubleClickTabBarChange: (enabled: boolean) => void;
+  tabCloseButtonMode: TabCloseButtonMode;
+  onTabCloseButtonModeChange: (mode: TabCloseButtonMode) => void;
 }
 
 const themes: AppTheme[] = ['cyberfiles', 'gray', 'light'];
@@ -178,6 +180,8 @@ export function SettingsModal({
   onShowNewTabButtonChange,
   doubleClickTabBar,
   onDoubleClickTabBarChange,
+  tabCloseButtonMode,
+  onTabCloseButtonModeChange,
 }: SettingsModalProps) {
   const { t, language, setLanguage } = useLanguage();
   const [tab, setTab] = useState<SettingsTab>('general');
@@ -744,6 +748,32 @@ export function SettingsModal({
                     <label key={position} className={tabStripPosition === position ? 'flex cursor-pointer items-center gap-2 rounded-md border border-cyan-700 bg-cyan-950/45 px-3 py-2 text-cyan-100' : 'flex cursor-pointer items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900/60 px-3 py-2 text-neutral-300 transition-colors hover:border-neutral-600'}>
                       <input type="radio" name="tab-strip-position" value={position} checked={tabStripPosition === position} onChange={() => onTabStripPositionChange(position)} className="h-4 w-4 accent-cyan-400" />
                       <span>{position === 'top' ? t.settings.tabStripTop : position === 'bottom' ? t.settings.tabStripBottom : position === 'left' ? t.settings.tabStripLeft : t.settings.tabStripRight}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset className="rounded-lg border border-neutral-800 bg-neutral-900/30 p-3">
+                <legend className="px-1 font-medium text-neutral-200">{t.settings.tabCloseButtonMode}</legend>
+                <p className="mb-2 leading-relaxed">{t.settings.tabCloseButtonModeDescription}</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {(['hover', 'active', 'always'] as TabCloseButtonMode[]).map(mode => (
+                    <label
+                      key={mode}
+                      className={tabCloseButtonMode === mode
+                        ? 'flex cursor-pointer items-center gap-2 rounded-md border border-cyan-700 bg-cyan-950/45 px-3 py-2 text-cyan-100 text-xs'
+                        : 'flex cursor-pointer items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900/60 px-3 py-2 text-neutral-300 text-xs transition-colors hover:border-neutral-600'}
+                    >
+                      <input
+                        type="radio"
+                        name="tab-close-button-mode"
+                        value={mode}
+                        checked={tabCloseButtonMode === mode}
+                        onChange={() => onTabCloseButtonModeChange(mode)}
+                        className="h-4 w-4 accent-cyan-400"
+                      />
+                      <span>
+                        {mode === 'hover' ? t.settings.tabCloseButtonHover : mode === 'active' ? t.settings.tabCloseButtonActive : t.settings.tabCloseButtonAlways}
+                      </span>
                     </label>
                   ))}
                 </div>
