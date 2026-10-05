@@ -1156,7 +1156,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, []);
 
   const detailsTableMinimumWidth = visibleFileColumns.reduce((total, column) => total + (column === 'name' ? columnWidths.name ?? MIN_NAME_COLUMN_WIDTH : columnWidths[column]), 0)
-    + Math.max(0, visibleFileColumns.length - 1) * 8 + 18 + viewportScrollbarWidth + 32;
+    + Math.max(0, visibleFileColumns.length - 1) * 8 + 18 + viewportScrollbarWidth + 24;
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -2725,14 +2725,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {effectiveViewMode === 'details' && !isSystemHome && (
         <div
           ref={columnHeadersRef}
-          className="mx-4 grid shrink-0 items-center gap-2 border-x border-b border-neutral-800 bg-neutral-950 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-400 select-none"
-          style={{ width: columnWidths.name === null ? 'calc(100% - 2rem)' : `${detailsRowWidth + viewportScrollbarWidth}px`, gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
+          className="mx-3 mt-1.5 grid shrink-0 items-center gap-2 rounded-t-lg border-t border-x border-b border-neutral-800/80 bg-neutral-900/90 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-300 select-none shadow-sm backdrop-blur-xs"
+          style={{ width: columnWidths.name === null ? 'calc(100% - 1.5rem)' : `${detailsRowWidth + viewportScrollbarWidth}px`, gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
           onContextMenu={openColumnMenu}
         >
-          {visibleFileColumns.map(column => {
+          {visibleFileColumns.map((column, colIdx) => {
             const sortField = columnSortFields[column];
             const isSorted = tab.sortField === sortField;
             const DirectionIcon = isSorted && tab.sortOrder === 'desc' ? ArrowDown : ArrowUp;
+            const isLast = colIdx === visibleFileColumns.length - 1;
             return (
               <Tooltip key={column} label={column === 'extension' ? `${t.pane.columns.extensionTooltip}. ${t.pane.columns.columnHeaderTooltip}` : t.pane.columns.columnHeaderTooltip} placement="bottom">
                 <div
@@ -2745,10 +2746,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     if (suppressColumnSortRef.current) return;
                     onSortChange(sortField);
                   }}
-                  className={`group relative flex min-w-0 items-center gap-1 rounded-sm px-1 pr-2 cursor-grab active:cursor-grabbing transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${column === 'size' || column === 'created' || column === 'modified' ? 'justify-end' : ''}`}
+                  className={`group relative flex min-w-0 items-center gap-1 rounded-sm px-1 pr-2 cursor-grab active:cursor-grabbing transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${column === 'size' || column === 'created' || column === 'modified' ? 'justify-end' : ''} ${!isLast ? 'border-r border-neutral-800/60' : ''}`}
                 >
                   <span data-file-column-header={column} className="min-w-0 truncate">{columnLabel(column)}</span>
-                  <DirectionIcon aria-hidden="true" className={`h-3 w-3 flex-shrink-0 ${isSorted ? 'text-cyan-400' : 'text-neutral-700'}`} />
+                  <DirectionIcon aria-hidden="true" className={`h-3 w-3 flex-shrink-0 ${isSorted ? 'text-cyan-400' : 'text-neutral-600'}`} />
                   {resizeHandle(column, columnLabel(column))}
                 </div>
               </Tooltip>
@@ -2915,7 +2916,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
             )}
           </div>
         ) : effectiveViewMode === 'details' ? (
-          <div className="space-y-0.5 px-4">
+          <div
+            className="mx-3 mb-2 min-h-[calc(100%-0.75rem)] rounded-b-lg border-x border-b border-neutral-800/80 bg-neutral-950/50 py-1 space-y-0.5 shadow-inner"
+            style={{ width: columnWidths.name === null ? 'calc(100% - 1.5rem)' : `${detailsRowWidth}px` }}
+          >
             {renderGroups.map(group => {
               const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
               const groupCollapsed = collapsedGroups[groupCollapseKey] === true;
@@ -2951,13 +2955,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     isSelected
                       ? 'bg-cyan-500/20 hover:bg-cyan-500/25 text-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]'
                       : isZebra
-                        ? 'bg-neutral-900/30 text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
-                        : 'bg-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
+                        ? 'bg-neutral-900/35 text-neutral-200 hover:bg-neutral-800/70 hover:text-neutral-100'
+                        : 'bg-transparent text-neutral-300 hover:bg-neutral-800/70 hover:text-neutral-100'
                   } ${isActive && tab.focusedId === item.id ? 'before:absolute before:left-0.5 before:top-1.5 before:bottom-1.5 before:w-[3px] before:rounded-full before:bg-cyan-400' : ''}`}
                 >
                   {visibleFileColumns.map(column => {
                     if (column === 'extension') {
-                      return <div key={column} className="min-w-0 truncate font-sans text-[10px] uppercase text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder || !showFileExtensions ? '' : (item.extension || '')}</span></div>;
+                      return <div key={column} className="min-w-0 truncate font-mono text-[10.5px] font-medium uppercase tracking-wide text-cyan-400/90"><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{item.isFolder || !showFileExtensions ? '' : (item.extension || '')}</span></div>;
                     }
                     if (column === 'name') {
                       return (
@@ -2975,7 +2979,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             renderInlineRenameInput(item, 'min-w-0 flex-1')
                           ) : (
                             <Tooltip label={renderItemTooltip(item)} placement="top">
-                              <span data-file-column-content={column} onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className={`${flatParentLabel(item) ? 'max-w-[55%] ' : ''}truncate text-[11.5px] font-medium`} style={getItemNameStyle(item, isSelected)} >{getDisplayItemName(item, showFileExtensions)}</span>
+                              <span data-file-column-content={column} onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className={`${flatParentLabel(item) ? 'max-w-[55%] ' : ''}truncate text-[11.5px] font-medium text-neutral-100`} style={getItemNameStyle(item, isSelected)} >{getDisplayItemName(item, showFileExtensions)}</span>
                             </Tooltip>
                           )}
                           {flatParentLabel(item) && <span className="min-w-0 truncate font-sans text-[10px] font-normal text-neutral-500">· {flatParentLabel(item)}</span>}
@@ -2983,18 +2987,18 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       );
                     }
                     if (column === 'type') {
-                      return <div key={column} className="min-w-0 truncate font-sans text-[10px] text-neutral-400"><span data-file-column-content={column}>{getFileTypeLabel(item)}</span></div>;
+                      return <div key={column} className="min-w-0 truncate font-sans text-[10.5px] text-neutral-400"><span data-file-column-content={column}>{getFileTypeLabel(item)}</span></div>;
                     }
                     if (column === 'size') {
                       const folderSize = folderSizeStates[item.id];
-                      return <div key={column} className="min-w-0 text-right font-sans text-[11px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.size, 'size')}>{item.isFolder ? (
+                      return <div key={column} className="min-w-0 text-right font-mono text-[11px] tabular-nums text-neutral-300/90" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.size, 'size')}>{item.isFolder ? (
                         isTauriDesktop() && !isRecycleBin && !item.recycleBinId ? (
                           folderSize?.status === 'done' ? (
-                            <span data-file-column-content={column} className="inline-flex h-5 min-w-[44px] items-center justify-end whitespace-nowrap leading-none">{formatFileSize(folderSize.size ?? 0)}</span>
+                            <span data-file-column-content={column} className="inline-flex h-5 min-w-[44px] items-center justify-end whitespace-nowrap leading-none tabular-nums font-mono">{formatFileSize(folderSize.size ?? 0)}</span>
                           ) : (
                             <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip} placement="top">
                               <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="ml-auto inline-flex h-5 w-[44px] shrink-0 items-center justify-end gap-1 rounded px-1 py-0 text-right leading-none text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
-                                <span data-file-column-content={column} className="inline-flex items-center gap-1 whitespace-nowrap">
+                                <span data-file-column-content={column} className="inline-flex items-center gap-1 whitespace-nowrap font-mono text-[10px]">
                                   <span className={folderSize?.status === 'loading' ? 'invisible' : ''}>{folderSize?.status === 'error' ? '!' : t.pane.folderSizeCalculate}</span>
                                   <span className="grid h-3 w-3 flex-shrink-0 place-items-center">
                                     {folderSize?.status === 'loading'
@@ -3006,14 +3010,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             </Tooltip>
                           )
                         ) : <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">--</span>
-                      ) : <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{formatFileSize(item.size)}</span>}</div>;
+                      ) : <span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap tabular-nums font-mono">{formatFileSize(item.size)}</span>}</div>;
                     }
                     if (column === 'created') {
                       const createdDate = formatDateTimeForDisplay(item.createdAtMs, item.createdDate, dateFormat, language);
-                      return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.created, 'date')}><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{createdDate || '--'}</span></div>;
+                      return <div key={column} className="min-w-0 text-right font-mono text-[10.5px] tabular-nums text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.created, 'date')}><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap tabular-nums font-mono">{createdDate || '--'}</span></div>;
                     }
                     const modifiedDate = formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language);
-                    return <div key={column} className="min-w-0 text-right font-sans text-[10px] text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.modified, 'date')}><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap">{modifiedDate || '--'}</span></div>;
+                    return <div key={column} className="min-w-0 text-right font-mono text-[10.5px] tabular-nums text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.modified, 'date')}><span data-file-column-content={column} className="inline-block max-w-none whitespace-nowrap tabular-nums font-mono">{modifiedDate || '--'}</span></div>;
                   })}
                 </div>
               );
