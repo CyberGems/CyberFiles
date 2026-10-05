@@ -5,17 +5,31 @@
 }
 
 :root {
-  background: #080d16;
+  background: #090e18;
   color-scheme: dark;
-  --cyberfiles-tooltip-background: #101826;
-  --cyberfiles-dialog-background: #0c1018;
-  --cyberfiles-workspace-dialog-background: #0c1119;
-  --cyberfiles-workspace-card-background: #101720;
-  --cyberfiles-recent-item-color: #fef3c7;
+  --cyberfiles-tooltip-background: #101928;
+  --cyberfiles-dialog-background: #0d1424;
+  --cyberfiles-workspace-dialog-background: #0e1626;
+  --cyberfiles-workspace-card-background: #131d30;
+  --cyberfiles-recent-item-color: #fef08a;
   --cyberfiles-hidden-item-color: #fb7185;
-  --cyberfiles-scrollbar-track: #101826;
-  --cyberfiles-scrollbar-thumb: #34445e;
-  --cyberfiles-scrollbar-thumb-hover: #4f6485;
+  --cyberfiles-scrollbar-track: transparent;
+  --cyberfiles-scrollbar-thumb: rgba(56, 189, 248, 0.22);
+  --cyberfiles-scrollbar-thumb-hover: rgba(56, 189, 248, 0.42);
+
+  /* Calibrated Cyber-Slate depth hierarchy for default theme:
+     Eliminates muddy pitch-black voids while preserving a rich, sleek cyber-dark mood */
+  --color-neutral-950: #0a101d; /* Deep cyber-slate canvas / panels */
+  --color-neutral-900: #0f172a; /* Elevated work area / toolbar surface */
+  --color-neutral-800: #1e293b; /* Refined structure & panel borders */
+  --color-neutral-700: #334155; /* Subtle interactive outlines */
+  --color-neutral-600: #475569; /* Muted glyphs & dividers */
+  --color-neutral-500: #64748b; /* Secondary metadata text */
+  --color-neutral-400: #94a3b8; /* Crisp clear labels, sizes, dates */
+  --color-neutral-300: #cbd5e1; /* Primary filenames and headers */
+  --color-neutral-200: #e2e8f0; /* High-clarity text */
+  --color-neutral-100: #f8fafc; /* Crisp white headers */
+  --color-neutral-50:  #ffffff;
 }
 
 html,
@@ -83,6 +97,41 @@ html[data-theme='light'] select option {
 
 #root.cyberfiles-ready {
   opacity: 1;
+}
+
+/* Active toggle buttons in toolbar & header (default cyber theme) */
+:root button[aria-pressed='true']:not(.view-choice):not([data-folder-tab]),
+:root .header-action[aria-pressed='true'] {
+  background: rgba(6, 182, 212, 0.16) !important;
+  border-color: rgba(34, 211, 238, 0.55) !important;
+  color: #22d3ee !important;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+:root button[aria-pressed='true']:not(.view-choice):not([data-folder-tab]) svg,
+:root .header-action[aria-pressed='true'] svg {
+  color: #22d3ee !important;
+}
+
+:root .view-choice[aria-pressed='true'] {
+  border-color: rgba(34, 211, 238, 0.6) !important;
+  background: rgba(6, 182, 212, 0.18) !important;
+  color: #22d3ee !important;
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+:root .view-choice[aria-pressed='true'] svg {
+  color: #22d3ee !important;
+}
+
+:root .view-choice-group {
+  background: #0b111e;
+  border-color: #1e293b;
+}
+
+:root .view-choice:hover:not([aria-pressed='true']) {
+  background: #141e33;
+  color: #e2e8f0;
 }
 
 /* Theme tokens override Tailwind's colour variables, so existing components
@@ -319,7 +368,8 @@ body,
 }
 
 ::-webkit-scrollbar-thumb {
-  border: 3px solid var(--cyberfiles-scrollbar-track);
+  border: 3px solid transparent;
+  background-clip: padding-box;
   border-radius: 999px;
   background-color: var(--cyberfiles-scrollbar-thumb);
 }
