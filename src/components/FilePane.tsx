@@ -669,10 +669,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
       color: textColor,
       fontWeight: (hidden && hiddenItemStyle.bold) || (recent && recentItemStyle.bold) ? 700 : 400,
       fontStyle: (hidden && hiddenItemStyle.italic) || (recent && recentItemStyle.italic) ? 'italic' : 'normal',
-      ...(selected && backgroundStyle ? {
-        backgroundColor: `color-mix(in srgb, ${backgroundStyle.backgroundColor} 18%, transparent)`,
+      ...(backgroundStyle ? {
         borderRadius: 3,
         paddingInline: 3,
+        ...(selected ? {
+          backgroundColor: `color-mix(in srgb, ${backgroundStyle.backgroundColor} 18%, transparent)`,
+        } : {}),
       } : {}),
     };
   };
@@ -2923,13 +2925,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth}px`, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`grid min-h-[30px] ${virtualizeFiles ? 'h-[30px]' : ''} items-center gap-2 border px-2 py-1 text-xs cursor-pointer transition-colors data-[focused=true]:ring-1 data-[focused=true]:ring-inset data-[focused=true]:ring-cyan-300/70 ${
+                  className={`grid h-[30px] items-center gap-2 rounded-md border px-2 text-xs cursor-pointer transition-colors ${
                     isSelected
-                      ? 'bg-cyan-950/70 border-cyan-700/60 text-neutral-100 font-medium'
+                      ? 'bg-cyan-500/15 hover:bg-cyan-500/20 border-cyan-400/40 text-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]'
                       : isZebra
                         ? 'bg-neutral-900/30 border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
                         : 'bg-transparent border-transparent text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
-                  }`}
+                  } ${isActive && tab.focusedId === item.id ? (isSelected ? 'border-cyan-400/70 ring-1 ring-cyan-400/25' : 'ring-1 ring-cyan-400/40') : ''}`}
                 >
                   {visibleFileColumns.map(column => {
                     if (column === 'extension') {
@@ -3028,11 +3030,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`flex min-w-0 ${virtualizeFiles ? 'h-[30px]' : ''} items-center gap-2 rounded border px-2 py-1.5 text-xs transition-colors data-[focused=true]:ring-1 data-[focused=true]:ring-inset data-[focused=true]:ring-cyan-300/70 ${
+                  className={`flex min-w-0 h-[30px] items-center gap-2 rounded-md border px-2 py-1 text-xs transition-colors ${
                     isSelected
-                      ? 'border-cyan-700/60 bg-cyan-950/70 text-neutral-100'
+                      ? 'border-cyan-400/40 bg-cyan-500/15 hover:bg-cyan-500/20 text-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]'
                       : 'border-transparent text-neutral-300 hover:border-neutral-800 hover:bg-neutral-800/60 hover:text-neutral-100'
-                  }`}
+                  } ${isActive && tab.focusedId === item.id ? (isSelected ? 'border-cyan-400/70 ring-1 ring-cyan-400/25' : 'ring-1 ring-cyan-400/40') : ''}`}
                 >
                   <span className="flex-shrink-0">{getDisplayFileIcon(item)}</span>
                   {editingItemId === item.id ? (
@@ -3080,11 +3082,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onMouseEnter={() => handleFolderTooltipMouseEnter(item)}
                   onMouseLeave={() => handleFolderTooltipMouseLeave(item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`flex min-w-0 ${virtualizeFiles ? 'h-36' : ''} flex-col items-center justify-start gap-1.5 rounded-lg border p-2.5 text-center cursor-pointer transition-colors data-[focused=true]:ring-1 data-[focused=true]:ring-inset data-[focused=true]:ring-cyan-300/70 ${
+                  className={`flex min-w-0 ${virtualizeFiles ? 'h-36' : ''} flex-col items-center justify-start gap-1.5 rounded-lg border p-2.5 text-center cursor-pointer transition-colors ${
                     isSelected
-                      ? 'bg-cyan-950/70 border-cyan-600/70 text-neutral-100 shadow'
+                      ? 'bg-cyan-500/15 hover:bg-cyan-500/20 border-cyan-400/50 text-neutral-100 shadow-md shadow-cyan-950/20'
                       : 'border-neutral-800/40 bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60 hover:border-neutral-700'
-                  }`}
+                  } ${isActive && tab.focusedId === item.id ? (isSelected ? 'border-cyan-400/80 ring-1 ring-cyan-400/30' : 'ring-1 ring-cyan-400/40') : ''}`}
                 >
                   <div className="flex w-full items-center justify-center">
                     {item.type === 'image' ? (
