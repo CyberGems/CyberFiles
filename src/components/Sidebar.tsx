@@ -35,6 +35,7 @@ import {
   RotateCcw,
   Home,
   ListChecks,
+  Layers,
 } from 'lucide-react';
 import { ArchiveExtractionMode, DriveInfo, FileItem, FileType, QuickAccessItem, QuickAccessSortMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
@@ -167,12 +168,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { t, language } = useLanguage();
   const ForwardPaneArrow = isHorizontalDual ? ArrowDown : ArrowRight;
   const BackwardPaneArrow = isHorizontalDual ? ArrowUp : ArrowLeft;
-  const [activeTab, setActiveTab] = useState<'tree' | 'recent'>('tree');
-  const [showLauncherWithSelection, setShowLauncherWithSelection] = useState(false);
-  const [showCurrentFolderContext, setShowCurrentFolderContext] = useState(() => currentPath !== SYSTEM_HOME_PATH && currentPath !== RECYCLE_BIN_PATH);
+  type SidebarTab = 'tree' | 'recent' | 'context';
+  const [activeTab, setActiveTab] = useState<SidebarTab>(() => {
+    if (selectedItems.length > 0 || (currentPath !== SYSTEM_HOME_PATH && currentPath !== RECYCLE_BIN_PATH)) {
+      return 'context';
+    }
+    return 'tree';
+  });
   const [folderContextPath, setFolderContextPath] = useState(currentPath);
   const [currentFolderContent, setCurrentFolderContent] = useState<{ path: string; status: 'loading' | 'done' | 'error'; summary?: FolderContentSummary } | null>(null);
-  const showSelectionContext = selectedItems.length > 0 && !showLauncherWithSelection;
   const currentFolderName = currentFolderItem?.name || currentPath.replace(/[\/]+$/, '').split(/[\/]/).pop() || currentPath;
   const currentFolderFiles = currentFolderItems.filter(item => !item.isFolder);
   const currentFolderFolders = currentFolderItems.filter(item => item.isFolder);
@@ -341,11 +345,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, [collapsedSections]);
 
   useEffect(() => {
-    if (selectedItems.length === 0) setShowLauncherWithSelection(false);
-  }, [selectedItems.length]);
-
-  useEffect(() => {
-    if (!showCurrentFolderContext || currentPath === SYSTEM_HOME_PATH || currentPath === RECYCLE_BIN_PATH) {
+    if (currentPath === SYSTEM_HOME_PATH || currentPath === RECYCLE_BIN_PATH) {
       setCurrentFolderContent(null);
       return;
     }
@@ -360,18 +360,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
       },
     );
     return () => { cancelled = true; };
-  }, [currentPath, currentFolderItem?.handle, showCurrentFolderContext]);
+  }, [currentPath, currentFolderItem?.handle]);
 
   useEffect(() => {
     if (folderContextPath === currentPath) return;
     setFolderContextPath(currentPath);
     if (currentPath === SYSTEM_HOME_PATH || currentPath === RECYCLE_BIN_PATH) {
-      setShowCurrentFolderContext(false);
+      if (selectedItems.length === 0) {
+        setActiveTab('tree');
+      }
       return;
     }
-    setActiveTab('tree');
-    setShowCurrentFolderContext(true);
-  }, [currentPath, folderContextPath]);
+    setActiveTab('context');
+  }, [currentPath, folderContextPath, selectedItems.length]);
+
+  const previousSelectedIdsRef = React.useRef<string>('');
+  useEffect(() => {
+    const currentIdsKey = selectedItems.map(item => item.id).sort().join(',');
+    if (selectedItems.length > 0 && currentIdsKey !== previousSelectedIdsRef.current) {
+      setActiveTab('context');
+    }
+    previousSelectedIdsRef.current = currentIdsKey;
+  }, [selectedItems]);
 
   useEffect(() => {
     if (!quickAccessSortOpen) return;
@@ -530,33 +540,53 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className="h-full w-full min-w-0 overflow-hidden bg-neutral-950 border-r border-neutral-800/80 flex flex-col justify-between select-none flex-shrink-0 text-xs">
       
-      {/* 1. Header Tabs: Explorador vs Archivos Recientes */}
+      {/* 1. Header Tabs: Ubicaciones vs Recientes vs Contexto */}
       <div className="p-2 border-b border-neutral-800/80 bg-neutral-900/60 flex items-center gap-1">
         <button
-          onClick={() => { setActiveTab('tree'); setShowCurrentFolderContext(false); }}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md font-medium text-[11px] transition-all ${
+          type="button"
+          onClick={() => setActiveTab('tree')}
+          className={`flex-1 min-w-0 flex items-center justify-center gap-1.5 py-1.5 px-1 rounded-md font-medium text-[11px] transition-all ${
             activeTab === 'tree'
               ? 'bg-neutral-800 text-cyan-300 shadow-sm border border-neutral-700/60 font-semibold'
               : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/60'
           }`}
         >
-          <FolderTree className="w-3.5 h-3.5 text-cyan-400" />
-          <span>{t.sidebar.tabLocations}</span>
+          <FolderTree className="w-3.5 h-3.5 flex-shrink-0 text-cyan-400" />
+          <span className="truncate">{t.sidebar.tabLocations}</span>
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('recent')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md font-medium text-[11px] transition-all relative ${
+          className={`flex-1 min-w-0 flex items-center justify-center gap-1.5 py-1.5 px-1 rounded-md font-medium text-[11px] transition-all relative ${
             activeTab === 'recent'
               ? 'bg-neutral-800 text-cyan-300 shadow-sm border border-neutral-700/60 font-semibold'
               : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/60'
           }`}
         >
-          <Clock className="w-3.5 h-3.5 text-amber-400" />
-          <span>{t.sidebar.tabRecent}</span>
+          <Clock className="w-3.5 h-3.5 flex-shrink-0 text-amber-400" />
+          <span className="truncate">{t.sidebar.tabRecent}</span>
           {recentFiles.length > 0 && (
-            <span className="ml-1 px-1.5 py-0.2 rounded-full text-[9px] font-sans bg-neutral-950 text-cyan-400 border border-neutral-700">
+            <span className="ml-0.5 px-1 py-0.2 rounded-full text-[9px] font-sans bg-neutral-950 text-cyan-400 border border-neutral-700">
               {recentFiles.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('context')}
+          className={`flex-1 min-w-0 flex items-center justify-center gap-1.5 py-1.5 px-1 rounded-md font-medium text-[11px] transition-all relative ${
+            activeTab === 'context'
+              ? 'bg-neutral-800 text-cyan-300 shadow-sm border border-neutral-700/60 font-semibold'
+              : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/60'
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5 flex-shrink-0 text-emerald-400" />
+          <span className="truncate">{t.sidebar.tabContext}</span>
+          {selectedItems.length > 0 && (
+            <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-sans bg-cyan-950 text-cyan-300 border border-cyan-800/80 font-bold">
+              {selectedItems.length}
             </span>
           )}
         </button>
@@ -590,19 +620,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       {/* 2. Main Tab Body */}
-      {!showSelectionContext && selectedItems.length > 0 && (
+      {activeTab !== 'context' && selectedItems.length > 0 && (
         <div className="flex items-center justify-between gap-2 border-b border-neutral-800/80 bg-cyan-950/15 px-3 py-2">
           <span className="truncate text-[10px] font-medium text-cyan-100">
             {selectedItems.length === 1 ? t.sidebar.oneItemSelected : t.sidebar.manyItemsSelected.replace('{count}', String(selectedItems.length))}
           </span>
           <Tooltip label={t.sidebar.showSelectionActions} placement="right">
-            <button type="button" onClick={() => setShowLauncherWithSelection(false)} aria-label={t.sidebar.showSelectionActions} className="rounded p-1 text-cyan-300 transition-colors hover:bg-cyan-950/70">
+            <button type="button" onClick={() => setActiveTab('context')} aria-label={t.sidebar.showSelectionActions} className="rounded p-1 text-cyan-300 transition-colors hover:bg-cyan-950/70">
               <ListChecks className="h-4 w-4" />
             </button>
           </Tooltip>
         </div>
       )}
-      {showSelectionContext ? (
+      {activeTab === 'context' ? (
+        selectedItems.length > 0 ? (
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -615,7 +646,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <Tooltip label={t.sidebar.showLauncher}>
                 <button
                   type="button"
-                  onClick={() => { setActiveTab('tree'); setShowLauncherWithSelection(true); }}
+                  onClick={() => setActiveTab('tree')}
                   aria-label={t.sidebar.showLauncher}
                   className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
                 >
@@ -738,7 +769,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
           </>}
         </div>
-      ) : showCurrentFolderContext && activeTab === 'tree' ? (
+      ) : currentPath !== SYSTEM_HOME_PATH && currentPath !== RECYCLE_BIN_PATH ? (
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -747,7 +778,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Tooltip label={t.sidebar.showLauncher} placement="right">
               <button
                 type="button"
-                onClick={() => setShowCurrentFolderContext(false)}
+                onClick={() => setActiveTab('tree')}
                 aria-label={t.sidebar.showLauncher}
                 className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
               >
@@ -833,7 +864,57 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           </Tooltip>}
         </div>
-      ) : activeTab === 'tree' ? (
+      ) : (
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h2 className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
+                {currentPath === RECYCLE_BIN_PATH ? t.sidebar.recycleBinTitle : t.sidebar.contextTitle}
+              </h2>
+            </div>
+            <Tooltip label={t.sidebar.showLauncher} placement="right">
+              <button
+                type="button"
+                onClick={() => setActiveTab('tree')}
+                aria-label={t.sidebar.showLauncher}
+                className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
+              >
+                <Home className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
+          </div>
+          <div className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
+            {currentPath === RECYCLE_BIN_PATH ? (
+              <>
+                <Trash2 className="h-5 w-5 text-rose-400" />
+                <p className="text-[11px] font-medium text-neutral-200">{t.sidebar.recycleBinTitle}</p>
+                <p className="text-[10px] text-neutral-400">{recycleBinStateLabel}</p>
+                {canEmptyRecycleBin && (
+                  <button
+                    type="button"
+                    onClick={onRequestEmptyRecycleBin}
+                    className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border border-rose-900/60 bg-rose-950/20 px-2 py-1.5 text-[10px] text-rose-200 transition-colors hover:border-rose-700 hover:bg-rose-950/50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>{t.sidebar.emptyRecycleBinAction}</span>
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <FolderOpen className="h-5 w-5 text-cyan-400" />
+                <p className="text-[11px] font-medium text-neutral-200">{t.app.title}</p>
+                <p className="text-[10px] text-neutral-400">
+                  {language === 'es'
+                    ? 'Navega a una carpeta o selecciona archivos para ver información y acciones contextuales.'
+                    : 'Navigate to a folder or select files to view contextual actions and info.'}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )
+    ) : activeTab === 'tree' ? (
         <div className="p-3 space-y-5 overflow-y-auto flex-1">
           {(quickAccess.length > 0 || onAddQuickAccess) && (
             <div className="space-y-1">

@@ -625,6 +625,8 @@ export const translations = {
     sidebar: {
       tabLocations: 'Ubicaciones',
       tabRecent: 'Recientes',
+      tabContext: 'Contexto',
+      contextTitle: 'Panel contextual',
       selectionTitle: 'Acciones de selección',
       currentFolderTitle: 'Carpeta actual',
       currentFolderContents: 'Contenido de esta carpeta',
@@ -1713,6 +1715,8 @@ export const translations = {
     sidebar: {
       tabLocations: 'Locations',
       tabRecent: 'Recent',
+      tabContext: 'Context',
+      contextTitle: 'Context panel',
       selectionTitle: 'Selection actions',
       currentFolderTitle: 'Current folder',
       currentFolderContents: 'Folder contents',
