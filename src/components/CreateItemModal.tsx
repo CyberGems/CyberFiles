@@ -18,7 +18,8 @@ interface CreateItemModalProps {
 export function CreateItemModal({ kind, defaultName, isBusy, onClose, onSubmit, onChooseTarget }: CreateItemModalProps) {
   const { t } = useLanguage();
   const nameRef = useRef<HTMLInputElement>(null);
-  const [name, setName] = React.useState(defaultName);
+  const initialName = typeof defaultName === 'string' ? defaultName : '';
+  const [name, setName] = React.useState(initialName);
   const [targetPath, setTargetPath] = React.useState('');
   const heading = kind === 'folder'
     ? t.contextMenu.newFolderName
@@ -106,7 +107,7 @@ export function CreateItemModal({ kind, defaultName, isBusy, onClose, onSubmit, 
 
         <footer className="flex justify-end gap-2 border-t border-neutral-800 bg-neutral-950/40 px-4 py-3">
           <Tooltip label={t.core.cancel} placement="top"><DialogButton size="compact" disabled={isBusy} onClick={onClose}>{t.core.cancel}</DialogButton></Tooltip>
-          <Tooltip label={t.contextMenu.create} placement="top"><DialogButton size="compact" variant="primary" type="submit" disabled={isBusy || !name.trim()}>{isBusy ? t.core.operationInProgress : t.contextMenu.create}</DialogButton></Tooltip>
+          <Tooltip label={t.contextMenu.create} placement="top"><DialogButton size="compact" variant="primary" type="submit" disabled={isBusy || !(typeof name === 'string' && name.trim())}>{isBusy ? t.core.operationInProgress : t.contextMenu.create}</DialogButton></Tooltip>
         </footer>
       </form>
     </div>

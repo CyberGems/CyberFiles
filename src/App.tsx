@@ -3842,8 +3842,10 @@ export default function App() {
     setPendingZipCreation(null);
   }, [pendingZipCreation, queueNativeTransfer, showToast, t.core.invalidName, t.pane.chooseRealFolderFirst]);
 
-  const handleNewFolder = useCallback((suggestedName?: string, pane: 'left' | 'right' = activePane) => {
-    openCreateItem('folder', pane, suggestedName);
+  const handleNewFolder = useCallback((suggestedName?: string | unknown, pane: 'left' | 'right' = activePane) => {
+    const cleanName = typeof suggestedName === 'string' ? suggestedName : undefined;
+    const cleanPane = (pane === 'left' || pane === 'right') ? pane : activePane;
+    openCreateItem('folder', cleanPane, cleanName);
   }, [activePane, openCreateItem]);
 
   const handleCreateItem = useCallback(async ({ name, targetPath }: { name: string; targetPath: string }) => {
@@ -4494,6 +4496,77 @@ export default function App() {
         handleCloseTab(activePane, activeTabIndex);
         return;
       }
+
+      // Ctrl + Z: Undo
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'z' || e.key === 'Z')) {
+        const activeItem = undoHistory[0];
+        if (activeItem?.canUndo && !undoBusy) {
+          e.preventDefault();
+          void handleUndoAction(activeItem.id);
+          return;
+        }
+      }
+
+      // Ctrl + H: Toggle Show Hidden Files
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'h' || e.key === 'H')) {
+        e.preventDefault();
+        setShowHiddenFiles(prev => !prev);
+        return;
+      }
+
+      // Ctrl + E: Toggle Show File Extensions
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        setShowFileExtensions(prev => !prev);
+        return;
+      }
+
+      // Ctrl + B: Toggle Flat View
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')) {
+        e.preventDefault();
+        const canToggleFlat = isTauriDesktop() && !!currentTab.currentPath && !currentTab.currentPath.startsWith('::');
+        if (canToggleFlat) {
+          updateActiveTab(tab => ({ ...tab, flatView: !tab.flatView, selectedIds: [], focusedId: null }));
+        }
+        return;
+      }
+
+      // Ctrl + 1 / 2 / 3: View Modes (Details / Compact / Icons)
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === '1' || e.key === '2' || e.key === '3')) {
+        e.preventDefault();
+        const mode = e.key === '1' ? 'details' : e.key === '2' ? 'compact' : 'icons';
+        handleViewModeChange(mode);
+        return;
+      }
+
+      // Ctrl + G: Toggle Relative Graphs
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'g' || e.key === 'G')) {
+        e.preventDefault();
+        setRelativeGraphsEnabled(prev => !prev);
+        return;
+      }
+
+      // Alt + 1 / 2 / 3: Layout Modes (Dual Vertical / Dual Horizontal / Single)
+      if (e.altKey && !e.ctrlKey && !e.shiftKey && (e.key === '1' || e.key === '2' || e.key === '3')) {
+        e.preventDefault();
+        const nextLayout = e.key === '1' ? 'dual-vertical' : e.key === '2' ? 'dual-horizontal' : 'single';
+        setLayout(nextLayout);
+        return;
+      }
+
+      // Ctrl + Shift + W: Workspace Profiles
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'w' || e.key === 'W')) {
+        e.preventDefault();
+        setIsWorkspaceManagerOpen(true);
+        return;
+      }
+
+      // Ctrl + ,: Open Settings
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === ',') {
+        e.preventDefault();
+        setIsSettingsOpen(true);
+        return;
+      }
     };
 
     window.addEventListener('keydown', handleGlobalKeyDown);
@@ -4503,6 +4576,14 @@ export default function App() {
     currentTab,
     allFiles,
     language,
+    undoHistory,
+    undoBusy,
+    handleUndoAction,
+    setShowHiddenFiles,
+    setShowFileExtensions,
+    handleViewModeChange,
+    setRelativeGraphsEnabled,
+    setLayout,
     handleCopySelected,
     handleMoveSelected,
     handleFileClipboard,
@@ -4876,7 +4957,7 @@ export default function App() {
         onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
         propertiesPanelOpen={previewOpen}
         onTogglePropertiesPanel={() => setPreviewOpen(value => !value)}
-        onNewFolder={handleNewFolder}
+        onNewFolder={() => handleNewFolder()}
         onDeleteSelected={() => handleDeleteSelected(selectedItemsForDelete)}
         undoHistory={undoHistory}
         onUndoAction={handleUndoAction}

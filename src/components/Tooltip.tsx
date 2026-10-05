@@ -23,8 +23,72 @@ import { createPortal } from 'react-dom';
 type Placement = 'top' | 'bottom' | 'left' | 'right';
 type ResolvedPlacement = Placement;
 
+export function TooltipShortcut({ children }: { children: ReactNode }) {
+  return <kbd className="tooltip-shortcut-key">{children}</kbd>;
+}
+
+const SHORTCUT_PATTERN = /(?:(?:Control|Ctrl|Alt|Shift|Mayús|Win|Meta)(?:\+(?:Control|Ctrl|Alt|Shift|Mayús|Win|Meta))*\+(?:F\d{1,2}|Enter|Space|Espacio|Supr|Delete|Del|Backspace|Tab|Escape|Esc|Left|Right|Up|Down|Izquierda|Derecha|Arriba|Abajo|[A-Za-z0-9]|,|\.)(?![A-Za-z0-9]))|\b(?:F\d{1,2}|Enter|Space|Espacio|Supr|Delete|Del|Backspace|Tab|Escape|Esc)\b/i;
+
+export function formatTooltipLabel(label: ReactNode, shortcut?: string): ReactNode {
+  if (typeof label !== 'string') {
+    if (shortcut) {
+      return (
+        <span className="tooltip-label-with-shortcuts inline-flex items-center gap-1.5">
+          <span>{label}</span>
+          <TooltipShortcut>{shortcut}</TooltipShortcut>
+        </span>
+      );
+    }
+    return label;
+  }
+
+  const normalized = label.replace(/\(([^()]*)\)/g, (group, contents: string) => {
+    const text = contents.trim();
+    const match = SHORTCUT_PATTERN.exec(text);
+    return match?.index === 0 ? text : group;
+  });
+
+  const matcher = new RegExp(SHORTCUT_PATTERN.source, 'gi');
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = matcher.exec(normalized)) !== null) {
+    const prefix = normalized.slice(cursor, match.index);
+    if (prefix) parts.push(<span key={`text-${cursor}`}>{prefix.trimEnd()}</span>);
+    parts.push(
+      <TooltipShortcut key={`shortcut-${match.index}`}>
+        {match[0]}
+      </TooltipShortcut>,
+    );
+    cursor = matcher.lastIndex;
+  }
+
+  let formattedResult: ReactNode;
+  if (cursor === 0) {
+    formattedResult = label;
+  } else {
+    if (cursor < normalized.length) {
+      parts.push(<span key={`text-${cursor}`}>{normalized.slice(cursor)}</span>);
+    }
+    formattedResult = <span className="tooltip-label-with-shortcuts inline-flex items-center gap-1.5">{parts}</span>;
+  }
+
+  if (shortcut && cursor === 0) {
+    return (
+      <span className="tooltip-label-with-shortcuts inline-flex items-center gap-1.5">
+        <span>{formattedResult}</span>
+        <TooltipShortcut>{shortcut}</TooltipShortcut>
+      </span>
+    );
+  }
+
+  return formattedResult;
+}
+
 interface TooltipProps {
   label: ReactNode;
+  shortcut?: string;
   placement?: Placement;
   children: ReactElement;
   disabled?: boolean;
@@ -166,7 +230,7 @@ function getArrowStyle(position: TooltipPosition): CSSProperties {
 }
 
 /** A viewport-aware tooltip that does not alter the layout of its trigger. */
-export function Tooltip({ label, placement = 'bottom', children, disabled = false, followPointer = false }: TooltipProps) {
+export function Tooltip({ label, shortcut, placement = 'bottom', children, disabled = false, followPointer = false }: TooltipProps) {
   const preferenceEnabled = useContext(TooltipPreferenceContext);
   const isDisabled = disabled || !preferenceEnabled;
   const [anchorElement, setAnchorElement] = useState<HTMLElement | null>(null);
@@ -372,7 +436,7 @@ export function Tooltip({ label, placement = 'bottom', children, disabled = fals
               className="cyberfiles-tooltip-card relative max-w-[min(22rem,calc(100vw-1rem))] rounded-lg border border-cyan-300/25 bg-[#101826]/95 px-2.5 py-1.5 text-center text-[11px] font-medium leading-snug text-slate-100 shadow-[0_8px_24px_rgba(0,0,0,0.45),0_0_12px_rgba(34,211,238,0.14)] backdrop-blur-md animate-[cyberfiles-tooltip-in_140ms_ease-out]"
               style={{ background: 'var(--cyberfiles-tooltip-background)' }}
             >
-              {label}
+              {formatTooltipLabel(label, shortcut)}
               {position && (
                 <span
                   aria-hidden="true"

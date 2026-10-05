@@ -2414,7 +2414,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         <div data-tab-strip-space="true" className="flex items-center gap-0.5 flex-1 min-w-0">
           {tabs.map((tabItem, idx) => renderFolderTab(tabItem, idx, false))}
 
-          {showNewTabButton && <Tooltip label={`${t.pane.addTab} (Ctrl+T)`} placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
+          {showNewTabButton && <Tooltip label={t.pane.addTab} shortcut="Ctrl+T" placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
             <button
               type="button"
               aria-label={t.pane.addTab}
@@ -2426,7 +2426,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
               className="inline-flex items-center gap-1.5 p-1.5 ml-1 text-neutral-400 hover:text-cyan-300 hover:bg-neutral-800 rounded transition-colors shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
-              <kbd className="keyboard-hint hidden xl:inline-flex">Ctrl+T</kbd>
             </button>
           </Tooltip>}
         </div>
@@ -2451,7 +2450,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       <div className="flex shrink-0 items-center justify-between gap-1 border-b border-neutral-800 px-2.5 py-2">
         <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.tabMenu.tabsShort}</span>
         {showNewTabButton && (
-          <Tooltip label={`${t.pane.addTab} (Ctrl+T)`} placement={tabStripPosition === 'left' ? 'right' : 'left'}>
+          <Tooltip label={t.pane.addTab} shortcut="Ctrl+T" placement={tabStripPosition === 'left' ? 'right' : 'left'}>
             <button type="button" aria-label={t.pane.addTab} onClick={event => { event.stopPropagation(); onActivate(); onAddTab(); }} className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-cyan-950/60 hover:text-cyan-200">
               <Plus className="h-3.5 w-3.5" />
             </button>
@@ -2461,7 +2460,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       <div ref={verticalTabListRef} data-tab-strip-space="true" className="flex min-h-0 flex-1 flex-col gap-1 overflow-x-hidden overflow-y-auto p-1.5">
         {tabs.map((tabItem, idx) => renderFolderTab(tabItem, idx, true))}
         {showNewTabButton && (
-          <Tooltip label={`${t.pane.addTab} (Ctrl+T)`} placement={tabStripPosition === 'left' ? 'right' : 'left'}>
+          <Tooltip label={t.pane.addTab} shortcut="Ctrl+T" placement={tabStripPosition === 'left' ? 'right' : 'left'}>
             <button
               type="button"
               aria-label={t.pane.addTab}
@@ -2496,10 +2495,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
       {/* 2. Navigation & Breadcrumb Bar */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 bg-neutral-900 border-b border-neutral-800 text-xs select-none">
-        <Tooltip label={`${t.toolbar.back} (Alt+${language === 'es' ? 'Izquierda' : 'Left'})`} disabled={tab.historyIndex <= 0}><button onClick={onNavigateBack} disabled={tab.historyIndex <= 0} className="p-1 rounded text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 transition-colors"><ArrowLeft className="w-3.5 h-3.5" /></button></Tooltip>
-        <Tooltip label={`${t.toolbar.forward} (Alt+${language === 'es' ? 'Derecha' : 'Right'})`} disabled={tab.historyIndex >= tab.history.length - 1}><button onClick={onNavigateForward} disabled={tab.historyIndex >= tab.history.length - 1} className="p-1 rounded text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 transition-colors"><ArrowRight className="w-3.5 h-3.5" /></button></Tooltip>
-        <Tooltip label={`${t.toolbar.up} (Backspace / Alt+${language === 'es' ? 'Arriba' : 'Up'})`} disabled={isSystemHome}><button onClick={onNavigateUp} disabled={isSystemHome} className="p-1 rounded text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 transition-colors"><ArrowUp className="w-3.5 h-3.5" /></button></Tooltip>
-        <Tooltip label={`${t.toolbar.refresh} (F5)`} disabled={!tab.currentPath}><button onClick={() => onRefresh ? onRefresh() : onNavigate(tab.currentPath)} disabled={!tab.currentPath} className="p-1 rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-30"><RotateCw className="w-3.5 h-3.5" /></button></Tooltip>
+        <Tooltip label={t.toolbar.back} shortcut={language === 'es' ? 'Alt+Izquierda' : 'Alt+Left'} disabled={tab.historyIndex <= 0}><button onClick={onNavigateBack} disabled={tab.historyIndex <= 0} className="p-1 rounded text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 transition-colors"><ArrowLeft className="w-3.5 h-3.5" /></button></Tooltip>
+        <Tooltip label={t.toolbar.forward} shortcut={language === 'es' ? 'Alt+Derecha' : 'Alt+Right'} disabled={tab.historyIndex >= tab.history.length - 1}><button onClick={onNavigateForward} disabled={tab.historyIndex >= tab.history.length - 1} className="p-1 rounded text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 transition-colors"><ArrowRight className="w-3.5 h-3.5" /></button></Tooltip>
+        <Tooltip label={t.toolbar.up} shortcut="Backspace" disabled={isSystemHome}><button onClick={onNavigateUp} disabled={isSystemHome} className="p-1 rounded text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 transition-colors"><ArrowUp className="w-3.5 h-3.5" /></button></Tooltip>
+        <Tooltip label={t.toolbar.refresh} shortcut="F5" disabled={!tab.currentPath}><button onClick={() => onRefresh ? onRefresh() : onNavigate(tab.currentPath)} disabled={!tab.currentPath} className="p-1 rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-30"><RotateCw className="w-3.5 h-3.5" /></button></Tooltip>
 
         {/* Breadcrumb Path Box */}
         <div 

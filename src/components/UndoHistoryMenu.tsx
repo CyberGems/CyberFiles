@@ -88,7 +88,7 @@ export const UndoHistoryMenu: React.FC<UndoHistoryMenuProps> = ({ items, disable
 
   return (
     <div ref={rootRef} className="relative flex flex-shrink-0 items-center">
-      <Tooltip label={t.toolbar.undoTooltip} placement="bottom">
+      <Tooltip label={t.toolbar.undoTooltip} shortcut="Ctrl+Z" placement="bottom">
         <button
           type="button"
           onClick={() => latest?.canUndo && !disabled && onUndo(latest.id)}

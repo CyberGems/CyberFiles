@@ -141,18 +141,18 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 
         <div className="header-actions flex items-center gap-1 overflow-x-auto min-w-0">
           <UndoHistoryMenu items={undoHistory} onUndo={onUndoAction} disabled={undoBusy} />
-          <Tooltip label={t.toolbar.delete} disabled={disabled}><button onClick={onDeleteSelected} disabled={disabled} className="header-action text-rose-200"><Trash2 className="w-3.5 h-3.5 text-rose-400" /><span className="core-action-label">{language === 'es' ? 'Eliminar' : 'Delete'}</span><kbd className="keyboard-hint">Del</kbd></button></Tooltip>
-          <Tooltip label={t.toolbar.newFolder}><button onClick={onNewFolder} className="header-action"><FolderPlus className="w-3.5 h-3.5 text-emerald-400" /><span className="action-label">{language === 'es' ? 'Nueva carpeta' : 'New folder'}</span><kbd className="keyboard-hint">F7</kbd></button></Tooltip>
+          <Tooltip label={t.toolbar.delete} shortcut="Del" disabled={disabled}><button onClick={onDeleteSelected} disabled={disabled} className="header-action text-rose-200"><Trash2 className="w-3.5 h-3.5 text-rose-400" /><span className="core-action-label">{language === 'es' ? 'Eliminar' : 'Delete'}</span><kbd className="keyboard-hint">Del</kbd></button></Tooltip>
+          <Tooltip label={t.toolbar.newFolder} shortcut="F7"><button onClick={() => onNewFolder()} className="header-action"><FolderPlus className="w-3.5 h-3.5 text-emerald-400" /><span className="action-label">{language === 'es' ? 'Nueva carpeta' : 'New folder'}</span><kbd className="keyboard-hint">F7</kbd></button></Tooltip>
         </div>
       </div>
 
       <div ref={menuRootRef} className="flex items-center gap-2 flex-shrink-0">
-        <Tooltip label={t.toolbar.showHiddenFiles} placement="bottom">
+        <Tooltip label={t.toolbar.showHiddenFiles} shortcut="Ctrl+H" placement="bottom">
           <button type="button" aria-label={t.toolbar.showHiddenFiles} aria-pressed={showHiddenFiles} onClick={onToggleShowHiddenFiles} className={showHiddenFiles ? 'flex h-9 w-9 items-center justify-center rounded-md border border-cyan-700/70 bg-cyan-950/70 text-cyan-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70' : 'flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70'}>
             {showHiddenFiles ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </button>
         </Tooltip>
-        <Tooltip label={t.toolbar.showFileExtensions} placement="bottom">
+        <Tooltip label={t.toolbar.showFileExtensions} shortcut="Ctrl+E" placement="bottom">
           <button type="button" aria-label={t.toolbar.showFileExtensions} aria-pressed={showFileExtensions} onClick={onToggleShowFileExtensions} className={showFileExtensions ? 'flex h-9 w-9 items-center justify-center rounded-md border border-cyan-700/70 bg-cyan-950/70 text-cyan-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70' : 'flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70'}>
             <FileText className="h-4 w-4" />
           </button>
@@ -212,7 +212,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </>
         )}
 
-        <Tooltip label={flatViewTooltip} placement="bottom">
+        <Tooltip label={flatViewTooltip} shortcut="Ctrl+B" placement="bottom">
           <span className={`inline-flex rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70 ${flatViewAvailable ? '' : 'cursor-not-allowed'}`} tabIndex={flatViewAvailable ? undefined : 0} aria-label={flatViewAvailable ? undefined : `${t.toolbar.flatView}: ${flatViewTooltip}`}>
             <button type="button" aria-label={t.toolbar.flatView} aria-pressed={flatView} disabled={!flatViewAvailable} onClick={onToggleFlatView} className={flatView ? 'flex h-9 items-center gap-1.5 rounded-md border border-cyan-700/70 bg-cyan-950/70 px-2 text-xs font-medium text-cyan-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70 disabled:pointer-events-none disabled:opacity-40' : 'flex h-9 items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900 px-2 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70 disabled:pointer-events-none disabled:opacity-40'}>
               {flatViewLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ListTree className="h-4 w-4" />}
@@ -222,12 +222,12 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         </Tooltip>
 
         <div className="view-choice-group flex items-center" role="group" aria-label={t.toolbar.viewModes}>
-          <Tooltip label={t.toolbar.viewDetails}><button type="button" aria-label={t.toolbar.viewDetails} aria-pressed={viewMode === 'details'} onClick={() => onViewModeChange('details')} className="view-choice"><List className="h-4 w-4" /></button></Tooltip>
-          <Tooltip label={t.toolbar.viewCompact}><button type="button" aria-label={t.toolbar.viewCompact} aria-pressed={viewMode === 'compact'} onClick={() => onViewModeChange('compact')} className="view-choice"><StretchHorizontal className="h-4 w-4" /></button></Tooltip>
-          <Tooltip label={t.toolbar.viewIcons}><button type="button" aria-label={t.toolbar.viewIcons} aria-pressed={viewMode === 'icons'} onClick={() => onViewModeChange('icons')} className="view-choice"><LayoutGrid className="h-4 w-4" /></button></Tooltip>
+          <Tooltip label={t.toolbar.viewDetails} shortcut="Ctrl+1"><button type="button" aria-label={t.toolbar.viewDetails} aria-pressed={viewMode === 'details'} onClick={() => onViewModeChange('details')} className="view-choice"><List className="h-4 w-4" /></button></Tooltip>
+          <Tooltip label={t.toolbar.viewCompact} shortcut="Ctrl+2"><button type="button" aria-label={t.toolbar.viewCompact} aria-pressed={viewMode === 'compact'} onClick={() => onViewModeChange('compact')} className="view-choice"><StretchHorizontal className="h-4 w-4" /></button></Tooltip>
+          <Tooltip label={t.toolbar.viewIcons} shortcut="Ctrl+3"><button type="button" aria-label={t.toolbar.viewIcons} aria-pressed={viewMode === 'icons'} onClick={() => onViewModeChange('icons')} className="view-choice"><LayoutGrid className="h-4 w-4" /></button></Tooltip>
         </div>
 
-        <Tooltip label={t.toolbar.relativeGraphs} placement="bottom">
+        <Tooltip label={t.toolbar.relativeGraphs} shortcut="Ctrl+G" placement="bottom">
           <button
             type="button"
             aria-label={t.toolbar.relativeGraphs}
@@ -240,19 +240,19 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         </Tooltip>
 
         <div className="view-choice-group flex items-center" role="group" aria-label={t.header.layoutModes}>
-          <Tooltip label={t.header.layoutDualVertical}><button type="button" aria-label={t.header.layoutDualVertical} aria-pressed={layout === 'dual-vertical'} onClick={() => onLayoutChange('dual-vertical')} className="view-choice"><Columns2 className="h-4 w-4" /></button></Tooltip>
-          <Tooltip label={t.header.layoutDualHorizontal}><button type="button" aria-label={t.header.layoutDualHorizontal} aria-pressed={layout === 'dual-horizontal'} onClick={() => onLayoutChange('dual-horizontal')} className="view-choice"><Rows2 className="h-4 w-4" /></button></Tooltip>
-          <Tooltip label={t.header.layoutSingle}><button type="button" aria-label={t.header.layoutSingle} aria-pressed={layout === 'single'} onClick={() => onLayoutChange('single')} className="view-choice"><Square className="h-4 w-4" /></button></Tooltip>
+          <Tooltip label={t.header.layoutDualVertical} shortcut="Alt+1"><button type="button" aria-label={t.header.layoutDualVertical} aria-pressed={layout === 'dual-vertical'} onClick={() => onLayoutChange('dual-vertical')} className="view-choice"><Columns2 className="h-4 w-4" /></button></Tooltip>
+          <Tooltip label={t.header.layoutDualHorizontal} shortcut="Alt+2"><button type="button" aria-label={t.header.layoutDualHorizontal} aria-pressed={layout === 'dual-horizontal'} onClick={() => onLayoutChange('dual-horizontal')} className="view-choice"><Rows2 className="h-4 w-4" /></button></Tooltip>
+          <Tooltip label={t.header.layoutSingle} shortcut="Alt+3"><button type="button" aria-label={t.header.layoutSingle} aria-pressed={layout === 'single'} onClick={() => onLayoutChange('single')} className="view-choice"><Square className="h-4 w-4" /></button></Tooltip>
         </div>
 
-        <Tooltip label={`${t.workspaceProfiles.open}${workspaceChangesPending ? ` · ${t.workspaceProfiles.modified}` : ''}`} placement="bottom">
+        <Tooltip label={`${t.workspaceProfiles.open}${workspaceChangesPending ? ` · ${t.workspaceProfiles.modified}` : ''}`} shortcut="Ctrl+Shift+W" placement="bottom">
           <button type="button" onClick={onOpenWorkspaceManager} aria-label={`${t.workspaceProfiles.open}${workspaceChangesPending ? `, ${t.workspaceProfiles.modified}` : ''}`} className="relative flex items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-xs text-neutral-300 transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-200">
             <PanelsTopLeft className="h-3.5 w-3.5 text-cyan-400" />
             <span className="hidden sm:inline">{t.workspaceProfiles.title}</span>
             {workspaceChangesPending && <span aria-hidden="true" className="absolute -right-1 -top-1 h-2 w-2 rounded-full border border-neutral-950 bg-amber-300" />}
           </button>
         </Tooltip>
-        <Tooltip label={propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel}><button type="button" onClick={onTogglePropertiesPanel} aria-label={`${propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} (F3)`} aria-pressed={propertiesPanelOpen} className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors ${propertiesPanelOpen ? 'bg-cyan-950/70 border-cyan-700/70 text-cyan-300' : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'}`}><Info className={`w-3.5 h-3.5 ${propertiesPanelOpen ? 'text-cyan-300' : 'text-neutral-400'}`} /><span className="hidden xl:inline">{t.toolbar.propertiesPanel}</span><kbd className="keyboard-hint">F3</kbd></button></Tooltip>
+        <Tooltip label={propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} shortcut="F3"><button type="button" onClick={onTogglePropertiesPanel} aria-label={`${propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} (F3)`} aria-pressed={propertiesPanelOpen} className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors ${propertiesPanelOpen ? 'bg-cyan-950/70 border-cyan-700/70 text-cyan-300' : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'}`}><Info className={`w-3.5 h-3.5 ${propertiesPanelOpen ? 'text-cyan-300' : 'text-neutral-400'}`} /><span className="hidden xl:inline">{t.toolbar.propertiesPanel}</span><kbd className="keyboard-hint">F3</kbd></button></Tooltip>
       </div>
 
       <style>{`
