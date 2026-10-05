@@ -93,7 +93,7 @@ function clamp(value: number, minimum: number, maximum: number) {
 
 function getPosition(
   anchor: DOMRect,
-  card: DOMRect,
+  card: { width: number; height: number },
   preferredPlacement: Placement,
 ): TooltipPosition {
   const viewportWidth = window.innerWidth;
@@ -262,7 +262,24 @@ export function Tooltip({ label, placement = 'bottom', children, disabled = fals
     const anchor = pointerPoint
       ? new DOMRect(pointerPoint.x, pointerPoint.y, 0, 0)
       : anchorElement.getBoundingClientRect();
-    setPosition(getPosition(anchor, cardRef.current.getBoundingClientRect(), placement));
+    const cardEl = cardRef.current;
+    const cardRect = {
+      width: cardEl.offsetWidth || cardEl.getBoundingClientRect().width,
+      height: cardEl.offsetHeight || cardEl.getBoundingClientRect().height,
+    };
+    const nextPosition = getPosition(anchor, cardRect, placement);
+    setPosition(previous => {
+      if (
+        previous &&
+        previous.left === nextPosition.left &&
+        previous.top === nextPosition.top &&
+        previous.placement === nextPosition.placement &&
+        previous.arrowOffset === nextPosition.arrowOffset
+      ) {
+        return previous;
+      }
+      return nextPosition;
+    });
   }, [anchorElement, label, placement, pointerPoint]);
 
   useEffect(() => {

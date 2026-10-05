@@ -713,7 +713,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         {folderSize?.status === 'loading' && (
           <LoaderCircle className="h-2.5 w-2.5 animate-spin text-cyan-300 shrink-0" />
         )}
-        <span className="truncate">{text}</span>
+        <span className="min-w-0 truncate">{text}</span>
         {isWaitingHover && (
           <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[2px] bg-cyan-950/70">
             <div
