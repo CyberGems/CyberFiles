@@ -202,8 +202,7 @@ interface MouseGestureDrag {
 
 const MOUSE_GESTURE_MENU_TOLERANCE = 12;
 const MOUSE_GESTURE_HOLD_TIMEOUT = 2000;
-const FOLDER_TOOLTIP_OVERVIEW_MS = 3000;
-const FOLDER_SIZE_HOVER_DELAY_MS = 4000;
+const FOLDER_SIZE_HOVER_DELAY_MS = 2000;
 
 const COLLAPSED_SYSTEM_HOME_SECTIONS_KEY = 'cyberfiles_system_home_collapsed_sections_v1';
 const FILE_COLUMNS: FileColumn[] = ['extension', 'name', 'type', 'size', 'created', 'modified'];
@@ -1000,7 +999,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const loading: FolderChildCountState = { status: 'loading' };
     folderChildCountsRef.current = { ...folderChildCountsRef.current, [item.id]: loading };
     setFolderChildCounts(previous => ({ ...previous, [item.id]: loading }));
-    const overviewUntil = Date.now() + FOLDER_TOOLTIP_OVERVIEW_MS;
     let nextState: FolderChildCountState;
     try {
       const summary = await loadFolderContentSummary(item);
@@ -1008,8 +1006,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
     } catch {
       nextState = { status: 'error' };
     }
-    const remainingOverview = overviewUntil - Date.now();
-    if (remainingOverview > 0) await new Promise<void>(resolve => window.setTimeout(resolve, remainingOverview));
     setFolderChildCounts(previous => ({ ...previous, [item.id]: nextState }));
   };
   const handleFolderTooltipMouseEnter = (item: FileItem) => {
