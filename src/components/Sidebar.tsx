@@ -33,9 +33,10 @@ import {
   ListRestart,
   Info,
   RotateCcw,
-  Home,
   ListChecks,
   Layers,
+  Zap,
+  ZapOff,
 } from 'lucide-react';
 import { ArchiveExtractionMode, DriveInfo, FileItem, FileType, QuickAccessItem, QuickAccessSortMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
@@ -176,6 +177,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return 'tree';
   });
   const [folderContextPath, setFolderContextPath] = useState(currentPath);
+  const [contextReactivityEnabled, setContextReactivityEnabled] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem('cyberfiles_context_reactivity_v1');
+      return saved !== null ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('cyberfiles_context_reactivity_v1', String(contextReactivityEnabled));
+    } catch {
+      // Preference remains available for the session
+    }
+  }, [contextReactivityEnabled]);
+
   const [currentFolderContent, setCurrentFolderContent] = useState<{ path: string; status: 'loading' | 'done' | 'error'; summary?: FolderContentSummary } | null>(null);
   const currentFolderName = currentFolderItem?.name || currentPath.replace(/[\/]+$/, '').split(/[\/]/).pop() || currentPath;
   const currentFolderFiles = currentFolderItems.filter(item => !item.isFolder);
@@ -365,6 +383,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   useEffect(() => {
     if (folderContextPath === currentPath) return;
     setFolderContextPath(currentPath);
+    if (!contextReactivityEnabled) return;
     if (currentPath === SYSTEM_HOME_PATH || currentPath === RECYCLE_BIN_PATH) {
       if (selectedItems.length === 0) {
         setActiveTab('tree');
@@ -372,16 +391,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       return;
     }
     setActiveTab('context');
-  }, [currentPath, folderContextPath, selectedItems.length]);
+  }, [currentPath, folderContextPath, selectedItems.length, contextReactivityEnabled]);
 
   const previousSelectedIdsRef = React.useRef<string>('');
   useEffect(() => {
     const currentIdsKey = selectedItems.map(item => item.id).sort().join(',');
-    if (selectedItems.length > 0 && currentIdsKey !== previousSelectedIdsRef.current) {
+    if (contextReactivityEnabled && selectedItems.length > 0 && currentIdsKey !== previousSelectedIdsRef.current) {
       setActiveTab('context');
     }
     previousSelectedIdsRef.current = currentIdsKey;
-  }, [selectedItems]);
+  }, [selectedItems, contextReactivityEnabled]);
 
   useEffect(() => {
     if (!quickAccessSortOpen) return;
@@ -537,6 +556,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
             .replace('{count}', new Intl.NumberFormat(language === 'es' ? 'es' : 'en').format(recycleBinStatus.itemCount))
             .replace('{size}', formatFileSize(recycleBinStatus.totalBytes));
 
+  const renderReactivityToggle = () => (
+    <Tooltip
+      label={
+        contextReactivityEnabled
+          ? t.sidebar.contextReactivityActiveTooltip
+          : t.sidebar.contextReactivityInactiveTooltip
+      }
+      placement="left"
+    >
+      <button
+        type="button"
+        onClick={() => setContextReactivityEnabled(prev => !prev)}
+        aria-label={
+          contextReactivityEnabled
+            ? t.sidebar.contextReactivityActiveTooltip
+            : t.sidebar.contextReactivityInactiveTooltip
+        }
+        aria-pressed={contextReactivityEnabled}
+        className={`flex h-6 w-6 items-center justify-center rounded-md border transition-colors ${
+          contextReactivityEnabled
+            ? 'border-cyan-700/70 bg-cyan-950/60 text-cyan-300 shadow-sm shadow-cyan-950/50 hover:border-cyan-500 hover:bg-cyan-900/70 hover:text-cyan-100'
+            : 'border-neutral-800 bg-neutral-900/80 text-neutral-500 hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-300'
+        }`}
+      >
+        {contextReactivityEnabled ? (
+          <Zap className="h-3.5 w-3.5 fill-cyan-400/40 text-cyan-300" />
+        ) : (
+          <ZapOff className="h-3.5 w-3.5" />
+        )}
+      </button>
+    </Tooltip>
+  );
+
   return (
     <aside className="h-full w-full min-w-0 overflow-hidden bg-neutral-950 border-r border-neutral-800/80 flex flex-col justify-between select-none flex-shrink-0 text-xs">
       
@@ -643,26 +695,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </p>
             </div>
             <div className="flex items-center gap-1">
-              <Tooltip label={t.sidebar.showLauncher}>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('tree')}
-                  aria-label={t.sidebar.showLauncher}
-                  className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
-                >
-                  <Home className="h-3.5 w-3.5" />
-                </button>
-              </Tooltip>
-              <Tooltip label={t.sidebar.clearSelection}>
-                <button
-                  type="button"
-                  onClick={onClearSelection}
-                  aria-label={t.sidebar.clearSelection}
-                  className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </Tooltip>
+              {renderReactivityToggle()}
             </div>
           </div>
 
@@ -775,16 +808,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="min-w-0">
               <h2 className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.sidebar.currentFolderTitle}</h2>
             </div>
-            <Tooltip label={t.sidebar.showLauncher} placement="right">
-              <button
-                type="button"
-                onClick={() => setActiveTab('tree')}
-                aria-label={t.sidebar.showLauncher}
-                className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
-              >
-                <Home className="h-3.5 w-3.5" />
-              </button>
-            </Tooltip>
+            <div className="flex items-center gap-1">
+              {renderReactivityToggle()}
+            </div>
           </div>
           <div className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
             <FolderOpen className="h-5 w-5 text-amber-300" />
@@ -872,16 +898,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {currentPath === RECYCLE_BIN_PATH ? t.sidebar.recycleBinTitle : t.sidebar.contextTitle}
               </h2>
             </div>
-            <Tooltip label={t.sidebar.showLauncher} placement="right">
-              <button
-                type="button"
-                onClick={() => setActiveTab('tree')}
-                aria-label={t.sidebar.showLauncher}
-                className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
-              >
-                <Home className="h-3.5 w-3.5" />
-              </button>
-            </Tooltip>
+            <div className="flex items-center gap-1">
+              {renderReactivityToggle()}
+            </div>
           </div>
           <div className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
             {currentPath === RECYCLE_BIN_PATH ? (
