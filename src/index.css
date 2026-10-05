@@ -90,45 +90,110 @@ html[data-theme='light'] select option {
 html[data-theme='gray'] {
   background: #0d0d0d;
   --cyberfiles-tooltip-background: #171717;
-  --cyberfiles-recent-item-color: #e5e5e5;
-  --cyberfiles-hidden-item-color: #f87171;
-  --cyberfiles-scrollbar-track: #151515;
-  --cyberfiles-scrollbar-thumb: #454545;
-  --cyberfiles-scrollbar-thumb-hover: #666666;
-  --color-cyan-200: oklch(0.84 0 0);
-  --color-cyan-300: oklch(0.74 0 0);
-  --color-cyan-400: oklch(0.64 0 0);
-  --color-cyan-500: oklch(0.54 0 0);
-  --color-cyan-600: oklch(0.45 0 0);
-  --color-cyan-700: oklch(0.36 0 0);
-  --color-cyan-800: oklch(0.27 0 0);
-  --color-cyan-900: oklch(0.19 0 0);
-  --color-cyan-950: oklch(0.13 0 0);
-  --color-blue-300: oklch(0.74 0 0);
-  --color-blue-400: oklch(0.64 0 0);
-  --color-blue-500: oklch(0.54 0 0);
-  --color-blue-600: oklch(0.44 0 0);
-  --color-amber-300: oklch(0.74 0 0);
-  --color-amber-400: oklch(0.64 0 0);
-  --color-amber-500: oklch(0.54 0 0);
-  --color-emerald-400: oklch(0.64 0 0);
-  --color-rose-200: oklch(0.84 0 0);
-  --color-rose-300: oklch(0.74 0 0);
-  --color-rose-400: oklch(0.64 0 0);
-  --color-rose-500: oklch(0.54 0 0);
-  --color-rose-600: oklch(0.44 0 0);
-  --color-rose-700: oklch(0.35 0 0);
-  --color-rose-950: oklch(0.13 0 0);
-  --color-yellow-300: oklch(0.74 0 0);
-  --color-yellow-400: oklch(0.64 0 0);
-  --color-purple-400: oklch(0.64 0 0);
-  --color-pink-400: oklch(0.64 0 0);
-  --color-orange-400: oklch(0.64 0 0);
+  --cyberfiles-recent-item-color: #f5f5f5;
+  --cyberfiles-hidden-item-color: #e5e5e5;
+  --cyberfiles-scrollbar-track: #141414;
+  --cyberfiles-scrollbar-thumb: #404040;
+  --cyberfiles-scrollbar-thumb-hover: #5c5c5c;
+
+  /* Elevated grayscale hierarchy for active/highlighted elements */
+  --color-cyan-200: oklch(0.96 0 0);
+  --color-cyan-300: oklch(0.90 0 0);
+  --color-cyan-400: oklch(0.82 0 0);
+  --color-cyan-500: oklch(0.72 0 0);
+  --color-cyan-600: oklch(0.60 0 0);
+  --color-cyan-700: oklch(0.48 0 0);
+  --color-cyan-800: oklch(0.38 0 0);
+  --color-cyan-900: oklch(0.30 0 0);
+  --color-cyan-950: oklch(0.24 0 0);
+
+  /* Greyscale mapping for auxiliary accents */
+  --color-blue-300: oklch(0.85 0 0);
+  --color-blue-400: oklch(0.75 0 0);
+  --color-blue-500: oklch(0.65 0 0);
+  --color-blue-600: oklch(0.55 0 0);
+  --color-amber-300: oklch(0.85 0 0);
+  --color-amber-400: oklch(0.75 0 0);
+  --color-amber-500: oklch(0.65 0 0);
+  --color-emerald-400: oklch(0.75 0 0);
+  --color-rose-200: oklch(0.90 0 0);
+  --color-rose-300: oklch(0.80 0 0);
+  --color-rose-400: oklch(0.70 0 0);
+  --color-rose-500: oklch(0.58 0 0);
+  --color-rose-600: oklch(0.48 0 0);
+  --color-rose-700: oklch(0.38 0 0);
+  --color-rose-900: oklch(0.28 0 0);
+  --color-rose-950: oklch(0.20 0 0);
+  --color-yellow-300: oklch(0.85 0 0);
+  --color-yellow-400: oklch(0.75 0 0);
+  --color-purple-400: oklch(0.75 0 0);
+  --color-pink-400: oklch(0.75 0 0);
+  --color-orange-400: oklch(0.75 0 0);
+  --color-violet-100: oklch(0.92 0 0);
+  --color-violet-300: oklch(0.80 0 0);
+  --color-violet-400: oklch(0.70 0 0);
+  --color-violet-700: oklch(0.50 0 0);
+  --color-violet-900: oklch(0.32 0 0);
+  --color-violet-950: oklch(0.22 0 0);
 }
 
 html[data-theme='gray'] body,
 html[data-theme='gray'] #root {
   background: #0d0d0d;
+}
+
+/* Clear, luminous highlight for active toggle buttons in toolbar, header & sidebar */
+html[data-theme='gray'] button[aria-pressed='true']:not(.view-choice),
+html[data-theme='gray'] .header-action[aria-pressed='true'] {
+  background: #303030 !important;
+  border-color: #666666 !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+html[data-theme='gray'] button[aria-pressed='true']:not(.view-choice):hover,
+html[data-theme='gray'] .header-action[aria-pressed='true']:hover {
+  background: #3a3a3a !important;
+  border-color: #7a7a7a !important;
+}
+
+html[data-theme='gray'] button[aria-pressed='true'] svg,
+html[data-theme='gray'] .header-action[aria-pressed='true'] svg {
+  color: #ffffff !important;
+}
+
+/* View choice and layout mode toggles in HeaderBar */
+html[data-theme='gray'] .view-choice[aria-pressed='true'] {
+  border-color: #737373 !important;
+  background: #333333 !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+html[data-theme='gray'] .view-choice-group {
+  background: #141414;
+  border-color: #2e2e2e;
+}
+
+html[data-theme='gray'] .view-choice:hover:not([aria-pressed='true']) {
+  background: #242424;
+  color: #e5e5e5;
+}
+
+/* Active tabs in vertical and horizontal tab strips */
+html[data-theme='gray'] [role='button'][aria-pressed='true'] {
+  background: #282828;
+  border-color: #555555;
+  color: #ffffff;
+}
+
+html[data-theme='gray'] [role='button'][aria-pressed='true'] svg {
+  color: #e5e5e5;
+}
+
+/* File list selection focus and rings */
+html[data-theme='gray'] [data-file-item='true'][data-focused='true'] {
+  outline-color: #737373;
 }
 
 html[data-theme='light'] {
