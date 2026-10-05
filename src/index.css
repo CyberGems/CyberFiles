@@ -350,10 +350,16 @@ html[data-theme='light'] #root .collapse-toggle:hover:not(:disabled) {
 }
 
 .cyberfiles-toast-progress { animation-name: cyberfiles-toast-countdown; animation-timing-function: linear; animation-fill-mode: forwards; }
+.cyberfiles-folder-hover-progress { animation-name: cyberfiles-folder-hover-fill; animation-timing-function: linear; animation-fill-mode: forwards; }
 
 @keyframes cyberfiles-toast-countdown {
   from { transform: scaleX(1); }
   to { transform: scaleX(0); }
+}
+
+@keyframes cyberfiles-folder-hover-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
 }
 
 @keyframes workspace-manager-backdrop-in {

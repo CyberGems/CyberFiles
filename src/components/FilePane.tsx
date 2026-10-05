@@ -689,14 +689,42 @@ export const FilePane: React.FC<FilePaneProps> = ({
       : undefined;
   };
 
-  const getFolderTooltipSizeText = (item: FileItem) => {
+  const renderFolderSizeStatus = (item: FileItem) => {
     const folderSize = folderSizeStates[item.id];
-    if (folderSize?.status === 'done') return t.pane.folderSizeTotal.replace('{size}', formatFileSize(folderSize.size ?? 0));
-    if (folderSize?.status === 'loading') return t.pane.folderSizeCalculating.replace('{size}', formatFileSize(folderSize.size ?? 0)).replace('{entries}', String(folderSize.entriesScanned ?? 0));
-    if (folderSize?.status === 'paused') return t.pane.folderSizePaused.replace('{size}', formatFileSize(folderSize.size ?? 0)).replace('{entries}', String(folderSize.entriesScanned ?? 0));
-    if (folderSize?.status === 'error') return t.pane.folderSizeFailed;
-    if (!autoFolderSizeEnabled) return t.pane.folderSizeHoverDisabled;
-    return isTauriDesktop() ? t.pane.folderSizeHoverHint : t.pane.folderSizeHoverDesktopOnly;
+    const isWaitingHover = !folderSize && autoFolderSizeEnabled && isTauriDesktop();
+
+    let text = '';
+    if (folderSize?.status === 'done') {
+      text = t.pane.folderSizeTotal.replace('{size}', formatFileSize(folderSize.size ?? 0));
+    } else if (folderSize?.status === 'loading') {
+      text = t.pane.folderSizeCalculating.replace('{size}', formatFileSize(folderSize.size ?? 0)).replace('{entries}', String(folderSize.entriesScanned ?? 0));
+    } else if (folderSize?.status === 'paused') {
+      text = t.pane.folderSizePaused.replace('{size}', formatFileSize(folderSize.size ?? 0)).replace('{entries}', String(folderSize.entriesScanned ?? 0));
+    } else if (folderSize?.status === 'error') {
+      text = t.pane.folderSizeFailed;
+    } else if (!autoFolderSizeEnabled) {
+      text = t.pane.folderSizeHoverDisabled;
+    } else {
+      text = isTauriDesktop() ? t.pane.folderSizeHoverHint : t.pane.folderSizeHoverDesktopOnly;
+    }
+
+    return (
+      <div className="relative mt-1 flex h-6 w-full items-center justify-center gap-1.5 overflow-hidden rounded border border-cyan-400/20 bg-cyan-950/20 px-2 text-[10px] text-cyan-200">
+        {folderSize?.status === 'loading' && (
+          <LoaderCircle className="h-2.5 w-2.5 animate-spin text-cyan-300 shrink-0" />
+        )}
+        <span className="truncate">{text}</span>
+        {isWaitingHover && (
+          <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[2px] bg-cyan-950/70">
+            <div
+              key={item.id}
+              className="cyberfiles-folder-hover-progress h-full w-full origin-left bg-gradient-to-r from-cyan-600 via-cyan-300 to-white shadow-[0_0_8px_rgba(34,211,238,0.8)]"
+              style={{ animationDuration: `${FOLDER_SIZE_HOVER_DELAY_MS}ms` }}
+            />
+          </div>
+        )}
+      </div>
+    );
   };
 
   const flatParentLabel = (item: FileItem) => {
@@ -746,7 +774,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {item.isFolder && !item.recycleBinId && !isRecycleBin && (
         <>
           {renderFolderContents(item)}
-          <span className="flex h-8 w-full items-center justify-center overflow-hidden text-[10px] leading-4 text-cyan-100">{getFolderTooltipSizeText(item)}</span>
+          {renderFolderSizeStatus(item)}
         </>
       )}
       {!item.isFolder && <span>{formatFileSize(item.size)}</span>}
