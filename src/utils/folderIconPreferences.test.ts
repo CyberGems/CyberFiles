@@ -4,6 +4,8 @@ import {
   normalizeFolderIconKey,
   getCustomFolderIcon,
   setCustomFolderIcon,
+  exportFolderIconsJson,
+  importFolderIconsJson,
   type SavedFolderIcons,
   type CustomFolderIconConfig,
 } from './folderIconPreferences';
@@ -29,17 +31,45 @@ test('retrieves custom folder icon ignoring slash style', () => {
   assert.equal(getCustomFolderIcon('D:\\Other', icons), undefined);
 });
 
-test('adds and removes custom folder icon', () => {
+test('falls back to folder name rule when path has no exact rule', () => {
+  const nodeModulesConfig: CustomFolderIconConfig = {
+    iconId: 'boxes',
+    style: 'symbol',
+    category: 'color',
+    colorPreset: 'emerald',
+  };
+  const icons: SavedFolderIcons = {
+    'name:node_modules': nodeModulesConfig,
+  };
+
+  assert.deepEqual(getCustomFolderIcon('C:\\Web\\App\\node_modules', icons), nodeModulesConfig);
+  assert.deepEqual(getCustomFolderIcon('D:\\Other\\Project\\node_modules\\', icons), nodeModulesConfig);
+});
+
+test('adds and removes custom folder icon with badge and custom color', () => {
   const path = 'C:\\Work\\Music';
   const config: CustomFolderIconConfig = {
     iconId: 'music',
     style: 'symbol',
     category: 'color',
-    colorPreset: 'rose',
+    customColor: '#ff007f',
+    badge: {
+      type: 'in-progress',
+      label: 'WIP',
+      color: '#06b6d4',
+    },
   };
 
   const withIcon = setCustomFolderIcon(path, config, {});
   assert.deepEqual(getCustomFolderIcon(path, withIcon), config);
+
+  const exported = exportFolderIconsJson(withIcon);
+  assert.match(exported, /#ff007f/);
+
+  const imported = importFolderIconsJson(exported, {});
+  assert.equal(imported.success, true);
+  assert.equal(imported.count, 1);
+  assert.deepEqual(getCustomFolderIcon(path, imported.icons), config);
 
   const removed = setCustomFolderIcon(path, null, withIcon);
   assert.equal(getCustomFolderIcon(path, removed), undefined);

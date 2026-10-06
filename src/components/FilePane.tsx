@@ -43,7 +43,7 @@ import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNative
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { advanceMouseGesturePath, MOUSE_GESTURE_MIN_DISTANCE, type MouseGesturePath } from '../utils/mouseGesture';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
-import { FolderIconRenderer } from './folderIconsData';
+import { FolderIconRenderer, FolderStatusBadge } from './folderIconsData';
 import { listen } from '@tauri-apps/api/event';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip, TooltipPreferenceContext } from './Tooltip';
@@ -1650,6 +1650,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
     return size === 'large' ? <span className="scale-[2]">{fallback}</span> : fallback;
   };
 
+  const renderFolderStatusBadge = (item: FileItem) => {
+    if (!item.isFolder) return null;
+    const customConfig = getCustomFolderIcon(item.path, customFolderIcons ?? {});
+    if (!customConfig?.badge || customConfig.badge.type === 'none') return null;
+    return <FolderStatusBadge badge={customConfig.badge} language={language} className="flex-shrink-0" />;
+  };
+
   // Breadcrumbs generator for Windows paths: "C:\Users\Cali\Documents"
   const breadcrumbSegments = React.useMemo(() => {
     if (!tab.currentPath || isSystemHome || isRecycleBin) return [];
@@ -2991,6 +2998,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                               <span data-file-column-content={column} onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className={`${flatParentLabel(item) ? 'max-w-[55%] ' : ''}truncate text-[11.5px] font-medium text-neutral-100`} style={getItemNameStyle(item, isSelected)} >{getDisplayItemName(item, showFileExtensions)}</span>
                             </Tooltip>
                           )}
+                          {renderFolderStatusBadge(item)}
                           {flatParentLabel(item) && <span className="min-w-0 truncate font-sans text-[10px] font-normal text-neutral-500">· {flatParentLabel(item)}</span>}
                         </div>
                       );
@@ -3082,6 +3090,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       </span>
                     </Tooltip>
                   )}
+                  {renderFolderStatusBadge(item)}
                   {!item.isFolder && <span className="flex-shrink-0 font-sans text-[10px] text-neutral-500">{formatFileSize(item.size)}</span>}
                 </div>
               );
@@ -3140,6 +3149,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     </span>
                   )}
                   {flatParentLabel(item) && <span className="w-full truncate px-1 font-sans text-[9px] text-neutral-500">{flatParentLabel(item)}</span>}
+                  {renderFolderStatusBadge(item)}
                   <span className="mt-0.5 text-[9px] font-sans text-neutral-400">
                     {item.isFolder ? t.pane.iconFolderLabel : formatFileSize(item.size)}
                   </span>

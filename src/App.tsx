@@ -877,9 +877,16 @@ export default function App() {
     setFolderIconTarget(target);
   }, []);
 
-  const handleApplyFolderIcon = useCallback((targetPath: string, config: CustomFolderIconConfig | null) => {
+  const handleApplyFolderIcon = useCallback((
+    targetPath: string,
+    config: CustomFolderIconConfig | null,
+    nameRule?: { name: string; apply: boolean },
+  ) => {
     setCustomFolderIcons(previous => {
-      const updated = setCustomFolderIcon(targetPath, config, previous);
+      let updated = setCustomFolderIcon(targetPath, config, previous);
+      if (nameRule?.apply && nameRule.name) {
+        updated = setCustomFolderIcon('name:' + nameRule.name, config, updated);
+      }
       showToast(config ? t.folderIconModal.savedToast : t.folderIconModal.resetToast);
       return updated;
     });
@@ -5795,7 +5802,8 @@ export default function App() {
           folderPath={folderIconTarget.path}
           folderName={folderIconTarget.name}
           currentConfig={getCustomFolderIcon(folderIconTarget.path, customFolderIcons)}
-          onApply={config => handleApplyFolderIcon(folderIconTarget.path, config)}
+          onApply={(config, nameRule) => handleApplyFolderIcon(folderIconTarget.path, config, nameRule)}
+          onImportIcons={imported => setCustomFolderIcons(imported)}
           onClose={() => setFolderIconTarget(null)}
         />
       )}
