@@ -153,15 +153,8 @@ export function PaneSplitter({ orientation, value, label, onChange, minPercent =
           aria-hidden="true"
           className={
             'absolute bg-neutral-800 transition-colors duration-150 group-hover:bg-cyan-400/60 group-focus-visible:bg-cyan-400/60 ' +
-            (isVertical ? 'h-full w-px' : 'h-px w-full')
-          }
-        />
-        <span
-          aria-hidden="true"
-          className={
-            'absolute rounded-full bg-neutral-600 transition-colors duration-150 group-hover:bg-cyan-300 group-focus-visible:bg-cyan-300 ' +
-            (dragging ? '!bg-cyan-200 ' : '') +
-            (isVertical ? 'h-8 w-[3px]' : 'h-[3px] w-8')
+            (isVertical ? 'h-full w-px' : 'h-px w-full') +
+            (dragging ? ' !bg-cyan-300' : '')
           }
         />
       </div>
