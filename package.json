@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tauri dev",
     "dev:desktop": "tauri dev",
-    "dev:vite-internal": "vite --port=3001 --strictPort --host=127.0.0.1",
+    "dev:vite-internal": "vite",
     "build": "vite build",
     "build:desktop": "tauri build --debug --no-bundle",
     "clean": "node -e \"for (const path of ['dist']) { require('fs').rmSync(path, { recursive: true, force: true }); }\"",

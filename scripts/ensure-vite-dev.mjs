@@ -2,7 +2,8 @@ import net from 'node:net';
 import { spawn } from 'node:child_process';
 
 const host = '127.0.0.1';
-const port = 3001;
+const port = 1421;
+const devUrl = `http://${host}:${port}`;
 
 function isPortInUse() {
   return new Promise(resolve => {
@@ -15,8 +16,25 @@ function isPortInUse() {
   });
 }
 
+async function isCyberFilesViteServer() {
+  try {
+    const response = await fetch(devUrl, { signal: AbortSignal.timeout(2_000) });
+    const html = await response.text();
+    return response.ok
+      && html.includes('name="application-name" content="CyberFiles"')
+      && html.includes('/@vite/client');
+  } catch {
+    return false;
+  }
+}
+
 if (await isPortInUse()) {
-  console.log(`Vite is already available on ${host}:${port}; reusing it for Tauri.`);
+  if (!await isCyberFilesViteServer()) {
+    console.error(`Port ${port} is already in use by another application. CyberFiles will not reuse that server.`);
+    process.exit(1);
+  }
+
+  console.log(`CyberFiles Vite is already available on ${devUrl}; reusing it for Tauri.`);
   // Tauri owns this helper process, not the pre-existing Vite process. Keep the
   // helper alive until Tauri closes so it can cleanly manage the desktop session.
   setInterval(() => {}, 60_000);
