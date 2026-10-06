@@ -136,7 +136,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   }, [openToolbarMenu]);
 
   return (
-    <header className="min-h-14 bg-neutral-900/95 border-b border-neutral-800 px-3 py-2 flex items-center justify-between gap-3 select-none z-20 backdrop-blur-md">
+    <header className="cyberfiles-command-bar min-h-14 bg-neutral-900/95 border-b border-neutral-800 px-3 py-2 flex items-center justify-between gap-3 select-none z-20 backdrop-blur-md">
       <div className="flex items-center gap-3 min-w-0">
 
         <div className="header-actions flex items-center gap-1 overflow-x-auto min-w-0">

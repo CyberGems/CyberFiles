@@ -290,7 +290,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
 
   if (!item) {
     return (
-      <aside className="w-full min-w-0 bg-neutral-950 border-l border-neutral-800 flex flex-col justify-center items-center text-neutral-500 p-6 text-center select-none text-xs flex-shrink-0">
+      <aside className="cyberfiles-preview-pane w-full min-w-0 bg-neutral-950 border-l border-neutral-800 flex flex-col justify-center items-center text-neutral-500 p-6 text-center select-none text-xs flex-shrink-0">
         <Info className="w-8 h-8 text-neutral-600 mb-2 stroke-[1.5]" />
         <div className="font-medium text-neutral-400 mb-1">{t.preview.noPreview}</div>
         <div>{t.preview.noPreviewDescription}</div>
@@ -415,7 +415,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
   };
 
   return (
-    <aside className="flex h-full w-full min-w-0 flex-shrink-0 flex-col overflow-hidden border-l border-neutral-800 bg-neutral-950 text-xs select-none">
+    <aside className="cyberfiles-preview-pane flex h-full w-full min-w-0 flex-shrink-0 flex-col overflow-hidden border-l border-neutral-800 bg-neutral-950 text-xs select-none">
       <div className="flex h-10 flex-shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-900/60 px-3">
         <span className="truncate font-semibold text-neutral-200">{item.name}</span>
         <div className="flex flex-shrink-0 items-center gap-1">

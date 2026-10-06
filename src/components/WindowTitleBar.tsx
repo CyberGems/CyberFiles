@@ -147,7 +147,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
 
   return (
     <header
-      className="relative z-40 flex h-12 min-h-12 shrink-0 select-none items-center border-b border-neutral-800 bg-neutral-950 text-neutral-200"
+      className="cyberfiles-title-bar relative z-40 flex h-12 min-h-12 shrink-0 select-none items-center border-b border-neutral-800 bg-neutral-950 text-neutral-200"
       onDoubleClick={toggleFromTitlebarDoubleClick}
     >
       <div className="flex h-full min-w-0 flex-1 items-center" data-tauri-drag-region="">

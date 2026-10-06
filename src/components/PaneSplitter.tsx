@@ -138,7 +138,7 @@ export function PaneSplitter({ orientation, value, label, onChange, minPercent =
         aria-valuenow={Math.round(value)}
         tabIndex={0}
         className={
-          'group relative z-10 flex shrink-0 touch-none select-none items-center justify-center outline-none focus-visible:bg-cyan-400/10 ' +
+          'cyberfiles-splitter group relative z-10 flex shrink-0 touch-none select-none items-center justify-center outline-none focus-visible:bg-cyan-400/10 ' +
           (isVertical ? 'h-full w-2 cursor-col-resize' : 'h-2 w-full cursor-row-resize') +
           (dragging ? ' bg-cyan-400/10' : '')
         }

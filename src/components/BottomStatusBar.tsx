@@ -226,7 +226,7 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
 
   if (!currentPath) {
     return (
-      <footer id="app-bottom-status-bar" className="h-7 bg-black border-t border-neutral-800 px-2 text-[11px] font-sans text-neutral-400 flex items-center justify-between select-none z-30 flex-shrink-0">
+      <footer id="app-bottom-status-bar" className="cyberfiles-global-status h-7 bg-black border-t border-neutral-800 px-2 text-[11px] font-sans text-neutral-400 flex items-center justify-between select-none z-30 flex-shrink-0">
         <span>{t.pane.noFolderOpen}</span>
         <Tooltip label={shortcutsTooltip} placement="top"><button onClick={onOpenShortcuts} className="rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"><kbd className="keyboard-hint">F1</kbd></button></Tooltip>
       </footer>
@@ -236,7 +236,7 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
   return (
     <footer 
       id="app-bottom-status-bar"
-      className="h-7 bg-black border-t border-neutral-800 text-neutral-300 px-2 flex items-center justify-between text-[11px] font-sans select-none z-30 flex-shrink-0 gap-1.5 overflow-x-auto no-scrollbar"
+      className="cyberfiles-global-status h-7 bg-black border-t border-neutral-800 text-neutral-300 px-2 flex items-center justify-between text-[11px] font-sans select-none z-30 flex-shrink-0 gap-1.5 overflow-x-auto no-scrollbar"
     >
       {/* Left section: selection and capacity summary */}
       <div className="flex items-center gap-1 min-w-0">

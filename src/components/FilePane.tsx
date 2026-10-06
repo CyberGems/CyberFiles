@@ -2364,8 +2364,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
           onTabContextMenu(idx, event.clientX, event.clientY);
         }}
         className={vertical
-          ? `group flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition-colors outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 ${isTabActive ? 'border-cyan-600/65 bg-cyan-950/45 text-cyan-100 shadow-sm shadow-cyan-950/30' : 'border-transparent bg-neutral-900/35 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-800/70 hover:text-neutral-100'}`
-          : `group flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium cursor-pointer border-x transition-colors max-w-[180px] min-w-[100px] ${tabStripPosition === 'bottom' ? 'rounded-b-md border-b' : 'rounded-t-md border-t'} ${isTabActive ? 'bg-neutral-900 border-neutral-700 text-neutral-100 relative z-10' : 'bg-neutral-950/40 border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/40'}`}
+          ? `cyberfiles-folder-tab group flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition-colors outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 ${isTabActive ? 'border-cyan-600/65 bg-cyan-950/45 text-cyan-100 shadow-sm shadow-cyan-950/30' : 'border-transparent bg-neutral-900/35 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-800/70 hover:text-neutral-100'}`
+          : `cyberfiles-folder-tab group flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium cursor-pointer border-x transition-colors max-w-[180px] min-w-[100px] ${tabStripPosition === 'bottom' ? 'rounded-b-md border-b' : 'rounded-t-md border-t'} ${isTabActive ? 'bg-neutral-900 border-neutral-700 text-neutral-100 relative z-10' : 'bg-neutral-950/40 border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/40'}`}
       >
         <Folder className={`h-3.5 w-3.5 shrink-0 ${isTabActive ? 'text-cyan-400' : 'text-neutral-500'}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined} />
         <span className={`truncate text-[11px] ${vertical ? 'min-w-0 flex-1' : ''}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined}>{tabName}</span>
@@ -2423,7 +2423,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         role="group"
         aria-label={t.tabMenu.tabsLabel}
         tabIndex={0}
-        className={`flex shrink-0 items-center bg-neutral-950/90 border-neutral-800 px-1 overflow-x-auto no-scrollbar select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400 ${tabStripPosition === 'bottom' ? 'border-t pb-1' : 'border-b pt-1'}`}
+        className={`cyberfiles-tab-strip flex shrink-0 items-center bg-neutral-950/90 border-neutral-800 px-1 overflow-x-auto no-scrollbar select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400 ${tabStripPosition === 'bottom' ? 'border-t pb-1' : 'border-b pt-1'}`}
         onKeyDown={handleTabStripKeyDown}
         onDoubleClick={handleTabStripDoubleClick}
         onContextMenu={handleTabStripContextMenu}
@@ -2458,7 +2458,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       role="group"
       aria-label={t.tabMenu.tabsLabel}
       tabIndex={0}
-      className={`flex min-h-0 shrink-0 flex-col bg-neutral-950/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400 ${tabStripPosition === 'left' ? 'border-r border-neutral-800' : 'border-l border-neutral-800'}`}
+      className={`cyberfiles-vertical-tabs flex min-h-0 shrink-0 flex-col bg-neutral-950/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400 ${tabStripPosition === 'left' ? 'border-r border-neutral-800' : 'border-l border-neutral-800'}`}
       style={{ width: 'clamp(104px, 22%, 184px)' }}
       onKeyDown={handleTabStripKeyDown}
       onDoubleClick={handleTabStripDoubleClick}
@@ -2496,7 +2496,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   return (
     <div
       onClick={onActivate}
-      className={`flex flex-col h-full bg-neutral-900/60 overflow-hidden relative border transition-colors ${
+      data-active-pane={isActive ? 'true' : undefined}
+      className={`cyberfiles-pane flex flex-col h-full bg-neutral-900/60 overflow-hidden relative border transition-colors ${
         isActive
           ? 'border-cyan-500/50 shadow-sm shadow-cyan-950/40'
           : 'border-neutral-800/80 opacity-90'
@@ -2511,7 +2512,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
       {/* 2. Navigation & Breadcrumb Bar */}
-      <div className="flex items-center gap-1.5 px-2 py-1.5 bg-neutral-900 border-b border-neutral-800 text-xs select-none">
+      <div className="cyberfiles-pane-navigation flex items-center gap-1.5 px-2 py-1.5 bg-neutral-900 border-b border-neutral-800 text-xs select-none">
         <Tooltip label={t.toolbar.back} shortcut={language === 'es' ? 'Alt+Izquierda' : 'Alt+Left'} disabled={tab.historyIndex <= 0}><button onClick={onNavigateBack} disabled={tab.historyIndex <= 0} className="p-1 rounded text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 transition-colors"><ArrowLeft className="w-3.5 h-3.5" /></button></Tooltip>
         <Tooltip label={t.toolbar.forward} shortcut={language === 'es' ? 'Alt+Derecha' : 'Alt+Right'} disabled={tab.historyIndex >= tab.history.length - 1}><button onClick={onNavigateForward} disabled={tab.historyIndex >= tab.history.length - 1} className="p-1 rounded text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 transition-colors"><ArrowRight className="w-3.5 h-3.5" /></button></Tooltip>
         <Tooltip label={t.toolbar.up} shortcut="Backspace" disabled={isSystemHome}><button onClick={onNavigateUp} disabled={isSystemHome} className="p-1 rounded text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 transition-colors"><ArrowUp className="w-3.5 h-3.5" /></button></Tooltip>
@@ -2524,7 +2525,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             setPathInput(isSystemHome ? '' : tab.currentPath);
             setIsEditingPath(true);
           }}
-          className={`flex-1 min-w-0 flex h-9 min-h-9 items-center bg-neutral-950 px-2 rounded-full border border-neutral-800 overflow-hidden ${!isRecycleBin ? 'cursor-text hover:border-neutral-700' : 'cursor-default'}`}
+          className={`cyberfiles-address-bar flex-1 min-w-0 flex h-9 min-h-9 items-center bg-neutral-950 px-2 rounded-full border border-neutral-800 overflow-hidden ${!isRecycleBin ? 'cursor-text hover:border-neutral-700' : 'cursor-default'}`}
         >
           {isEditingPath ? (
             <form onSubmit={handlePathSubmit} onClick={event => event.stopPropagation()} className="w-full">
@@ -2710,7 +2711,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       </div>
 
       {/* 3. Live Filter Bar (Find as you type) */}
-      <div className="px-2 py-1 bg-neutral-950/60 border-b border-neutral-800/80 flex items-center gap-2 text-xs">
+      <div className="cyberfiles-pane-filter px-2 py-1 bg-neutral-950/60 border-b border-neutral-800/80 flex items-center gap-2 text-xs">
         <div className="relative flex-1">
           <Search className="w-3.5 h-3.5 absolute left-2 top-2 text-neutral-500" />
           <input
@@ -2741,8 +2742,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {effectiveViewMode === 'details' && !isSystemHome && (
         <div
           ref={columnHeadersRef}
-          className="mx-3 mt-1.5 grid shrink-0 items-center gap-2 rounded-t-lg border-t border-x border-b border-neutral-800/80 bg-neutral-900/90 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-300 select-none shadow-sm backdrop-blur-xs"
-          style={{ width: columnWidths.name === null ? 'calc(100% - 1.5rem)' : `${detailsRowWidth + viewportScrollbarWidth}px`, gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
+          className="cyberfiles-column-headers grid shrink-0 items-center gap-2 border border-neutral-800/80 bg-neutral-900/90 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-300 select-none shadow-sm backdrop-blur-xs"
+          style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth + viewportScrollbarWidth}px`, gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
           onContextMenu={openColumnMenu}
         >
           {visibleFileColumns.map((column, colIdx) => {
@@ -2762,7 +2763,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     if (suppressColumnSortRef.current) return;
                     onSortChange(sortField);
                   }}
-                  className={`group relative flex min-w-0 items-center gap-1 rounded-sm px-1 pr-2 cursor-grab active:cursor-grabbing transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${column === 'size' || column === 'created' || column === 'modified' ? 'justify-end' : ''} ${!isLast ? 'border-r border-neutral-800/60' : ''}`}
+                  className={`cyberfiles-column-header-cell group relative flex min-w-0 items-center gap-1 rounded-sm px-1 pr-2 cursor-grab active:cursor-grabbing transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${column === 'size' || column === 'created' || column === 'modified' ? 'justify-end' : ''} ${!isLast ? 'border-r border-neutral-800/60' : ''}`}
                 >
                   <span data-file-column-header={column} className="min-w-0 truncate">{columnLabel(column)}</span>
                   <DirectionIcon aria-hidden="true" className={`h-3 w-3 flex-shrink-0 ${isSorted ? 'text-cyan-400' : 'text-neutral-600'}`} />
@@ -2841,7 +2842,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       <div 
         ref={viewportRef}
         data-cyberfiles-pane-viewport={paneId}
-        className={`relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto py-0.5 select-none focus:outline-none ${marqueeBounds ? 'cursor-crosshair' : ''}`}
+        className={`cyberfiles-file-viewport relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto py-0.5 select-none focus:outline-none ${marqueeBounds ? 'cursor-crosshair' : ''}`}
         tabIndex={0}
         onScroll={event => {
           const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
@@ -2933,8 +2934,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </div>
         ) : effectiveViewMode === 'details' ? (
           <div
-            className="mx-3 mb-2 min-h-[calc(100%-0.75rem)] rounded-b-lg border-x border-b border-neutral-800/80 bg-neutral-950/50 py-1 space-y-0.5 shadow-inner overflow-hidden"
-            style={{ width: columnWidths.name === null ? 'calc(100% - 1.5rem)' : `${detailsRowWidth}px` }}
+            className="cyberfiles-details-list min-h-full border-x border-b border-neutral-800/80 bg-neutral-950/50 py-1 shadow-inner overflow-hidden"
+            style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth}px` }}
           >
             {renderGroups.map(group => {
               const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
@@ -2954,6 +2955,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   key={item.id}
                   data-file-item="true"
                   data-file-id={item.id}
+                  data-selected={isSelected ? 'true' : undefined}
+                  data-zebra={isZebra ? 'true' : undefined}
                   data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
                   draggable={!item.recycleBinId}
                   onDragStart={(e) => handleDragStart(e, item)}
@@ -2967,7 +2970,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth}px`, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`relative grid h-[30px] items-center gap-2 rounded-md border border-transparent px-2 text-xs cursor-pointer transition-colors ${
+                  className={`cyberfiles-file-row relative grid h-[30px] items-center gap-2 rounded-md border border-transparent px-2 text-xs cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-500/20 hover:bg-cyan-500/25 text-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]'
                       : isZebra
@@ -2977,11 +2980,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 >
                   {visibleFileColumns.map(column => {
                     if (column === 'extension') {
-                      return <div key={column} className="min-w-0 overflow-hidden truncate font-mono text-[10.5px] font-medium uppercase tracking-wide text-cyan-400/90"><span data-file-column-content={column} className="inline-block max-w-full truncate">{item.isFolder || !showFileExtensions ? '' : (item.extension || '')}</span></div>;
+                      return <div key={column} className="cyberfiles-file-cell min-w-0 overflow-hidden truncate font-mono text-[10.5px] font-medium uppercase tracking-wide text-cyan-400/90"><span data-file-column-content={column} className="inline-block max-w-full truncate">{item.isFolder || !showFileExtensions ? '' : (item.extension || '')}</span></div>;
                     }
                     if (column === 'name') {
                       return (
-                        <div key={column} className="flex min-w-0 overflow-hidden items-center gap-2">
+                        <div key={column} className="cyberfiles-file-cell flex min-w-0 overflow-hidden items-center gap-2">
                           <span className="flex-shrink-0">{getDisplayFileIcon(item)}</span>
                           {item.colorLabel && (
                             <span data-file-name-decoration="color-label" className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -3004,11 +3007,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       );
                     }
                     if (column === 'type') {
-                      return <div key={column} className="min-w-0 overflow-hidden truncate font-sans text-[10.5px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-full truncate">{getFileTypeLabel(item)}</span></div>;
+                      return <div key={column} className="cyberfiles-file-cell min-w-0 overflow-hidden truncate font-sans text-[10.5px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-full truncate">{getFileTypeLabel(item)}</span></div>;
                     }
                     if (column === 'size') {
                       const folderSize = folderSizeStates[item.id];
-                      return <div key={column} className="min-w-0 overflow-hidden text-right font-sans text-[11px] tabular-nums text-neutral-300/90" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.size, 'size')}>{item.isFolder ? (
+                      return <div key={column} className="cyberfiles-file-cell min-w-0 overflow-hidden text-right font-sans text-[11px] tabular-nums text-neutral-300/90" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.size, 'size')}>{item.isFolder ? (
                         isTauriDesktop() && !isRecycleBin && !item.recycleBinId ? (
                           folderSize?.status === 'done' ? (
                             <span data-file-column-content={column} className="inline-flex h-5 min-w-0 max-w-full items-center justify-end truncate leading-none tabular-nums font-mono">{formatFileSize(folderSize.size ?? 0)}</span>
@@ -3031,10 +3034,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     }
                     if (column === 'created') {
                       const createdDate = formatDateTimeForDisplay(item.createdAtMs, item.createdDate, dateFormat, language);
-                      return <div key={column} className="min-w-0 overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.created, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{createdDate || '--'}</span></div>;
+                      return <div key={column} className="cyberfiles-file-cell min-w-0 overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.created, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{createdDate || '--'}</span></div>;
                     }
                     const modifiedDate = formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language);
-                    return <div key={column} className="min-w-0 overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.modified, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{modifiedDate || '--'}</span></div>;
+                    return <div key={column} className="cyberfiles-file-cell min-w-0 overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.modified, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{modifiedDate || '--'}</span></div>;
                   })}
                 </div>
               );
@@ -3060,6 +3063,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   key={item.id}
                   data-file-item="true"
                   data-file-id={item.id}
+                  data-selected={isSelected ? 'true' : undefined}
                   data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
                   draggable={!item.recycleBinId}
                   onDragStart={event => handleDragStart(event, item)}
@@ -3073,7 +3077,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`relative flex min-w-0 h-[30px] items-center gap-2 rounded-md border border-transparent px-2 py-1 text-xs transition-colors ${
+                  className={`cyberfiles-file-row relative flex min-w-0 h-[30px] items-center gap-2 rounded-md border border-transparent px-2 py-1 text-xs transition-colors ${
                     isSelected
                       ? 'bg-cyan-500/20 hover:bg-cyan-500/25 text-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]'
                       : 'text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
@@ -3117,6 +3121,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 <div
                   data-file-item="true"
                   data-file-id={item.id}
+                  data-selected={isSelected ? 'true' : undefined}
                   data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
                   draggable={!item.recycleBinId}
                   onDragStart={(e) => handleDragStart(e, item)}
@@ -3185,7 +3190,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {tabStripPosition === 'bottom' && tabStrip}
 
       {/* 6. Footer Status Bar with Mini Storage Distribution Strip */}
-      <div className="px-2.5 py-1 bg-neutral-950 border-t border-neutral-800 text-[10px] font-sans text-neutral-400 flex items-center justify-between select-none gap-2">
+      <div className="cyberfiles-pane-status px-2.5 py-1 bg-neutral-950 border-t border-neutral-800 text-[10px] font-sans text-neutral-400 flex items-center justify-between select-none gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
           <span>{itemCountLabel}</span>
           {selectedFiles.length > 0 ? (

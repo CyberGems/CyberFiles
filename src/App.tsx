@@ -4949,7 +4949,7 @@ export default function App() {
   return (
     <TooltipPreferenceContext.Provider value={tooltipsEnabled}>
       <div
-        className="h-screen w-screen flex flex-col bg-neutral-950 text-neutral-100 font-sans select-none overflow-hidden"
+        className="cyberfiles-app-shell h-screen w-screen flex flex-col bg-neutral-950 text-neutral-100 font-sans select-none overflow-hidden"
         onContextMenuCapture={handleApplicationContextMenuCapture}
       >
       <WindowTitleBar
