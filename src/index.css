@@ -648,17 +648,17 @@ html[data-theme='light'] #root .collapse-toggle:hover:not(:disabled) {
 }
 
 .cyberfiles-navigation-subtle {
-  --cyberfiles-navigation-duration: 265ms;
-  --cyberfiles-navigation-distance: 16px;
-  --cyberfiles-navigation-scale-in: 0.975;
-  --cyberfiles-navigation-start-opacity: 0.52;
+  --cyberfiles-navigation-duration: 230ms;
+  --cyberfiles-navigation-distance: 8px;
+  --cyberfiles-navigation-scale-in: 0.99;
+  --cyberfiles-navigation-start-opacity: 0.64;
 }
 
 .cyberfiles-navigation-dynamic {
-  --cyberfiles-navigation-duration: 330ms;
-  --cyberfiles-navigation-distance: 30px;
-  --cyberfiles-navigation-scale-in: 0.95;
-  --cyberfiles-navigation-start-opacity: 0.36;
+  --cyberfiles-navigation-duration: 280ms;
+  --cyberfiles-navigation-distance: 14px;
+  --cyberfiles-navigation-scale-in: 0.975;
+  --cyberfiles-navigation-start-opacity: 0.5;
 }
 
 .cyberfiles-navigation-fade {
@@ -712,21 +712,21 @@ html[data-cyberfiles-navigation-pane='right'] [data-cyberfiles-pane-viewport='ri
 }
 
 html[data-cyberfiles-navigation-pane] {
-  --cyberfiles-view-duration: 270ms;
-  --cyberfiles-view-distance: 16px;
+  --cyberfiles-view-duration: 235ms;
+  --cyberfiles-view-distance: 8px;
   --cyberfiles-view-old-x: 0px;
   --cyberfiles-view-old-y: 0px;
   --cyberfiles-view-old-scale: 1;
   --cyberfiles-view-new-x: 0px;
   --cyberfiles-view-new-y: 0px;
   --cyberfiles-view-new-scale: 1;
-  --cyberfiles-view-new-opacity: 0.55;
+  --cyberfiles-view-new-opacity: 0.64;
 }
 
 html[data-cyberfiles-navigation-style='dynamic'] {
-  --cyberfiles-view-duration: 340ms;
-  --cyberfiles-view-distance: 30px;
-  --cyberfiles-view-new-opacity: 0.4;
+  --cyberfiles-view-duration: 285ms;
+  --cyberfiles-view-distance: 14px;
+  --cyberfiles-view-new-opacity: 0.5;
 }
 
 html[data-cyberfiles-navigation-style='fade'] {
@@ -737,14 +737,14 @@ html[data-cyberfiles-navigation-style='fade'] {
 
 html[data-cyberfiles-navigation-motion='into'] {
   --cyberfiles-view-old-y: calc(-0.5 * var(--cyberfiles-view-distance));
-  --cyberfiles-view-old-scale: 0.985;
+  --cyberfiles-view-old-scale: 0.99;
   --cyberfiles-view-new-y: var(--cyberfiles-view-distance);
-  --cyberfiles-view-new-scale: 0.975;
+  --cyberfiles-view-new-scale: 0.99;
 }
 
 html[data-cyberfiles-navigation-motion='up'] {
   --cyberfiles-view-old-y: calc(0.5 * var(--cyberfiles-view-distance));
-  --cyberfiles-view-old-scale: 0.985;
+  --cyberfiles-view-old-scale: 0.99;
   --cyberfiles-view-new-y: calc(-1 * var(--cyberfiles-view-distance));
 }
 
@@ -774,6 +774,10 @@ html[data-cyberfiles-navigation-pane]::view-transition-old(root) {
 
 html[data-cyberfiles-navigation-pane]::view-transition-new(root) {
   animation: none;
+}
+
+html[data-cyberfiles-navigation-pane]::view-transition-group(cyberfiles-navigation-pane) {
+  overflow: clip;
 }
 
 html[data-cyberfiles-navigation-pane]::view-transition-old(cyberfiles-navigation-pane) {
