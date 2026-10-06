@@ -37,11 +37,14 @@ import {
   Layers,
   Zap,
   ZapOff,
+  Palette,
 } from 'lucide-react';
 import { ArchiveExtractionMode, DriveInfo, FileItem, FileType, QuickAccessItem, QuickAccessSortMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
 import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
+import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
+import { FolderIconRenderer } from './folderIconsData';
 import { useLanguage } from '../locales/LanguageContext';
 import { dismissAllTooltips, Tooltip } from './Tooltip';
 
@@ -113,6 +116,9 @@ interface SidebarProps {
   onRestoreRecycleBinItems: () => void;
   onRequestEmptyRecycleBin: () => void;
   isCollapsed?: boolean;
+  customFolderIcons?: SavedFolderIcons;
+  onCustomizeFolderIcon?: (item: FileItem) => void;
+  onCustomizeCurrentFolderIcon?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -135,6 +141,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectRecentFile,
   onClearRecentFiles,
   selectedItems,
+  customFolderIcons,
+  onCustomizeFolderIcon,
+  onCustomizeCurrentFolderIcon,
   onClearSelection,
   onSelectAll,
   currentFolderItems,
@@ -317,7 +326,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onClick={() => onNavigate(folder.path)}
                     className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-1 text-left text-[10px] text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100"
                   >
-                    <FolderOpen className="h-3 w-3 flex-shrink-0 text-amber-300" />
+                    <FolderIconRenderer
+                      config={getCustomFolderIcon(folder.path, customFolderIcons ?? {})}
+                      size="small"
+                      fallbackIcon={<FolderOpen className="h-3 w-3 flex-shrink-0 text-amber-300" />}
+                    />
                     <span className="truncate">{folder.name}</span>
                   </button>
                 </Tooltip>
@@ -812,6 +825,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </button>
           </Tooltip>}
 
+          {selectedItems.length === 1 && selectedItems[0].isFolder && onCustomizeFolderIcon && (
+            <Tooltip label={t.sidebar.customizeFolderIcon} placement="right">
+              <button
+                type="button"
+                onClick={() => onCustomizeFolderIcon(selectedItems[0])}
+                className="flex w-full items-center gap-2 rounded-md border border-pink-900/40 bg-pink-950/20 px-2.5 py-2 text-left text-[11px] font-medium text-pink-200 transition-colors hover:border-pink-800 hover:bg-pink-950/50"
+              >
+                <Palette className="h-3.5 w-3.5 flex-shrink-0 text-pink-400" />
+                <span>{t.sidebar.customizeFolderIcon}</span>
+              </button>
+            </Tooltip>
+          )}
+
           <button type="button" onClick={() => onCopySelectedPaths(selectedItems)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-[10px] text-neutral-400 transition-colors hover:bg-neutral-900 hover:text-neutral-200">
             <Copy className="h-3.5 w-3.5" />{selectedItems.length === 1 ? t.sidebar.copySelectedPath : t.sidebar.copySelectedPaths}
           </button>
@@ -828,7 +854,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
           <div className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-900/60 p-3">
-            <FolderOpen className="h-5 w-5 text-amber-300" />
+            <FolderIconRenderer
+              config={getCustomFolderIcon(currentPath, customFolderIcons ?? {})}
+              size="medium"
+              fallbackIcon={<FolderOpen className="h-5 w-5 text-amber-300" />}
+            />
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-1.5">
                 <p className="min-w-0 truncate text-[11px] font-medium text-neutral-200">{currentFolderName}</p>
@@ -899,6 +929,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <Copy className="h-3.5 w-3.5" />{t.sidebar.copyFolderPath}
             </button>
           </Tooltip>
+          {onCustomizeCurrentFolderIcon && (
+            <Tooltip label={t.sidebar.customizeFolderIcon} placement="right">
+              <button
+                type="button"
+                onClick={onCustomizeCurrentFolderIcon}
+                className="flex w-full items-center gap-2 rounded-md border border-pink-900/40 bg-pink-950/20 px-2.5 py-2 text-left text-[11px] font-medium text-pink-200 transition-colors hover:border-pink-800 hover:bg-pink-950/50"
+              >
+                <Palette className="h-3.5 w-3.5 flex-shrink-0 text-pink-400" />
+                <span>{t.sidebar.customizeFolderIcon}</span>
+              </button>
+            </Tooltip>
+          )}
           {supportsArchiveCreation && currentFolderItem && currentPath !== SYSTEM_HOME_PATH && currentPath !== RECYCLE_BIN_PATH && <Tooltip label={t.contextMenu.compressCurrentFolderTooltip} placement="right">
             <button type="button" onClick={() => onCreateZipFolder?.(currentFolderItem)} className="flex w-full items-center gap-2 rounded-md border border-violet-900/60 bg-violet-950/20 px-2.5 py-2 text-left text-[11px] font-medium text-violet-100 transition-colors hover:border-violet-700 hover:bg-violet-950/50">
               <Archive className="h-3.5 w-3.5 flex-shrink-0 text-violet-300" /><span>{t.contextMenu.compressCurrentFolderToZip}</span>
@@ -1133,7 +1175,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         >
                           <span className="flex min-w-0 items-center gap-2">
                             <span className={isSelected ? 'text-cyan-400' : 'text-neutral-400'}>
-                              {getQuickAccessIcon(item.icon)}
+                              {getCustomFolderIcon(item.path, customFolderIcons ?? {}) ? (
+                                <FolderIconRenderer
+                                  config={getCustomFolderIcon(item.path, customFolderIcons ?? {})}
+                                  size="small"
+                                />
+                              ) : (
+                                getQuickAccessIcon(item.icon)
+                              )}
                             </span>
                             <span className="truncate text-[11px]">{item.name}</span>
                           </span>

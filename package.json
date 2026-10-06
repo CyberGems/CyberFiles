@@ -13,7 +13,7 @@
     "lint": "tsc --noEmit",
     "check": "npm run lint && npm run build",
     "test": "npm run test:unit",
-    "test:unit": "tsx --test src/utils/fileSystem.test.ts src/utils/folderStylePreferences.test.ts src/utils/mouseGesture.test.ts",
+    "test:unit": "tsx --test src/utils/fileSystem.test.ts src/utils/folderStylePreferences.test.ts src/utils/mouseGesture.test.ts src/utils/folderIconPreferences.test.ts",
     "test:native": "cargo test --manifest-path src-tauri/Cargo.toml",
     "build:installer": "tauri build --bundles nsis",
     "build:portable": "tauri build --no-bundle && npm run package:portable",

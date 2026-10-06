@@ -65,6 +65,14 @@ import type { UndoHistoryItem } from './components/UndoHistoryMenu';
 import { useLanguage } from './locales/LanguageContext';
 import { readPaneColumnPreferences, writePaneColumnPreferences } from './utils/fileColumnPreferences';
 import { folderStylePathKey, folderStyleToCarry, readSavedFolderStyles, resolveFolderStyle, savedFolderStyleForPath, writeSavedFolderStyles, type SavedFolderStyles } from './utils/folderStylePreferences';
+import { FolderIconModal } from './components/FolderIconModal';
+import {
+  readCustomFolderIcons,
+  setCustomFolderIcon,
+  getCustomFolderIcon,
+  type SavedFolderIcons,
+  type CustomFolderIconConfig,
+} from './utils/folderIconPreferences';
 import {
   createProfileId,
   DEFAULT_LAYOUT_PROFILE_ID,
@@ -698,6 +706,8 @@ export default function App() {
   const [sessionReloadToken, setSessionReloadToken] = useState(initialSessionProfile ? 1 : 0);
   const [folderStyleLocked, setFolderStyleLocked] = useState(readFolderStyleLockPreference);
   const [savedFolderStyles, setSavedFolderStyles] = useState<SavedFolderStyles>(readSavedFolderStyles);
+  const [customFolderIcons, setCustomFolderIcons] = useState<SavedFolderIcons>(readCustomFolderIcons);
+  const [folderIconTarget, setFolderIconTarget] = useState<{ path: string; name: string } | null>(null);
   const [sidebarLocationsOpenInNewTab, setSidebarLocationsOpenInNewTab] = useState(() => readBooleanPreference(SIDEBAR_LOCATIONS_NEW_TAB_KEY, true));
   const [newTabsNextToCurrent, setNewTabsNextToCurrent] = useState(() => readBooleanPreference(NEW_TABS_NEXT_TO_CURRENT_KEY, true));
   const [showNewTabButton, setShowNewTabButton] = useState(() => readBooleanPreference(SHOW_NEW_TAB_BUTTON_KEY, true));
@@ -862,6 +872,18 @@ export default function App() {
   useEffect(() => () => {
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
   }, []);
+
+  const handleOpenFolderIconModal = useCallback((target: { path: string; name: string }) => {
+    setFolderIconTarget(target);
+  }, []);
+
+  const handleApplyFolderIcon = useCallback((targetPath: string, config: CustomFolderIconConfig | null) => {
+    setCustomFolderIcons(previous => {
+      const updated = setCustomFolderIcon(targetPath, config, previous);
+      showToast(config ? t.folderIconModal.savedToast : t.folderIconModal.resetToast);
+      return updated;
+    });
+  }, [t.folderIconModal.savedToast, t.folderIconModal.resetToast, showToast]);
 
   const [recycleBinStatus, setRecycleBinStatus] = useState<RecycleBinStatus | null>(null);
   const [recycleBinItems, setRecycleBinItems] = useState<FileItem[]>([]);
@@ -5030,6 +5052,9 @@ export default function App() {
           onOpenRecycleBin={() => { void handleOpenRecycleBin(); }}
           onRestoreRecycleBinItems={() => { void handleRestoreRecycleBinItems(selectedItemsForDelete); }}
           onRequestEmptyRecycleBin={handleRequestEmptyRecycleBin}
+          customFolderIcons={customFolderIcons}
+          onCustomizeFolderIcon={item => handleOpenFolderIconModal({ path: item.path, name: item.name })}
+          onCustomizeCurrentFolderIcon={() => handleOpenFolderIconModal({ path: currentTab.currentPath, name: activeFolderItem?.name || currentTab.currentPath.split(/[\\/]/).pop() || currentTab.currentPath })}
         />
 
         <PaneSplitter orientation="vertical" value={sidebarSplitPercent} onChange={setSidebarSplitPercent} minPercent={20} maxPercent={42} label={t.header.resizeSidebar} />
@@ -5102,6 +5127,7 @@ export default function App() {
                   onRenameRequestHandled={handleRenameRequestHandled}
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
+                  customFolderIcons={customFolderIcons}
                 />
               </div>
 
@@ -5170,6 +5196,7 @@ export default function App() {
                   onRenameRequestHandled={handleRenameRequestHandled}
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
+                  customFolderIcons={customFolderIcons}
                 />
               </div>
             </div>
@@ -5239,6 +5266,7 @@ export default function App() {
                   onRenameRequestHandled={handleRenameRequestHandled}
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
+                  customFolderIcons={customFolderIcons}
                 />
               </div>
               <PaneSplitter orientation="horizontal" value={horizontalSplitPercent} onChange={setHorizontalSplitPercent} label={t.header.resizePanels} />
@@ -5303,6 +5331,7 @@ export default function App() {
                   onRenameRequestHandled={handleRenameRequestHandled}
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
+                  customFolderIcons={customFolderIcons}
                 />
               </div>
             </div>
@@ -5372,6 +5401,7 @@ export default function App() {
                 onRenameRequestHandled={handleRenameRequestHandled}
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
+                  customFolderIcons={customFolderIcons}
               />
             </div>
           )}
@@ -5498,6 +5528,8 @@ export default function App() {
         onBatchRename={() => setIsBatchRenameOpen(true)}
         onDelete={(item) => handleDeleteSelected([item])}
         onRestore={(item) => { void handleRestoreRecycleBinItems([item]); }}
+        onCustomizeFolderIcon={item => handleOpenFolderIconModal({ path: item.path, name: item.name })}
+        onCustomizeCurrentFolderIcon={() => handleOpenFolderIconModal({ path: contextPaneTab.currentPath, name: contextPaneTab.title || contextPaneTab.currentPath.split(/[\\/]/).pop() || contextPaneTab.currentPath })}
       />
       {pendingCreateItem && (
         <CreateItemModal
@@ -5756,6 +5788,16 @@ export default function App() {
             sessions={workspaceStore.sessions}
           />
         </Suspense>
+      )}
+      {folderIconTarget && (
+        <FolderIconModal
+          isOpen={true}
+          folderPath={folderIconTarget.path}
+          folderName={folderIconTarget.name}
+          currentConfig={getCustomFolderIcon(folderIconTarget.path, customFolderIcons)}
+          onApply={config => handleApplyFolderIcon(folderIconTarget.path, config)}
+          onClose={() => setFolderIconTarget(null)}
+        />
       )}
       </div>
     </TooltipPreferenceContext.Provider>

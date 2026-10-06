@@ -25,6 +25,7 @@ import {
   Scissors,
   ArrowDown,
   ArrowUp,
+  Palette,
 } from 'lucide-react';
 import { ArchiveExtractionMode, ContextMenuPosition, FileItem, GroupByField, SortField, SortOrder, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
@@ -45,6 +46,8 @@ interface ContextMenuProps {
   onClose: () => void;
   onOpenLocation: (item: FileItem) => void;
   onAddToQuickAccess: (item: FileItem) => void;
+  onCustomizeFolderIcon?: (item: FileItem) => void;
+  onCustomizeCurrentFolderIcon?: () => void;
   onRefresh: () => void;
   onClearFilter: () => void;
   onViewModeChange: (mode: ViewMode) => void;
@@ -85,6 +88,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onClose,
   onOpenLocation,
   onAddToQuickAccess,
+  onCustomizeFolderIcon,
+  onCustomizeCurrentFolderIcon,
   onRefresh,
   onClearFilter,
   onViewModeChange,
@@ -182,6 +187,9 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             <>
               <div className="py-0.5">
                 <MenuButton icon={<BookmarkPlus className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.addToQuickAccess} onClick={() => { onAddToQuickAccess(item); onClose(); }} />
+                {onCustomizeFolderIcon && (
+                  <MenuButton icon={<Palette className="h-3.5 w-3.5 text-pink-400" />} label={t.contextMenu.customizeFolderIcon} onClick={() => { onCustomizeFolderIcon(item); onClose(); }} />
+                )}
               </div>
               <MenuDivider />
             </>
@@ -283,6 +291,9 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             <div className="py-0.5">
               <MenuButton icon={<BookmarkPlus className="h-3.5 w-3.5 text-cyan-300" />} label={hasSavedFolderStyle ? t.contextMenu.updateFolderStyle : t.contextMenu.saveFolderStyle} onClick={() => { onSaveFolderStyle(); onClose(); }} />
               {hasSavedFolderStyle && <MenuButton icon={<BookmarkX className="h-3.5 w-3.5 text-amber-300" />} label={t.contextMenu.removeFolderStyle} onClick={() => { onRemoveFolderStyle(); onClose(); }} />}
+              {onCustomizeCurrentFolderIcon && (
+                <MenuButton icon={<Palette className="h-3.5 w-3.5 text-pink-400" />} label={t.contextMenu.customizeThisFolderIcon} onClick={() => { onCustomizeCurrentFolderIcon(); onClose(); }} />
+              )}
             </div>
           </>}
         </>

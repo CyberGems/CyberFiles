@@ -42,6 +42,8 @@ import { formatFileSize, getParentPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { advanceMouseGesturePath, MOUSE_GESTURE_MIN_DISTANCE, type MouseGesturePath } from '../utils/mouseGesture';
+import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
+import { FolderIconRenderer } from './folderIconsData';
 import { listen } from '@tauri-apps/api/event';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip, TooltipPreferenceContext } from './Tooltip';
@@ -81,6 +83,7 @@ interface FilePaneProps {
   onTabContextMenu: (index: number, x: number, y: number) => void;
   onTabStripContextMenu: (x: number, y: number) => void;
   files: FileItem[];
+  customFolderIcons?: SavedFolderIcons;
   recentFolderPaths: string[];
   onClearRecentFolders: () => void;
   autoFolderSizeEnabled: boolean;
@@ -349,6 +352,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onTabContextMenu,
   onTabStripContextMenu,
   files,
+  customFolderIcons,
   recentFolderPaths,
   onClearRecentFolders,
   autoFolderSizeEnabled,
@@ -1622,6 +1626,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   const getDisplayFileIcon = (item: FileItem, size: 'small' | 'large' = 'small') => {
+    if (item.isFolder) {
+      const customConfig = getCustomFolderIcon(item.path, customFolderIcons ?? {});
+      if (customConfig) {
+        return <FolderIconRenderer config={customConfig} size={size === 'large' ? 'large' : 'small'} />;
+      }
+    }
     const nativeIcon = !item.isFolder && nativeFileIconState.scope === nativeFileIconScope
       ? nativeFileIconState.byItemId[item.id]
       : undefined;
