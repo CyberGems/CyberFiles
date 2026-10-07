@@ -145,7 +145,10 @@ async function copySelectedText(target: TextTarget) {
   const text = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
     ? target.value.slice(target.selectionStart ?? 0, target.selectionEnd ?? 0)
     : window.getSelection()?.toString() ?? '';
-  if (text) await navigator.clipboard.writeText(text);
+  if (!text) return;
+  target.focus();
+  if (document.execCommand('copy')) return;
+  await navigator.clipboard.writeText(text);
 }
 
 async function pasteText(target: TextTarget) {
