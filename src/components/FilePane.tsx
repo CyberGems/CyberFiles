@@ -641,11 +641,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
       navigationSnapshot?.remove();
       return;
     }
-    if (document.documentElement.dataset.cyberfilesNavigationPane === paneId) {
-      pendingNavigationRef.current = null;
-      navigationSnapshot?.remove();
-      return;
-    }
     const pending = pendingNavigationRef.current;
     if (pending && !isLoadingDirectory && pending.tabId === current.tabId && pending.path === current.path) {
       pendingNavigationRef.current = null;
