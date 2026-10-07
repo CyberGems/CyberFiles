@@ -36,7 +36,7 @@ import {
   History,
   Home,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, NavigationTransitionStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode } from '../types';
+import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
@@ -65,8 +65,6 @@ interface FilePaneProps {
   styleLocked: boolean;
   recentItemStyle: RecentItemStyle;
   hiddenItemStyle: HiddenItemStyle;
-  navigationTransitionsEnabled: boolean;
-  navigationTransitionStyle: NavigationTransitionStyle;
   emptyAreaDoubleClickNavigatesUp: boolean;
   mouseGesturesEnabled: boolean;
   imageTooltipThumbnailsEnabled: boolean;
@@ -126,18 +124,6 @@ type RelativeGraphWidths = Partial<Record<RelativeGraphColumn, number>>;
 type ResizableColumn = FileColumn;
 type FolderSizeState = { status: 'loading' | 'paused' | 'done' | 'error'; size?: number; entriesScanned?: number };
 type FolderChildCountState = { status: 'loading' | 'error' } | { status: 'done'; summary: FolderContentSummary; checkedAt: number };
-type NavigationMotion = 'into' | 'up' | 'back' | 'forward' | 'other';
-
-function normalizeNavigationPath(path: string): string {
-  return path.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
-}
-
-function isNavigationDescendant(path: string, possibleParent: string): boolean {
-  const child = normalizeNavigationPath(path);
-  const parent = normalizeNavigationPath(possibleParent);
-  return Boolean(parent) && child !== parent && child.startsWith(`${parent}\\`);
-}
-
 function getDisplayItemName(item: FileItem, showFileExtensions: boolean): string {
   if (showFileExtensions || item.isFolder) return item.name;
   const extensionSeparator = item.name.lastIndexOf('.');
@@ -334,8 +320,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   styleLocked,
   recentItemStyle,
   hiddenItemStyle,
-  navigationTransitionsEnabled,
-  navigationTransitionStyle,
   emptyAreaDoubleClickNavigatesUp,
   mouseGesturesEnabled,
   imageTooltipThumbnailsEnabled,
@@ -453,14 +437,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const lastReportedColumnPreferences = useRef(JSON.stringify(columnPreferences));
   const suppressColumnSortRef = useRef(false);
   const previousPathRef = useRef(tab.currentPath);
-  const navigationSnapshotRef = useRef({
-    tabId: tab.id,
-    path: tab.currentPath,
-    historyIndex: tab.historyIndex,
-    historyLength: tab.history.length,
-  });
-  const pendingNavigationRef = useRef<{ tabId: string; path: string; motion: NavigationMotion } | null>(null);
-  const [navigationTransition, setNavigationTransition] = useState<{ tabId: string; path: string; motion: NavigationMotion } | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const verticalTabListRef = useRef<HTMLDivElement>(null);
   const lastScrolledFocusedIdRef = useRef<string | null>(null);
@@ -479,8 +455,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   useEffect(() => () => {
     if (mouseGestureHoldTimerRef.current !== null) window.clearTimeout(mouseGestureHoldTimerRef.current);
     if (mouseGestureFadeTimerRef.current !== null) window.clearTimeout(mouseGestureFadeTimerRef.current);
-    document.querySelector<HTMLElement>(`[data-cyberfiles-navigation-snapshot="${paneId}"]`)?.remove();
-  }, [paneId]);
+  }, []);
   const marqueePreviewIdsRef = useRef<string[] | null>(null);
   const suppressViewportClickRef = useRef(false);
   const [marqueeBounds, setMarqueeBounds] = useState<MarqueeBounds | null>(null);
@@ -612,54 +587,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, []);
 
   useLayoutEffect(() => {
-    const previous = navigationSnapshotRef.current;
-    const current = {
-      tabId: tab.id,
-      path: tab.currentPath,
-      historyIndex: tab.historyIndex,
-      historyLength: tab.history.length,
-    };
-    navigationSnapshotRef.current = current;
-    if (previous.tabId !== current.tabId || previous.path !== current.path) {
-      let motion: NavigationMotion = 'other';
-      if (previous.tabId === current.tabId) {
-        if (previous.historyLength === current.historyLength && current.historyIndex < previous.historyIndex) motion = 'back';
-        else if (previous.historyLength === current.historyLength && current.historyIndex > previous.historyIndex) motion = 'forward';
-        else if (isNavigationDescendant(current.path, previous.path)) motion = 'into';
-        else if (isNavigationDescendant(previous.path, current.path)) motion = 'up';
-      }
-      pendingNavigationRef.current = { tabId: current.tabId, path: current.path, motion };
-      setNavigationTransition(null);
-      if (viewportRef.current) viewportRef.current.scrollTop = 0;
-      if (horizontalScrollContainerRef.current) horizontalScrollContainerRef.current.scrollLeft = 0;
-    }
-
-    const navigationSnapshot = document.querySelector<HTMLElement>(`[data-cyberfiles-navigation-snapshot="${paneId}"]`);
-    if (!navigationTransitionsEnabled) {
-      pendingNavigationRef.current = null;
-      setNavigationTransition(null);
-      navigationSnapshot?.remove();
-      return;
-    }
-    const pending = pendingNavigationRef.current;
-    if (pending && !isLoadingDirectory && pending.tabId === current.tabId && pending.path === current.path) {
-      pendingNavigationRef.current = null;
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        navigationSnapshot?.remove();
-      } else {
-        if (navigationSnapshot) {
-          const removeSnapshot = (event: AnimationEvent) => {
-            if (event.target !== navigationSnapshot) return;
-            navigationSnapshot.removeEventListener('animationend', removeSnapshot);
-            navigationSnapshot.remove();
-          };
-          navigationSnapshot.addEventListener('animationend', removeSnapshot);
-          navigationSnapshot.classList.add('cyberfiles-navigation-snapshot-out');
-        }
-        setNavigationTransition(pending);
-      }
-    }
-  }, [navigationTransitionsEnabled, navigationTransitionStyle, isLoadingDirectory, tab.id, tab.currentPath, tab.historyIndex, tab.history.length]);
+    if (viewportRef.current) viewportRef.current.scrollTop = 0;
+    if (horizontalScrollContainerRef.current) horizontalScrollContainerRef.current.scrollLeft = 0;
+  }, [tab.id, tab.currentPath]);
 
   const hasRecentActivity = (item: FileItem) => {
     const changedAt = Math.max(item.createdAtMs ?? 0, item.modifiedAtMs ?? 0);
@@ -819,9 +749,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
     </div>
   );
 
-  const fileGridTemplateColumns = visibleFileColumns.map(columnWidth).join(' ');
+  const responsiveColumnWidth = (column: FileColumn) => {
+    const weight = column === 'name' ? columnWidths.name ?? 260 : columnWidths[column];
+    return `minmax(${column === 'name' ? '100px' : '0px'}, ${weight}fr)`;
+  };
+  const fileGridTemplateColumns = visibleFileColumns
+    .map(column => styleLocked ? columnWidth(column) : responsiveColumnWidth(column))
+    .join(' ');
   const detailsRowWidth = visibleFileColumns.reduce((total, column) => total + (column === 'name' ? columnWidths.name ?? MIN_NAME_COLUMN_WIDTH : columnWidths[column]), 0)
     + Math.max(0, visibleFileColumns.length - 1) * 8 + 18;
+  const detailsContentWidth = styleLocked && columnWidths.name !== null ? `${detailsRowWidth}px` : '100%';
+  const detailsHeaderWidth = styleLocked && columnWidths.name !== null ? `${detailsRowWidth + viewportScrollbarWidth}px` : '100%';
   const getFileTypeLabel = (item: FileItem) => t.pane.folderTypeLabels[item.type]
     .replace('{extension}', item.extension.toUpperCase()).trim();
   const getGroupForItem = React.useCallback((item: FileItem): { id: string; label: string } => {
@@ -1171,8 +1109,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
     };
   }, []);
 
-  const detailsTableMinimumWidth = visibleFileColumns.reduce((total, column) => total + (column === 'name' ? columnWidths.name ?? MIN_NAME_COLUMN_WIDTH : columnWidths[column]), 0)
-    + Math.max(0, visibleFileColumns.length - 1) * 8 + 18 + viewportScrollbarWidth + 24;
+  const detailsTableMinimumWidth = styleLocked
+    ? visibleFileColumns.reduce((total, column) => total + (column === 'name' ? columnWidths.name ?? MIN_NAME_COLUMN_WIDTH : columnWidths[column]), 0)
+      + Math.max(0, visibleFileColumns.length - 1) * 8 + 18 + viewportScrollbarWidth + 24
+    : 0;
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -2748,14 +2688,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
         </div>
       </div>
 
-      <div ref={horizontalScrollContainerRef} className={`flex min-h-0 flex-1 flex-col ${isSystemHome ? 'overflow-x-hidden' : 'overflow-x-auto'} overflow-y-hidden`}>
-        <div className="flex min-h-0 flex-1 flex-col" style={{ width: !isSystemHome && effectiveViewMode === 'details' ? `max(100%, ${detailsTableMinimumWidth}px)` : '100%' }}>
+      <div ref={horizontalScrollContainerRef} className={`flex min-h-0 flex-1 flex-col ${styleLocked && !isSystemHome && effectiveViewMode === 'details' ? 'overflow-x-auto' : 'overflow-x-hidden'} overflow-y-hidden`}>
+        <div className="flex min-h-0 flex-1 flex-col" style={{ width: styleLocked && !isSystemHome && effectiveViewMode === 'details' ? `max(100%, ${detailsTableMinimumWidth}px)` : '100%' }}>
       {/* 4. Column Headers (Details View) */}
       {effectiveViewMode === 'details' && !isSystemHome && (
         <div
           ref={columnHeadersRef}
           className="cyberfiles-column-headers grid shrink-0 items-center gap-2 border border-neutral-800/80 bg-neutral-900/90 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-300 select-none shadow-sm backdrop-blur-xs"
-          style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth + viewportScrollbarWidth}px`, gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
+          style={{ width: detailsHeaderWidth, gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
           onContextMenu={openColumnMenu}
         >
           {visibleFileColumns.map((column, colIdx) => {
@@ -2889,15 +2829,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             {t.pane.flatViewIncomplete.replace('{count}', String(flatViewStatus?.skippedCount ?? 0))}
           </div>
         )}
-        <div
-          key={`${tab.id}:${tab.currentPath}`}
-          className={`min-h-full ${navigationTransition?.tabId === tab.id && navigationTransition.path === tab.currentPath ? `cyberfiles-navigation-transition cyberfiles-navigation-${navigationTransitionStyle} cyberfiles-navigation-${navigationTransition.motion}` : ''}`}
-          onAnimationEnd={event => {
-            if (event.target === event.currentTarget && event.animationName.startsWith('cyberfiles-navigation-')) {
-              setNavigationTransition(null);
-            }
-          }}
-        >
+        <div key={`${tab.id}:${tab.currentPath}`} className="min-h-full">
         {files.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-neutral-500 gap-2 p-6">
             {isLoadingDirectory ? <RotateCw className="w-7 h-7 text-cyan-500 animate-spin" /> : <Folder className="w-8 h-8 text-neutral-600 stroke-[1.5]" />}
@@ -2947,7 +2879,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         ) : effectiveViewMode === 'details' ? (
           <div
             className="cyberfiles-details-list min-h-full border-x border-b border-neutral-800/80 bg-neutral-950/50 py-1 shadow-inner overflow-hidden"
-            style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth}px` }}
+            style={{ width: detailsContentWidth }}
           >
             {renderGroups.map(group => {
               const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
@@ -2981,7 +2913,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
-                  style={{ width: columnWidths.name === null ? '100%' : `${detailsRowWidth}px`, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
+                  style={{ width: detailsContentWidth, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
                   className={`cyberfiles-file-row relative grid h-[30px] items-center gap-2 rounded-md border border-transparent px-2 text-xs cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-500/20 hover:bg-cyan-500/25 text-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]'

@@ -866,87 +866,13 @@ html[data-theme='light'] #root .collapse-toggle:hover:not(:disabled) {
   animation: column-resize-guide-out 120ms ease-in both;
 }
 
-.cyberfiles-navigation-snapshot {
-  overflow: hidden;
-  clip-path: inset(0);
-  contain: paint;
-}
-
-.cyberfiles-navigation-snapshot-out {
-  animation-name: cyberfiles-navigation-view-out;
-  animation-duration: var(--cyberfiles-navigation-duration);
-  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  animation-fill-mode: both;
-}
-
-.cyberfiles-navigation-transition {
-  animation-duration: var(--cyberfiles-navigation-duration);
-  animation-fill-mode: both;
-  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  will-change: opacity;
-}
-
-.cyberfiles-navigation-fast {
-  --cyberfiles-navigation-duration: 220ms;
-  --cyberfiles-navigation-zoom-in: 0.92;
-  --cyberfiles-navigation-zoom-out: 1.08;
-  --cyberfiles-navigation-start-opacity: 0.3;
-}
-
-.cyberfiles-navigation-slow {
-  --cyberfiles-navigation-duration: 340ms;
-  --cyberfiles-navigation-zoom-in: 0.88;
-  --cyberfiles-navigation-zoom-out: 1.12;
-  --cyberfiles-navigation-start-opacity: 0.18;
-}
-
-.cyberfiles-navigation-into,
-.cyberfiles-navigation-up,
-.cyberfiles-navigation-back,
-.cyberfiles-navigation-forward { animation-name: cyberfiles-navigation-cross-fade; }
-.cyberfiles-navigation-other { animation-name: cyberfiles-navigation-cross-fade; }
-
-.cyberfiles-navigation-into [data-file-item='true'] {
-  animation: cyberfiles-navigation-item-zoom-in var(--cyberfiles-navigation-duration) cubic-bezier(0.22, 1, 0.36, 1) both;
-  transform-origin: center center;
-  will-change: transform;
-}
-
-.cyberfiles-navigation-up [data-file-item='true'] {
-  animation: cyberfiles-navigation-item-zoom-out var(--cyberfiles-navigation-duration) cubic-bezier(0.22, 1, 0.36, 1) both;
-  transform-origin: center center;
-  will-change: transform;
-}
-
-@keyframes cyberfiles-navigation-item-zoom-in {
-  from { transform: scale(var(--cyberfiles-navigation-zoom-in)); }
-  to { transform: scale(1); }
-}
-
-@keyframes cyberfiles-navigation-item-zoom-out {
-  from { transform: scale(var(--cyberfiles-navigation-zoom-out)); }
-  to { transform: scale(1); }
-}
-
-@keyframes cyberfiles-navigation-cross-fade {
-  from { opacity: var(--cyberfiles-navigation-start-opacity); }
-  to { opacity: 1; }
-}
-
-@keyframes cyberfiles-navigation-view-out {
-  to { opacity: 0; }
-}
-
 @media (prefers-reduced-motion: reduce) {
   #root {
     transition: none;
   }
 
   .column-resize-guide-in,
-  .column-resize-guide-out,
-  .cyberfiles-navigation-transition,
-  .cyberfiles-navigation-snapshot-out,
-  .cyberfiles-navigation-transition [data-file-item='true'] {
+  .column-resize-guide-out {
     animation: none;
   }
 

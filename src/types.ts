@@ -54,7 +54,6 @@ export interface HiddenItemStyle {
   italic: boolean;
 }
 
-export type NavigationTransitionStyle = 'fast' | 'slow';
 export type TabCloseButtonMode = 'hover' | 'always' | 'active';
 
 export type SortField = 'name' | 'size' | 'type' | 'createdDate' | 'modifiedDate' | 'extension';
