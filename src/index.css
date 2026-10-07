@@ -250,7 +250,7 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-column-heade
 
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-column-header-cell {
   min-height: 22px;
-  border-right-color: #37657d;
+  border-right-color: rgba(55, 101, 125, 0.32);
   border-radius: 0;
 }
 
@@ -306,11 +306,6 @@ html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-file-cell {
   min-height: 20px;
   padding-right: 7px;
-  border-right: 1px solid rgba(45, 79, 99, 0.46);
-}
-
-html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-file-cell:last-child {
-  border-right: 0;
 }
 
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-pane-status {

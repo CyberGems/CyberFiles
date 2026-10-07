@@ -588,7 +588,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, []);
 
   useLayoutEffect(() => {
-    if (viewportRef.current) viewportRef.current.scrollTop = 0;
+    if (viewportRef.current) {
+      viewportRef.current.scrollTop = 0;
+      viewportRef.current.scrollLeft = 0;
+    }
     if (horizontalScrollContainerRef.current) horizontalScrollContainerRef.current.scrollLeft = 0;
   }, [tab.id, tab.currentPath]);
 
@@ -807,7 +810,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const navigableIdSet = React.useMemo(() => new Set(navigableFiles.map(item => item.id)), [navigableFiles]);
   const selectedIdSet = React.useMemo(() => new Set(tab.selectedIds), [tab.selectedIds]);
   const fileIndexById = React.useMemo(() => new Map(files.map((item, index) => [item.id, index])), [files]);
-  const virtualizeFiles = !isSystemHome && files.length > 300;
+  const virtualizeFiles = !isSystemHome && effectiveViewMode !== 'compact' && files.length > 300;
+  const compactRowCount = Math.max(1, Math.floor(
+    (viewportWindow.height - 12 - (tab.groupBy && tab.groupBy !== 'none' ? 32 : 0) + 4) / 34,
+  ));
   const virtualColumns = effectiveViewMode === 'details' ? 1
     : effectiveViewMode === 'compact' ? viewportWindow.screenWidth >= 1024 ? 3 : viewportWindow.screenWidth >= 640 ? 2 : 1
       : viewportWindow.screenWidth >= 1280 ? 5 : viewportWindow.screenWidth >= 768 ? 4 : viewportWindow.screenWidth >= 640 ? 3 : 2;
@@ -1151,9 +1157,18 @@ export const FilePane: React.FC<FilePaneProps> = ({
       } else if (itemTop + itemHeight > viewport.scrollTop + viewport.clientHeight) {
         viewport.scrollTop = itemTop + itemHeight - viewport.clientHeight;
       }
+      if (effectiveViewMode === 'compact') {
+        const viewportBounds = viewport.getBoundingClientRect();
+        const itemBounds = focusedItem.getBoundingClientRect();
+        if (itemBounds.left < viewportBounds.left) {
+          viewport.scrollLeft -= viewportBounds.left - itemBounds.left;
+        } else if (itemBounds.right > viewportBounds.right) {
+          viewport.scrollLeft += itemBounds.right - viewportBounds.right;
+        }
+      }
       lastScrolledFocusedIdRef.current = tab.focusedId;
     }
-  }, [files, tab.focusedId, tab.selectedIds, virtualizeFiles, viewportWindow.top, viewportWindow.height, collapsedGroups]);
+  }, [effectiveViewMode, files, tab.focusedId, tab.selectedIds, virtualizeFiles, viewportWindow.top, viewportWindow.height, collapsedGroups]);
 
   useEffect(() => {
     if (horizontalScrollContainerRef.current) {
@@ -1841,15 +1856,18 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const focusedIndex = navigableFiles.findIndex(item => item.id === tab.focusedId);
     const currentIndex = focusedIndex >= 0 ? focusedIndex : navigableFiles.findIndex(item => selectedIdSet.has(item.id));
     const lastIndex = navigableFiles.length - 1;
-    const pageRows = Math.max(1, Math.floor((viewportRef.current?.clientHeight ?? 600) / rowStride));
-    const pageStep = pageRows * virtualColumns;
+    const pageRows = effectiveViewMode === 'compact'
+      ? compactRowCount
+      : Math.max(1, Math.floor((viewportRef.current?.clientHeight ?? 600) / rowStride));
+    const compactVisibleColumns = Math.max(1, Math.floor((viewportRef.current?.clientWidth ?? 600) / 264));
+    const pageStep = pageRows * (effectiveViewMode === 'compact' ? compactVisibleColumns : virtualColumns);
     let targetIndex = currentIndex < 0 ? 0 : currentIndex;
     if (key === 'Home') targetIndex = 0;
     else if (key === 'End') targetIndex = lastIndex;
-    else if (key === 'ArrowDown') targetIndex = currentIndex < 0 ? 0 : Math.min(lastIndex, targetIndex + (grid ? virtualColumns : 1));
-    else if (key === 'ArrowUp') targetIndex = currentIndex < 0 ? 0 : Math.max(0, targetIndex - (grid ? virtualColumns : 1));
-    else if (key === 'ArrowRight') targetIndex = currentIndex < 0 ? 0 : Math.min(lastIndex, targetIndex + 1);
-    else if (key === 'ArrowLeft') targetIndex = currentIndex < 0 ? 0 : Math.max(0, targetIndex - 1);
+    else if (key === 'ArrowDown') targetIndex = currentIndex < 0 ? 0 : Math.min(lastIndex, targetIndex + (effectiveViewMode === 'compact' ? 1 : grid ? virtualColumns : 1));
+    else if (key === 'ArrowUp') targetIndex = currentIndex < 0 ? 0 : Math.max(0, targetIndex - (effectiveViewMode === 'compact' ? 1 : grid ? virtualColumns : 1));
+    else if (key === 'ArrowRight') targetIndex = currentIndex < 0 ? 0 : Math.min(lastIndex, targetIndex + (effectiveViewMode === 'compact' ? compactRowCount : 1));
+    else if (key === 'ArrowLeft') targetIndex = currentIndex < 0 ? 0 : Math.max(0, targetIndex - (effectiveViewMode === 'compact' ? compactRowCount : 1));
     else if (key === 'PageDown') targetIndex = currentIndex < 0 ? 0 : Math.min(lastIndex, targetIndex + pageStep);
     else if (key === 'PageUp') targetIndex = currentIndex < 0 ? 0 : Math.max(0, targetIndex - pageStep);
     const targetItem = navigableFiles[targetIndex];
@@ -2696,11 +2714,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* 4. Column Headers (Details View) */}
       {effectiveViewMode === 'details' && !isSystemHome && (
         <div
-          ref={columnHeadersRef}
-          className="cyberfiles-column-headers mx-4 grid shrink-0 items-center gap-2 border border-neutral-800/80 bg-neutral-900/90 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-300 select-none shadow-sm backdrop-blur-xs"
-          style={{ width: detailsHeaderWidth, gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
+          className="cyberfiles-column-headers shrink-0 border border-neutral-800/80 bg-neutral-900/90 text-[10px] font-semibold uppercase tracking-wider text-neutral-300 select-none shadow-sm backdrop-blur-xs"
           onContextMenu={openColumnMenu}
         >
+          <div
+            ref={columnHeadersRef}
+            className="mx-4 grid min-h-[35px] items-center gap-2 px-2 py-1.5"
+            style={{ width: detailsHeaderWidth, gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
+          >
           {visibleFileColumns.map((column, colIdx) => {
             const sortField = columnSortFields[column];
             const isSorted = tab.sortField === sortField;
@@ -2718,7 +2739,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     if (suppressColumnSortRef.current) return;
                     onSortChange(sortField);
                   }}
-                  className={`cyberfiles-column-header-cell group relative flex min-w-0 items-center gap-1 rounded-sm px-1 pr-2 cursor-grab active:cursor-grabbing transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${column === 'size' || column === 'created' || column === 'modified' ? 'justify-end' : ''} ${!isLast ? 'border-r border-neutral-800/60' : ''}`}
+                  className={`cyberfiles-column-header-cell group relative flex min-w-0 items-center gap-1 rounded-sm px-1 pr-2 cursor-grab active:cursor-grabbing transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${column === 'size' || column === 'created' || column === 'modified' ? 'justify-end' : ''} ${!isLast ? 'border-r border-neutral-800/25' : ''}`}
                 >
                   <span data-file-column-header={column} className="min-w-0 truncate">{columnLabel(column)}</span>
                   <DirectionIcon aria-hidden="true" className={`h-3 w-3 flex-shrink-0 ${isSorted ? 'text-cyan-400' : 'text-neutral-600'}`} />
@@ -2727,6 +2748,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               </Tooltip>
             );
           })}
+          </div>
         </div>
       )}
 
@@ -2797,13 +2819,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
       <div 
         ref={viewportRef}
         data-cyberfiles-pane-viewport={paneId}
-        className={`cyberfiles-file-viewport relative min-h-0 w-full flex-1 overflow-x-hidden overflow-y-auto py-0.5 select-none focus:outline-none ${marqueeBounds ? 'cursor-crosshair' : ''}`}
+        className={`cyberfiles-file-viewport relative min-h-0 w-full flex-1 py-0.5 select-none focus:outline-none ${effectiveViewMode === 'compact' ? 'overflow-x-auto overflow-y-hidden' : 'overflow-x-hidden overflow-y-auto'} ${marqueeBounds ? 'cursor-crosshair' : ''}`}
         tabIndex={0}
         onScroll={event => {
-          const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
+          const { scrollTop, scrollHeight, clientHeight, scrollLeft, scrollWidth, clientWidth } = event.currentTarget;
           setViewportWindow(previous => previous.top === scrollTop ? previous : { ...previous, top: scrollTop });
           if (!hasMore || isLoadingDirectory || !onLoadMore) return;
-          if (scrollHeight - scrollTop - clientHeight <= Math.max(500, clientHeight)) onLoadMore();
+          const nearEnd = effectiveViewMode === 'compact'
+            ? scrollWidth - scrollLeft - clientWidth <= Math.max(500, clientWidth)
+            : scrollHeight - scrollTop - clientHeight <= Math.max(500, clientHeight);
+          if (nearEnd) onLoadMore();
         }}
         onClick={handleViewportClick}
         onKeyDown={handleViewportKeyDown}
@@ -2832,7 +2857,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             {t.pane.flatViewIncomplete.replace('{count}', String(flatViewStatus?.skippedCount ?? 0))}
           </div>
         )}
-        <div key={`${tab.id}:${tab.currentPath}`} className="min-h-full px-4">
+        <div key={`${tab.id}:${tab.currentPath}`} className={`min-h-full px-4 ${effectiveViewMode === 'compact' ? 'h-full w-max min-w-full' : ''}`}>
         {files.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-neutral-500 gap-2 p-6">
             {isLoadingDirectory ? <RotateCw className="w-7 h-7 text-cyan-500 animate-spin" /> : <Folder className="w-8 h-8 text-neutral-600 stroke-[1.5]" />}
@@ -2995,13 +3020,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
             })}
           </div>
         ) : effectiveViewMode === 'compact' ? (
-          <div className="grid grid-cols-1 gap-x-2 gap-y-1 py-1.5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="flex h-full w-max min-w-full items-start gap-4 py-1.5">
             {renderGroups.map(group => {
               const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
               const groupCollapsed = collapsedGroups[groupCollapseKey] === true;
-              return <React.Fragment key={`compact-group-${groupCollapseKey}`}>
+              return <section key={`compact-group-${groupCollapseKey}`} className="flex h-full min-w-64 flex-col">
               {group.renderHeading && renderFileGroupHeading(group)}
-              {group.before > 0 && <div aria-hidden="true" className="col-span-full" style={{ height: group.before }} />}
+              <div
+                className="grid grid-flow-col content-start gap-x-2 gap-y-1"
+                style={{ gridTemplateRows: `repeat(${compactRowCount}, 30px)`, gridAutoColumns: '16rem' }}
+              >
               {!groupCollapsed && group.visibleItems.map(item => {
               const idx = fileIndexById.get(item.id) ?? 0;
               const isSelected = visibleSelectedIdSet.has(item.id);
@@ -3046,8 +3074,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 </div>
               );
               })}
-              {group.after > 0 && <div aria-hidden="true" className="col-span-full" style={{ height: group.after }} />}
-              </React.Fragment>;
+              </div>
+              </section>;
             })}
           </div>
         ) : (
