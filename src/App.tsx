@@ -479,7 +479,8 @@ function styleForPath(path: string, style: FolderStyle) {
   return { ...style, viewMode: isMediaPreviewPath(path) ? 'icons' as ViewMode : style.viewMode };
 }
 
-function displayedStyleForPath(path: string, style: FolderStyle, savedStyles: SavedFolderStyles): FolderStyle {
+function displayedStyleForPath(path: string, style: FolderStyle, savedStyles: SavedFolderStyles, styleLocked = false): FolderStyle {
+  if (styleLocked) return savedFolderStyleForPath(path, savedStyles) ?? style;
   return resolveFolderStyle(path, style, savedStyles);
 }
 
@@ -2121,7 +2122,7 @@ export default function App() {
     if (openInNewTab) {
       const sourceTab = targetTab ?? createEmptyTab(`tab-source-${Date.now()}`);
       const rememberedStyle = getNavigationFolderStyle(sourceTab, folderStyleLocked, savedFolderStyles);
-      const targetStyle = displayedStyleForPath(targetPath, rememberedStyle, savedFolderStyles);
+      const targetStyle = displayedStyleForPath(targetPath, rememberedStyle, savedFolderStyles, folderStyleLocked);
       const newHistory = getPathKey(sourceTab.currentPath) === pathKey
         ? sourceTab.history.slice()
         : [...sourceTab.history.slice(0, sourceTab.historyIndex + 1), targetPath].slice(-MAX_TAB_HISTORY_ENTRIES);
@@ -2167,7 +2168,7 @@ export default function App() {
           ? [...tab.history.slice(0, tab.historyIndex + 1), targetPath].slice(-MAX_TAB_HISTORY_ENTRIES)
           : tab.history;
         const rememberedStyle = getNavigationFolderStyle(tab, folderStyleLocked, savedFolderStyles);
-        const targetStyle = displayedStyleForPath(targetPath, rememberedStyle, savedFolderStyles);
+        const targetStyle = displayedStyleForPath(targetPath, rememberedStyle, savedFolderStyles, folderStyleLocked);
         return {
           ...tab,
           currentPath: targetPath,
@@ -2394,7 +2395,7 @@ export default function App() {
   const openWorkspaceRoot = useCallback((rootPath: string, rootName: string) => {
     const resetTabs = (tabs: TabState[]) => tabs.map(tab => {
       const rememberedStyle = getNavigationFolderStyle(tab, folderStyleLocked, savedFolderStyles);
-      const targetStyle = displayedStyleForPath(rootPath, rememberedStyle, savedFolderStyles);
+      const targetStyle = displayedStyleForPath(rootPath, rememberedStyle, savedFolderStyles, folderStyleLocked);
       return {
         ...tab,
         title: rootName,
@@ -2545,7 +2546,7 @@ export default function App() {
     const currentActive = sourceTabs[activeIndex];
     const baseStyle = getNavigationFolderStyle(currentActive, folderStyleLocked, savedFolderStyles);
     const newPath = isTauriDesktop() ? SYSTEM_HOME_PATH : currentActive.currentPath;
-    const newStyle = displayedStyleForPath(newPath, baseStyle, savedFolderStyles);
+    const newStyle = displayedStyleForPath(newPath, baseStyle, savedFolderStyles, folderStyleLocked);
     const newTab: TabState = {
       ...currentActive,
       id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -2672,7 +2673,7 @@ export default function App() {
       const parent = getParentPath(tab.currentPath);
       if (canOpenTabParent(tab)) {
         const rememberedStyle = getNavigationFolderStyle(tab, folderStyleLocked, savedFolderStyles);
-        const targetStyle = displayedStyleForPath(parent, rememberedStyle, savedFolderStyles);
+        const targetStyle = displayedStyleForPath(parent, rememberedStyle, savedFolderStyles, folderStyleLocked);
         insertCopy(pane, {
           ...tab,
           id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
