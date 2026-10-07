@@ -439,6 +439,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const suppressColumnSortRef = useRef(false);
   const previousPathRef = useRef(tab.currentPath);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const horizontalTabListRef = useRef<HTMLDivElement>(null);
   const verticalTabListRef = useRef<HTMLDivElement>(null);
   const lastScrolledFocusedIdRef = useRef<string | null>(null);
   const columnHeadersRef = useRef<HTMLDivElement>(null);
@@ -461,6 +462,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const suppressViewportClickRef = useRef(false);
   const [marqueeBounds, setMarqueeBounds] = useState<MarqueeBounds | null>(null);
   const [marqueePreviewIds, setMarqueePreviewIds] = useState<string[] | null>(null);
+  const [horizontalTabOverflow, setHorizontalTabOverflow] = useState({ left: false, right: false });
   const [viewportScrollbarWidth, setViewportScrollbarWidth] = useState(0);
   const [viewportWindow, setViewportWindow] = useState({ top: 0, height: 600, width: 600 });
   useEffect(() => {
@@ -489,6 +491,39 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const tabBounds = active.getBoundingClientRect();
     if (tabBounds.top < listBounds.top) list.scrollTop += tabBounds.top - listBounds.top;
     else if (tabBounds.bottom > listBounds.bottom) list.scrollTop += tabBounds.bottom - listBounds.bottom;
+  }, [activeTabIndex, tabStripPosition, tabs[activeTabIndex]?.id]);
+  useLayoutEffect(() => {
+    if (tabStripPosition !== 'top' && tabStripPosition !== 'bottom') {
+      setHorizontalTabOverflow({ left: false, right: false });
+      return;
+    }
+    const list = horizontalTabListRef.current;
+    if (!list) return;
+    const update = () => setHorizontalTabOverflow(previous => {
+      const next = {
+        left: list.scrollLeft > 1,
+        right: list.scrollLeft + list.clientWidth < list.scrollWidth - 1,
+      };
+      return previous.left === next.left && previous.right === next.right ? previous : next;
+    });
+    update();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    observer?.observe(list);
+    list.addEventListener('scroll', update, { passive: true });
+    return () => {
+      observer?.disconnect();
+      list.removeEventListener('scroll', update);
+    };
+  }, [tabs.length, tabStripPosition]);
+  useLayoutEffect(() => {
+    if (tabStripPosition !== 'top' && tabStripPosition !== 'bottom') return;
+    const list = horizontalTabListRef.current;
+    const active = list?.querySelector<HTMLElement>('[data-active-folder-tab="true"]');
+    if (!list || !active) return;
+    const listBounds = list.getBoundingClientRect();
+    const activeBounds = active.getBoundingClientRect();
+    if (activeBounds.left < listBounds.left) list.scrollBy({ left: activeBounds.left - listBounds.left, behavior: 'smooth' });
+    else if (activeBounds.right > listBounds.right) list.scrollBy({ left: activeBounds.right - listBounds.right, behavior: 'smooth' });
   }, [activeTabIndex, tabStripPosition, tabs[activeTabIndex]?.id]);
 
   const visibleFileColumns = columnLayout.order.filter(column =>
@@ -2338,7 +2373,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         }}
         className={vertical
           ? `cyberfiles-folder-tab group flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition-colors outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 ${isTabActive ? 'border-cyan-600/65 bg-cyan-950/45 text-cyan-100 shadow-sm shadow-cyan-950/30' : 'border-transparent bg-neutral-900/35 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-800/70 hover:text-neutral-100'}`
-          : `cyberfiles-folder-tab group flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium cursor-pointer border-x transition-colors max-w-[180px] min-w-[100px] ${tabStripPosition === 'bottom' ? 'rounded-b-md border-b' : 'rounded-t-md border-t'} ${isTabActive ? 'bg-neutral-900 border-neutral-700 text-neutral-100 relative z-10' : 'bg-neutral-950/40 border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/40'}`}
+          : `cyberfiles-folder-tab group flex w-[clamp(112px,16vw,180px)] min-w-[112px] max-w-[180px] shrink-0 items-center gap-1.5 px-3 py-1.5 text-xs font-medium cursor-pointer border-x transition-colors ${tabStripPosition === 'bottom' ? 'rounded-b-md border-b' : 'rounded-t-md border-t'} ${isTabActive ? 'bg-neutral-900 border-neutral-700 text-neutral-100 relative z-10' : 'bg-neutral-950/40 border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/40'}`}
       >
         <Folder className={`h-3.5 w-3.5 shrink-0 ${isTabActive ? 'text-cyan-400' : 'text-neutral-500'}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined} />
         <span className={`truncate text-[11px] ${vertical ? 'min-w-0 flex-1' : ''}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined}>{tabName}</span>
@@ -2391,38 +2426,72 @@ export const FilePane: React.FC<FilePaneProps> = ({
       onTabStripContextMenu(bounds.left + 16, bounds.top + 16);
     }
   };
+  const scrollHorizontalTabs = (direction: -1 | 1) => {
+    const list = horizontalTabListRef.current;
+    if (!list) return;
+    list.scrollBy({ left: direction * Math.max(180, list.clientWidth * 0.7), behavior: 'smooth' });
+  };
   const tabStrip = (
       <div
         role="group"
         aria-label={t.tabMenu.tabsLabel}
         tabIndex={0}
-        className={`cyberfiles-tab-strip flex shrink-0 items-center bg-neutral-950/90 border-neutral-800 px-1 overflow-x-auto no-scrollbar select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400 ${tabStripPosition === 'bottom' ? 'border-t pb-1' : 'border-b pt-1'}`}
+        className={`cyberfiles-tab-strip flex min-w-0 shrink-0 items-center bg-neutral-950/90 border-neutral-800 px-1 overflow-hidden select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400 ${tabStripPosition === 'bottom' ? 'border-t pb-1' : 'border-b pt-1'}`}
         onKeyDown={handleTabStripKeyDown}
         onDoubleClick={handleTabStripDoubleClick}
         onContextMenu={handleTabStripContextMenu}
       >
-        <div data-tab-strip-space="true" className="flex items-center gap-0.5 flex-1 min-w-0">
-          {tabs.map((tabItem, idx) => renderFolderTab(tabItem, idx, false))}
-
-          {showNewTabButton && <Tooltip label={t.pane.addTab} shortcut="Ctrl+T" placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
+        {horizontalTabOverflow.left && (
+          <Tooltip label={t.pane.scrollTabsBack} placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
             <button
               type="button"
-              aria-label={t.pane.addTab}
-              onClick={(e) => {
-                e.stopPropagation();
-                onActivate();
-                onAddTab('button');
-              }}
-              className="inline-flex items-center gap-1.5 p-1.5 ml-1 text-neutral-400 hover:text-cyan-300 hover:bg-neutral-800 rounded transition-colors shrink-0"
+              aria-label={t.pane.scrollTabsBack}
+              onClick={event => { event.stopPropagation(); scrollHorizontalTabs(-1); }}
+              className="mr-0.5 inline-flex h-7 w-6 shrink-0 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <ArrowLeft className="h-3.5 w-3.5" />
             </button>
-          </Tooltip>}
+          </Tooltip>
+        )}
+        <div
+          ref={horizontalTabListRef}
+          data-tab-strip-space="true"
+          className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto no-scrollbar scroll-smooth"
+          onWheel={event => {
+            if (event.deltaY === 0 || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+            event.preventDefault();
+            const deltaScale = event.deltaMode === 1 ? 24 : event.deltaMode === 2 ? event.currentTarget.clientWidth : 1;
+            event.currentTarget.scrollLeft += event.deltaY * deltaScale;
+          }}
+        >
+          {tabs.map((tabItem, idx) => renderFolderTab(tabItem, idx, false))}
         </div>
-
-        <div className="flex shrink-0 items-center gap-1 text-[10px] text-neutral-400 font-sans px-2 whitespace-nowrap">
-          <span>{paneId === 'left' ? t.statusBar.leftPane : t.statusBar.rightPane}</span>
-        </div>
+        {horizontalTabOverflow.right && (
+          <Tooltip label={t.pane.scrollTabsForward} placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
+            <button
+              type="button"
+              aria-label={t.pane.scrollTabsForward}
+              onClick={event => { event.stopPropagation(); scrollHorizontalTabs(1); }}
+              className="ml-0.5 inline-flex h-7 w-6 shrink-0 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
+            >
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
+        )}
+        {showNewTabButton && <Tooltip label={t.pane.addTab} shortcut="Ctrl+T" placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
+          <button
+            type="button"
+            aria-label={t.pane.addTab}
+            onClick={(event) => {
+              event.stopPropagation();
+              onActivate();
+              onAddTab('button');
+            }}
+            className="ml-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </Tooltip>}
       </div>
   );
 
@@ -3175,9 +3244,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {tabStripPosition === 'bottom' && tabStrip}
 
       {/* 6. Footer Status Bar with Mini Storage Distribution Strip */}
-      <div className="cyberfiles-pane-status px-2.5 py-1 bg-neutral-950 border-t border-neutral-800 text-[10px] font-sans text-neutral-400 flex items-center justify-between select-none gap-2">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <span>{itemCountLabel}</span>
+      <div className="cyberfiles-pane-status grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-t border-neutral-800 bg-neutral-950 px-2.5 py-1 font-sans text-[10px] text-neutral-400 select-none">
+        <div className="flex min-w-0 items-center gap-2.5 overflow-hidden">
+          <span className="shrink-0">{itemCountLabel}</span>
           {selectedFiles.length > 0 ? (
             <span className="text-cyan-300 font-semibold truncate">
               {t.pane.selectedCount.replace('{count}', String(selectedFiles.length))} ({formatFileSize(selectedBytes)})
@@ -3187,11 +3256,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
               ({formatFileSize(folderBytes)})
             </span>
           )}
+          {hasMore && <span className="hidden truncate text-cyan-500/80 2xl:inline">{t.pane.moreItemsAvailable}</span>}
         </div>
 
-        {hasMore && <span className="hidden min-w-0 flex-1 truncate text-center text-cyan-500/80 sm:block">{t.pane.moreItemsAvailable}</span>}
+        {isActive ? (
+          <div
+            role="status"
+            aria-label={paneId === 'left' ? t.statusBar.leftPane : t.statusBar.rightPane}
+            className="flex items-center gap-1.5 justify-self-center whitespace-nowrap rounded border border-cyan-900/70 bg-cyan-950/30 px-2 py-0.5 font-medium text-cyan-200"
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+            <span>{paneId === 'left' ? t.statusBar.leftPane : t.statusBar.rightPane}</span>
+          </div>
+        ) : <span />}
 
-        <div className="text-neutral-500 hidden lg:block">
+        <div className="hidden min-w-0 truncate text-right text-neutral-500 lg:block">
           F2: Renombrar · F5: Copiar · F6: Mover · F3: Ver
         </div>
       </div>
