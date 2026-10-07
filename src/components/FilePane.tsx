@@ -36,7 +36,7 @@ import {
   History,
   Home,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type NewTabTrigger } from '../types';
+import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
@@ -61,6 +61,7 @@ interface FilePaneProps {
   showNewTabButton: boolean;
   doubleClickTabBar: boolean;
   tabCloseButtonMode?: TabCloseButtonMode;
+  tabSizePreferences: TabSizePreferences;
   isActive: boolean;
   styleLocked: boolean;
   recentItemStyle: RecentItemStyle;
@@ -317,6 +318,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   showNewTabButton,
   doubleClickTabBar,
   tabCloseButtonMode = 'hover',
+  tabSizePreferences,
   isActive,
   styleLocked,
   recentItemStyle,
@@ -462,7 +464,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const suppressViewportClickRef = useRef(false);
   const [marqueeBounds, setMarqueeBounds] = useState<MarqueeBounds | null>(null);
   const [marqueePreviewIds, setMarqueePreviewIds] = useState<string[] | null>(null);
-  const [horizontalTabOverflow, setHorizontalTabOverflow] = useState({ left: false, right: false });
   const [viewportScrollbarWidth, setViewportScrollbarWidth] = useState(0);
   const [viewportWindow, setViewportWindow] = useState({ top: 0, height: 600, width: 600 });
   useEffect(() => {
@@ -491,30 +492,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const tabBounds = active.getBoundingClientRect();
     if (tabBounds.top < listBounds.top) list.scrollTop += tabBounds.top - listBounds.top;
     else if (tabBounds.bottom > listBounds.bottom) list.scrollTop += tabBounds.bottom - listBounds.bottom;
-  }, [activeTabIndex, tabStripPosition, tabs[activeTabIndex]?.id]);
-  useLayoutEffect(() => {
-    if (tabStripPosition !== 'top' && tabStripPosition !== 'bottom') {
-      setHorizontalTabOverflow({ left: false, right: false });
-      return;
-    }
-    const list = horizontalTabListRef.current;
-    if (!list) return;
-    const update = () => setHorizontalTabOverflow(previous => {
-      const next = {
-        left: list.scrollLeft > 1,
-        right: list.scrollLeft + list.clientWidth < list.scrollWidth - 1,
-      };
-      return previous.left === next.left && previous.right === next.right ? previous : next;
-    });
-    update();
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
-    observer?.observe(list);
-    list.addEventListener('scroll', update, { passive: true });
-    return () => {
-      observer?.disconnect();
-      list.removeEventListener('scroll', update);
-    };
-  }, [tabs.length, tabStripPosition]);
+  }, [activeTabIndex, tabStripPosition, tabSizePreferences, tabs[activeTabIndex]?.id]);
   useLayoutEffect(() => {
     if (tabStripPosition !== 'top' && tabStripPosition !== 'bottom') return;
     const list = horizontalTabListRef.current;
@@ -524,7 +502,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const activeBounds = active.getBoundingClientRect();
     if (activeBounds.left < listBounds.left) list.scrollBy({ left: activeBounds.left - listBounds.left, behavior: 'smooth' });
     else if (activeBounds.right > listBounds.right) list.scrollBy({ left: activeBounds.right - listBounds.right, behavior: 'smooth' });
-  }, [activeTabIndex, tabStripPosition, tabs[activeTabIndex]?.id]);
+  }, [activeTabIndex, tabStripPosition, tabSizePreferences, tabs[activeTabIndex]?.id]);
 
   const visibleFileColumns = columnLayout.order.filter(column =>
     columnLayout.visible.includes(column) || (editingItemId !== null && column === 'name'),
@@ -2335,6 +2313,27 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const previousKey = vertical ? 'ArrowUp' : 'ArrowLeft';
     const nextKey = vertical ? 'ArrowDown' : 'ArrowRight';
     const tooltipPlacement = vertical ? (tabStripPosition === 'left' ? 'right' : 'left') : (tabStripPosition === 'bottom' ? 'top' : 'bottom');
+    const minimumWidth = Math.min(tabSizePreferences.horizontalMinWidth, tabSizePreferences.horizontalMaxWidth);
+    const maximumWidth = Math.max(tabSizePreferences.horizontalMinWidth, tabSizePreferences.horizontalMaxWidth);
+    const horizontalTabStyle: React.CSSProperties | undefined = vertical ? undefined : tabSizePreferences.horizontalMode === 'fixed'
+      ? {
+          flex: `0 0 ${tabSizePreferences.horizontalFixedWidth}px`,
+          width: tabSizePreferences.horizontalFixedWidth,
+          minWidth: tabSizePreferences.horizontalFixedWidth,
+          maxWidth: tabSizePreferences.horizontalFixedWidth,
+        }
+      : tabSizePreferences.horizontalEqualWidth
+        ? {
+            flex: `${tabSizePreferences.horizontalShrinkToFit ? '1 1' : '0 0'} ${maximumWidth}px`,
+            minWidth: minimumWidth,
+            maxWidth: maximumWidth,
+          }
+        : {
+            flex: tabSizePreferences.horizontalShrinkToFit ? '0 1 auto' : '0 0 auto',
+            width: 'max-content',
+            minWidth: minimumWidth,
+            maxWidth: maximumWidth,
+          };
     return (
       <div
         key={tabItem.id}
@@ -2371,9 +2370,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
           event.stopPropagation();
           onTabContextMenu(idx, event.clientX, event.clientY);
         }}
+        style={horizontalTabStyle}
         className={vertical
           ? `cyberfiles-folder-tab group flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition-colors outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 ${isTabActive ? 'border-cyan-600/65 bg-cyan-950/45 text-cyan-100 shadow-sm shadow-cyan-950/30' : 'border-transparent bg-neutral-900/35 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-800/70 hover:text-neutral-100'}`
-          : `cyberfiles-folder-tab group flex w-[clamp(112px,16vw,180px)] min-w-[112px] max-w-[180px] shrink-0 items-center gap-1.5 px-3 py-1.5 text-xs font-medium cursor-pointer border-x transition-colors ${tabStripPosition === 'bottom' ? 'rounded-b-md border-b' : 'rounded-t-md border-t'} ${isTabActive ? 'bg-neutral-900 border-neutral-700 text-neutral-100 relative z-10' : 'bg-neutral-950/40 border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/40'}`}
+          : `cyberfiles-folder-tab group flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium cursor-pointer border-x transition-colors ${tabStripPosition === 'bottom' ? 'rounded-b-md border-b' : 'rounded-t-md border-t'} ${isTabActive ? 'bg-neutral-900 border-neutral-700 text-neutral-100 relative z-10' : 'bg-neutral-950/40 border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/40'}`}
       >
         <Folder className={`h-3.5 w-3.5 shrink-0 ${isTabActive ? 'text-cyan-400' : 'text-neutral-500'}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined} />
         <span className={`truncate text-[11px] ${vertical ? 'min-w-0 flex-1' : ''}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined}>{tabName}</span>
@@ -2426,39 +2426,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
       onTabStripContextMenu(bounds.left + 16, bounds.top + 16);
     }
   };
-  const scrollHorizontalTabs = (direction: -1 | 1) => {
-    const list = horizontalTabListRef.current;
-    if (!list) return;
-    list.scrollBy({ left: direction * Math.max(180, list.clientWidth * 0.7), behavior: 'smooth' });
-  };
   const tabStrip = (
       <div
         role="group"
         aria-label={t.tabMenu.tabsLabel}
         tabIndex={0}
-        className={`cyberfiles-tab-strip flex min-w-0 shrink-0 items-center bg-neutral-950/90 border-neutral-800 px-1 overflow-hidden select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400 ${tabStripPosition === 'bottom' ? 'border-t pb-1' : 'border-b pt-1'}`}
+        className={`cyberfiles-tab-strip flex h-10 min-w-0 shrink-0 items-center overflow-hidden border-neutral-800 bg-neutral-950/90 px-1 py-1 select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400 ${tabStripPosition === 'bottom' ? 'border-t' : 'border-b'}`}
         onKeyDown={handleTabStripKeyDown}
         onDoubleClick={handleTabStripDoubleClick}
         onContextMenu={handleTabStripContextMenu}
       >
-        {horizontalTabOverflow.left && (
-          <Tooltip label={t.pane.scrollTabsBack} placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
-            <button
-              type="button"
-              aria-label={t.pane.scrollTabsBack}
-              onClick={event => { event.stopPropagation(); scrollHorizontalTabs(-1); }}
-              className="mr-0.5 inline-flex h-7 w-6 shrink-0 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-            </button>
-          </Tooltip>
-        )}
         <div
           ref={horizontalTabListRef}
           data-tab-strip-space="true"
-          className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto no-scrollbar scroll-smooth"
+          className="cyberfiles-tab-scroll flex h-full min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overflow-y-hidden scroll-smooth"
           onWheel={event => {
-            if (event.deltaY === 0 || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+            if (event.currentTarget.scrollWidth <= event.currentTarget.clientWidth + 1 || event.deltaY === 0 || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
             event.preventDefault();
             const deltaScale = event.deltaMode === 1 ? 24 : event.deltaMode === 2 ? event.currentTarget.clientWidth : 1;
             event.currentTarget.scrollLeft += event.deltaY * deltaScale;
@@ -2466,18 +2449,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
         >
           {tabs.map((tabItem, idx) => renderFolderTab(tabItem, idx, false))}
         </div>
-        {horizontalTabOverflow.right && (
-          <Tooltip label={t.pane.scrollTabsForward} placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
-            <button
-              type="button"
-              aria-label={t.pane.scrollTabsForward}
-              onClick={event => { event.stopPropagation(); scrollHorizontalTabs(1); }}
-              className="ml-0.5 inline-flex h-7 w-6 shrink-0 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
-            >
-              <ArrowRight className="h-3.5 w-3.5" />
-            </button>
-          </Tooltip>
-        )}
         {showNewTabButton && <Tooltip label={t.pane.addTab} shortcut="Ctrl+T" placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
           <button
             type="button"
@@ -2501,7 +2472,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       aria-label={t.tabMenu.tabsLabel}
       tabIndex={0}
       className={`cyberfiles-vertical-tabs flex min-h-0 shrink-0 flex-col bg-neutral-950/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400 ${tabStripPosition === 'left' ? 'border-r border-neutral-800' : 'border-l border-neutral-800'}`}
-      style={{ width: 'clamp(104px, 22%, 184px)' }}
+      style={{ width: tabSizePreferences.verticalMode === 'fixed' ? `${tabSizePreferences.verticalWidth}px` : 'clamp(104px, 22%, 184px)' }}
       onKeyDown={handleTabStripKeyDown}
       onDoubleClick={handleTabStripDoubleClick}
       onContextMenu={handleTabStripContextMenu}

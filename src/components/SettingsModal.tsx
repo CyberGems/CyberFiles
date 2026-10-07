@@ -5,7 +5,7 @@ import { useLanguage } from '../locales/LanguageContext';
 import { type AppTheme, useTheme } from '../themes/ThemeContext';
 import { Tooltip } from './Tooltip';
 import { DialogButton } from './DialogButton';
-import { type GroupByField, type HiddenItemStyle, type NewTabActionMode, type NewTabActionPreference, type RecentItemStyle, type SortField, type SortOrder, type TabCloseButtonMode, type ViewMode } from '../types';
+import { type GroupByField, type HiddenItemStyle, type NewTabActionMode, type NewTabActionPreference, type RecentItemStyle, type SortField, type SortOrder, type TabCloseButtonMode, type TabSizePreferences, type TabWidthMode, type ViewMode } from '../types';
 import type { FolderStylePreference, SavedFolderStyles } from '../utils/folderStylePreferences';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
@@ -90,6 +90,8 @@ interface SettingsModalProps {
   onChooseNewTabFolder: () => Promise<string | null>;
   tabCloseButtonMode: TabCloseButtonMode;
   onTabCloseButtonModeChange: (mode: TabCloseButtonMode) => void;
+  tabSizePreferences: TabSizePreferences;
+  onTabSizePreferencesChange: (preferences: TabSizePreferences) => void;
 }
 
 const themes: AppTheme[] = ['cyberfiles', 'gray', 'light'];
@@ -188,6 +190,8 @@ export function SettingsModal({
   onChooseNewTabFolder,
   tabCloseButtonMode,
   onTabCloseButtonModeChange,
+  tabSizePreferences,
+  onTabSizePreferencesChange,
 }: SettingsModalProps) {
   const { t, language, setLanguage } = useLanguage();
   const [tab, setTab] = useState<SettingsTab>('general');
@@ -794,6 +798,83 @@ export function SettingsModal({
                       <span>{position === 'top' ? t.settings.tabStripTop : position === 'bottom' ? t.settings.tabStripBottom : position === 'left' ? t.settings.tabStripLeft : t.settings.tabStripRight}</span>
                     </label>
                   ))}
+                </div>
+              </fieldset>
+              <fieldset className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-3 text-xs text-neutral-400">
+                <legend className="px-1 font-medium text-neutral-200">{t.settings.tabSizing}</legend>
+                <p className="mb-3 leading-relaxed">{t.settings.tabSizingDescription}</p>
+
+                <div className="font-medium text-cyan-200">{t.settings.horizontalTabs}</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {(['automatic', 'fixed'] as TabWidthMode[]).map(mode => (
+                    <label key={mode} className={tabSizePreferences.horizontalMode === mode ? 'flex cursor-pointer items-center gap-2 rounded-md border border-cyan-700 bg-cyan-950/45 px-3 py-2 text-cyan-100' : 'flex cursor-pointer items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900/60 px-3 py-2 text-neutral-300'}>
+                      <input type="radio" name="horizontal-tab-width-mode" checked={tabSizePreferences.horizontalMode === mode} onChange={() => onTabSizePreferencesChange({ ...tabSizePreferences, horizontalMode: mode })} className="h-4 w-4 accent-cyan-400" />
+                      <span>{mode === 'automatic' ? t.settings.tabWidthAutomatic : t.settings.tabWidthFixed}</span>
+                    </label>
+                  ))}
+                </div>
+
+                {tabSizePreferences.horizontalMode === 'automatic' && (
+                  <div className="mt-3 space-y-2">
+                    <label className="flex cursor-pointer items-center gap-2 text-neutral-300">
+                      <input type="checkbox" checked={tabSizePreferences.horizontalEqualWidth} onChange={event => onTabSizePreferencesChange({ ...tabSizePreferences, horizontalEqualWidth: event.target.checked })} className="h-4 w-4 accent-cyan-400" />
+                      <span>{t.settings.tabEqualWidth}</span>
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 text-neutral-300">
+                      <input type="checkbox" checked={tabSizePreferences.horizontalShrinkToFit} onChange={event => onTabSizePreferencesChange({ ...tabSizePreferences, horizontalShrinkToFit: event.target.checked })} className="h-4 w-4 accent-cyan-400" />
+                      <span>{t.settings.tabShrinkToFit}</span>
+                    </label>
+                  </div>
+                )}
+
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {tabSizePreferences.horizontalMode === 'fixed' ? (
+                    <label className="text-neutral-300">
+                      <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.settings.tabFixedWidth}</span>
+                      <span className="flex items-center gap-2">
+                        <input type="number" min={80} max={360} value={tabSizePreferences.horizontalFixedWidth} onChange={event => onTabSizePreferencesChange({ ...tabSizePreferences, horizontalFixedWidth: Math.min(360, Math.max(80, event.currentTarget.valueAsNumber || 80)) })} className="w-24 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-neutral-100 focus:border-cyan-600 focus:outline-none" />
+                        <span>{t.settings.pixels}</span>
+                      </span>
+                    </label>
+                  ) : (
+                    <>
+                      <label className="text-neutral-300">
+                        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.settings.tabMinimumWidth}</span>
+                        <span className="flex items-center gap-2">
+                          <input type="number" min={80} max={240} value={tabSizePreferences.horizontalMinWidth} onChange={event => { const value = Math.min(240, Math.max(80, event.currentTarget.valueAsNumber || 80)); onTabSizePreferencesChange({ ...tabSizePreferences, horizontalMinWidth: value, horizontalMaxWidth: Math.max(value, tabSizePreferences.horizontalMaxWidth) }); }} className="w-24 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-neutral-100 focus:border-cyan-600 focus:outline-none" />
+                          <span>{t.settings.pixels}</span>
+                        </span>
+                      </label>
+                      <label className="text-neutral-300">
+                        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.settings.tabMaximumWidth}</span>
+                        <span className="flex items-center gap-2">
+                          <input type="number" min={80} max={360} value={tabSizePreferences.horizontalMaxWidth} onChange={event => { const value = Math.min(360, Math.max(80, event.currentTarget.valueAsNumber || 80)); onTabSizePreferencesChange({ ...tabSizePreferences, horizontalMaxWidth: value, horizontalMinWidth: Math.min(value, tabSizePreferences.horizontalMinWidth) }); }} className="w-24 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-neutral-100 focus:border-cyan-600 focus:outline-none" />
+                          <span>{t.settings.pixels}</span>
+                        </span>
+                      </label>
+                    </>
+                  )}
+                </div>
+
+                <div className="mt-4 border-t border-neutral-800 pt-3">
+                  <div className="font-medium text-cyan-200">{t.settings.verticalTabs}</div>
+                  <div className="mt-2 flex flex-wrap items-end gap-2">
+                    {(['automatic', 'fixed'] as TabWidthMode[]).map(mode => (
+                      <label key={mode} className={tabSizePreferences.verticalMode === mode ? 'flex cursor-pointer items-center gap-2 rounded-md border border-cyan-700 bg-cyan-950/45 px-3 py-2 text-cyan-100' : 'flex cursor-pointer items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900/60 px-3 py-2 text-neutral-300'}>
+                        <input type="radio" name="vertical-tab-width-mode" checked={tabSizePreferences.verticalMode === mode} onChange={() => onTabSizePreferencesChange({ ...tabSizePreferences, verticalMode: mode })} className="h-4 w-4 accent-cyan-400" />
+                        <span>{mode === 'automatic' ? t.settings.tabWidthAutomatic : t.settings.tabWidthFixed}</span>
+                      </label>
+                    ))}
+                    {tabSizePreferences.verticalMode === 'fixed' && (
+                      <label className="ml-1 text-neutral-300">
+                        <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.settings.tabVerticalWidth}</span>
+                        <span className="flex items-center gap-2">
+                          <input type="number" min={100} max={360} value={tabSizePreferences.verticalWidth} onChange={event => onTabSizePreferencesChange({ ...tabSizePreferences, verticalWidth: Math.min(360, Math.max(100, event.currentTarget.valueAsNumber || 100)) })} className="w-24 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-neutral-100 focus:border-cyan-600 focus:outline-none" />
+                          <span>{t.settings.pixels}</span>
+                        </span>
+                      </label>
+                    )}
+                  </div>
                 </div>
               </fieldset>
               <fieldset className="rounded-lg border border-neutral-800 bg-neutral-900/30 p-3">

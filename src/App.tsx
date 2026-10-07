@@ -24,6 +24,7 @@ import {
   type NewTabActionPreference,
   type NewTabActionMode,
   type NewTabTrigger,
+  type TabSizePreferences,
 } from './types';
 import {
   getChildItems, 
@@ -123,6 +124,7 @@ const DOUBLE_CLICK_TAB_BAR_KEY = 'cyberfiles_double_click_tab_bar_v2';
 const NEW_TAB_BUTTON_ACTION_KEY = 'cyberfiles_new_tab_button_action_v1';
 const DOUBLE_CLICK_TAB_ACTION_KEY = 'cyberfiles_double_click_tab_action_v1';
 const DEFAULT_NEW_TAB_FOLDER_KEY = 'cyberfiles_default_new_tab_folder_v1';
+const TAB_SIZE_PREFERENCES_KEY = 'cyberfiles_tab_size_preferences_v1';
 const TAB_CLOSE_BUTTON_MODE_KEY = 'cyberfiles_tab_close_button_mode_v1';
 const RECENT_ITEMS_BOLD_KEY = 'cyberfiles_bold_recent_items_v1';
 const RECENT_ITEMS_STYLE_KEY = 'cyberfiles_recent_items_style_v1';
@@ -149,6 +151,16 @@ const MAX_TEXT_PREVIEW_BYTES = 200_000;
 const TOAST_DURATION_MS = 3200;
 const DEFAULT_GLOBAL_SHORTCUT = 'Alt+Shift+F';
 const DEFAULT_FOLDER_STYLE = { viewMode: 'details' as ViewMode, sortField: 'name' as SortField, sortOrder: 'asc' as SortOrder, groupBy: 'none' as GroupByField };
+const DEFAULT_TAB_SIZE_PREFERENCES: TabSizePreferences = {
+  horizontalMode: 'automatic',
+  horizontalEqualWidth: true,
+  horizontalFixedWidth: 160,
+  horizontalMinWidth: 100,
+  horizontalMaxWidth: 220,
+  horizontalShrinkToFit: true,
+  verticalMode: 'automatic',
+  verticalWidth: 160,
+};
 const DEFAULT_RECENT_ITEM_STYLE: RecentItemStyle = {
   enabled: true,
   textColor: 'auto',
@@ -370,6 +382,32 @@ function readStringPreference(key: string): string {
     return window.localStorage.getItem(key) ?? '';
   } catch {
     return '';
+  }
+}
+
+function readTabSizePreferences(): TabSizePreferences {
+  try {
+    const saved: unknown = JSON.parse(window.localStorage.getItem(TAB_SIZE_PREFERENCES_KEY) || 'null');
+    if (!saved || typeof saved !== 'object') return DEFAULT_TAB_SIZE_PREFERENCES;
+    const candidate = saved as Partial<TabSizePreferences>;
+    const numberInRange = (value: unknown, fallback: number, minimum: number, maximum: number) =>
+      typeof value === 'number' && Number.isFinite(value)
+        ? Math.min(maximum, Math.max(minimum, Math.round(value)))
+        : fallback;
+    const horizontalMinWidth = numberInRange(candidate.horizontalMinWidth, DEFAULT_TAB_SIZE_PREFERENCES.horizontalMinWidth, 80, 240);
+    const horizontalMaxWidth = numberInRange(candidate.horizontalMaxWidth, DEFAULT_TAB_SIZE_PREFERENCES.horizontalMaxWidth, horizontalMinWidth, 360);
+    return {
+      horizontalMode: candidate.horizontalMode === 'fixed' ? 'fixed' : 'automatic',
+      horizontalEqualWidth: candidate.horizontalEqualWidth !== false,
+      horizontalFixedWidth: numberInRange(candidate.horizontalFixedWidth, DEFAULT_TAB_SIZE_PREFERENCES.horizontalFixedWidth, 80, 360),
+      horizontalMinWidth,
+      horizontalMaxWidth,
+      horizontalShrinkToFit: candidate.horizontalShrinkToFit !== false,
+      verticalMode: candidate.verticalMode === 'fixed' ? 'fixed' : 'automatic',
+      verticalWidth: numberInRange(candidate.verticalWidth, DEFAULT_TAB_SIZE_PREFERENCES.verticalWidth, 100, 360),
+    };
+  } catch {
+    return DEFAULT_TAB_SIZE_PREFERENCES;
   }
 }
 
@@ -744,6 +782,7 @@ export default function App() {
   const [doubleClickTabAction, setDoubleClickTabAction] = useState(() => readNewTabActionPreference(DOUBLE_CLICK_TAB_ACTION_KEY));
   const [defaultNewTabPath, setDefaultNewTabPath] = useState(() => readStringPreference(DEFAULT_NEW_TAB_FOLDER_KEY));
   const [userHomePath, setUserHomePath] = useState('');
+  const [tabSizePreferences, setTabSizePreferences] = useState<TabSizePreferences>(readTabSizePreferences);
   const [tabCloseButtonMode, setTabCloseButtonMode] = useState<TabCloseButtonMode>(() => {
     const val = window.localStorage.getItem(TAB_CLOSE_BUTTON_MODE_KEY);
     return val === 'always' || val === 'active' ? val : 'hover';
@@ -1712,11 +1751,12 @@ export default function App() {
       window.localStorage.setItem(NEW_TAB_BUTTON_ACTION_KEY, JSON.stringify(newTabButtonAction));
       window.localStorage.setItem(DOUBLE_CLICK_TAB_ACTION_KEY, JSON.stringify(doubleClickTabAction));
       window.localStorage.setItem(DEFAULT_NEW_TAB_FOLDER_KEY, defaultNewTabPath);
+      window.localStorage.setItem(TAB_SIZE_PREFERENCES_KEY, JSON.stringify(tabSizePreferences));
       window.localStorage.setItem(TAB_CLOSE_BUTTON_MODE_KEY, tabCloseButtonMode);
     } catch {
       // Keep tab bar preferences in memory when storage is unavailable.
     }
-  }, [showNewTabButton, doubleClickTabBar, newTabButtonAction, doubleClickTabAction, defaultNewTabPath, tabCloseButtonMode]);
+  }, [showNewTabButton, doubleClickTabBar, newTabButtonAction, doubleClickTabAction, defaultNewTabPath, tabSizePreferences, tabCloseButtonMode]);
 
   useEffect(() => {
     if (!isTauriDesktop()) return;
@@ -5131,6 +5171,7 @@ export default function App() {
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
                   tabCloseButtonMode={tabCloseButtonMode}
+                  tabSizePreferences={tabSizePreferences}
                   columnPreferences={paneColumnPreferences.left}
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
@@ -5198,6 +5239,7 @@ export default function App() {
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
                   tabCloseButtonMode={tabCloseButtonMode}
+                  tabSizePreferences={tabSizePreferences}
                   columnPreferences={paneColumnPreferences.right}
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
@@ -5266,6 +5308,7 @@ export default function App() {
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
                   tabCloseButtonMode={tabCloseButtonMode}
+                  tabSizePreferences={tabSizePreferences}
                   columnPreferences={paneColumnPreferences.left}
                   isActive={activePane === 'left'}
                   styleLocked={folderStyleLocked}
@@ -5329,6 +5372,7 @@ export default function App() {
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
                   tabCloseButtonMode={tabCloseButtonMode}
+                  tabSizePreferences={tabSizePreferences}
                   columnPreferences={paneColumnPreferences.right}
                   isActive={activePane === 'right'}
                   styleLocked={folderStyleLocked}
@@ -5397,6 +5441,7 @@ export default function App() {
                 showNewTabButton={showNewTabButton}
                 doubleClickTabBar={doubleClickTabBar}
                 tabCloseButtonMode={tabCloseButtonMode}
+                tabSizePreferences={tabSizePreferences}
                 columnPreferences={paneColumnPreferences[activePane]}
                 isActive={true}
                 styleLocked={folderStyleLocked}
@@ -5811,6 +5856,8 @@ export default function App() {
             }}
             tabCloseButtonMode={tabCloseButtonMode}
             onTabCloseButtonModeChange={setTabCloseButtonMode}
+            tabSizePreferences={tabSizePreferences}
+            onTabSizePreferencesChange={setTabSizePreferences}
             onShowAbout={() => {
               setIsSettingsOpen(false);
               setFocusTabSettingsRequest(0);

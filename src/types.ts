@@ -55,6 +55,19 @@ export interface HiddenItemStyle {
 }
 
 export type TabCloseButtonMode = 'hover' | 'always' | 'active';
+export type TabWidthMode = 'automatic' | 'fixed';
+
+export interface TabSizePreferences {
+  horizontalMode: TabWidthMode;
+  horizontalEqualWidth: boolean;
+  horizontalFixedWidth: number;
+  horizontalMinWidth: number;
+  horizontalMaxWidth: number;
+  horizontalShrinkToFit: boolean;
+  verticalMode: TabWidthMode;
+  verticalWidth: number;
+}
+
 export type NewTabActionMode = 'current-folder' | 'duplicate' | 'default-folder' | 'home-folder' | 'empty-tab' | 'location';
 export type NewTabTrigger = 'button' | 'double-click';
 
