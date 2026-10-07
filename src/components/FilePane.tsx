@@ -479,7 +479,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   useEffect(() => () => {
     if (mouseGestureHoldTimerRef.current !== null) window.clearTimeout(mouseGestureHoldTimerRef.current);
     if (mouseGestureFadeTimerRef.current !== null) window.clearTimeout(mouseGestureFadeTimerRef.current);
-  }, []);
+    document.querySelector<HTMLElement>(`[data-cyberfiles-navigation-snapshot="${paneId}"]`)?.remove();
+  }, [paneId]);
   const marqueePreviewIdsRef = useRef<string[] | null>(null);
   const suppressViewportClickRef = useRef(false);
   const [marqueeBounds, setMarqueeBounds] = useState<MarqueeBounds | null>(null);
@@ -633,21 +634,37 @@ export const FilePane: React.FC<FilePaneProps> = ({
       if (horizontalScrollContainerRef.current) horizontalScrollContainerRef.current.scrollLeft = 0;
     }
 
+    const navigationSnapshot = document.querySelector<HTMLElement>(`[data-cyberfiles-navigation-snapshot="${paneId}"]`);
     if (!navigationTransitionsEnabled) {
       pendingNavigationRef.current = null;
       setNavigationTransition(null);
+      navigationSnapshot?.remove();
       return;
     }
     if (document.documentElement.dataset.cyberfilesNavigationPane === paneId) {
       pendingNavigationRef.current = null;
+      navigationSnapshot?.remove();
       return;
     }
     const pending = pendingNavigationRef.current;
     if (pending && !isLoadingDirectory && pending.tabId === current.tabId && pending.path === current.path) {
       pendingNavigationRef.current = null;
-      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) setNavigationTransition(pending);
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        navigationSnapshot?.remove();
+      } else {
+        if (navigationSnapshot) {
+          const removeSnapshot = (event: AnimationEvent) => {
+            if (event.target !== navigationSnapshot) return;
+            navigationSnapshot.removeEventListener('animationend', removeSnapshot);
+            navigationSnapshot.remove();
+          };
+          navigationSnapshot.addEventListener('animationend', removeSnapshot);
+          navigationSnapshot.classList.add('cyberfiles-navigation-snapshot-out');
+        }
+        setNavigationTransition(pending);
+      }
     }
-  }, [navigationTransitionsEnabled, isLoadingDirectory, tab.id, tab.currentPath, tab.historyIndex, tab.history.length]);
+  }, [navigationTransitionsEnabled, navigationTransitionStyle, isLoadingDirectory, tab.id, tab.currentPath, tab.historyIndex, tab.history.length]);
 
   const hasRecentActivity = (item: FileItem) => {
     const changedAt = Math.max(item.createdAtMs ?? 0, item.modifiedAtMs ?? 0);

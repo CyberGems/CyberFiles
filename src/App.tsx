@@ -355,10 +355,47 @@ function readDateFormatPreference(): DateFormatMode {
 function readNavigationTransitionStyle(): NavigationTransitionStyle {
   try {
     const saved = window.localStorage.getItem(NAVIGATION_TRANSITION_STYLE_KEY);
-    return saved === 'dynamic' || saved === 'fade' ? saved : 'subtle';
+    // Preserve the closest speed preset for preferences saved by older versions.
+    return saved === 'dynamic' || saved === 'slow' ? 'slow' : 'fast';
   } catch {
-    return 'subtle';
+    return 'fast';
   }
+}
+
+function removeNavigationTransitionSnapshot(pane: WorkspacePaneId) {
+  document.querySelector<HTMLElement>(`[data-cyberfiles-navigation-snapshot="${pane}"]`)?.remove();
+}
+
+function captureNavigationTransitionSnapshot(pane: WorkspacePaneId, style: NavigationTransitionStyle) {
+  removeNavigationTransitionSnapshot(pane);
+  const viewport = document.querySelector<HTMLElement>(`[data-cyberfiles-pane-viewport="${pane}"]`);
+  if (!viewport) return;
+  const bounds = viewport.getBoundingClientRect();
+  if (bounds.width <= 0 || bounds.height <= 0) return;
+
+  const snapshot = viewport.cloneNode(true) as HTMLElement;
+  snapshot.removeAttribute('data-cyberfiles-pane-viewport');
+  snapshot.removeAttribute('tabindex');
+  snapshot.removeAttribute('id');
+  snapshot.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
+  snapshot.setAttribute('aria-hidden', 'true');
+  snapshot.inert = true;
+  snapshot.dataset.cyberfilesNavigationSnapshot = pane;
+  snapshot.classList.add('cyberfiles-navigation-snapshot', `cyberfiles-navigation-${style}`);
+  Object.assign(snapshot.style, {
+    position: 'fixed',
+    left: `${bounds.left}px`,
+    top: `${bounds.top}px`,
+    width: `${bounds.width}px`,
+    height: `${bounds.height}px`,
+    boxSizing: 'border-box',
+    margin: '0',
+    zIndex: '40',
+    pointerEvents: 'none',
+  });
+  snapshot.scrollTop = viewport.scrollTop;
+  snapshot.scrollLeft = viewport.scrollLeft;
+  document.body.appendChild(snapshot);
 }
 
 function readLastTerminalOption(): WindowsTerminalOption {
@@ -2215,6 +2252,7 @@ export default function App() {
         && typeof document.startViewTransition === 'function'
         && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       if (useViewTransition) {
+        removeNavigationTransitionSnapshot(targetPane);
         const root = document.documentElement;
         const token = String(++navigationViewTransitionSequence.current);
         let motion: 'into' | 'up' | 'back' | 'forward' | 'other' = 'other';
@@ -2236,6 +2274,12 @@ export default function App() {
         };
         void transition.finished.then(clearTransition, clearTransition);
       } else {
+        const shouldAnimateFallback = navigationTransitionsEnabled
+          && !forceRefresh
+          && targetTab
+          && getPathKey(targetTab.currentPath) !== pathKey
+          && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (shouldAnimateFallback) captureNavigationTransitionSnapshot(targetPane, navigationTransitionStyle);
         updateCurrentTab();
       }
     }

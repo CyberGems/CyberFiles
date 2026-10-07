@@ -600,42 +600,42 @@ export function SettingsModal({
                   </label>
               </div>
               <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
-                <label className="flex cursor-pointer items-start gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={navigationTransitionsEnabled}
-                    onChange={event => onNavigationTransitionsEnabledChange(event.target.checked)}
-                    className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
-                  />
-                  <span>
-                    <span className="block font-medium text-neutral-200">{t.settings.navigationTransitions}</span>
-                    <span className="mt-1 block">{t.settings.navigationTransitionsDescription}</span>
-                  </span>
-                </label>
-                {navigationTransitionsEnabled && (
-                  <div className="mt-3 border-t border-neutral-800 pt-3">
-                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.settings.navigationTransitionStyle}</div>
-                    <div role="radiogroup" aria-label={t.settings.navigationTransitionStyle} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                      {([
-                        ['subtle', t.settings.navigationTransitionSubtle, t.settings.navigationTransitionSubtleDescription],
-                        ['dynamic', t.settings.navigationTransitionDynamic, t.settings.navigationTransitionDynamicDescription],
-                        ['fade', t.settings.navigationTransitionFade, t.settings.navigationTransitionFadeDescription],
-                      ] as const).map(([style, label, description]) => (
+                <div className="font-medium text-neutral-200">{t.settings.navigationTransitions}</div>
+                <div className="mt-1">{t.settings.navigationTransitionsDescription}</div>
+                <div className="mt-3 border-t border-neutral-800 pt-3">
+                  <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.settings.navigationTransitionStyle}</div>
+                  <div role="radiogroup" aria-label={t.settings.navigationTransitionStyle} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {([
+                      ['none', t.settings.navigationTransitionNone, t.settings.navigationTransitionNoneDescription],
+                      ['fast', t.settings.navigationTransitionFast, t.settings.navigationTransitionFastDescription],
+                      ['slow', t.settings.navigationTransitionSlow, t.settings.navigationTransitionSlowDescription],
+                    ] as const).map(([option, label, description]) => {
+                      const selected = option === 'none'
+                        ? !navigationTransitionsEnabled
+                        : navigationTransitionsEnabled && navigationTransitionStyle === option;
+                      return (
                         <button
-                          key={style}
+                          key={option}
                           type="button"
                           role="radio"
-                          aria-checked={navigationTransitionStyle === style}
-                          onClick={() => onNavigationTransitionStyleChange(style)}
-                          className={`rounded-md border px-2.5 py-2 text-left transition-colors ${navigationTransitionStyle === style ? 'border-cyan-600/70 bg-cyan-950/35 text-cyan-100' : 'border-neutral-800 bg-neutral-900/70 text-neutral-300 hover:border-neutral-600 hover:bg-neutral-800'}`}
+                          aria-checked={selected}
+                          onClick={() => {
+                            if (option === 'none') {
+                              onNavigationTransitionsEnabledChange(false);
+                              return;
+                            }
+                            onNavigationTransitionsEnabledChange(true);
+                            onNavigationTransitionStyleChange(option);
+                          }}
+                          className={`rounded-md border px-2.5 py-2 text-left transition-colors ${selected ? 'border-cyan-600/70 bg-cyan-950/35 text-cyan-100' : 'border-neutral-800 bg-neutral-900/70 text-neutral-300 hover:border-neutral-600 hover:bg-neutral-800'}`}
                         >
                           <span className="block text-[11px] font-medium">{label}</span>
                           <span className="mt-0.5 block text-[9px] leading-snug text-neutral-500">{description}</span>
                         </button>
-                      ))}
-                    </div>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
               </div>
             </div>
           </div>
