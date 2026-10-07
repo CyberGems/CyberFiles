@@ -462,13 +462,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [marqueeBounds, setMarqueeBounds] = useState<MarqueeBounds | null>(null);
   const [marqueePreviewIds, setMarqueePreviewIds] = useState<string[] | null>(null);
   const [viewportScrollbarWidth, setViewportScrollbarWidth] = useState(0);
-  const [viewportWindow, setViewportWindow] = useState({ top: 0, height: 600, screenWidth: window.innerWidth });
+  const [viewportWindow, setViewportWindow] = useState({ top: 0, height: 600, width: 600 });
   useEffect(() => {
     const viewport = viewportRef.current;
     if (!viewport) return;
     const update = () => setViewportWindow(previous => {
-      const next = { top: viewport.scrollTop, height: viewport.clientHeight, screenWidth: window.innerWidth };
-      return previous.top === next.top && previous.height === next.height && previous.screenWidth === next.screenWidth
+      const next = { top: viewport.scrollTop, height: viewport.clientHeight, width: viewport.clientWidth };
+      return previous.top === next.top && previous.height === next.height && previous.width === next.width
         ? previous : next;
     });
     update();
@@ -815,8 +815,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
     (viewportWindow.height - 12 - (tab.groupBy && tab.groupBy !== 'none' ? 32 : 0) + 4) / 34,
   ));
   const virtualColumns = effectiveViewMode === 'details' ? 1
-    : effectiveViewMode === 'compact' ? viewportWindow.screenWidth >= 1024 ? 3 : viewportWindow.screenWidth >= 640 ? 2 : 1
-      : viewportWindow.screenWidth >= 1280 ? 5 : viewportWindow.screenWidth >= 768 ? 4 : viewportWindow.screenWidth >= 640 ? 3 : 2;
+    : effectiveViewMode === 'compact' ? viewportWindow.width >= 1024 ? 3 : viewportWindow.width >= 640 ? 2 : 1
+      : Math.max(1, Math.min(5, Math.floor((viewportWindow.width + 12) / 180)));
   const rowStride = effectiveViewMode === 'details' ? 32 : effectiveViewMode === 'compact' ? 34 : 156;
   const headingStride = effectiveViewMode === 'details' ? 30 : effectiveViewMode === 'compact' ? 32 : 40;
   const focusedGroupPosition = React.useMemo(() => {
@@ -3090,7 +3090,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </div>
         ) : (
           /* Icons / Grid View */
-          <div className="grid grid-cols-2 gap-3 py-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+          <div className="grid gap-3 py-2" style={{ gridTemplateColumns: `repeat(${virtualColumns}, minmax(0, 1fr))` }}>
             {renderGroups.map(group => {
               const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
               const groupCollapsed = collapsedGroups[groupCollapseKey] === true;
