@@ -36,7 +36,7 @@ import {
   History,
   Home,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode } from '../types';
+import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type NewTabTrigger } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, getParentPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
@@ -76,7 +76,7 @@ interface FilePaneProps {
   tabs: TabState[];
   activeTabIndex: number;
   onSelectTab: (index: number) => void;
-  onAddTab: () => void;
+  onAddTab: (trigger: NewTabTrigger) => void;
   onCloseTab: (index: number) => void;
   onTabContextMenu: (index: number, x: number, y: number) => void;
   onTabStripContextMenu: (x: number, y: number) => void;
@@ -2371,7 +2371,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     event.preventDefault();
     event.stopPropagation();
     onActivate();
-    onAddTab();
+    onAddTab('double-click');
   };
   const handleTabStripContextMenu = (event: React.MouseEvent<HTMLElement>) => {
     if (!isBlankTabStripTarget(event.target)) return;
@@ -2411,7 +2411,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               onClick={(e) => {
                 e.stopPropagation();
                 onActivate();
-                onAddTab();
+                onAddTab('button');
               }}
               className="inline-flex items-center gap-1.5 p-1.5 ml-1 text-neutral-400 hover:text-cyan-300 hover:bg-neutral-800 rounded transition-colors shrink-0"
             >
@@ -2441,7 +2441,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.tabMenu.tabsShort}</span>
         {showNewTabButton && (
           <Tooltip label={t.pane.addTab} shortcut="Ctrl+T" placement={tabStripPosition === 'left' ? 'right' : 'left'}>
-            <button type="button" aria-label={t.pane.addTab} onClick={event => { event.stopPropagation(); onActivate(); onAddTab(); }} className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-cyan-950/60 hover:text-cyan-200">
+            <button type="button" aria-label={t.pane.addTab} onClick={event => { event.stopPropagation(); onActivate(); onAddTab('button'); }} className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-cyan-950/60 hover:text-cyan-200">
               <Plus className="h-3.5 w-3.5" />
             </button>
           </Tooltip>
@@ -2454,7 +2454,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <button
               type="button"
               aria-label={t.pane.addTab}
-              onClick={event => { event.stopPropagation(); onActivate(); onAddTab(); }}
+              onClick={event => { event.stopPropagation(); onActivate(); onAddTab('button'); }}
               className="vertical-add-tab-btn group mt-0.5 flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border border-dashed border-neutral-800/80 bg-neutral-900/30 px-2.5 py-1.5 text-left text-xs font-medium text-neutral-400 transition-all hover:border-cyan-600/60 hover:bg-cyan-950/30 hover:text-cyan-200 outline-none focus-visible:ring-1 focus-visible:ring-cyan-400"
             >
               <Plus className="h-3.5 w-3.5 shrink-0 text-neutral-500 transition-colors group-hover:text-cyan-300" />

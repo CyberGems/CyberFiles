@@ -5,7 +5,7 @@ import { useLanguage } from '../locales/LanguageContext';
 import { type AppTheme, useTheme } from '../themes/ThemeContext';
 import { Tooltip } from './Tooltip';
 import { DialogButton } from './DialogButton';
-import { type GroupByField, type HiddenItemStyle, type RecentItemStyle, type SortField, type SortOrder, type TabCloseButtonMode, type ViewMode } from '../types';
+import { type GroupByField, type HiddenItemStyle, type NewTabActionMode, type NewTabActionPreference, type RecentItemStyle, type SortField, type SortOrder, type TabCloseButtonMode, type ViewMode } from '../types';
 import type { FolderStylePreference, SavedFolderStyles } from '../utils/folderStylePreferences';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
@@ -79,8 +79,15 @@ interface SettingsModalProps {
   onTabStripPositionChange: (position: TabStripPosition) => void;
   showNewTabButton: boolean;
   onShowNewTabButtonChange: (enabled: boolean) => void;
+  newTabButtonAction: NewTabActionPreference;
+  onNewTabButtonActionChange: (preference: NewTabActionPreference) => void;
   doubleClickTabBar: boolean;
   onDoubleClickTabBarChange: (enabled: boolean) => void;
+  doubleClickTabAction: NewTabActionPreference;
+  onDoubleClickTabActionChange: (preference: NewTabActionPreference) => void;
+  defaultNewTabPath: string;
+  onDefaultNewTabPathChange: (path: string) => void;
+  onChooseNewTabFolder: () => Promise<string | null>;
   tabCloseButtonMode: TabCloseButtonMode;
   onTabCloseButtonModeChange: (mode: TabCloseButtonMode) => void;
 }
@@ -170,8 +177,15 @@ export function SettingsModal({
   onTabStripPositionChange,
   showNewTabButton,
   onShowNewTabButtonChange,
+  newTabButtonAction,
+  onNewTabButtonActionChange,
   doubleClickTabBar,
   onDoubleClickTabBarChange,
+  doubleClickTabAction,
+  onDoubleClickTabActionChange,
+  defaultNewTabPath,
+  onDefaultNewTabPathChange,
+  onChooseNewTabFolder,
   tabCloseButtonMode,
   onTabCloseButtonModeChange,
 }: SettingsModalProps) {
@@ -205,6 +219,82 @@ export function SettingsModal({
       return next;
     });
   };
+  const newTabActionOptions: Array<{ value: NewTabActionMode; label: string }> = [
+    { value: 'current-folder', label: t.settings.newTabActionCurrentFolder },
+    { value: 'duplicate', label: t.settings.newTabActionDuplicate },
+    { value: 'default-folder', label: t.settings.newTabActionDefaultFolder },
+    { value: 'home-folder', label: t.settings.newTabActionHomeFolder },
+    { value: 'empty-tab', label: t.settings.newTabActionEmptyTab },
+    { value: 'location', label: t.settings.newTabActionLocation },
+  ];
+  const newTabActionDescriptions: Record<NewTabActionMode, string> = {
+    'current-folder': t.settings.newTabActionCurrentFolderDescription,
+    duplicate: t.settings.newTabActionDuplicateDescription,
+    'default-folder': t.settings.newTabActionDefaultFolderDescription,
+    'home-folder': t.settings.newTabActionHomeFolderDescription,
+    'empty-tab': t.settings.newTabActionEmptyTabDescription,
+    location: t.settings.newTabActionLocationDescription,
+  };
+  const chooseNewTabPath = async (onChange: (path: string) => void) => {
+    const path = await onChooseNewTabFolder();
+    if (path) onChange(path);
+  };
+  const renderNewTabPathPicker = (path: string, onChange: (path: string) => void, placeholder: string) => (
+    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+      <input
+        type="text"
+        readOnly
+        aria-label={t.settings.newTabFolderPath}
+        value={path}
+        placeholder={placeholder}
+        className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 placeholder:text-neutral-600 focus:border-cyan-600 focus:outline-none"
+      />
+      <button
+        type="button"
+        onClick={() => void chooseNewTabPath(onChange)}
+        className="inline-flex items-center justify-center gap-2 rounded-md border border-cyan-800/80 bg-cyan-950/35 px-3 py-2 text-xs font-medium text-cyan-200 transition-colors hover:border-cyan-600 hover:bg-cyan-950/60"
+      >
+        <FolderOpen className="h-3.5 w-3.5" />
+        {t.settings.newTabChooseFolder}
+      </button>
+    </div>
+  );
+  const renderNewTabActionSetting = (
+    checkboxLabel: string,
+    checkboxDescription: string,
+    enabled: boolean,
+    onEnabledChange: (enabled: boolean) => void,
+    preference: NewTabActionPreference,
+    onPreferenceChange: (preference: NewTabActionPreference) => void,
+  ) => (
+    <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-3 text-xs leading-relaxed text-neutral-400">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <label className="flex min-w-0 cursor-pointer items-start gap-2.5">
+          <input type="checkbox" checked={enabled} onChange={event => onEnabledChange(event.target.checked)} className="mt-0.5 h-4 w-4 flex-shrink-0 accent-cyan-400" />
+          <span>
+            <span className="block font-medium text-neutral-200">{checkboxLabel}</span>
+            <span className="mt-1 block">{checkboxDescription}</span>
+          </span>
+        </label>
+        <label className="min-w-[14rem] lg:max-w-[18rem]">
+          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.settings.newTabAction}</span>
+          <select
+            value={preference.mode}
+            onChange={event => onPreferenceChange({ ...preference, mode: event.target.value as NewTabActionMode })}
+            className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-200 focus:border-cyan-600 focus:outline-none"
+          >
+            {newTabActionOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <p className="mt-2 border-t border-neutral-800/80 pt-2 text-neutral-500">{newTabActionDescriptions[preference.mode]}</p>
+      {preference.mode === 'location' && renderNewTabPathPicker(
+        preference.path,
+        path => onPreferenceChange({ ...preference, path }),
+        t.settings.newTabLocationNotSet,
+      )}
+    </div>
+  );
   const { theme, setTheme } = useTheme();
   const recentItemTextColor = recentItemStyle.textColor === 'auto'
     ? RECENT_ITEM_AUTO_COLORS[theme]
@@ -732,23 +822,35 @@ export function SettingsModal({
                   ))}
                 </div>
               </fieldset>
-              <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
-                <label className="flex cursor-pointer items-start gap-2.5">
-                  <input type="checkbox" checked={showNewTabButton} onChange={event => onShowNewTabButtonChange(event.target.checked)} className="mt-0.5 h-4 w-4 flex-shrink-0 accent-cyan-400" />
-                  <span>
-                    <span className="block font-medium text-neutral-200">{t.settings.showNewTabButton}</span>
-                    <span className="mt-1 block">{t.settings.showNewTabButtonDescription}</span>
-                  </span>
-                </label>
-              </div>
-              <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
-                <label className="flex cursor-pointer items-start gap-2.5">
-                  <input type="checkbox" checked={doubleClickTabBar} onChange={event => onDoubleClickTabBarChange(event.target.checked)} className="mt-0.5 h-4 w-4 flex-shrink-0 accent-cyan-400" />
-                  <span>
-                    <span className="block font-medium text-neutral-200">{t.settings.doubleClickTabBar}</span>
-                    <span className="mt-1 block">{t.settings.doubleClickTabBarDescription}</span>
-                  </span>
-                </label>
+              {renderNewTabActionSetting(
+                t.settings.showNewTabButton,
+                t.settings.showNewTabButtonDescription,
+                showNewTabButton,
+                onShowNewTabButtonChange,
+                newTabButtonAction,
+                onNewTabButtonActionChange,
+              )}
+              {renderNewTabActionSetting(
+                t.settings.doubleClickTabBar,
+                t.settings.doubleClickTabBarDescription,
+                doubleClickTabBar,
+                onDoubleClickTabBarChange,
+                doubleClickTabAction,
+                onDoubleClickTabActionChange,
+              )}
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-3 text-xs leading-relaxed text-neutral-400">
+                <div className="font-medium text-neutral-200">{t.settings.defaultNewTabFolder}</div>
+                <p className="mt-1 text-neutral-500">{t.settings.defaultNewTabFolderDescription}</p>
+                {renderNewTabPathPicker(defaultNewTabPath, onDefaultNewTabPathChange, t.settings.defaultNewTabFolderThisPc)}
+                {defaultNewTabPath && (
+                  <button
+                    type="button"
+                    onClick={() => onDefaultNewTabPathChange('')}
+                    className="mt-2 text-[11px] font-medium text-cyan-300 transition-colors hover:text-cyan-100"
+                  >
+                    {t.settings.defaultNewTabFolderReset}
+                  </button>
+                )}
               </div>
               <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
                 <label className="flex cursor-pointer items-start gap-2.5">

@@ -55,6 +55,13 @@ export interface HiddenItemStyle {
 }
 
 export type TabCloseButtonMode = 'hover' | 'always' | 'active';
+export type NewTabActionMode = 'current-folder' | 'duplicate' | 'default-folder' | 'home-folder' | 'empty-tab' | 'location';
+export type NewTabTrigger = 'button' | 'double-click';
+
+export interface NewTabActionPreference {
+  mode: NewTabActionMode;
+  path: string;
+}
 
 export type SortField = 'name' | 'size' | 'type' | 'createdDate' | 'modifiedDate' | 'extension';
 export type GroupByField = 'none' | 'name' | 'modifiedDate' | 'type' | 'size';

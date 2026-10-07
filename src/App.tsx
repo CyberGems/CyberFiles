@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { homeDir } from '@tauri-apps/api/path';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { 
   FileItem, 
@@ -20,6 +21,9 @@ import {
   GroupByField,
   ArchiveExtractionMode,
   TabCloseButtonMode,
+  type NewTabActionPreference,
+  type NewTabActionMode,
+  type NewTabTrigger,
 } from './types';
 import {
   getChildItems, 
@@ -116,6 +120,9 @@ const SIDEBAR_LOCATIONS_NEW_TAB_KEY = 'cyberfiles_sidebar_locations_open_in_new_
 const NEW_TABS_NEXT_TO_CURRENT_KEY = 'cyberfiles_new_tabs_next_to_current_v1';
 const SHOW_NEW_TAB_BUTTON_KEY = 'cyberfiles_show_new_tab_button_v1';
 const DOUBLE_CLICK_TAB_BAR_KEY = 'cyberfiles_double_click_tab_bar_v2';
+const NEW_TAB_BUTTON_ACTION_KEY = 'cyberfiles_new_tab_button_action_v1';
+const DOUBLE_CLICK_TAB_ACTION_KEY = 'cyberfiles_double_click_tab_action_v1';
+const DEFAULT_NEW_TAB_FOLDER_KEY = 'cyberfiles_default_new_tab_folder_v1';
 const TAB_CLOSE_BUTTON_MODE_KEY = 'cyberfiles_tab_close_button_mode_v1';
 const RECENT_ITEMS_BOLD_KEY = 'cyberfiles_bold_recent_items_v1';
 const RECENT_ITEMS_STYLE_KEY = 'cyberfiles_recent_items_style_v1';
@@ -330,6 +337,39 @@ function readBooleanPreference(key: string, defaultValue: boolean): boolean {
     return saved === null ? defaultValue : saved === 'true';
   } catch {
     return defaultValue;
+  }
+}
+
+const NEW_TAB_ACTION_MODES: NewTabActionMode[] = [
+  'current-folder',
+  'duplicate',
+  'default-folder',
+  'home-folder',
+  'empty-tab',
+  'location',
+];
+
+function readNewTabActionPreference(key: string): NewTabActionPreference {
+  try {
+    const saved: unknown = JSON.parse(window.localStorage.getItem(key) || 'null');
+    if (!saved || typeof saved !== 'object') return { mode: 'default-folder', path: '' };
+    const candidate = saved as Partial<NewTabActionPreference>;
+    return {
+      mode: NEW_TAB_ACTION_MODES.includes(candidate.mode as NewTabActionMode)
+        ? candidate.mode as NewTabActionMode
+        : 'default-folder',
+      path: typeof candidate.path === 'string' ? candidate.path : '',
+    };
+  } catch {
+    return { mode: 'default-folder', path: '' };
+  }
+}
+
+function readStringPreference(key: string): string {
+  try {
+    return window.localStorage.getItem(key) ?? '';
+  } catch {
+    return '';
   }
 }
 
@@ -700,6 +740,10 @@ export default function App() {
   const [newTabsNextToCurrent, setNewTabsNextToCurrent] = useState(() => readBooleanPreference(NEW_TABS_NEXT_TO_CURRENT_KEY, true));
   const [showNewTabButton, setShowNewTabButton] = useState(() => readBooleanPreference(SHOW_NEW_TAB_BUTTON_KEY, true));
   const [doubleClickTabBar, setDoubleClickTabBar] = useState(() => readBooleanPreference(DOUBLE_CLICK_TAB_BAR_KEY, true));
+  const [newTabButtonAction, setNewTabButtonAction] = useState(() => readNewTabActionPreference(NEW_TAB_BUTTON_ACTION_KEY));
+  const [doubleClickTabAction, setDoubleClickTabAction] = useState(() => readNewTabActionPreference(DOUBLE_CLICK_TAB_ACTION_KEY));
+  const [defaultNewTabPath, setDefaultNewTabPath] = useState(() => readStringPreference(DEFAULT_NEW_TAB_FOLDER_KEY));
+  const [userHomePath, setUserHomePath] = useState('');
   const [tabCloseButtonMode, setTabCloseButtonMode] = useState<TabCloseButtonMode>(() => {
     const val = window.localStorage.getItem(TAB_CLOSE_BUTTON_MODE_KEY);
     return val === 'always' || val === 'active' ? val : 'hover';
@@ -1665,11 +1709,29 @@ export default function App() {
     try {
       window.localStorage.setItem(SHOW_NEW_TAB_BUTTON_KEY, String(showNewTabButton));
       window.localStorage.setItem(DOUBLE_CLICK_TAB_BAR_KEY, String(doubleClickTabBar));
+      window.localStorage.setItem(NEW_TAB_BUTTON_ACTION_KEY, JSON.stringify(newTabButtonAction));
+      window.localStorage.setItem(DOUBLE_CLICK_TAB_ACTION_KEY, JSON.stringify(doubleClickTabAction));
+      window.localStorage.setItem(DEFAULT_NEW_TAB_FOLDER_KEY, defaultNewTabPath);
       window.localStorage.setItem(TAB_CLOSE_BUTTON_MODE_KEY, tabCloseButtonMode);
     } catch {
       // Keep tab bar preferences in memory when storage is unavailable.
     }
-  }, [showNewTabButton, doubleClickTabBar, tabCloseButtonMode]);
+  }, [showNewTabButton, doubleClickTabBar, newTabButtonAction, doubleClickTabAction, defaultNewTabPath, tabCloseButtonMode]);
+
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    let cancelled = false;
+    void homeDir()
+      .then(path => {
+        if (!cancelled) setUserHomePath(path);
+      })
+      .catch(() => {
+        if (!cancelled) setUserHomePath('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -2540,30 +2602,73 @@ export default function App() {
   }, [activePane, handleNavigate, updateActiveTab, touchFileAccessed]);
 
   // Tab management
-  const handleAddTab = (pane: 'left' | 'right', sourceIndex?: number) => {
+  const handleAddTab = (pane: 'left' | 'right', sourceIndex?: number, trigger: NewTabTrigger = 'button') => {
     const sourceTabs = pane === 'left' ? leftTabs : rightTabs;
     const activeIndex = sourceIndex ?? (pane === 'left' ? activeLeftTabIndex : activeRightTabIndex);
     const currentActive = sourceTabs[activeIndex];
+    if (!currentActive) return;
+    const preference = trigger === 'double-click' ? doubleClickTabAction : newTabButtonAction;
     const baseStyle = getNavigationFolderStyle(currentActive, folderStyleLocked, savedFolderStyles);
-    const newPath = isTauriDesktop() ? SYSTEM_HOME_PATH : currentActive.currentPath;
-    const newStyle = displayedStyleForPath(newPath, baseStyle, savedFolderStyles, folderStyleLocked);
-    const newTab: TabState = {
-      ...currentActive,
-      id: `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-      customTitle: undefined,
-      tabColor: undefined,
-      lockClose: false,
-      title: isTauriDesktop() ? t.sidebar.thisPc : `${currentActive.title} (2)`,
-      currentPath: newPath,
-      history: isTauriDesktop() ? [SYSTEM_HOME_PATH] : currentActive.history,
-      historyIndex: isTauriDesktop() ? 0 : currentActive.historyIndex,
-      ...newStyle,
-      folderStyle: baseStyle,
-      folderStyleOnEntry: baseStyle,
-      filterQuery: '',
-      selectedIds: [],
-      focusedId: null,
-    };
+    const tabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    let newTab: TabState;
+
+    if (preference.mode === 'duplicate') {
+      newTab = {
+        ...currentActive,
+        id: tabId,
+        lockClose: false,
+        history: [...currentActive.history],
+        selectedIds: [],
+        focusedId: null,
+      };
+    } else {
+      const desktopFallbackPath = isTauriDesktop() ? SYSTEM_HOME_PATH : currentActive.currentPath;
+      const newPath = preference.mode === 'current-folder'
+        ? currentActive.currentPath
+        : preference.mode === 'default-folder'
+          ? defaultNewTabPath || desktopFallbackPath
+          : preference.mode === 'home-folder'
+            ? userHomePath || defaultNewTabPath || desktopFallbackPath
+            : preference.mode === 'location'
+              ? preference.path
+              : '';
+      if (preference.mode === 'location' && !newPath.trim()) {
+        showToast(t.settings.newTabLocationRequired);
+        return;
+      }
+      if (!newPath) {
+        newTab = {
+          ...createEmptyTab(tabId, baseStyle.viewMode, baseStyle.sortField, baseStyle.sortOrder),
+          groupBy: baseStyle.groupBy,
+          folderStyle: baseStyle,
+          folderStyleOnEntry: baseStyle,
+        };
+      } else {
+        const newStyle = displayedStyleForPath(newPath, baseStyle, savedFolderStyles, folderStyleLocked);
+        newTab = {
+          ...currentActive,
+          id: tabId,
+          customTitle: undefined,
+          tabColor: undefined,
+          lockClose: false,
+          title: newPath === SYSTEM_HOME_PATH
+            ? t.sidebar.thisPc
+            : newPath === RECYCLE_BIN_PATH
+              ? t.sidebar.recycleBinTitle
+              : newPath.split(/\\|\//).filter(Boolean).pop() || newPath,
+          currentPath: newPath,
+          history: [newPath],
+          historyIndex: 0,
+          ...newStyle,
+          folderStyle: baseStyle,
+          folderStyleOnEntry: baseStyle,
+          filterQuery: '',
+          flatView: false,
+          selectedIds: [],
+          focusedId: null,
+        };
+      }
+    }
     const insertIndex = newTabsNextToCurrent ? activeIndex + 1 : sourceTabs.length;
     if (pane === 'left') {
       setLeftTabs(prev => {
@@ -5042,7 +5147,7 @@ export default function App() {
                   tabs={leftTabs}
                   activeTabIndex={activeLeftTabIndex}
                   onSelectTab={(idx) => setActiveLeftTabIndex(idx)}
-                  onAddTab={() => handleAddTab('left')}
+                  onAddTab={trigger => handleAddTab('left', undefined, trigger)}
                   onCloseTab={(idx) => handleCloseTab('left', idx)}
                   onTabStripContextMenu={(x, y) => { setContextMenuPos(null); setTabMenuTarget(null); setTabStripMenuTarget({ pane: 'left', x, y }); }}
                   onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabStripMenuTarget(null); setTabMenuTarget({ pane: 'left', tabId: leftTabs[idx].id, x, y }); }}
@@ -5109,7 +5214,7 @@ export default function App() {
                   tabs={rightTabs}
                   activeTabIndex={activeRightTabIndex}
                   onSelectTab={(idx) => setActiveRightTabIndex(idx)}
-                  onAddTab={() => handleAddTab('right')}
+                  onAddTab={trigger => handleAddTab('right', undefined, trigger)}
                   onCloseTab={(idx) => handleCloseTab('right', idx)}
                   onTabStripContextMenu={(x, y) => { setContextMenuPos(null); setTabMenuTarget(null); setTabStripMenuTarget({ pane: 'right', x, y }); }}
                   onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabStripMenuTarget(null); setTabMenuTarget({ pane: 'right', tabId: rightTabs[idx].id, x, y }); }}
@@ -5177,7 +5282,7 @@ export default function App() {
                   tabs={leftTabs}
                   activeTabIndex={activeLeftTabIndex}
                   onSelectTab={(idx) => setActiveLeftTabIndex(idx)}
-                  onAddTab={() => handleAddTab('left')}
+                  onAddTab={trigger => handleAddTab('left', undefined, trigger)}
                   onCloseTab={(idx) => handleCloseTab('left', idx)}
                   onTabStripContextMenu={(x, y) => { setContextMenuPos(null); setTabMenuTarget(null); setTabStripMenuTarget({ pane: 'left', x, y }); }}
                   onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabStripMenuTarget(null); setTabMenuTarget({ pane: 'left', tabId: leftTabs[idx].id, x, y }); }}
@@ -5240,7 +5345,7 @@ export default function App() {
                   tabs={rightTabs}
                   activeTabIndex={activeRightTabIndex}
                   onSelectTab={(idx) => setActiveRightTabIndex(idx)}
-                  onAddTab={() => handleAddTab('right')}
+                  onAddTab={trigger => handleAddTab('right', undefined, trigger)}
                   onCloseTab={(idx) => handleCloseTab('right', idx)}
                   onTabStripContextMenu={(x, y) => { setContextMenuPos(null); setTabMenuTarget(null); setTabStripMenuTarget({ pane: 'right', x, y }); }}
                   onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabStripMenuTarget(null); setTabMenuTarget({ pane: 'right', tabId: rightTabs[idx].id, x, y }); }}
@@ -5308,7 +5413,7 @@ export default function App() {
                 tabs={activeTabs}
                 activeTabIndex={activeTabIndex}
                 onSelectTab={(idx) => (activePane === 'left' ? setActiveLeftTabIndex(idx) : setActiveRightTabIndex(idx))}
-                onAddTab={() => handleAddTab(activePane)}
+                onAddTab={trigger => handleAddTab(activePane, undefined, trigger)}
                 onCloseTab={(idx) => handleCloseTab(activePane, idx)}
                 onTabStripContextMenu={(x, y) => { setContextMenuPos(null); setTabMenuTarget(null); setTabStripMenuTarget({ pane: activePane, x, y }); }}
                 onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabStripMenuTarget(null); setTabMenuTarget({ pane: activePane, tabId: activeTabs[idx].id, x, y }); }}
@@ -5688,8 +5793,22 @@ export default function App() {
             onTabStripPositionChange={setTabStripPosition}
             showNewTabButton={showNewTabButton}
             onShowNewTabButtonChange={setShowNewTabButton}
+            newTabButtonAction={newTabButtonAction}
+            onNewTabButtonActionChange={setNewTabButtonAction}
             doubleClickTabBar={doubleClickTabBar}
             onDoubleClickTabBarChange={setDoubleClickTabBar}
+            doubleClickTabAction={doubleClickTabAction}
+            onDoubleClickTabActionChange={setDoubleClickTabAction}
+            defaultNewTabPath={defaultNewTabPath}
+            onDefaultNewTabPathChange={setDefaultNewTabPath}
+            onChooseNewTabFolder={async () => {
+              try {
+                return await chooseNativeFolder(t.settings.newTabChooseFolder);
+              } catch (error) {
+                showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
+                return null;
+              }
+            }}
             tabCloseButtonMode={tabCloseButtonMode}
             onTabCloseButtonModeChange={setTabCloseButtonMode}
             onShowAbout={() => {
