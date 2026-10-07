@@ -851,7 +851,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   ));
   const virtualColumns = effectiveViewMode === 'details' ? 1
     : effectiveViewMode === 'compact' ? viewportWindow.width >= 1024 ? 3 : viewportWindow.width >= 640 ? 2 : 1
-      : Math.max(1, Math.min(5, Math.floor((viewportWindow.width + 12) / 180)));
+      : Math.max(1, Math.min(5, Math.floor((viewportWindow.width + 12) / 140)));
   const rowStride = effectiveViewMode === 'details' ? 32 : effectiveViewMode === 'compact' ? 34 : 156;
   const headingStride = effectiveViewMode === 'details' ? 30 : effectiveViewMode === 'compact' ? 32 : 40;
   const focusedGroupPosition = React.useMemo(() => {
