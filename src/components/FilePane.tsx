@@ -124,6 +124,7 @@ type RelativeGraphWidths = Partial<Record<RelativeGraphColumn, number>>;
 type ResizableColumn = FileColumn;
 type FolderSizeState = { status: 'loading' | 'paused' | 'done' | 'error'; size?: number; entriesScanned?: number };
 type FolderChildCountState = { status: 'loading' | 'error' } | { status: 'done'; summary: FolderContentSummary; checkedAt: number };
+const LISTER_HORIZONTAL_GUTTER = 16;
 function getDisplayItemName(item: FileItem, showFileExtensions: boolean): string {
   if (showFileExtensions || item.isFolder) return item.name;
   const extensionSeparator = item.name.lastIndexOf('.');
@@ -759,7 +760,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const detailsRowWidth = visibleFileColumns.reduce((total, column) => total + (column === 'name' ? columnWidths.name ?? MIN_NAME_COLUMN_WIDTH : columnWidths[column]), 0)
     + Math.max(0, visibleFileColumns.length - 1) * 8 + 18;
   const detailsContentWidth = styleLocked && columnWidths.name !== null ? `${detailsRowWidth}px` : '100%';
-  const detailsHeaderWidth = styleLocked && columnWidths.name !== null ? `${detailsRowWidth + viewportScrollbarWidth}px` : '100%';
+  const detailsHeaderWidth = styleLocked && columnWidths.name !== null
+    ? `${detailsRowWidth + viewportScrollbarWidth}px`
+    : `calc(100% - ${LISTER_HORIZONTAL_GUTTER * 2}px)`;
   const getFileTypeLabel = (item: FileItem) => t.pane.folderTypeLabels[item.type]
     .replace('{extension}', item.extension.toUpperCase()).trim();
   const getGroupForItem = React.useCallback((item: FileItem): { id: string; label: string } => {
@@ -1111,7 +1114,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   const detailsTableMinimumWidth = styleLocked
     ? visibleFileColumns.reduce((total, column) => total + (column === 'name' ? columnWidths.name ?? MIN_NAME_COLUMN_WIDTH : columnWidths[column]), 0)
-      + Math.max(0, visibleFileColumns.length - 1) * 8 + 18 + viewportScrollbarWidth + 24
+      + Math.max(0, visibleFileColumns.length - 1) * 8 + 18 + viewportScrollbarWidth + LISTER_HORIZONTAL_GUTTER * 2
     : 0;
 
   useEffect(() => {
@@ -2694,7 +2697,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {effectiveViewMode === 'details' && !isSystemHome && (
         <div
           ref={columnHeadersRef}
-          className="cyberfiles-column-headers grid shrink-0 items-center gap-2 border border-neutral-800/80 bg-neutral-900/90 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-300 select-none shadow-sm backdrop-blur-xs"
+          className="cyberfiles-column-headers mx-4 grid shrink-0 items-center gap-2 border border-neutral-800/80 bg-neutral-900/90 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-300 select-none shadow-sm backdrop-blur-xs"
           style={{ width: detailsHeaderWidth, gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
           onContextMenu={openColumnMenu}
         >
@@ -2829,7 +2832,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             {t.pane.flatViewIncomplete.replace('{count}', String(flatViewStatus?.skippedCount ?? 0))}
           </div>
         )}
-        <div key={`${tab.id}:${tab.currentPath}`} className="min-h-full">
+        <div key={`${tab.id}:${tab.currentPath}`} className="min-h-full px-4">
         {files.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-neutral-500 gap-2 p-6">
             {isLoadingDirectory ? <RotateCw className="w-7 h-7 text-cyan-500 animate-spin" /> : <Folder className="w-8 h-8 text-neutral-600 stroke-[1.5]" />}
@@ -2992,7 +2995,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             })}
           </div>
         ) : effectiveViewMode === 'compact' ? (
-          <div className="grid grid-cols-1 gap-x-2 gap-y-1 p-1.5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-x-2 gap-y-1 py-1.5 sm:grid-cols-2 lg:grid-cols-3">
             {renderGroups.map(group => {
               const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
               const groupCollapsed = collapsedGroups[groupCollapseKey] === true;
@@ -3049,7 +3052,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </div>
         ) : (
           /* Icons / Grid View */
-          <div className="grid grid-cols-2 gap-3 p-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 py-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
             {renderGroups.map(group => {
               const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
               const groupCollapsed = collapsedGroups[groupCollapseKey] === true;
