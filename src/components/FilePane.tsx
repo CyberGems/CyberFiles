@@ -2821,6 +2821,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
         data-cyberfiles-pane-viewport={paneId}
         className={`cyberfiles-file-viewport relative min-h-0 w-full flex-1 py-0.5 select-none focus:outline-none ${effectiveViewMode === 'compact' ? 'overflow-x-auto overflow-y-hidden' : 'overflow-x-hidden overflow-y-auto'} ${marqueeBounds ? 'cursor-crosshair' : ''}`}
         tabIndex={0}
+        onWheel={event => {
+          if (effectiveViewMode !== 'compact' || event.deltaY === 0 || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+          event.preventDefault();
+          const deltaScale = event.deltaMode === 1
+            ? 32
+            : event.deltaMode === 2
+              ? event.currentTarget.clientWidth
+              : 1;
+          event.currentTarget.scrollLeft += event.deltaY * deltaScale;
+        }}
         onScroll={event => {
           const { scrollTop, scrollHeight, clientHeight, scrollLeft, scrollWidth, clientWidth } = event.currentTarget;
           setViewportWindow(previous => previous.top === scrollTop ? previous : { ...previous, top: scrollTop });
