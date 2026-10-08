@@ -3228,12 +3228,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
       {/* 6. Footer Status Bar with Mini Storage Distribution Strip */}
       <div className="cyberfiles-pane-status grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-t border-neutral-800 bg-neutral-950 px-2.5 py-1 font-sans text-[10px] text-neutral-400 select-none">
-        <div className="flex min-w-0 items-center gap-2.5 overflow-hidden">
+        <div className="cyberfiles-pane-status-summary flex min-w-0 items-center gap-2.5 overflow-hidden">
           <span className="shrink-0">{itemCountLabel}</span>
           {selectedFiles.length > 0 ? (
-            <span className="text-cyan-300 font-semibold truncate">
-              {t.pane.selectedCount.replace('{count}', String(selectedFiles.length))} ({formatFileSize(selectedBytes)})
-            </span>
+            <>
+              <span className="cyberfiles-selected-status-full truncate font-semibold text-cyan-300">
+                {t.pane.selectedCount.replace('{count}', String(selectedFiles.length))} ({formatFileSize(selectedBytes)})
+              </span>
+              <Tooltip
+                placement="top"
+                label={`${t.pane.selectedCount.replace('{count}', String(selectedFiles.length))} (${formatFileSize(selectedBytes)})`}
+              >
+                <span className="cyberfiles-selected-status-compact shrink-0 cursor-help font-semibold text-cyan-200">
+                  {t.pane.selectedCountCompact.replace('{count}', String(selectedFiles.length))}
+                </span>
+              </Tooltip>
+            </>
           ) : (
             <span className="text-neutral-500 hidden sm:inline">
               ({formatFileSize(folderBytes)})
@@ -3246,9 +3256,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <div
             role="status"
             aria-label={paneId === 'left' ? t.statusBar.leftPane : t.statusBar.rightPane}
-            className="flex items-center gap-1.5 justify-self-center whitespace-nowrap rounded border border-cyan-900/70 bg-cyan-950/30 px-2 py-0.5 font-medium text-cyan-200"
+            className="cyberfiles-active-pane-badge flex items-center gap-1.5 justify-self-center whitespace-nowrap rounded border border-cyan-400/60 bg-cyan-500/20 px-2 py-0.5 font-semibold text-cyan-100 shadow-[0_0_12px_rgba(34,211,238,0.18),inset_0_1px_0_rgba(255,255,255,0.08)]"
           >
-            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_6px_rgba(103,232,249,0.9)]" />
             <span>{t.statusBar.activePaneTitle}</span>
           </div>
         ) : <span />}
