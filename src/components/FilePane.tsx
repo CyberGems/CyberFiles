@@ -39,7 +39,7 @@ import {
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type DraggedFileItem, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
-import { formatFileSize, getParentPath, normalizeWindowsPath } from '../utils/fileSystem';
+import { formatFileSize, getParentPath, isSameOrDescendantPath, normalizeWindowsPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { advanceMouseGesturePath, MOUSE_GESTURE_MIN_DISTANCE, type MouseGesturePath } from '../utils/mouseGesture';
@@ -127,8 +127,7 @@ type ResizableColumn = FileColumn;
 type FolderSizeState = { status: 'loading' | 'paused' | 'done' | 'error'; size?: number; entriesScanned?: number };
 type FolderChildCountState = { status: 'loading' | 'error' } | { status: 'done'; summary: FolderContentSummary; checkedAt: number };
 type FileDragPayload = { sourcePane: 'left' | 'right'; sourcePath: string; items: DraggedFileItem[] };
-const FILE_DRAG_MIME = 'application/x-cyberfiles-items';
-let activeFileDragPayload: FileDragPayload | null = null;
+const FILE_DRAG_START_DISTANCE = 6;
 const LISTER_HORIZONTAL_GUTTER = 16;
 function getDisplayItemName(item: FileItem, showFileExtensions: boolean): string {
   if (showFileExtensions || item.isFolder) return item.name;
@@ -394,7 +393,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingItemName, setEditingItemName] = useState('');
   const renameCommitItemRef = useRef<string | null>(null);
-  const [isDragOver, setIsDragOver] = useState(false);
   const [collapsedSystemHomeSections, setCollapsedSystemHomeSections] = useState(() => readCollapsedSystemHomeSections(paneId));
   const [folderSizeStates, setFolderSizeStates] = useState<Record<string, FolderSizeState>>({});
   const folderSizeStatesRef = useRef(folderSizeStates);
@@ -413,11 +411,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [columnResizeGuide, setColumnResizeGuide] = useState<ColumnResizeGuide | null>(null);
   const [columnDropTarget, setColumnDropTarget] = useState<FileColumn | null>(null);
   const [nativeFileIconState, setNativeFileIconState] = useState<{ scope: string; byItemId: Record<string, string> }>({ scope: '', byItemId: {} });
-  const [dragHoverTabId, setDragHoverTabId] = useState<string | null>(null);
   const lastSingleClickOpenRef = useRef<{ itemId: string; timestamp: number } | null>(null);
   const typeAheadRef = useRef({ query: '', at: 0 });
   const selectionAnchorsRef = useRef(new Map<string, string>());
   const pendingDeselectionRef = useRef<number | null>(null);
+  const suppressFileClickRef = useRef(false);
   const latestTabRef = useRef(tab);
   latestTabRef.current = tab;
 
@@ -440,8 +438,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const columnResizeGuideFadeTimeoutRef = useRef<number | null>(null);
   const nativeFileIconGenerationRef = useRef(0);
   const nativeFileIconRequestsRef = useRef<NativeFileIconRequest[]>([]);
-  const dragHoverTabTimerRef = useRef<number | null>(null);
-  const dragHoverTabIdRef = useRef<string | null>(null);
   const columnWidthsSaveTimeoutRef = useRef<number | null>(null);
   const columnPointerDragRef = useRef<ColumnPointerDrag | null>(null);
   const lastColumnPreferencesRevision = useRef(columnPreferencesRevision);
@@ -467,7 +463,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   useEffect(() => () => {
     if (mouseGestureHoldTimerRef.current !== null) window.clearTimeout(mouseGestureHoldTimerRef.current);
     if (mouseGestureFadeTimerRef.current !== null) window.clearTimeout(mouseGestureFadeTimerRef.current);
-    if (dragHoverTabTimerRef.current !== null) window.clearTimeout(dragHoverTabTimerRef.current);
   }, []);
   const marqueePreviewIdsRef = useRef<string[] | null>(null);
   const suppressViewportClickRef = useRef(false);
@@ -1735,10 +1730,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
     };
   }, [breadcrumbMenuPosition]);
 
-  // Handle Drag & Drop between panes
-  const handleDragStart = (e: React.DragEvent, item: FileItem) => {
-    clearDragHoverTab();
-    setIsDragOver(false);
+  // WebView2 can reject HTML drag data before it reaches a drop target. Internal
+  // file moves therefore use pointer tracking and resolve destinations from the DOM.
+  const beginFilePointerDrag = (event: React.PointerEvent<HTMLElement>, item: FileItem) => {
+    if (event.button !== 0 || item.recycleBinId) return;
+    const eventTarget = event.target;
+    if (eventTarget instanceof Element && eventTarget.closest('button, input, textarea, select, [contenteditable="true"]')) return;
+
     const idsToDrag = tab.selectedIds.includes(item.id) ? tab.selectedIds : [item.id];
     const selectedIdSet = new Set(idsToDrag);
     const items = allFiles
@@ -1749,78 +1747,94 @@ export const FilePane: React.FC<FilePaneProps> = ({
       sourcePath: tab.currentPath,
       items: items.length > 0 ? items : [{ id: item.id, path: item.path, isFolder: item.isFolder }],
     };
-    activeFileDragPayload = payload;
-    const serialized = JSON.stringify(payload);
-    try {
-      e.dataTransfer.setData('text/plain', serialized);
-    } catch {
-      // The shared payload is sufficient for drags inside this app.
-    }
-    try {
-      e.dataTransfer.setData(FILE_DRAG_MIME, serialized);
-    } catch {
-      // WebView2 can reject custom MIME types. The shared payload and text fallback remain available.
-    }
-    e.dataTransfer.effectAllowed = 'copyMove';
-  };
+    const pointerId = event.pointerId;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let dragging = false;
+    let highlightedTarget: HTMLElement | null = null;
+    let hoveredTabKey: string | null = null;
+    let tabActivationTimer: number | null = null;
 
-  const clearDragHoverTab = () => {
-    if (dragHoverTabTimerRef.current !== null) window.clearTimeout(dragHoverTabTimerRef.current);
-    dragHoverTabTimerRef.current = null;
-    dragHoverTabIdRef.current = null;
-    setDragHoverTabId(null);
-  };
+    const clearTabActivationTimer = () => {
+      if (tabActivationTimer !== null) window.clearTimeout(tabActivationTimer);
+      tabActivationTimer = null;
+      hoveredTabKey = null;
+    };
+    const setHighlightedTarget = (target: HTMLElement | null) => {
+      if (highlightedTarget === target) return;
+      highlightedTarget?.classList.remove('cyberfiles-file-drop-target');
+      highlightedTarget = target;
+      highlightedTarget?.classList.add('cyberfiles-file-drop-target');
+    };
+    const resolveDropTarget = (clientX: number, clientY: number) => {
+      const hit = document.elementFromPoint(clientX, clientY);
+      const element = hit instanceof Element ? hit.closest<HTMLElement>('[data-file-drop-path]') : null;
+      const destinationPath = element?.dataset.fileDropPath;
+      if (!element || !destinationPath) return null;
+      const normalizedDestination = normalizeWindowsPath(destinationPath).toLowerCase();
+      if (normalizedDestination === normalizeWindowsPath(payload.sourcePath).toLowerCase()) return null;
+      if (payload.items.some(source => source.isFolder && isSameOrDescendantPath(destinationPath, source.path))) return null;
+      return { element, destinationPath };
+    };
+    const updateTabActivation = (target: HTMLElement | null) => {
+      const tabKey = target?.dataset.fileDropTabId || null;
+      if (!target || !tabKey || target.dataset.activeFolderTab === 'true' || !tabSizePreferences.dragHoverActivationEnabled) {
+        clearTabActivationTimer();
+        return;
+      }
+      if (hoveredTabKey === tabKey) return;
+      clearTabActivationTimer();
+      hoveredTabKey = tabKey;
+      const tabTarget = target;
+      tabActivationTimer = window.setTimeout(() => {
+        tabActivationTimer = null;
+        if (hoveredTabKey === tabKey && tabTarget.isConnected) tabTarget.click();
+      }, tabSizePreferences.dragHoverActivationDelay);
+    };
+    const updatePointerTarget = (clientX: number, clientY: number) => {
+      const target = resolveDropTarget(clientX, clientY);
+      setHighlightedTarget(target?.element ?? null);
+      updateTabActivation(target?.element ?? null);
+      return target;
+    };
+    const cleanup = () => {
+      document.removeEventListener('pointermove', handlePointerMove, true);
+      document.removeEventListener('pointerup', finishPointerDrag, true);
+      document.removeEventListener('pointercancel', cancelPointerDrag, true);
+      clearTabActivationTimer();
+      setHighlightedTarget(null);
+      document.body.classList.remove('cyberfiles-file-pointer-drag');
+    };
+    const handlePointerMove = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      if (!dragging && Math.hypot(pointerEvent.clientX - startX, pointerEvent.clientY - startY) < FILE_DRAG_START_DISTANCE) return;
+      if (!dragging) {
+        dragging = true;
+        suppressFileClickRef.current = true;
+        document.body.classList.add('cyberfiles-file-pointer-drag');
+      }
+      pointerEvent.preventDefault();
+      updatePointerTarget(pointerEvent.clientX, pointerEvent.clientY);
+    };
+    const finishPointerDrag = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      const target = dragging ? updatePointerTarget(pointerEvent.clientX, pointerEvent.clientY) : null;
+      cleanup();
+      if (!dragging) return;
+      pointerEvent.preventDefault();
+      pointerEvent.stopPropagation();
+      window.setTimeout(() => { suppressFileClickRef.current = false; }, 0);
+      if (target) onDropFiles(payload.items, target.destinationPath, payload.sourcePane);
+    };
+    const cancelPointerDrag = (pointerEvent: PointerEvent) => {
+      if (pointerEvent.pointerId !== pointerId) return;
+      cleanup();
+      suppressFileClickRef.current = false;
+    };
 
-  const readFileDragPayload = (dataTransfer: DataTransfer): FileDragPayload | null => {
-    try {
-      const serialized = dataTransfer.getData(FILE_DRAG_MIME) || dataTransfer.getData('text/plain');
-      if (!serialized) return activeFileDragPayload;
-      const candidate: unknown = JSON.parse(serialized);
-      if (!candidate || typeof candidate !== 'object') return null;
-      const payload = candidate as Partial<FileDragPayload>;
-      if ((payload.sourcePane !== 'left' && payload.sourcePane !== 'right')
-        || typeof payload.sourcePath !== 'string'
-        || !Array.isArray(payload.items)
-        || payload.items.some(item => !item || typeof item.id !== 'string' || typeof item.path !== 'string' || typeof item.isFolder !== 'boolean')) return activeFileDragPayload;
-      return { sourcePane: payload.sourcePane, sourcePath: payload.sourcePath, items: payload.items };
-    } catch {
-      return activeFileDragPayload;
-    }
-  };
-
-  const handleDragEnd = () => {
-    clearDragHoverTab();
-    setIsDragOver(false);
-    window.setTimeout(() => {
-      activeFileDragPayload = null;
-    }, 0);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (!isDragOver) setIsDragOver(true);
-  };
-
-  const handleDragLeave = (event: React.DragEvent) => {
-    if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
-    setIsDragOver(false);
-  };
-
-  const handleDrop = (e: React.DragEvent, targetFolderItem?: FileItem, targetPathOverride?: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-    clearDragHoverTab();
-    const payload = readFileDragPayload(e.dataTransfer);
-    if (!payload || payload.items.length === 0) return;
-    const destinationPath = targetPathOverride
-      || (targetFolderItem?.isFolder ? targetFolderItem.path : tab.currentPath);
-    const sourcePath = normalizeWindowsPath(payload.sourcePath).toLowerCase();
-    const targetPath = normalizeWindowsPath(destinationPath).toLowerCase();
-    if (sourcePath === targetPath) return;
-    activeFileDragPayload = null;
-    onDropFiles(payload.items, destinationPath, payload.sourcePane);
+    document.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false });
+    document.addEventListener('pointerup', finishPointerDrag, { capture: true, passive: false });
+    document.addEventListener('pointercancel', cancelPointerDrag, true);
   };
 
   // Selection ranges follow the full displayed order, including virtual rows.
@@ -1844,6 +1858,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   // Selection logic
   const handleItemClick = (e: React.MouseEvent, item: FileItem, index: number) => {
+    if (suppressFileClickRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     viewportRef.current?.focus({ preventScroll: true });
     onActivate();
     clearPendingDeselection();
@@ -1960,7 +1979,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   const handleConfiguredSingleClick = (event: React.MouseEvent, item: FileItem) => {
-    if (!singleClickOpens || event.ctrlKey || event.metaKey || event.shiftKey || item.recycleBinId) return;
+    if (suppressFileClickRef.current || !singleClickOpens || event.ctrlKey || event.metaKey || event.shiftKey || item.recycleBinId) return;
     const target = event.target;
     if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable="true"]')) return;
 
@@ -2383,27 +2402,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
     { key: 'F7', label: t.pane.listerShortcutNewFolder },
     { key: 'Delete', label: t.pane.listerShortcutDelete },
   ];
-  const handleFolderTabDragOver = (event: React.DragEvent<HTMLElement>, tabItem: TabState, idx: number) => {
-    if (!activeFileDragPayload && !Array.from(event.dataTransfer.types).some(type => type === FILE_DRAG_MIME || type === 'text/plain')) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.dataTransfer.dropEffect = 'move';
-    if (dragHoverTabIdRef.current === tabItem.id) return;
-    clearDragHoverTab();
-    dragHoverTabIdRef.current = tabItem.id;
-    setDragHoverTabId(tabItem.id);
-    if (!tabSizePreferences.dragHoverActivationEnabled || idx === activeTabIndex) return;
-    dragHoverTabTimerRef.current = window.setTimeout(() => {
-      dragHoverTabTimerRef.current = null;
-      if (dragHoverTabIdRef.current !== tabItem.id) return;
-      onActivate();
-      onSelectTab(idx);
-    }, tabSizePreferences.dragHoverActivationDelay);
-  };
-  const handleFolderTabDragLeave = (event: React.DragEvent<HTMLElement>, tabId: string) => {
-    if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
-    if (dragHoverTabIdRef.current === tabId) clearDragHoverTab();
-  };
   const renderFolderTab = (tabItem: TabState, idx: number, vertical: boolean) => {
     const isTabActive = idx === activeTabIndex;
     const tabName = tabItem.customTitle || tabItem.title || t.pane.noFolderOpen;
@@ -2439,6 +2437,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
         aria-pressed={isTabActive}
         data-folder-tab="true"
         data-active-folder-tab={isTabActive ? 'true' : undefined}
+        data-file-drop-path={tabItem.currentPath}
+        data-file-drop-tab-id={`${paneId}:${tabItem.id}`}
         aria-label={tabName}
         onClick={event => { event.stopPropagation(); onActivate(); onSelectTab(idx); }}
         onKeyDown={event => {
@@ -2467,13 +2467,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
           event.stopPropagation();
           onTabContextMenu(idx, event.clientX, event.clientY);
         }}
-        onDragOver={event => handleFolderTabDragOver(event, tabItem, idx)}
-        onDragLeave={event => handleFolderTabDragLeave(event, tabItem.id)}
-        onDrop={event => handleDrop(event, undefined, tabItem.currentPath)}
         style={horizontalTabStyle}
         className={vertical
-          ? `cyberfiles-folder-tab group flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition-colors outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 ${isTabActive ? 'border-cyan-600/65 bg-cyan-950/45 text-cyan-100 shadow-sm shadow-cyan-950/30' : 'border-transparent bg-neutral-900/35 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-800/70 hover:text-neutral-100'} ${dragHoverTabId === tabItem.id ? 'ring-1 ring-inset ring-cyan-300 bg-cyan-950/60' : ''}`
-          : `cyberfiles-folder-tab group flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium cursor-pointer border-x transition-colors ${tabStripPosition === 'bottom' ? 'rounded-b-md border-b' : 'rounded-t-md border-t'} ${isTabActive ? 'bg-neutral-900 border-neutral-700 text-neutral-100 relative z-10' : 'bg-neutral-950/40 border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/40'} ${dragHoverTabId === tabItem.id ? 'ring-1 ring-inset ring-cyan-300 bg-cyan-950/60' : ''}`}
+          ? `cyberfiles-folder-tab group flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition-colors outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 ${isTabActive ? 'border-cyan-600/65 bg-cyan-950/45 text-cyan-100 shadow-sm shadow-cyan-950/30' : 'border-transparent bg-neutral-900/35 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-800/70 hover:text-neutral-100'}`
+          : `cyberfiles-folder-tab group flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium cursor-pointer border-x transition-colors ${tabStripPosition === 'bottom' ? 'rounded-b-md border-b' : 'rounded-t-md border-t'} ${isTabActive ? 'bg-neutral-900 border-neutral-700 text-neutral-100 relative z-10' : 'bg-neutral-950/40 border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/40'}`}
       >
         <Folder className={`h-3.5 w-3.5 shrink-0 ${isTabActive ? 'text-cyan-400' : 'text-neutral-500'}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined} />
         <span className={`truncate text-[11px] ${vertical ? 'min-w-0 flex-1' : ''}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined}>{tabName}</span>
@@ -2610,14 +2607,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
     <div
       onClick={onActivate}
       data-active-pane={isActive ? 'true' : undefined}
+      data-file-drop-path={tab.currentPath}
       className={`cyberfiles-pane flex flex-col h-full bg-neutral-900/60 overflow-hidden relative border transition-colors ${
         isActive
           ? 'border-cyan-500/50 shadow-sm shadow-cyan-950/40'
           : 'border-neutral-800/80 opacity-90'
-      } ${isDragOver ? 'ring-2 ring-cyan-400/80 bg-cyan-950/20' : ''}`}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={(e) => handleDrop(e)}
+      }`}
     >
       {tabStripPosition === 'top' && tabStrip}
       <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -3080,15 +3075,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   data-selected={isSelected ? 'true' : undefined}
                   data-zebra={isZebra ? 'true' : undefined}
                   data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
-                  draggable={!item.recycleBinId}
-                  onDragStart={(e) => handleDragStart(e, item)}
-                  onDragEnd={handleDragEnd}
-                  onDrop={(e) => {
-                    if (item.isFolder && !item.recycleBinId) {
-                      e.stopPropagation();
-                      handleDrop(e, item);
-                    }
-                  }}
+                  data-file-drop-path={item.isFolder && !item.recycleBinId ? item.path : undefined}
+                  onPointerDown={event => beginFilePointerDrag(event, item)}
                   onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
@@ -3191,15 +3179,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   data-file-id={item.id}
                   data-selected={isSelected ? 'true' : undefined}
                   data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
-                  draggable={!item.recycleBinId}
-                  onDragStart={event => handleDragStart(event, item)}
-                  onDragEnd={handleDragEnd}
-                  onDrop={event => {
-                    if (item.isFolder && !item.recycleBinId) {
-                      event.stopPropagation();
-                      handleDrop(event, item);
-                    }
-                  }}
+                  data-file-drop-path={item.isFolder && !item.recycleBinId ? item.path : undefined}
+                  onPointerDown={event => beginFilePointerDrag(event, item)}
                   onClick={event => { handleItemClick(event, item, idx); handleConfiguredSingleClick(event, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
@@ -3250,12 +3231,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   data-file-id={item.id}
                   data-selected={isSelected ? 'true' : undefined}
                   data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
-                  draggable={!item.recycleBinId}
-                  onDragStart={(e) => handleDragStart(e, item)}
-                  onDragEnd={handleDragEnd}
-                  onDrop={event => {
-                    if (item.isFolder && !item.recycleBinId) handleDrop(event, item);
-                  }}
+                  data-file-drop-path={item.isFolder && !item.recycleBinId ? item.path : undefined}
+                  onPointerDown={event => beginFilePointerDrag(event, item)}
                   onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
