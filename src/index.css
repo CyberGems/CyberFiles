@@ -1054,7 +1054,7 @@ body.cyberfiles-file-pointer-drag-move * {
 }
 
 .cyberfiles-file-drag-ghost[data-operation='copy'] .cyberfiles-file-drag-ghost-action::before {
-  content: '(+)';
+  content: '+';
 }
 
 .cyberfiles-file-drag-ghost[data-allowed='false'] .cyberfiles-file-drag-ghost-action::before {
