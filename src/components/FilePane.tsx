@@ -35,6 +35,7 @@ import {
   UnlockKeyhole,
   History,
   Home,
+  Keyboard,
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
@@ -46,7 +47,7 @@ import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconP
 import { FolderIconRenderer, FolderStatusBadge } from './folderIconsData';
 import { listen } from '@tauri-apps/api/event';
 import { useLanguage } from '../locales/LanguageContext';
-import { Tooltip, TooltipPreferenceContext } from './Tooltip';
+import { Tooltip, TooltipPreferenceContext, TooltipShortcut } from './Tooltip';
 import {
   DEFAULT_FILE_COLUMN_LAYOUT,
   DEFAULT_FILE_COLUMN_WIDTHS,
@@ -2307,6 +2308,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const itemCountLabel = isLoadingDirectory && tab.flatView ? t.pane.loadingFolder : hasMore && totalItemCount !== undefined
     ? t.pane.loadedOfTotal.replace('{loaded}', String(files.length)).replace('{total}', String(totalItemCount))
     : t.pane.itemsCount.replace('{count}', visibleItemCount);
+  const listerShortcuts = [
+    { key: 'Enter', label: t.pane.listerShortcutOpen },
+    { key: 'Ctrl + A', label: t.pane.listerShortcutSelectAll },
+    { key: 'Backspace', label: t.pane.listerShortcutParent },
+    { key: 'F2', label: t.pane.listerShortcutRename },
+    { key: 'F3 / Space', label: t.pane.listerShortcutPreview },
+    { key: 'F5', label: t.pane.listerShortcutCopy },
+    { key: 'F6', label: t.pane.listerShortcutMove },
+    { key: 'F7', label: t.pane.listerShortcutNewFolder },
+    { key: 'Delete', label: t.pane.listerShortcutDelete },
+  ];
   const renderFolderTab = (tabItem: TabState, idx: number, vertical: boolean) => {
     const isTabActive = idx === activeTabIndex;
     const tabName = tabItem.customTitle || tabItem.title || t.pane.noFolderOpen;
@@ -3237,13 +3249,38 @@ export const FilePane: React.FC<FilePaneProps> = ({
             className="flex items-center gap-1.5 justify-self-center whitespace-nowrap rounded border border-cyan-900/70 bg-cyan-950/30 px-2 py-0.5 font-medium text-cyan-200"
           >
             <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
-            <span>{paneId === 'left' ? t.statusBar.leftPane : t.statusBar.rightPane}</span>
+            <span>{t.statusBar.activePaneTitle}</span>
           </div>
         ) : <span />}
 
-        <div className="hidden min-w-0 truncate text-right text-neutral-500 lg:block">
-          F2: Renombrar · F5: Copiar · F6: Mover · F3: Ver
-        </div>
+        <Tooltip
+          placement="top"
+          label={(
+            <div className="min-w-56 p-0.5 text-left">
+              <div className="mb-2 flex items-center gap-2 font-semibold text-neutral-100">
+                <Keyboard className="h-3.5 w-3.5 text-cyan-300" aria-hidden="true" />
+                <span>{t.pane.listerShortcutsTitle}</span>
+              </div>
+              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5">
+                {listerShortcuts.map(shortcut => (
+                  <React.Fragment key={shortcut.key}>
+                    <TooltipShortcut>{shortcut.key}</TooltipShortcut>
+                    <span className="text-neutral-300">{shortcut.label}</span>
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          )}
+        >
+          <span
+            role="img"
+            tabIndex={0}
+            aria-label={t.pane.listerShortcutsTitle}
+            className="inline-flex h-6 w-6 shrink-0 cursor-help items-center justify-center justify-self-end rounded border border-neutral-800 bg-neutral-900/70 text-neutral-400 outline-none transition-colors hover:border-cyan-900/70 hover:text-cyan-300 focus-visible:border-cyan-700 focus-visible:text-cyan-200"
+          >
+            <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />
+          </span>
+        </Tooltip>
       </div>
     </div>
   );
