@@ -2281,11 +2281,18 @@ export default function App() {
           folderStyle: rememberedStyle,
           folderStyleOnEntry: rememberedStyle,
           filterQuery: '',
-          selectedIds: returnedFolder ? [returnedFolder.id] : [],
-          focusedId: returnedFolder?.id ?? null,
+          selectedIds: [],
+          focusedId: null,
         };
       });
       updateCurrentTab();
+      if (returnedFolder) {
+        React.startTransition(() => {
+          updatePaneTab(targetPane, tab => getPathKey(tab.currentPath) === pathKey
+            ? { ...tab, selectedIds: [returnedFolder.id], focusedId: returnedFolder.id }
+            : tab);
+        });
+      }
     }
 
     if (targetPath === SYSTEM_HOME_PATH) {

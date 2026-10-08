@@ -1147,7 +1147,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     return () => observer?.disconnect();
   }, [files.length, effectiveViewMode]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!tab.focusedId || !tab.selectedIds.includes(tab.focusedId)) {
       lastScrolledFocusedIdRef.current = null;
       return;
@@ -1157,6 +1157,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (virtualizeFiles && viewport) {
       const offset = focusedVirtualOffset.get(tab.focusedId);
       if (offset !== undefined && (offset < viewport.scrollTop || offset + rowStride > viewport.scrollTop + viewport.clientHeight)) {
+        lastScrolledFocusedIdRef.current = tab.focusedId;
         viewport.scrollTop = Math.max(0, offset - Math.max(0, (viewport.clientHeight - rowStride) / 2));
         return;
       }
@@ -2919,7 +2920,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             {t.pane.flatViewIncomplete.replace('{count}', String(flatViewStatus?.skippedCount ?? 0))}
           </div>
         )}
-        <div key={`${tab.id}:${tab.currentPath}`} className={`min-h-full px-4 ${effectiveViewMode === 'compact' ? 'h-full w-max min-w-full' : ''}`}>
+        <div className={`min-h-full px-4 ${effectiveViewMode === 'compact' ? 'h-full w-max min-w-full' : ''}`}>
         {files.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-neutral-500 gap-2 p-6">
             {isLoadingDirectory ? <RotateCw className="w-7 h-7 text-cyan-500 animate-spin" /> : <Folder className="w-8 h-8 text-neutral-600 stroke-[1.5]" />}
