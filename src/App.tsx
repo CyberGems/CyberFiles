@@ -2206,7 +2206,7 @@ export default function App() {
       }
     }
     const returnedFolder = returnedFolderPath
-      ? (targetPath === SYSTEM_HOME_PATH ? systemHomeItems : allFiles)
+      ? (targetPath === SYSTEM_HOME_PATH ? systemHomeItems : childrenByParent.get(pathKey) ?? [])
         .find(item => item.isFolder && getPathKey(item.path) === getPathKey(returnedFolderPath))
       : undefined;
     const systemWorkspace = systemHomeWorkspace.current || targetTab?.history.includes(SYSTEM_HOME_PATH) === true;
@@ -2540,7 +2540,9 @@ export default function App() {
     const tab = tabs[activeIndex];
     if (!tab || tab.historyIndex <= 0) return;
     const nextIndex = tab.historyIndex - 1;
-    void handleNavigate(tab.history[nextIndex], targetPane, true, false, nextIndex);
+    // Reuse a loaded history entry. Explicit refreshes and file operations
+    // already invalidate affected directory cache entries.
+    void handleNavigate(tab.history[nextIndex], targetPane, false, false, nextIndex);
   }, [activePane, activeLeftTabIndex, activeRightTabIndex, leftTabs, rightTabs, handleNavigate]);
 
   const handleNavigateForward = useCallback((targetPane: 'left' | 'right' = activePane) => {
@@ -2549,7 +2551,7 @@ export default function App() {
     const tab = tabs[activeIndex];
     if (!tab || tab.historyIndex >= tab.history.length - 1) return;
     const nextIndex = tab.historyIndex + 1;
-    void handleNavigate(tab.history[nextIndex], targetPane, true, false, nextIndex);
+    void handleNavigate(tab.history[nextIndex], targetPane, false, false, nextIndex);
   }, [activePane, activeLeftTabIndex, activeRightTabIndex, leftTabs, rightTabs, handleNavigate]);
 
   const handleNavigateUp = useCallback((targetPane: 'left' | 'right' = activePane) => {
