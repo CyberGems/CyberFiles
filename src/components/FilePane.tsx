@@ -2378,7 +2378,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         aria-expanded={!isCollapsed}
         aria-controls={contentId}
         onClick={() => setCollapsedSystemHomeSections(previous => ({ ...previous, [section]: !previous[section] }))}
-        className="collapse-toggle mb-2 flex w-full cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-left text-[11px] font-semibold text-neutral-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+        className="collapse-toggle mb-2 flex w-full cursor-pointer items-center gap-2 rounded-lg px-1 py-2 text-left text-[11px] font-semibold text-neutral-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
       >
         <ChevronDown data-collapse-chevron="true" className={`h-3.5 w-3.5 flex-shrink-0 text-neutral-500 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
         <span className="whitespace-nowrap">{label}</span>
@@ -3023,7 +3023,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             )}
           </div>
         ) : isSystemHome ? (
-          <div className="space-y-5 p-3 sm:p-4">
+          <div className="space-y-5 px-1.5 py-3 sm:px-2 sm:py-4">
             {systemFolders.length > 0 && (
               <section>
                 {sectionHeading('folders', t.pane.systemFolders.replace('{count}', String(systemFolders.length)))}
