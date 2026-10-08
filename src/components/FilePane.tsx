@@ -1736,6 +1736,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (event.button !== 0 || item.recycleBinId) return;
     const eventTarget = event.target;
     if (eventTarget instanceof Element && eventTarget.closest('button, input, textarea, select, [contenteditable="true"]')) return;
+    const dragSourceElement = event.currentTarget;
 
     const idsToDrag = tab.selectedIds.includes(item.id) ? tab.selectedIds : [item.id];
     const selectedIdSet = new Set(idsToDrag);
@@ -1767,7 +1768,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
       const summary = document.createElement('div');
       summary.className = 'cyberfiles-file-drag-ghost-summary';
-      const renderedIcon = event.currentTarget.querySelector<HTMLElement>('svg, img')?.cloneNode(true);
+      const renderedIcon = dragSourceElement.querySelector<HTMLElement>('svg, img')?.cloneNode(true);
       const icon = renderedIcon instanceof HTMLElement || renderedIcon instanceof SVGElement
         ? renderedIcon
         : document.createElement('span');
