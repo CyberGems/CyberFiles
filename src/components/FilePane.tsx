@@ -37,7 +37,7 @@ import {
   Home,
   Keyboard,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type NewTabTrigger, type TabSizePreferences } from '../types';
+import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type DraggedFileItem, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, getParentPath, normalizeWindowsPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
@@ -109,7 +109,7 @@ interface FilePaneProps {
   onBackgroundContextMenu: (e: React.MouseEvent, pane: 'left' | 'right') => void;
   onBackgroundClick: (e: React.MouseEvent, pane: 'left' | 'right') => void;
   onBackgroundDoubleClick: (e: React.MouseEvent, pane: 'left' | 'right') => void;
-  onDropFiles: (droppedIds: string[], targetFolder: string, sourcePane: 'left' | 'right') => void;
+  onDropFiles: (droppedItems: DraggedFileItem[], targetFolder: string, sourcePane: 'left' | 'right') => void;
   onInlineRename: (itemId: string, newName: string, paneId: 'left' | 'right') => void;
   renameRequest: { requestId: number; itemId: string; paneId: 'left' | 'right' } | null;
   onRenameRequestHandled: (requestId: number) => void;
@@ -126,8 +126,9 @@ type RelativeGraphWidths = Partial<Record<RelativeGraphColumn, number>>;
 type ResizableColumn = FileColumn;
 type FolderSizeState = { status: 'loading' | 'paused' | 'done' | 'error'; size?: number; entriesScanned?: number };
 type FolderChildCountState = { status: 'loading' | 'error' } | { status: 'done'; summary: FolderContentSummary; checkedAt: number };
-type FileDragPayload = { sourcePane: 'left' | 'right'; sourcePath: string; itemIds: string[] };
+type FileDragPayload = { sourcePane: 'left' | 'right'; sourcePath: string; items: DraggedFileItem[] };
 const FILE_DRAG_MIME = 'application/x-cyberfiles-items';
+let activeFileDragPayload: FileDragPayload | null = null;
 const LISTER_HORIZONTAL_GUTTER = 16;
 function getDisplayItemName(item: FileItem, showFileExtensions: boolean): string {
   if (showFileExtensions || item.isFolder) return item.name;
@@ -354,6 +355,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   isLoadingDirectory = false,
   flatViewStatus,
   onLoadMore,
+  allFiles,
   onNavigate,
   onRefresh,
   onNavigateBack,
@@ -1738,10 +1740,27 @@ export const FilePane: React.FC<FilePaneProps> = ({
     clearDragHoverTab();
     setIsDragOver(false);
     const idsToDrag = tab.selectedIds.includes(item.id) ? tab.selectedIds : [item.id];
-    const payload: FileDragPayload = { sourcePane: paneId, sourcePath: tab.currentPath, itemIds: idsToDrag };
+    const selectedIdSet = new Set(idsToDrag);
+    const items = allFiles
+      .filter(candidate => selectedIdSet.has(candidate.id))
+      .map(candidate => ({ id: candidate.id, path: candidate.path, isFolder: candidate.isFolder }));
+    const payload: FileDragPayload = {
+      sourcePane: paneId,
+      sourcePath: tab.currentPath,
+      items: items.length > 0 ? items : [{ id: item.id, path: item.path, isFolder: item.isFolder }],
+    };
+    activeFileDragPayload = payload;
     const serialized = JSON.stringify(payload);
-    e.dataTransfer.setData(FILE_DRAG_MIME, serialized);
-    e.dataTransfer.setData('text/plain', serialized);
+    try {
+      e.dataTransfer.setData('text/plain', serialized);
+    } catch {
+      // The shared payload is sufficient for drags inside this app.
+    }
+    try {
+      e.dataTransfer.setData(FILE_DRAG_MIME, serialized);
+    } catch {
+      // WebView2 can reject custom MIME types. The shared payload and text fallback remain available.
+    }
     e.dataTransfer.effectAllowed = 'copyMove';
   };
 
@@ -1755,23 +1774,26 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const readFileDragPayload = (dataTransfer: DataTransfer): FileDragPayload | null => {
     try {
       const serialized = dataTransfer.getData(FILE_DRAG_MIME) || dataTransfer.getData('text/plain');
-      if (!serialized) return null;
+      if (!serialized) return activeFileDragPayload;
       const candidate: unknown = JSON.parse(serialized);
       if (!candidate || typeof candidate !== 'object') return null;
       const payload = candidate as Partial<FileDragPayload>;
       if ((payload.sourcePane !== 'left' && payload.sourcePane !== 'right')
         || typeof payload.sourcePath !== 'string'
-        || !Array.isArray(payload.itemIds)
-        || payload.itemIds.some(id => typeof id !== 'string')) return null;
-      return { sourcePane: payload.sourcePane, sourcePath: payload.sourcePath, itemIds: payload.itemIds };
+        || !Array.isArray(payload.items)
+        || payload.items.some(item => !item || typeof item.id !== 'string' || typeof item.path !== 'string' || typeof item.isFolder !== 'boolean')) return activeFileDragPayload;
+      return { sourcePane: payload.sourcePane, sourcePath: payload.sourcePath, items: payload.items };
     } catch {
-      return null;
+      return activeFileDragPayload;
     }
   };
 
   const handleDragEnd = () => {
     clearDragHoverTab();
     setIsDragOver(false);
+    window.setTimeout(() => {
+      activeFileDragPayload = null;
+    }, 0);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -1791,13 +1813,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
     setIsDragOver(false);
     clearDragHoverTab();
     const payload = readFileDragPayload(e.dataTransfer);
-    if (!payload || payload.itemIds.length === 0) return;
+    if (!payload || payload.items.length === 0) return;
     const destinationPath = targetPathOverride
       || (targetFolderItem?.isFolder ? targetFolderItem.path : tab.currentPath);
     const sourcePath = normalizeWindowsPath(payload.sourcePath).toLowerCase();
     const targetPath = normalizeWindowsPath(destinationPath).toLowerCase();
-    if (payload.sourcePane === paneId && sourcePath === targetPath) return;
-    onDropFiles(payload.itemIds, destinationPath, payload.sourcePane);
+    if (sourcePath === targetPath) return;
+    activeFileDragPayload = null;
+    onDropFiles(payload.items, destinationPath, payload.sourcePane);
   };
 
   // Selection ranges follow the full displayed order, including virtual rows.
@@ -2361,7 +2384,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     { key: 'Delete', label: t.pane.listerShortcutDelete },
   ];
   const handleFolderTabDragOver = (event: React.DragEvent<HTMLElement>, tabItem: TabState, idx: number) => {
-    if (!Array.from(event.dataTransfer.types).includes(FILE_DRAG_MIME)) return;
+    if (!activeFileDragPayload && !Array.from(event.dataTransfer.types).some(type => type === FILE_DRAG_MIME || type === 'text/plain')) return;
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = 'move';

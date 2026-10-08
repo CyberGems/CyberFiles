@@ -24,6 +24,7 @@ import {
   type NewTabActionPreference,
   type NewTabActionMode,
   type NewTabTrigger,
+  type DraggedFileItem,
   type TabSizePreferences,
 } from './types';
 import {
@@ -153,7 +154,7 @@ const DEFAULT_GLOBAL_SHORTCUT = 'Alt+Shift+F';
 const DEFAULT_FOLDER_STYLE = { viewMode: 'details' as ViewMode, sortField: 'name' as SortField, sortOrder: 'asc' as SortOrder, groupBy: 'none' as GroupByField };
 const DEFAULT_TAB_SIZE_PREFERENCES: TabSizePreferences = {
   horizontalMode: 'automatic',
-  horizontalEqualWidth: true,
+  horizontalEqualWidth: false,
   horizontalFixedWidth: 160,
   horizontalMinWidth: 100,
   horizontalMaxWidth: 220,
@@ -400,7 +401,7 @@ function readTabSizePreferences(): TabSizePreferences {
     const horizontalMaxWidth = numberInRange(candidate.horizontalMaxWidth, DEFAULT_TAB_SIZE_PREFERENCES.horizontalMaxWidth, horizontalMinWidth, 360);
     return {
       horizontalMode: candidate.horizontalMode === 'fixed' ? 'fixed' : 'automatic',
-      horizontalEqualWidth: candidate.horizontalEqualWidth !== false,
+      horizontalEqualWidth: candidate.horizontalEqualWidth === true,
       horizontalFixedWidth: numberInRange(candidate.horizontalFixedWidth, DEFAULT_TAB_SIZE_PREFERENCES.horizontalFixedWidth, 80, 360),
       horizontalMinWidth,
       horizontalMaxWidth,
@@ -3657,9 +3658,25 @@ export default function App() {
       showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
     }
   }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, pushUndoAction, queueNativeTransfer, refreshChangedDirectories, rightTabs, showToast, t.core.clipboardImageFileBaseName, t.core.desktopFileOperationsOnly, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.pastedImage, t.pane.chooseRealFolderFirst, updatePaneTab]);
-  const handleDropFiles = useCallback((droppedIds: string[], targetFolderPath: string, sourcePane: 'left' | 'right') => {
-    void moveItemsToPath(droppedIds, targetFolderPath, sourcePane);
-  }, [moveItemsToPath]);
+  const handleDropFiles = useCallback((droppedItems: DraggedFileItem[], targetFolderPath: string, sourcePane: 'left' | 'right') => {
+    if (targetFolderPath === SYSTEM_HOME_PATH || targetFolderPath === RECYCLE_BIN_PATH) {
+      showToast(t.pane.chooseRealDestinationFolder);
+      return;
+    }
+    const roots = droppedItems.filter(item =>
+      !droppedItems.some(other => other.id !== item.id && other.isFolder && isSameOrDescendantPath(item.path, other.path))
+    );
+    if (roots.length === 0) return;
+    if (roots.some(root => root.isFolder && isSameOrDescendantPath(targetFolderPath, root.path))) {
+      showToast(t.core.cannotMoveIntoSelf);
+      return;
+    }
+    if (isTauriDesktop()) {
+      queueNativeTransfer('move', roots.map(root => root.path), targetFolderPath, { sourcePane });
+      return;
+    }
+    void moveItemsToPath(roots.map(root => root.id), targetFolderPath, sourcePane);
+  }, [moveItemsToPath, queueNativeTransfer, showToast, t.core.cannotMoveIntoSelf, t.pane.chooseRealDestinationFolder]);
 
   const handleInlineRename = useCallback(async (itemId: string, newName: string, pane: 'left' | 'right' = activePane) => {
     const item = allFiles.find(file => file.id === itemId);

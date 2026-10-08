@@ -858,7 +858,7 @@ export function SettingsModal({
                   </div>
                 )}
 
-                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className={`mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 ${tabSizePreferences.horizontalMode === 'automatic' && !tabSizePreferences.horizontalShrinkToFit ? 'opacity-45' : ''}`}>
                   {tabSizePreferences.horizontalMode === 'fixed' ? (
                     <label className="text-neutral-300">
                       <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.settings.tabFixedWidth}</span>
@@ -872,14 +872,14 @@ export function SettingsModal({
                       <label className="text-neutral-300">
                         <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.settings.tabMinimumWidth}</span>
                         <span className="flex items-center gap-2">
-                          <input type="number" min={80} max={240} value={tabSizePreferences.horizontalMinWidth} onChange={event => { const value = Math.min(240, Math.max(80, event.currentTarget.valueAsNumber || 80)); onTabSizePreferencesChange({ ...tabSizePreferences, horizontalMinWidth: value, horizontalMaxWidth: Math.max(value, tabSizePreferences.horizontalMaxWidth) }); }} className="w-24 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-neutral-100 focus:border-cyan-600 focus:outline-none" />
+                          <input type="number" min={80} max={240} disabled={!tabSizePreferences.horizontalShrinkToFit} value={tabSizePreferences.horizontalMinWidth} onChange={event => { const value = Math.min(240, Math.max(80, event.currentTarget.valueAsNumber || 80)); onTabSizePreferencesChange({ ...tabSizePreferences, horizontalMinWidth: value, horizontalMaxWidth: Math.max(value, tabSizePreferences.horizontalMaxWidth) }); }} className="w-24 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-neutral-100 focus:border-cyan-600 focus:outline-none disabled:cursor-not-allowed" />
                           <span>{t.settings.pixels}</span>
                         </span>
                       </label>
                       <label className="text-neutral-300">
                         <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.settings.tabMaximumWidth}</span>
                         <span className="flex items-center gap-2">
-                          <input type="number" min={80} max={360} value={tabSizePreferences.horizontalMaxWidth} onChange={event => { const value = Math.min(360, Math.max(80, event.currentTarget.valueAsNumber || 80)); onTabSizePreferencesChange({ ...tabSizePreferences, horizontalMaxWidth: value, horizontalMinWidth: Math.min(value, tabSizePreferences.horizontalMinWidth) }); }} className="w-24 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-neutral-100 focus:border-cyan-600 focus:outline-none" />
+                          <input type="number" min={80} max={360} disabled={!tabSizePreferences.horizontalShrinkToFit} value={tabSizePreferences.horizontalMaxWidth} onChange={event => { const value = Math.min(360, Math.max(80, event.currentTarget.valueAsNumber || 80)); onTabSizePreferencesChange({ ...tabSizePreferences, horizontalMaxWidth: value, horizontalMinWidth: Math.min(value, tabSizePreferences.horizontalMinWidth) }); }} className="w-24 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-neutral-100 focus:border-cyan-600 focus:outline-none disabled:cursor-not-allowed" />
                           <span>{t.settings.pixels}</span>
                         </span>
                       </label>
@@ -888,7 +888,7 @@ export function SettingsModal({
                 </div>
 
                 {displayScale !== 1 && (
-                  <p className="mt-2 text-[10px] leading-relaxed text-neutral-500">
+                  <p className={`mt-2 text-[10px] leading-relaxed text-neutral-500 ${tabSizePreferences.horizontalMode === 'automatic' && !tabSizePreferences.horizontalShrinkToFit ? 'opacity-45' : ''}`}>
                     {t.settings.tabPixelScaleNote
                       .replace('{scale}', String(Math.round(displayScale * 100)))
                       .replace('{value}', String(tabSizePreferences.horizontalMode === 'fixed' ? tabSizePreferences.horizontalFixedWidth : tabSizePreferences.horizontalMaxWidth))

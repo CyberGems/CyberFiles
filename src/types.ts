@@ -70,6 +70,12 @@ export interface TabSizePreferences {
   verticalWidth: number;
 }
 
+export interface DraggedFileItem {
+  id: string;
+  path: string;
+  isFolder: boolean;
+}
+
 export type NewTabActionMode = 'current-folder' | 'duplicate' | 'default-folder' | 'home-folder' | 'empty-tab' | 'location';
 export type NewTabTrigger = 'button' | 'double-click';
 
