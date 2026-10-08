@@ -64,6 +64,8 @@ export interface TabSizePreferences {
   horizontalMinWidth: number;
   horizontalMaxWidth: number;
   horizontalShrinkToFit: boolean;
+  dragHoverActivationEnabled: boolean;
+  dragHoverActivationDelay: number;
   verticalMode: TabWidthMode;
   verticalWidth: number;
 }

@@ -194,6 +194,7 @@ export function SettingsModal({
   onTabSizePreferencesChange,
 }: SettingsModalProps) {
   const { t, language, setLanguage } = useLanguage();
+  const displayScale = Math.max(1, window.devicePixelRatio || 1);
   const [tab, setTab] = useState<SettingsTab>('general');
   const [folderStyleDrafts, setFolderStyleDrafts] = useState<Record<string, FolderStylePreference>>({});
   const contentRef = useRef<HTMLDivElement>(null);
@@ -801,6 +802,36 @@ export function SettingsModal({
                 </div>
               </fieldset>
               <fieldset className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-3 text-xs text-neutral-400">
+                <legend className="px-1 font-medium text-neutral-200">{t.settings.tabDragHoverTitle}</legend>
+                <label className="flex cursor-pointer items-center gap-2 text-neutral-200">
+                  <input
+                    type="checkbox"
+                    checked={tabSizePreferences.dragHoverActivationEnabled}
+                    onChange={event => onTabSizePreferencesChange({ ...tabSizePreferences, dragHoverActivationEnabled: event.target.checked })}
+                    className="h-4 w-4 accent-cyan-400"
+                  />
+                  <span>{t.settings.tabDragHoverEnabled}</span>
+                </label>
+                <p className="mt-1 pl-6 leading-relaxed">{t.settings.tabDragHoverDescription}</p>
+                <label className={`mt-3 flex flex-wrap items-center gap-2 pl-6 ${tabSizePreferences.dragHoverActivationEnabled ? 'text-neutral-300' : 'text-neutral-500'}`}>
+                  <span>{t.settings.tabDragHoverDelay}</span>
+                  <input
+                    type="number"
+                    min={100}
+                    max={3000}
+                    step={20}
+                    disabled={!tabSizePreferences.dragHoverActivationEnabled}
+                    value={tabSizePreferences.dragHoverActivationDelay}
+                    onChange={event => onTabSizePreferencesChange({
+                      ...tabSizePreferences,
+                      dragHoverActivationDelay: Math.min(3000, Math.max(100, event.currentTarget.valueAsNumber || 100)),
+                    })}
+                    className="w-24 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1.5 text-neutral-100 focus:border-cyan-600 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                  <span>{t.settings.milliseconds}</span>
+                </label>
+              </fieldset>
+              <fieldset className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-3 text-xs text-neutral-400">
                 <legend className="px-1 font-medium text-neutral-200">{t.settings.tabSizing}</legend>
                 <p className="mb-3 leading-relaxed">{t.settings.tabSizingDescription}</p>
 
@@ -855,6 +886,15 @@ export function SettingsModal({
                     </>
                   )}
                 </div>
+
+                {displayScale !== 1 && (
+                  <p className="mt-2 text-[10px] leading-relaxed text-neutral-500">
+                    {t.settings.tabPixelScaleNote
+                      .replace('{scale}', String(Math.round(displayScale * 100)))
+                      .replace('{value}', String(tabSizePreferences.horizontalMode === 'fixed' ? tabSizePreferences.horizontalFixedWidth : tabSizePreferences.horizontalMaxWidth))
+                      .replace('{physical}', String(Math.round((tabSizePreferences.horizontalMode === 'fixed' ? tabSizePreferences.horizontalFixedWidth : tabSizePreferences.horizontalMaxWidth) * displayScale)))}
+                  </p>
+                )}
 
                 <div className="mt-4 border-t border-neutral-800 pt-3">
                   <div className="font-medium text-cyan-200">{t.settings.verticalTabs}</div>

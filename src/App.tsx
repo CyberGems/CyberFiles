@@ -158,6 +158,8 @@ const DEFAULT_TAB_SIZE_PREFERENCES: TabSizePreferences = {
   horizontalMinWidth: 100,
   horizontalMaxWidth: 220,
   horizontalShrinkToFit: true,
+  dragHoverActivationEnabled: true,
+  dragHoverActivationDelay: 640,
   verticalMode: 'automatic',
   verticalWidth: 160,
 };
@@ -403,6 +405,8 @@ function readTabSizePreferences(): TabSizePreferences {
       horizontalMinWidth,
       horizontalMaxWidth,
       horizontalShrinkToFit: candidate.horizontalShrinkToFit !== false,
+      dragHoverActivationEnabled: candidate.dragHoverActivationEnabled !== false,
+      dragHoverActivationDelay: numberInRange(candidate.dragHoverActivationDelay, DEFAULT_TAB_SIZE_PREFERENCES.dragHoverActivationDelay, 100, 3000),
       verticalMode: candidate.verticalMode === 'fixed' ? 'fixed' : 'automatic',
       verticalWidth: numberInRange(candidate.verticalWidth, DEFAULT_TAB_SIZE_PREFERENCES.verticalWidth, 100, 360),
     };
@@ -3653,9 +3657,9 @@ export default function App() {
       showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
     }
   }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, pushUndoAction, queueNativeTransfer, refreshChangedDirectories, rightTabs, showToast, t.core.clipboardImageFileBaseName, t.core.desktopFileOperationsOnly, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.pastedImage, t.pane.chooseRealFolderFirst, updatePaneTab]);
-  const handleDropFiles = useCallback((droppedIds: string[], targetFolderPath?: string, sourcePane?: 'left' | 'right') => {
-    moveItemsToPath(droppedIds, targetFolderPath || currentTab.currentPath, sourcePane);
-  }, [currentTab.currentPath, moveItemsToPath]);
+  const handleDropFiles = useCallback((droppedIds: string[], targetFolderPath: string, sourcePane: 'left' | 'right') => {
+    void moveItemsToPath(droppedIds, targetFolderPath, sourcePane);
+  }, [moveItemsToPath]);
 
   const handleInlineRename = useCallback(async (itemId: string, newName: string, pane: 'left' | 'right' = activePane) => {
     const item = allFiles.find(file => file.id === itemId);
@@ -5227,7 +5231,7 @@ export default function App() {
                   onBackgroundContextMenu={handleBackgroundContextMenu}
                   onBackgroundClick={(_event, pane) => handleSelectItems(pane, [])}
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
-                  onDropFilesFromOtherPane={handleDropFiles}
+                  onDropFiles={handleDropFiles}
                   onInlineRename={handleInlineRename}
                   renameRequest={renameRequest}
                   onRenameRequestHandled={handleRenameRequestHandled}
@@ -5295,7 +5299,7 @@ export default function App() {
                   onBackgroundContextMenu={handleBackgroundContextMenu}
                   onBackgroundClick={(_event, pane) => handleSelectItems(pane, [])}
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
-                  onDropFilesFromOtherPane={handleDropFiles}
+                  onDropFiles={handleDropFiles}
                   onInlineRename={handleInlineRename}
                   renameRequest={renameRequest}
                   onRenameRequestHandled={handleRenameRequestHandled}
@@ -5364,7 +5368,7 @@ export default function App() {
                   onBackgroundContextMenu={handleBackgroundContextMenu}
                   onBackgroundClick={(_event, pane) => handleSelectItems(pane, [])}
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
-                  onDropFilesFromOtherPane={handleDropFiles}
+                  onDropFiles={handleDropFiles}
                   onInlineRename={handleInlineRename}
                   renameRequest={renameRequest}
                   onRenameRequestHandled={handleRenameRequestHandled}
@@ -5428,7 +5432,7 @@ export default function App() {
                   onBackgroundContextMenu={handleBackgroundContextMenu}
                   onBackgroundClick={(_event, pane) => handleSelectItems(pane, [])}
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
-                  onDropFilesFromOtherPane={handleDropFiles}
+                  onDropFiles={handleDropFiles}
                   onInlineRename={handleInlineRename}
                   renameRequest={renameRequest}
                   onRenameRequestHandled={handleRenameRequestHandled}
@@ -5497,7 +5501,7 @@ export default function App() {
                 onBackgroundContextMenu={handleBackgroundContextMenu}
                 onBackgroundClick={(_event, pane) => handleSelectItems(pane, [])}
                 onBackgroundDoubleClick={handleBackgroundDoubleClick}
-                onDropFilesFromOtherPane={handleDropFiles}
+                onDropFiles={handleDropFiles}
                 onInlineRename={handleInlineRename}
                 renameRequest={renameRequest}
                 onRenameRequestHandled={handleRenameRequestHandled}
