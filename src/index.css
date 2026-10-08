@@ -1031,6 +1031,9 @@ body.cyberfiles-file-pointer-drag-move * {
 }
 
 .cyberfiles-file-drag-ghost-action {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   overflow: hidden;
   border-top: 1px solid rgb(34 211 238 / 18%);
   padding: 4px 8px 5px;
@@ -1039,6 +1042,24 @@ body.cyberfiles-file-pointer-drag-move * {
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.cyberfiles-file-drag-ghost-action::before {
+  content: '→';
+  flex: 0 0 auto;
+  color: rgb(103 232 249);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.cyberfiles-file-drag-ghost[data-operation='copy'] .cyberfiles-file-drag-ghost-action::before {
+  content: '+';
+}
+
+.cyberfiles-file-drag-ghost[data-allowed='false'] .cyberfiles-file-drag-ghost-action::before {
+  content: '⊘';
+  color: rgb(252 165 165);
 }
 
 .cyberfiles-file-drag-ghost[data-allowed='false'] .cyberfiles-file-drag-ghost-action {
