@@ -25,6 +25,7 @@ import {
   type NewTabActionMode,
   type NewTabTrigger,
   type DraggedFileItem,
+  type FileDropOperation,
   type TabSizePreferences,
 } from './types';
 import {
@@ -3658,7 +3659,7 @@ export default function App() {
       showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
     }
   }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, pushUndoAction, queueNativeTransfer, refreshChangedDirectories, rightTabs, showToast, t.core.clipboardImageFileBaseName, t.core.desktopFileOperationsOnly, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.pastedImage, t.pane.chooseRealFolderFirst, updatePaneTab]);
-  const handleDropFiles = useCallback((droppedItems: DraggedFileItem[], targetFolderPath: string, sourcePane: 'left' | 'right') => {
+  const handleDropFiles = useCallback((droppedItems: DraggedFileItem[], targetFolderPath: string, sourcePane: 'left' | 'right', operation: FileDropOperation) => {
     if (targetFolderPath === SYSTEM_HOME_PATH || targetFolderPath === RECYCLE_BIN_PATH) {
       showToast(t.pane.chooseRealDestinationFolder);
       return;
@@ -3668,15 +3669,36 @@ export default function App() {
     );
     if (roots.length === 0) return;
     if (roots.some(root => root.isFolder && isSameOrDescendantPath(targetFolderPath, root.path))) {
-      showToast(t.core.cannotMoveIntoSelf);
+      showToast(operation === 'copy' ? t.core.cannotCopyIntoSelf : t.core.cannotMoveIntoSelf);
       return;
     }
     if (isTauriDesktop()) {
-      queueNativeTransfer('move', roots.map(root => root.path), targetFolderPath, { sourcePane });
+      queueNativeTransfer(operation, roots.map(root => root.path), targetFolderPath, operation === 'move' ? { sourcePane } : {});
+      return;
+    }
+    if (operation === 'copy') {
+      const sourceRoots = getRootItems(allFiles, roots.map(root => root.id));
+      const names = new Set(getChildItems(allFiles, targetFolderPath).map(item => item.name));
+      const now = new Date().toISOString();
+      const newCopies = sourceRoots.flatMap(root => {
+        const copyName = getUniqueName(root.name, names);
+        names.add(copyName);
+        const destination = joinWindowsPath(targetFolderPath, copyName);
+        return getItemsInTree(allFiles, root.path).map(item => ({
+          ...item,
+          id: createOperationId('copy'),
+          path: rewritePathPrefix(item.path, root.path, destination),
+          modifiedDate: now.replace('T', ' ').slice(0, 16),
+          lastAccessed: now,
+          handle: undefined,
+        }));
+      });
+      setAllFiles(previous => [...previous, ...newCopies]);
+      showToast(t.core.copied.replace('{count}', String(sourceRoots.length)).replace('{target}', targetFolderPath));
       return;
     }
     void moveItemsToPath(roots.map(root => root.id), targetFolderPath, sourcePane);
-  }, [moveItemsToPath, queueNativeTransfer, showToast, t.core.cannotMoveIntoSelf, t.pane.chooseRealDestinationFolder]);
+  }, [allFiles, moveItemsToPath, queueNativeTransfer, showToast, t.core.cannotCopyIntoSelf, t.core.cannotMoveIntoSelf, t.core.copied, t.pane.chooseRealDestinationFolder]);
 
   const handleInlineRename = useCallback(async (itemId: string, newName: string, pane: 'left' | 'right' = activePane) => {
     const item = allFiles.find(file => file.id === itemId);

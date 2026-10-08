@@ -37,7 +37,7 @@ import {
   Home,
   Keyboard,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type DraggedFileItem, type NewTabTrigger, type TabSizePreferences } from '../types';
+import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, getParentPath, isSameOrDescendantPath, normalizeWindowsPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
@@ -109,7 +109,7 @@ interface FilePaneProps {
   onBackgroundContextMenu: (e: React.MouseEvent, pane: 'left' | 'right') => void;
   onBackgroundClick: (e: React.MouseEvent, pane: 'left' | 'right') => void;
   onBackgroundDoubleClick: (e: React.MouseEvent, pane: 'left' | 'right') => void;
-  onDropFiles: (droppedItems: DraggedFileItem[], targetFolder: string, sourcePane: 'left' | 'right') => void;
+  onDropFiles: (droppedItems: DraggedFileItem[], targetFolder: string, sourcePane: 'left' | 'right', operation: FileDropOperation) => void;
   onInlineRename: (itemId: string, newName: string, paneId: 'left' | 'right') => void;
   renameRequest: { requestId: number; itemId: string; paneId: 'left' | 'right' } | null;
   onRenameRequestHandled: (requestId: number) => void;
@@ -1754,6 +1754,61 @@ export const FilePane: React.FC<FilePaneProps> = ({
     let highlightedTarget: HTMLElement | null = null;
     let hoveredTabKey: string | null = null;
     let tabActivationTimer: number | null = null;
+    let dragGhost: HTMLDivElement | null = null;
+    let lastClientX = startX;
+    let lastClientY = startY;
+    let requestedOperation: FileDropOperation = event.ctrlKey ? 'copy' : 'move';
+
+    const createDragGhost = () => {
+      if (dragGhost) return dragGhost;
+      const ghost = document.createElement('div');
+      ghost.className = 'cyberfiles-file-drag-ghost';
+      ghost.setAttribute('aria-hidden', 'true');
+
+      const summary = document.createElement('div');
+      summary.className = 'cyberfiles-file-drag-ghost-summary';
+      const renderedIcon = event.currentTarget.querySelector<HTMLElement>('svg, img')?.cloneNode(true);
+      const icon = renderedIcon instanceof HTMLElement || renderedIcon instanceof SVGElement
+        ? renderedIcon
+        : document.createElement('span');
+      icon.classList.add('cyberfiles-file-drag-ghost-icon');
+      if (icon instanceof HTMLSpanElement) icon.textContent = item.isFolder ? '📁' : '📄';
+      const name = document.createElement('span');
+      name.className = 'cyberfiles-file-drag-ghost-name';
+      name.textContent = item.name;
+      summary.append(icon, name);
+      if (payload.items.length > 1) {
+        const count = document.createElement('span');
+        count.className = 'cyberfiles-file-drag-ghost-count';
+        count.textContent = String(payload.items.length);
+        summary.append(count);
+      }
+
+      const action = document.createElement('div');
+      action.className = 'cyberfiles-file-drag-ghost-action';
+      ghost.append(summary, action);
+      document.body.append(ghost);
+      dragGhost = ghost;
+      return ghost;
+    };
+    const updateDragGhost = (clientX: number, clientY: number, target: { element: HTMLElement; destinationPath: string } | null, operation: FileDropOperation) => {
+      const ghost = createDragGhost();
+      ghost.dataset.allowed = target ? 'true' : 'false';
+      ghost.dataset.operation = operation;
+      const action = ghost.querySelector<HTMLElement>('.cyberfiles-file-drag-ghost-action');
+      if (action) {
+        action.textContent = target
+          ? (operation === 'copy' ? t.pane.dragCopyTo : t.pane.dragMoveTo).replace('{target}', target.destinationPath)
+          : t.pane.dragNotAllowed;
+      }
+      const maxLeft = Math.max(8, window.innerWidth - ghost.offsetWidth - 8);
+      const maxTop = Math.max(8, window.innerHeight - ghost.offsetHeight - 8);
+      ghost.style.left = `${Math.min(clientX + 18, maxLeft)}px`;
+      ghost.style.top = `${Math.min(clientY + 20, maxTop)}px`;
+      document.body.classList.toggle('cyberfiles-file-pointer-drag-invalid', !target);
+      document.body.classList.toggle('cyberfiles-file-pointer-drag-copy', Boolean(target) && operation === 'copy');
+      document.body.classList.toggle('cyberfiles-file-pointer-drag-move', Boolean(target) && operation === 'move');
+    };
 
     const clearTabActivationTimer = () => {
       if (tabActivationTimer !== null) window.clearTimeout(tabActivationTimer);
@@ -1766,13 +1821,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
       highlightedTarget = target;
       highlightedTarget?.classList.add('cyberfiles-file-drop-target');
     };
-    const resolveDropTarget = (clientX: number, clientY: number) => {
+    const resolveDropTarget = (clientX: number, clientY: number, operation: FileDropOperation) => {
       const hit = document.elementFromPoint(clientX, clientY);
       const element = hit instanceof Element ? hit.closest<HTMLElement>('[data-file-drop-path]') : null;
       const destinationPath = element?.dataset.fileDropPath;
       if (!element || !destinationPath) return null;
       const normalizedDestination = normalizeWindowsPath(destinationPath).toLowerCase();
-      if (normalizedDestination === normalizeWindowsPath(payload.sourcePath).toLowerCase()) return null;
+      if (operation === 'move' && normalizedDestination === normalizeWindowsPath(payload.sourcePath).toLowerCase()) return null;
       if (payload.items.some(source => source.isFolder && isSameOrDescendantPath(destinationPath, source.path))) return null;
       return { element, destinationPath };
     };
@@ -1791,19 +1846,29 @@ export const FilePane: React.FC<FilePaneProps> = ({
         if (hoveredTabKey === tabKey && tabTarget.isConnected) tabTarget.click();
       }, tabSizePreferences.dragHoverActivationDelay);
     };
-    const updatePointerTarget = (clientX: number, clientY: number) => {
-      const target = resolveDropTarget(clientX, clientY);
+    const updatePointerTarget = (clientX: number, clientY: number, operation: FileDropOperation) => {
+      const target = resolveDropTarget(clientX, clientY, operation);
       setHighlightedTarget(target?.element ?? null);
       updateTabActivation(target?.element ?? null);
+      updateDragGhost(clientX, clientY, target, operation);
       return target;
     };
     const cleanup = () => {
       document.removeEventListener('pointermove', handlePointerMove, true);
       document.removeEventListener('pointerup', finishPointerDrag, true);
       document.removeEventListener('pointercancel', cancelPointerDrag, true);
+      document.removeEventListener('keydown', handleModifierChange, true);
+      document.removeEventListener('keyup', handleModifierChange, true);
       clearTabActivationTimer();
       setHighlightedTarget(null);
-      document.body.classList.remove('cyberfiles-file-pointer-drag');
+      dragGhost?.remove();
+      dragGhost = null;
+      document.body.classList.remove(
+        'cyberfiles-file-pointer-drag',
+        'cyberfiles-file-pointer-drag-invalid',
+        'cyberfiles-file-pointer-drag-copy',
+        'cyberfiles-file-pointer-drag-move',
+      );
     };
     const handlePointerMove = (pointerEvent: PointerEvent) => {
       if (pointerEvent.pointerId !== pointerId) return;
@@ -1814,27 +1879,38 @@ export const FilePane: React.FC<FilePaneProps> = ({
         document.body.classList.add('cyberfiles-file-pointer-drag');
       }
       pointerEvent.preventDefault();
-      updatePointerTarget(pointerEvent.clientX, pointerEvent.clientY);
+      lastClientX = pointerEvent.clientX;
+      lastClientY = pointerEvent.clientY;
+      requestedOperation = pointerEvent.ctrlKey ? 'copy' : 'move';
+      updatePointerTarget(lastClientX, lastClientY, requestedOperation);
     };
     const finishPointerDrag = (pointerEvent: PointerEvent) => {
       if (pointerEvent.pointerId !== pointerId) return;
-      const target = dragging ? updatePointerTarget(pointerEvent.clientX, pointerEvent.clientY) : null;
+      requestedOperation = pointerEvent.ctrlKey ? 'copy' : 'move';
+      const target = dragging ? updatePointerTarget(pointerEvent.clientX, pointerEvent.clientY, requestedOperation) : null;
       cleanup();
       if (!dragging) return;
       pointerEvent.preventDefault();
       pointerEvent.stopPropagation();
       window.setTimeout(() => { suppressFileClickRef.current = false; }, 0);
-      if (target) onDropFiles(payload.items, target.destinationPath, payload.sourcePane);
+      if (target) onDropFiles(payload.items, target.destinationPath, payload.sourcePane, requestedOperation);
     };
     const cancelPointerDrag = (pointerEvent: PointerEvent) => {
       if (pointerEvent.pointerId !== pointerId) return;
       cleanup();
       suppressFileClickRef.current = false;
     };
+    const handleModifierChange = (keyboardEvent: KeyboardEvent) => {
+      if (keyboardEvent.key !== 'Control' || !dragging) return;
+      requestedOperation = keyboardEvent.ctrlKey ? 'copy' : 'move';
+      updatePointerTarget(lastClientX, lastClientY, requestedOperation);
+    };
 
     document.addEventListener('pointermove', handlePointerMove, { capture: true, passive: false });
     document.addEventListener('pointerup', finishPointerDrag, { capture: true, passive: false });
     document.addEventListener('pointercancel', cancelPointerDrag, true);
+    document.addEventListener('keydown', handleModifierChange, true);
+    document.addEventListener('keyup', handleModifierChange, true);
   };
 
   // Selection ranges follow the full displayed order, including virtual rows.

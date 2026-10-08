@@ -76,6 +76,8 @@ export interface DraggedFileItem {
   isFolder: boolean;
 }
 
+export type FileDropOperation = 'copy' | 'move';
+
 export type NewTabActionMode = 'current-folder' | 'duplicate' | 'default-folder' | 'home-folder' | 'empty-tab' | 'location';
 export type NewTabTrigger = 'button' | 'double-click';
 
