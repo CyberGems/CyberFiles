@@ -336,7 +336,7 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-pane-status 
   overflow-wrap: anywhere;
 }
 
-@container cyberfiles-file-content (min-width: 620px) {
+@container cyberfiles-file-content (min-width: 480px) {
   .cyberfiles-system-home-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
