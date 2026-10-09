@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Check, Compass, FolderOpen, Info, Keyboard, Palette, RotateCcw, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Check, Compass, FolderOpen, Info, Keyboard, Palette, RotateCcw, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useLanguage } from '../locales/LanguageContext';
 import { type AppTheme, useTheme } from '../themes/ThemeContext';
@@ -11,6 +11,7 @@ import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
 import { isTauriDesktop } from '../utils/nativeFileSystem';
 import { ColorValueEditor } from './ColorValueEditor';
+import { translations, type Language } from '../locales/translations';
 
 interface GlobalShortcutSettingsState {
   enabled: boolean;
@@ -97,6 +98,29 @@ interface SettingsModalProps {
 const themes: AppTheme[] = ['cyberfiles', 'gray', 'light'];
 type SettingsTab = 'general' | 'appearance' | 'navigation' | 'folders' | 'shortcuts';
 const settingsTabs: SettingsTab[] = ['general', 'appearance', 'navigation', 'folders', 'shortcuts'];
+interface SettingsSearchEntry {
+  id: string;
+  tab: SettingsTab;
+  title: string;
+  text: string;
+  corpus: string;
+  target: HTMLElement;
+}
+
+function normalizeSettingsSearch(value: string): string {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function collectTranslationLeaves(value: unknown, path = '', result = new Map<string, string>()): Map<string, string> {
+  if (typeof value === 'string') {
+    result.set(path, value);
+  } else if (Array.isArray(value)) {
+    value.forEach((child, index) => collectTranslationLeaves(child, `${path}.${index}`, result));
+  } else if (value && typeof value === 'object') {
+    Object.entries(value).forEach(([key, child]) => collectTranslationLeaves(child, path ? `${path}.${key}` : key, result));
+  }
+  return result;
+}
 const RECENT_ITEM_AUTO_COLORS: Record<AppTheme, string> = {
   cyberfiles: '#fef3c7',
   gray: '#e5e5e5',
@@ -200,6 +224,32 @@ export function SettingsModal({
   const contentRef = useRef<HTMLDivElement>(null);
   const tabSettingsRef = useRef<HTMLDivElement>(null);
   const lastFocusTabSettingsRequest = useRef(0);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [settingsSearch, setSettingsSearch] = useState('');
+  const [settingsSearchIndex, setSettingsSearchIndex] = useState<SettingsSearchEntry[]>([]);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
+  const [activeSearchResultId, setActiveSearchResultId] = useState<string | null>(null);
+  const settingsTabLabels: Record<SettingsTab, string> = {
+    general: t.settings.generalTab,
+    appearance: t.settings.appearance,
+    navigation: t.settings.navigationTab,
+    folders: t.settings.foldersTab,
+    shortcuts: t.settings.shortcutsTab,
+  };
+  const counterpartText = useMemo(() => {
+    const otherLanguage: Language = language === 'es' ? 'en' : 'es';
+    const current = collectTranslationLeaves(translations[language]);
+    const other = collectTranslationLeaves(translations[otherLanguage]);
+    const lookup = new Map<string, string[]>();
+    current.forEach((value, path) => {
+      const counterpart = other.get(path);
+      if (!counterpart || counterpart === value) return;
+      const values = lookup.get(value) ?? [];
+      values.push(counterpart);
+      lookup.set(value, values);
+    });
+    return lookup;
+  }, [language]);
   useEffect(() => {
     if (!isOpen || focusTabSettingsRequest <= lastFocusTabSettingsRequest.current) return;
     lastFocusTabSettingsRequest.current = focusTabSettingsRequest;
@@ -444,6 +494,130 @@ export function SettingsModal({
     if (!isOpen) setIsRecordingShortcut(false);
   }, [isOpen]);
 
+  const chooseSettingsSearchResult = (result: { id: string; tab: SettingsTab }) => {
+    selectTab(result.tab);
+    setActiveSearchResultId(result.id.startsWith('tab:') ? null : result.id);
+    setActiveSearchIndex(-1);
+    searchInputRef.current?.focus({ preventScroll: true });
+  };
+  useEffect(() => {
+    if (!isOpen) return;
+    const focusSettingsSearch = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 'f') return;
+      const activeElement = document.activeElement;
+      if ((activeElement instanceof HTMLInputElement && activeElement.type !== 'search' && activeElement !== searchInputRef.current) || activeElement instanceof HTMLTextAreaElement || (activeElement instanceof HTMLElement && activeElement.isContentEditable)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    };
+    window.addEventListener('keydown', focusSettingsSearch, true);
+    return () => window.removeEventListener('keydown', focusSettingsSearch, true);
+  }, [isOpen]);
+
+  useLayoutEffect(() => {
+    if (!isOpen || !contentRef.current) return;
+    const sections = Array.from(contentRef.current.querySelectorAll<HTMLElement>('[data-settings-tab-content]'));
+    const nextIndex: SettingsSearchEntry[] = [];
+    sections.forEach((section, sectionIndex) => {
+      const tabName = section.dataset.settingsTabContent as SettingsTab | undefined;
+      if (!tabName || !settingsTabs.includes(tabName)) return;
+      const candidates = new Set<HTMLElement>([
+        ...Array.from(section.querySelectorAll<HTMLElement>('label, fieldset, [role="radio"], section[aria-labelledby], h3, h4, [class*="uppercase"]')),
+        ...Array.from(section.querySelectorAll<HTMLElement>('div')).filter(element => element.classList.contains('rounded-lg') && element.classList.contains('border')),
+      ]);
+      Array.from(candidates).forEach((target, candidateIndex) => {
+        const textParts: string[] = [];
+        const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
+        let currentNode: Node | null;
+        while ((currentNode = walker.nextNode())) {
+          const part = currentNode.textContent?.trim();
+          if (part) {
+            textParts.push(part);
+            textParts.push(...(counterpartText.get(part) ?? []));
+          }
+        }
+        const controlParts: string[] = [];
+        target.querySelectorAll<HTMLElement>('input, select, textarea, button').forEach(control => {
+          for (const attribute of ['aria-label', 'title', 'name', 'value']) {
+            const value = control.getAttribute(attribute);
+            if (value) {
+              controlParts.push(value);
+              controlParts.push(...(counterpartText.get(value) ?? []));
+            }
+          }
+          if (control instanceof HTMLSelectElement) controlParts.push(...Array.from(control.options, option => option.text));
+        });
+        const ariaLabel = target.getAttribute('aria-label') ?? '';
+        const titleAttribute = target.getAttribute('title') ?? '';
+        const rawText = textParts.join(' ').replace(/\s+/g, ' ').trim();
+        const searchableText = [rawText, ariaLabel, titleAttribute, ...controlParts].filter(Boolean).join(' ');
+        if (!normalizeSettingsSearch(searchableText)) return;
+        const heading = target.matches('legend, h3, h4')
+          ? target
+          : target.querySelector<HTMLElement>('legend, h3, h4, [role="heading"], .font-medium, .font-semibold');
+        const title = heading?.textContent?.replace(/\s+/g, ' ').trim() || ariaLabel || rawText.slice(0, 84);
+        const visibleText = rawText.split(' ').filter(Boolean).join(' ').replace(title, '').trim();
+        nextIndex.push({
+          id: `${tabName}:${sectionIndex}:${candidateIndex}`,
+          tab: tabName,
+          title,
+          text: visibleText.slice(0, 220),
+          corpus: searchableText,
+          target,
+        });
+      });
+    });
+    setSettingsSearchIndex(previous => previous.length === nextIndex.length && previous.every((entry, index) =>
+      entry.id === nextIndex[index].id && entry.title === nextIndex[index].title && entry.text === nextIndex[index].text && entry.corpus === nextIndex[index].corpus && entry.target === nextIndex[index].target,
+    ) ? previous : nextIndex);
+  });
+
+  const normalizedSearch = normalizeSettingsSearch(settingsSearch);
+  const searchTokens = normalizedSearch.split(' ').filter(Boolean);
+  const settingsSearchResults = useMemo(() => {
+    if (searchTokens.length === 0) return [];
+    const tabResults = settingsTabs.flatMap(tabName => {
+      const label = settingsTabLabels[tabName];
+      const aliases = counterpartText.get(label) ?? [];
+      const corpus = normalizeSettingsSearch([label, ...aliases].join(' '));
+      return searchTokens.every(token => corpus.includes(token))
+        ? [{ id: `tab:${tabName}`, tab: tabName, title: label, text: label, target: contentRef.current?.querySelector<HTMLElement>(`[data-settings-tab-content="${tabName}"]`) ?? null, tabOnly: true }]
+        : [];
+    }).filter((entry): entry is { id: string; tab: SettingsTab; title: string; text: string; target: HTMLElement; tabOnly: true } => entry.target !== null);
+    const matching = settingsSearchIndex.filter(entry => {
+      const corpus = normalizeSettingsSearch(entry.corpus);
+      return searchTokens.every(token => corpus.includes(token));
+    });
+    const specificMatches = matching.filter(entry => !matching.some(other => other.target !== entry.target && entry.target.contains(other.target)));
+    const uniqueMatches = specificMatches.filter((entry, index, all) => all.findIndex(other => other.tab === entry.tab && normalizeSettingsSearch(other.title) === normalizeSettingsSearch(entry.title)) === index);
+    const query = normalizedSearch;
+    uniqueMatches.sort((left, right) => {
+      const score = (entry: SettingsSearchEntry) => {
+        const title = normalizeSettingsSearch(entry.title);
+        return title === query ? 100 : title.startsWith(query) ? 80 : searchTokens.filter(token => title.includes(token)).length * 10;
+      };
+      return score(right) - score(left);
+    });
+    return [...tabResults, ...uniqueMatches];
+  }, [counterpartText, normalizedSearch, searchTokens, settingsSearchIndex, settingsTabLabels]);
+
+  useEffect(() => {
+    if (!isOpen || !activeSearchResultId) return;
+    const result = settingsSearchIndex.find(entry => entry.id === activeSearchResultId);
+    if (!result || result.tab !== tab) return;
+    const frame = window.requestAnimationFrame(() => {
+      result.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      result.target.setAttribute('data-settings-search-highlight', 'true');
+    });
+    const timeout = window.setTimeout(() => result.target.removeAttribute('data-settings-search-highlight'), 1800);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeout);
+      result.target.removeAttribute('data-settings-search-highlight');
+    };
+  }, [activeSearchResultId, isOpen, settingsSearchIndex, tab]);
+
   if (!isOpen) return null;
 
   const themeCopy = {
@@ -478,6 +652,93 @@ export function SettingsModal({
           </Tooltip>
         </div>
 
+        <div className="relative z-30 border-b border-neutral-800 px-5 py-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" aria-hidden="true" />
+            <input
+              ref={searchInputRef}
+              id="settings-search"
+              type="search"
+              role="combobox"
+              aria-label={t.settings.searchPlaceholder}
+              aria-autocomplete="list"
+              aria-expanded={settingsSearchResults.length > 0}
+              aria-controls={settingsSearchResults.length > 0 ? 'settings-search-results' : undefined}
+              aria-activedescendant={settingsSearchResults[activeSearchIndex] ? `settings-search-result-${activeSearchIndex}` : undefined}
+              autoComplete="off"
+              spellCheck={false}
+              value={settingsSearch}
+              onChange={event => {
+                setSettingsSearch(event.target.value);
+                setActiveSearchIndex(-1);
+                setActiveSearchResultId(null);
+              }}
+              onKeyDown={event => {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                  if (settingsSearchResults.length === 0) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const next = event.key === 'ArrowDown'
+                    ? (activeSearchIndex + 1) % settingsSearchResults.length
+                    : (activeSearchIndex <= 0 ? settingsSearchResults.length - 1 : activeSearchIndex - 1);
+                  setActiveSearchIndex(next);
+                  window.requestAnimationFrame(() => document.getElementById(`settings-search-result-${next}`)?.scrollIntoView({ block: 'nearest' }));
+                } else if (event.key === 'Enter' && settingsSearchResults.length > 0) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  chooseSettingsSearchResult(settingsSearchResults[activeSearchIndex] ?? settingsSearchResults[0]);
+                } else if (event.key === 'Escape' && settingsSearch.trim()) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setSettingsSearch('');
+                  setActiveSearchIndex(-1);
+                  setActiveSearchResultId(null);
+                }
+              }}
+              placeholder={t.settings.searchPlaceholder}
+              className="h-10 w-full rounded-lg border border-neutral-700 bg-neutral-950/80 py-2 pl-10 pr-20 text-sm text-neutral-100 placeholder:text-neutral-500 outline-none transition-colors focus:border-cyan-600 focus:ring-1 focus:ring-cyan-600/40"
+            />
+            <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+              {settingsSearch && (
+                <button type="button" aria-label={t.settings.searchClear} onClick={() => { setSettingsSearch(''); setActiveSearchIndex(-1); setActiveSearchResultId(null); searchInputRef.current?.focus(); }} className="rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200">
+                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              )}
+              <kbd className="keyboard-hint text-neutral-500">Ctrl+F</kbd>
+            </div>
+            {settingsSearch.trim() && (
+              <div className="absolute inset-x-0 top-[calc(100%+8px)] z-[100] overflow-hidden rounded-lg border border-neutral-700 bg-neutral-950/98 shadow-2xl backdrop-blur-md">
+                <div aria-live="polite" className="border-b border-neutral-800 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                  {settingsSearchResults.length === 0
+                    ? t.settings.searchNoResults
+                    : t.settings.searchResultsCount.replace('{count}', String(settingsSearchResults.length))}
+                </div>
+                {settingsSearchResults.length > 0 && (
+                  <div id="settings-search-results" role="listbox" aria-label={t.settings.searchResultsCount.replace('{count}', String(settingsSearchResults.length))} className="max-h-[min(55vh,24rem)] overflow-y-auto p-1.5">
+                    {settingsSearchResults.map((result, index) => (
+                      <button
+                        key={result.id}
+                        id={`settings-search-result-${index}`}
+                        type="button"
+                        role="option"
+                        aria-selected={activeSearchIndex === index}
+                        onMouseEnter={() => setActiveSearchIndex(index)}
+                        onClick={() => chooseSettingsSearchResult(result)}
+                        className={`flex w-full flex-col gap-1 rounded-md px-3 py-2 text-left transition-colors ${activeSearchIndex === index ? 'bg-cyan-950/55 text-cyan-100' : 'text-neutral-200 hover:bg-neutral-800/80'}`}
+                      >
+                        <span className="flex w-full min-w-0 items-center justify-between gap-3">
+                          <span className="min-w-0 truncate text-xs font-medium">{result.title}</span>
+                          <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-cyan-400/80">{settingsTabLabels[result.tab]}</span>
+                        </span>
+                        {result.text && <span className="line-clamp-2 text-[10px] leading-relaxed text-neutral-500">{result.text}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
           <aside className="shrink-0 border-b border-neutral-800 bg-neutral-950/55 p-2.5 sm:flex sm:w-40 sm:flex-col sm:border-b-0 sm:border-r">
             <div role="tablist" aria-label={t.settings.title} className="flex gap-1 overflow-x-auto sm:flex-col sm:overflow-y-auto">
@@ -518,8 +779,7 @@ export function SettingsModal({
             </div>
           </aside>
           <div id="settings-tab-panel" ref={contentRef} role="tabpanel" aria-labelledby={'settings-tab-' + tab} tabIndex={0} className="min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto p-5">
-          {tab === 'appearance' && (
-            <>
+          <div data-settings-tab-content="appearance" hidden={tab !== 'appearance'} className="space-y-3">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">{t.settings.appearance}</div>
           <div role="radiogroup" aria-label={t.settings.appearance} className="grid gap-2.5 sm:grid-cols-3">
             {themes.map(option => {
@@ -553,10 +813,8 @@ export function SettingsModal({
             })}
           </div>
 
-            </>
-          )}
-          {tab === 'general' && (
-            <>
+          </div>
+          <div data-settings-tab-content="general" hidden={tab !== 'general'} className="space-y-3">
           <div className="border-t border-neutral-800 pt-4">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">{t.settings.language}</div>
             <div className="mt-2 inline-flex rounded-lg border border-neutral-700 bg-neutral-950/60 p-1">
@@ -637,10 +895,8 @@ export function SettingsModal({
             )}
           </div>
 
-            </>
-          )}
-          {tab === 'appearance' && (
-            <>
+          </div>
+          <div data-settings-tab-content="appearance" hidden={tab !== 'appearance'} className="space-y-3">
           <div className="border-t border-neutral-800 pt-4">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.interfaceSection}</div>
             <div className="space-y-2">
@@ -688,10 +944,8 @@ export function SettingsModal({
               </div>
             </div>
           </div>
-            </>
-          )}
-          {tab === 'shortcuts' && (
-            <>
+          </div>
+          <div data-settings-tab-content="shortcuts" hidden={tab !== 'shortcuts'} className="space-y-3">
           <div className="border-t border-neutral-800 pt-4">
             <div className="flex items-start gap-2">
               <Keyboard className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-300" />
@@ -752,10 +1006,8 @@ export function SettingsModal({
             </p>
           </div>
 
-            </>
-          )}
-          {tab === 'general' && (
-            <>
+          </div>
+          <div data-settings-tab-content="general" hidden={tab !== 'general'} className="space-y-3">
           <div className="border-t border-neutral-800 pt-4">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.instancesSection}</div>
             <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
@@ -782,10 +1034,8 @@ export function SettingsModal({
             </div>
           </div>
 
-            </>
-          )}
-          {tab === 'navigation' && (
-            <>
+          </div>
+          <div data-settings-tab-content="navigation" hidden={tab !== 'navigation'} className="space-y-3">
           <div ref={tabSettingsRef} className="border-t border-neutral-800 pt-4">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.navigationSection}</div>
             <div className="space-y-2">
@@ -1034,10 +1284,8 @@ export function SettingsModal({
             </label>
           </div>
 
-            </>
-          )}
-          {tab === 'shortcuts' && (
-            <>
+          </div>
+          <div data-settings-tab-content="shortcuts" hidden={tab !== 'shortcuts'} className="space-y-3">
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
             <label className="flex cursor-pointer items-start gap-2.5">
               <input
@@ -1053,10 +1301,8 @@ export function SettingsModal({
             </label>
           </div>
 
-            </>
-          )}
-          {tab === 'appearance' && (
-            <>
+          </div>
+          <div data-settings-tab-content="appearance" hidden={tab !== 'appearance'} className="space-y-3">
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5">
@@ -1243,10 +1489,8 @@ export function SettingsModal({
               </label>
           </div>
 
-            </>
-          )}
-          {tab === 'folders' && (
-            <>
+          </div>
+          <div data-settings-tab-content="folders" hidden={tab !== 'folders'} className="space-y-3">
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
             <label className="flex cursor-pointer items-start gap-2.5">
               <input
@@ -1338,15 +1582,12 @@ export function SettingsModal({
               </div>
             )}
           </section>
-            </>
-          )}
-          {tab === 'general' && (
-            <>
+          </div>
+          <div data-settings-tab-content="general" hidden={tab !== 'general'} className="space-y-3">
           <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
             {t.settings.persistenceNote}
           </div>
-            </>
-          )}
+          </div>
           </div>
         </div>
 

@@ -1124,3 +1124,10 @@ body.cyberfiles-file-pointer-drag-move * {
 @media (prefers-reduced-motion: reduce) {
   .cyberfiles-settings-panel { animation: none; }
 }
+
+[data-settings-search-highlight="true"] {
+  border-radius: 0.75rem;
+  outline: 1px solid rgb(34 211 238 / 82%);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgb(8 145 178 / 18%), 0 0 16px rgb(34 211 238 / 20%);
+}

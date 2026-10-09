@@ -302,6 +302,10 @@ export const translations = {
     },
     settings: {
       title: 'Configuración',
+      searchPlaceholder: 'Buscar en los ajustes…',
+      searchClear: 'Limpiar búsqueda',
+      searchResultsCount: '{count} resultados',
+      searchNoResults: 'No se encontraron ajustes',
       generalTab: 'General',
       navigationTab: 'Navegación',
       foldersTab: 'Carpetas',
@@ -1490,6 +1494,10 @@ export const translations = {
     },
     settings: {
       title: 'Settings',
+      searchPlaceholder: 'Search settings…',
+      searchClear: 'Clear search',
+      searchResultsCount: '{count} results',
+      searchNoResults: 'No settings found',
       generalTab: 'General',
       navigationTab: 'Navigation',
       foldersTab: 'Folders',
