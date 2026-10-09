@@ -19,16 +19,25 @@ import {
   ExternalLink,
   FileText,
   Terminal,
+  Menu,
+  PanelLeft,
+  PanelRight,
 } from 'lucide-react';
 import { SYSTEM_HOME_PATH, ViewLayout, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 import type { WindowsTerminalOption } from '../utils/nativeFileSystem';
 import { UndoHistoryMenu, type UndoHistoryItem } from './UndoHistoryMenu';
+import { ToolbarOverflowMenu, type ToolbarOverflowGroup } from './ToolbarOverflowMenu';
 
 interface HeaderBarProps {
   layout: ViewLayout;
   onLayoutChange: (layout: ViewLayout) => void;
+  isCompactWindow: boolean;
+  activePane: 'left' | 'right';
+  onActivePaneChange: (pane: 'left' | 'right') => void;
+  sidebarDrawerOpen: boolean;
+  onToggleSidebarDrawer: () => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   relativeGraphsEnabled: boolean;
@@ -63,6 +72,11 @@ interface HeaderBarProps {
 export const HeaderBar: React.FC<HeaderBarProps> = ({
   layout,
   onLayoutChange,
+  isCompactWindow,
+  activePane,
+  onActivePaneChange,
+  sidebarDrawerOpen,
+  onToggleSidebarDrawer,
   viewMode,
   onViewModeChange,
   relativeGraphsEnabled,
@@ -122,9 +136,98 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
     };
   }, [openToolbarMenu]);
 
+  const overflowGroups: ToolbarOverflowGroup[] = [
+    {
+      id: 'windows-actions',
+      label: t.toolbar.tools,
+      entries: windowsActionsAvailable ? [
+        { id: 'show-in-explorer', label: t.toolbar.showInWindowsExplorer, icon: <ExternalLink className="h-4 w-4" />, disabled: !canUseFolderActions, onSelect: onShowInWindowsExplorer },
+        ...(['cmd', 'cmd-admin', 'powershell', 'powershell-admin'] as WindowsTerminalOption[]).map(option => ({
+          id: 'terminal-' + option,
+          label: terminalLabels[option],
+          icon: <Terminal className="h-4 w-4" />,
+          disabled: !canUseFolderActions,
+          pressed: lastTerminalOption === option,
+          onSelect: () => { onLastTerminalOptionChange(option); onLaunchTerminal(option); },
+        })),
+      ] : [],
+    },
+    {
+      id: 'view-modes',
+      label: t.toolbar.viewModes,
+      entries: [
+        { id: 'view-details', label: t.toolbar.viewDetails, shortcut: 'Ctrl+1', icon: <List className="h-4 w-4" />, pressed: viewMode === 'details', onSelect: () => onViewModeChange('details') },
+        { id: 'view-compact', label: t.toolbar.viewCompact, shortcut: 'Ctrl+2', icon: <StretchHorizontal className="h-4 w-4" />, pressed: viewMode === 'compact', onSelect: () => onViewModeChange('compact') },
+        { id: 'view-icons', label: t.toolbar.viewIcons, shortcut: 'Ctrl+3', icon: <LayoutGrid className="h-4 w-4" />, pressed: viewMode === 'icons', onSelect: () => onViewModeChange('icons') },
+      ],
+    },
+    {
+      id: 'layout-modes',
+      label: t.header.layoutModes,
+      entries: isCompactWindow ? [] : [
+        { id: 'layout-dual-vertical', label: t.header.layoutDualVertical, shortcut: 'Alt+1', icon: <Columns2 className="h-4 w-4" />, pressed: layout === 'dual-vertical', onSelect: () => onLayoutChange('dual-vertical') },
+        { id: 'layout-dual-horizontal', label: t.header.layoutDualHorizontal, shortcut: 'Alt+2', icon: <Rows2 className="h-4 w-4" />, pressed: layout === 'dual-horizontal', onSelect: () => onLayoutChange('dual-horizontal') },
+        { id: 'layout-single', label: t.header.layoutSingle, shortcut: 'Alt+3', icon: <Square className="h-4 w-4" />, pressed: layout === 'single', onSelect: () => onLayoutChange('single') },
+      ],
+    },
+    {
+      id: 'workspace-manager',
+      label: t.workspaceProfiles.title,
+      entries: [{
+        id: 'workspace-manager',
+        label: t.workspaceProfiles.title,
+        shortcut: 'Ctrl+Shift+W',
+        icon: <PanelsTopLeft className="h-4 w-4" />,
+        onSelect: onOpenWorkspaceManager,
+      }],
+    },
+    {
+      id: 'view-toggles',
+      label: t.toolbar.tools,
+      entries: [
+        { id: 'toggle-hidden', label: t.toolbar.showHiddenFiles, shortcut: 'Ctrl+H', icon: showHiddenFiles ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />, pressed: showHiddenFiles, onSelect: onToggleShowHiddenFiles },
+        { id: 'toggle-extensions', label: t.toolbar.showFileExtensions, shortcut: 'Ctrl+E', icon: <FileText className="h-4 w-4" />, pressed: showFileExtensions, onSelect: onToggleShowFileExtensions },
+        { id: 'toggle-graphs', label: t.toolbar.relativeGraphs, shortcut: 'Ctrl+G', icon: <BarChart3 className="h-4 w-4" />, pressed: relativeGraphsEnabled, onSelect: onToggleRelativeGraphs },
+        { id: 'toggle-flat-view', label: t.toolbar.flatView, shortcut: 'Ctrl+B', icon: <ListTree className="h-4 w-4" />, disabled: !flatViewAvailable, pressed: flatView, onSelect: onToggleFlatView },
+      ],
+    },
+    {
+      id: 'properties-panel',
+      label: t.toolbar.propertiesPanel,
+      entries: [{
+        id: 'toggle-properties',
+        label: propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel,
+        shortcut: 'F3',
+        icon: <Info className="h-4 w-4" />,
+        pressed: propertiesPanelOpen,
+        onSelect: onTogglePropertiesPanel,
+      }],
+    },
+  ];
   return (
-    <header className="cyberfiles-command-bar min-h-14 bg-neutral-900/95 border-b border-neutral-800 px-3 py-2 flex items-center justify-between gap-3 select-none z-20 backdrop-blur-md">
+    <header className="cyberfiles-command-bar command-bar-container min-h-14 bg-neutral-900/95 border-b border-neutral-800 px-3 py-2 flex items-center justify-between gap-3 select-none z-20 backdrop-blur-md">
       <div className="flex items-center gap-3 min-w-0">
+        {isCompactWindow && (
+          <div className="compact-window-controls flex shrink-0 items-center gap-1">
+            <Tooltip label={sidebarDrawerOpen ? t.header.closeSidebar : t.header.openSidebar} placement="bottom">
+              <button type="button" aria-label={sidebarDrawerOpen ? t.header.closeSidebar : t.header.openSidebar} aria-expanded={sidebarDrawerOpen} onClick={onToggleSidebarDrawer} className="flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-300 transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-200">
+                <Menu className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </Tooltip>
+            <div className="compact-pane-selector flex items-center gap-0.5 rounded-md border border-neutral-800 bg-neutral-950 p-0.5" role="group" aria-label={t.statusBar.activePaneTitle}>
+              <Tooltip label={t.statusBar.leftPane} placement="bottom">
+                <button type="button" aria-label={t.statusBar.leftPane} aria-pressed={activePane === 'left'} onClick={() => onActivePaneChange('left')} className={`flex h-8 w-8 items-center justify-center rounded border transition-colors ${activePane === 'left' ? 'border-cyan-700/70 bg-cyan-950/70 text-cyan-200' : 'border-transparent text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200'}`}>
+                  <PanelLeft className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+              <Tooltip label={t.statusBar.rightPane} placement="bottom">
+                <button type="button" aria-label={t.statusBar.rightPane} aria-pressed={activePane === 'right'} onClick={() => onActivePaneChange('right')} className={`flex h-8 w-8 items-center justify-center rounded border transition-colors ${activePane === 'right' ? 'border-cyan-700/70 bg-cyan-950/70 text-cyan-200' : 'border-transparent text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200'}`}>
+                  <PanelRight className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+            </div>
+          </div>
+        )}
 
         <div className="header-actions flex items-center gap-1 overflow-x-auto min-w-0">
           <UndoHistoryMenu items={undoHistory} onUndo={onUndoAction} disabled={undoBusy} />
@@ -133,9 +236,9 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         </div>
       </div>
 
-      <div ref={menuRootRef} className="flex items-center gap-2 flex-shrink-0">
+      <div ref={menuRootRef} className="command-bar-actions flex items-center gap-2 flex-shrink-0">
         {windowsActionsAvailable && (
-          <>
+          <div data-overflow-group="windows-actions" className="flex items-center gap-2">
             <Tooltip label={t.toolbar.showInWindowsExplorer} placement="bottom" disabled={!canUseFolderActions}>
               <button type="button" aria-label={t.toolbar.showInWindowsExplorer} disabled={!canUseFolderActions} onClick={onShowInWindowsExplorer} className="flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-300 transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40">
                 <ExternalLink className="h-4 w-4" />
@@ -166,21 +269,22 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               )}
             </div>
 
-          </>
+          </div>
         )}
 
-        <div className="view-choice-group flex items-center" role="group" aria-label={t.toolbar.viewModes}>
+        <div data-overflow-group="view-modes" className="view-choice-group flex items-center" role="group" aria-label={t.toolbar.viewModes}>
           <Tooltip label={t.toolbar.viewDetails} shortcut="Ctrl+1"><button type="button" aria-label={t.toolbar.viewDetails} aria-pressed={viewMode === 'details'} onClick={() => onViewModeChange('details')} className="view-choice"><List className="h-4 w-4" /></button></Tooltip>
           <Tooltip label={t.toolbar.viewCompact} shortcut="Ctrl+2"><button type="button" aria-label={t.toolbar.viewCompact} aria-pressed={viewMode === 'compact'} onClick={() => onViewModeChange('compact')} className="view-choice"><StretchHorizontal className="h-4 w-4" /></button></Tooltip>
           <Tooltip label={t.toolbar.viewIcons} shortcut="Ctrl+3"><button type="button" aria-label={t.toolbar.viewIcons} aria-pressed={viewMode === 'icons'} onClick={() => onViewModeChange('icons')} className="view-choice"><LayoutGrid className="h-4 w-4" /></button></Tooltip>
         </div>
 
-        <div className="view-choice-group flex items-center" role="group" aria-label={t.header.layoutModes}>
+        <div data-overflow-group="layout-modes" className="view-choice-group flex items-center" role="group" aria-label={t.header.layoutModes}>
           <Tooltip label={t.header.layoutDualVertical} shortcut="Alt+1"><button type="button" aria-label={t.header.layoutDualVertical} aria-pressed={layout === 'dual-vertical'} onClick={() => onLayoutChange('dual-vertical')} className="view-choice"><Columns2 className="h-4 w-4" /></button></Tooltip>
           <Tooltip label={t.header.layoutDualHorizontal} shortcut="Alt+2"><button type="button" aria-label={t.header.layoutDualHorizontal} aria-pressed={layout === 'dual-horizontal'} onClick={() => onLayoutChange('dual-horizontal')} className="view-choice"><Rows2 className="h-4 w-4" /></button></Tooltip>
           <Tooltip label={t.header.layoutSingle} shortcut="Alt+3"><button type="button" aria-label={t.header.layoutSingle} aria-pressed={layout === 'single'} onClick={() => onLayoutChange('single')} className="view-choice"><Square className="h-4 w-4" /></button></Tooltip>
         </div>
 
+        <div data-overflow-group="workspace-manager" className="flex items-center">
         <Tooltip label={`${t.workspaceProfiles.open}${workspaceChangesPending ? ` · ${t.workspaceProfiles.modified}` : ''}`} shortcut="Ctrl+Shift+W" placement="bottom">
           <button type="button" onClick={onOpenWorkspaceManager} aria-label={`${t.workspaceProfiles.open}${workspaceChangesPending ? `, ${t.workspaceProfiles.modified}` : ''}`} className="relative flex items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-xs text-neutral-300 transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-200">
             <PanelsTopLeft className="h-3.5 w-3.5 text-cyan-400" />
@@ -188,7 +292,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             {workspaceChangesPending && <span aria-hidden="true" className="absolute -right-1 -top-1 h-2 w-2 rounded-full border border-neutral-950 bg-amber-300" />}
           </button>
         </Tooltip>
-        <div className="flex items-center gap-1">
+        </div>
+        <div data-overflow-group="view-toggles" className="flex items-center gap-1">
           <Tooltip label={t.toolbar.showHiddenFiles} shortcut="Ctrl+H" placement="bottom">
             <button type="button" aria-label={t.toolbar.showHiddenFiles} aria-pressed={showHiddenFiles} onClick={onToggleShowHiddenFiles} className={showHiddenFiles ? 'flex h-9 w-9 items-center justify-center rounded-md border border-cyan-700/70 bg-cyan-950/70 text-cyan-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70' : 'flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70'}>
               {showHiddenFiles ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
@@ -212,7 +317,10 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             </span>
           </Tooltip>
         </div>
+        <div data-overflow-group="properties-panel" className="flex items-center">
         <Tooltip label={propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} shortcut="F3"><button type="button" onClick={onTogglePropertiesPanel} aria-label={`${propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} (F3)`} aria-pressed={propertiesPanelOpen} className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors ${propertiesPanelOpen ? 'bg-cyan-950/70 border-cyan-700/70 text-cyan-300' : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'}`}><Info className={`w-3.5 h-3.5 ${propertiesPanelOpen ? 'text-cyan-300' : 'text-neutral-400'}`} /><span className="hidden xl:inline">{t.toolbar.propertiesPanel}</span><kbd className="keyboard-hint">F3</kbd></button></Tooltip>
+        </div>
+        <ToolbarOverflowMenu label={t.toolbar.moreActions} groups={overflowGroups} />
       </div>
 
       <style>{`
@@ -228,6 +336,26 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         .view-choice[aria-pressed="true"] { border-color:rgba(103,232,249,.2); background:#1d292d; color:#a5f3fc; box-shadow:inset 0 1px rgba(255,255,255,.045); }
         .view-choice:focus-visible { outline:2px solid rgba(34,211,238,.7); outline-offset:2px; }
         #root button.view-choice:not([data-file-item="true"]):not([role="separator"]):not(:disabled):active { scale:1; }
+        .command-bar-container { container-type:inline-size; container-name:commandbar; }
+        @container commandbar (max-width: 640px) {
+          .header-action .action-label,
+          .header-action .core-action-label,
+          .command-bar-actions .keyboard-hint { display:none; }
+          .header-action { padding:.375rem; }
+        }
+        .toolbar-overflow-trigger { display:none; }
+        @container commandbar (max-width: 1100px) {
+          [data-overflow-group="windows-actions"],
+          [data-overflow-group="workspace-manager"] { display:none !important; }
+          .toolbar-overflow-trigger { display:flex; }
+        }
+        @container commandbar (max-width: 920px) {
+          [data-overflow-group="view-modes"],
+          [data-overflow-group="view-toggles"] { display:none !important; }
+        }
+        @container commandbar (max-width: 740px) {
+          [data-overflow-group="layout-modes"] { display:none !important; }
+        }
         @media (max-width: 1535px) { .action-label { display:none; } .header-action { padding:.375rem .5rem; } }
       `}</style>
     </header>

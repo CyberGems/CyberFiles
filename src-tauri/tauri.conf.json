@@ -17,7 +17,7 @@
         "decorations": false,
         "width": 1200,
         "height": 760,
-        "minWidth": 900,
+        "minWidth": 500,
         "minHeight": 480,
         "resizable": true,
         "visible": false,

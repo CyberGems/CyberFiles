@@ -912,11 +912,26 @@ export default function App() {
   const [verticalSplitPercent, setVerticalSplitPercent] = useState(initialPanelPreferences.verticalSplitPercent);
   const [horizontalSplitPercent, setHorizontalSplitPercent] = useState(initialPanelPreferences.horizontalSplitPercent);
   const [previewSplitPercent, setPreviewSplitPercent] = useState(initialPanelPreferences.previewSplitPercent);
+  const [compactPreviewSplitPercent, setCompactPreviewSplitPercent] = useState(70);
   const [sidebarSplitPercent, setSidebarSplitPercent] = useState(initialPanelPreferences.sidebarSplitPercent);
   const [previewOpen, setPreviewOpen] = useState<boolean>(initialPanelPreferences.previewOpen);
   const [activePane, setActivePane] = useState<WorkspacePaneId>(initialSessionSnapshot?.activePane ?? initialPanelPreferences.activePane);
+  const [viewportWidth, setViewportWidth] = useState(() => typeof window === 'undefined' ? 1200 : window.innerWidth);
+  const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
+  const isCompactWindow = viewportWidth <= 720;
+  const effectiveLayout: ViewLayout = isCompactWindow ? 'single' : layout;
   const [emptyAreaDoubleClickNavigatesUp, setEmptyAreaDoubleClickNavigatesUp] = useState(readEmptyAreaDoubleClickPreference);
   const [mouseGesturesEnabled, setMouseGesturesEnabled] = useState(() => readBooleanPreference(MOUSE_GESTURES_ENABLED_KEY, true));
+
+  useEffect(() => {
+    const updateViewportWidth = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', updateViewportWidth);
+    return () => window.removeEventListener('resize', updateViewportWidth);
+  }, []);
+
+  useEffect(() => {
+    if (!isCompactWindow) setSidebarDrawerOpen(false);
+  }, [isCompactWindow]);
 
   // Notifications / Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -2054,7 +2069,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const visibleTabs = layout === 'single'
+    const visibleTabs = effectiveLayout === 'single'
       ? [activePane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex]]
       : [leftTabs[activeLeftTabIndex], rightTabs[activeRightTabIndex]];
     for (const tab of visibleTabs) {
@@ -2062,7 +2077,7 @@ export default function App() {
       const state = flatDirectories[getPathKey(tab.currentPath)];
       if (!state || (!state.entries && !state.loading && !state.error)) void loadFlatDirectory(tab.currentPath);
     }
-  }, [layout, activePane, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, flatDirectories, loadFlatDirectory]);
+  }, [effectiveLayout, activePane, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, flatDirectories, loadFlatDirectory]);
 
   const filesById = useMemo(() => new Map([...allFiles, ...recycleBinItems].map(file => [file.id, file])), [allFiles, recycleBinItems]);
 
@@ -2440,7 +2455,7 @@ export default function App() {
   }, [activeLeftTabIndex, activeRightTabIndex, handleNavigate, invalidateFlatDirectories, leftTabs, rightTabs]);
 
   const focusRefreshSnapshot = useRef({
-    layout,
+    layout: effectiveLayout,
     activePane,
     leftTabs,
     rightTabs,
@@ -2448,7 +2463,7 @@ export default function App() {
     activeRightTabIndex,
   });
   focusRefreshSnapshot.current = {
-    layout,
+    layout: effectiveLayout,
     activePane,
     leftTabs,
     rightTabs,
@@ -4323,7 +4338,7 @@ export default function App() {
         setRightTabs(clearRestoredSelections);
       }
 
-      const visiblePanes: Array<'left' | 'right'> = layout === 'single' ? [activePane] : ['left', 'right'];
+      const visiblePanes: Array<'left' | 'right'> = effectiveLayout === 'single' ? [activePane] : ['left', 'right'];
       for (const pane of visiblePanes) {
         const tabs = pane === 'left' ? leftTabs : rightTabs;
         const activeIndex = pane === 'left' ? activeLeftTabIndex : activeRightTabIndex;
@@ -4355,7 +4370,7 @@ export default function App() {
     } finally {
       recycleBinRestoreInFlight.current = false;
     }
-  }, [activeLeftTabIndex, activePane, activeRightTabIndex, handleNavigate, layout, leftTabs, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, rightTabs, showToast, t.core.recycleBinRestoreFailed, t.core.recycleBinRestorePartial, t.core.recycleBinRestored]);
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, effectiveLayout, handleNavigate, leftTabs, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, rightTabs, showToast, t.core.recycleBinRestoreFailed, t.core.recycleBinRestorePartial, t.core.recycleBinRestored]);
 
   const handleOpenRecycleBin = useCallback(async () => {
     await handleNavigate(RECYCLE_BIN_PATH, activePane);
@@ -4853,9 +4868,9 @@ export default function App() {
   const rightAtRecycleBin = rightTabs[activeRightTabIndex].currentPath === RECYCLE_BIN_PATH;
   const leftTransferTab = leftTabs[activeLeftTabIndex];
   const rightTransferTab = rightTabs[activeRightTabIndex];
-  const canTransferLeftToRight = layout !== 'single' && getRootItems(allFiles, leftTransferTab.selectedIds).length > 0 &&
+  const canTransferLeftToRight = effectiveLayout !== 'single' && getRootItems(allFiles, leftTransferTab.selectedIds).length > 0 &&
     rightTransferTab.currentPath !== SYSTEM_HOME_PATH && rightTransferTab.currentPath !== RECYCLE_BIN_PATH;
-  const canTransferRightToLeft = layout !== 'single' && getRootItems(allFiles, rightTransferTab.selectedIds).length > 0 &&
+  const canTransferRightToLeft = effectiveLayout !== 'single' && getRootItems(allFiles, rightTransferTab.selectedIds).length > 0 &&
     leftTransferTab.currentPath !== SYSTEM_HOME_PATH && leftTransferTab.currentPath !== RECYCLE_BIN_PATH;
   const contextPane = contextMenuPos?.paneId ?? activePane;
   const contextPaneTab = contextPane === 'left'
@@ -5109,6 +5124,11 @@ export default function App() {
       <HeaderBar
         layout={layout}
         onLayoutChange={setLayout}
+        isCompactWindow={isCompactWindow}
+        activePane={activePane}
+        onActivePaneChange={pane => { setActivePane(pane); setSidebarDrawerOpen(false); }}
+        sidebarDrawerOpen={sidebarDrawerOpen}
+        onToggleSidebarDrawer={() => setSidebarDrawerOpen(open => !open)}
         onOpenWorkspaceManager={() => setIsWorkspaceManagerOpen(true)}
         workspaceChangesPending={layoutDirty || sessionDirty}
         viewMode={currentTab.viewMode}
@@ -5146,8 +5166,11 @@ export default function App() {
       />
 
       {/* 2. Main Workstation Area */}
-      <div className="relative grid min-h-0 min-w-0 flex-1 overflow-hidden" style={{ gridTemplateColumns: 'minmax(0, ' + sidebarSplitPercent + 'fr) 8px minmax(0, ' + (100 - sidebarSplitPercent) + 'fr)' }}>
+      <div className="relative grid min-h-0 min-w-0 flex-1 overflow-hidden" style={{ gridTemplateColumns: isCompactWindow ? 'minmax(0, 1fr)' : 'minmax(0, ' + sidebarSplitPercent + 'fr) 8px minmax(0, ' + (100 - sidebarSplitPercent) + 'fr)' }}>
         {/* Left Sidebar (Drives, Quick Access & Recent Files) */}
+        <div className={isCompactWindow
+          ? `absolute inset-y-0 left-0 z-50 w-[min(84vw,20rem)] min-w-0 overflow-hidden border-r border-cyan-900/70 bg-neutral-950 shadow-2xl ${sidebarDrawerOpen ? 'translate-x-0 visible' : '-translate-x-full invisible'} transition-transform duration-150`
+          : 'min-h-0 min-w-0 overflow-hidden'} aria-hidden={isCompactWindow && !sidebarDrawerOpen}>
         <Sidebar
           activeTabId={currentTab.id}
           drives={drives}
@@ -5157,17 +5180,17 @@ export default function App() {
           onQuickAccessSortModeChange={setQuickAccessSortMode}
           onReorderQuickAccess={handleReorderQuickAccess}
           onMoveQuickAccess={handleMoveQuickAccess}
-          onOpenCustomQuickAccess={handleOpenCustomQuickAccess}
+          onOpenCustomQuickAccess={item => { handleOpenCustomQuickAccess(item); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           onRenameQuickAccess={handleRenameCustomQuickAccess}
           onRemoveQuickAccess={handleRemoveCustomQuickAccess}
           allFiles={allFiles}
           currentFolderItem={activeFolderItem}
           currentPath={currentTab.currentPath}
-          onNavigate={(path) => handleNavigate(path, activePane, false, sidebarLocationsOpenInNewTab)}
-          onOpenDrive={handleOpenDrive}
+          onNavigate={(path) => { handleNavigate(path, activePane, false, sidebarLocationsOpenInNewTab); if (isCompactWindow) setSidebarDrawerOpen(false); }}
+          onOpenDrive={path => { handleOpenDrive(path); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           windowsSpecialFolders={windowsSpecialFolders}
-          onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
-          onSelectRecentFile={handleSelectRecentFile}
+          onOpenWindowsSpecialFolder={folder => { handleOpenWindowsSpecialFolder(folder); if (isCompactWindow) setSidebarDrawerOpen(false); }}
+          onSelectRecentFile={file => { handleSelectRecentFile(file); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           onClearRecentFiles={handleClearRecentFiles}
           selectedItems={selectedItemsForDelete}
           onClearSelection={() => updateActiveTab(tab => ({ ...tab, selectedIds: [], focusedId: null }))}
@@ -5191,29 +5214,33 @@ export default function App() {
           onCreateZipFolder={item => openZipCreation([item], getParentPath(item.path), activePane)}
           recycleBinSupported={isTauriDesktop()}
           recycleBinStatus={recycleBinStatus}
-          isDualPane={layout !== 'single'}
-          isHorizontalDual={layout === 'dual-horizontal'}
+          isDualPane={effectiveLayout !== 'single'}
+          isHorizontalDual={effectiveLayout === 'dual-horizontal'}
           hasLeftPaneSelection={canTransferLeftToRight && activePane === 'left'}
           hasRightPaneSelection={canTransferRightToLeft && activePane === 'right'}
           onCopyLeftToRight={() => handleCopySelectedFromPane('left')}
           onCopyRightToLeft={() => handleCopySelectedFromPane('right')}
           onMoveLeftToRight={() => { void handleMoveSelectedFromPane('left'); }}
           onMoveRightToLeft={() => { void handleMoveSelectedFromPane('right'); }}
-          onOpenRecycleBin={() => { void handleOpenRecycleBin(); }}
+          onOpenRecycleBin={() => { void handleOpenRecycleBin(); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           onRestoreRecycleBinItems={() => { void handleRestoreRecycleBinItems(selectedItemsForDelete); }}
           onRequestEmptyRecycleBin={handleRequestEmptyRecycleBin}
           customFolderIcons={customFolderIcons}
           onCustomizeFolderIcon={item => handleOpenFolderIconModal({ path: item.path, name: item.name })}
           onCustomizeCurrentFolderIcon={() => handleOpenFolderIconModal({ path: currentTab.currentPath, name: activeFolderItem?.name || currentTab.currentPath.split(/[\\/]/).pop() || currentTab.currentPath })}
         />
+        </div>
 
-        <PaneSplitter orientation="vertical" value={sidebarSplitPercent} onChange={setSidebarSplitPercent} minPercent={20} maxPercent={42} label={t.header.resizeSidebar} />
+        {isCompactWindow && sidebarDrawerOpen && <button type="button" aria-label={t.header.closeSidebar} onClick={() => setSidebarDrawerOpen(false)} className="absolute inset-0 z-40 cursor-default bg-neutral-950/65" />}
+        {!isCompactWindow && <PaneSplitter orientation="vertical" value={sidebarSplitPercent} onChange={setSidebarSplitPercent} minPercent={20} maxPercent={42} label={t.header.resizeSidebar} />}
 
         {/* File Panes Canvas */}
-        <div className="flex-1 grid min-h-0 min-w-0 overflow-hidden" style={{ gridTemplateColumns: previewOpen ? 'minmax(0, ' + previewSplitPercent + 'fr) 8px minmax(0, ' + (100 - previewSplitPercent) + 'fr)' : 'minmax(0, 1fr)' }}>
+        <div className="flex-1 grid min-h-0 min-w-0 overflow-hidden" style={isCompactWindow
+          ? { gridTemplateColumns: 'minmax(0, 1fr)', gridTemplateRows: previewOpen ? 'minmax(0, ' + compactPreviewSplitPercent + 'fr) 8px minmax(0, ' + (100 - compactPreviewSplitPercent) + 'fr)' : 'minmax(0, 1fr)' }
+          : { gridTemplateColumns: previewOpen ? 'minmax(0, ' + previewSplitPercent + 'fr) 8px minmax(0, ' + (100 - previewSplitPercent) + 'fr)' : 'minmax(0, 1fr)' }}>
           <Suspense fallback={<div className="flex min-h-0 min-w-0 items-center justify-center text-xs text-neutral-500">{t.pane.loadingFolder}</div>}>
           {/* Dual Vertical Layout */}
-          {layout === 'dual-vertical' && (
+          {effectiveLayout === 'dual-vertical' && (
             <div className="flex-1 grid h-full min-h-0 min-w-0 overflow-hidden" style={{ gridTemplateColumns: 'minmax(0, ' + verticalSplitPercent + 'fr) 8px minmax(0, ' + (100 - verticalSplitPercent) + 'fr)' }}>
               {/* Left file pane */}
               <div className="min-w-0 min-h-0 h-full overflow-hidden">
@@ -5357,7 +5384,7 @@ export default function App() {
           )}
 
           {/* Dual Horizontal Layout */}
-          {layout === 'dual-horizontal' && (
+          {effectiveLayout === 'dual-horizontal' && (
             <div className="flex-1 grid h-full min-h-0 min-w-0 overflow-hidden" style={{ gridTemplateRows: 'minmax(0, ' + horizontalSplitPercent + 'fr) 8px minmax(0, ' + (100 - horizontalSplitPercent) + 'fr)' }}>
               <div className="min-h-0 h-full overflow-hidden">
                 <FilePane
@@ -5496,7 +5523,7 @@ export default function App() {
           )}
 
           {/* Single Pane Layout */}
-          {layout === 'single' && (
+          {effectiveLayout === 'single' && (
             <div className="flex-1 h-full overflow-hidden">
               <FilePane
                 key={activePane}
@@ -5567,7 +5594,7 @@ export default function App() {
           )}
           </Suspense>
 
-          {previewOpen && <PaneSplitter orientation="vertical" value={previewSplitPercent} onChange={setPreviewSplitPercent} label={t.header.resizePreview} />}
+          {previewOpen && <PaneSplitter orientation={isCompactWindow ? 'horizontal' : 'vertical'} value={isCompactWindow ? compactPreviewSplitPercent : previewSplitPercent} onChange={isCompactWindow ? setCompactPreviewSplitPercent : setPreviewSplitPercent} label={t.header.resizePreview} />}
 
           {/* 3. Docked Quick Preview Pane */}
           {previewOpen && (
@@ -5588,7 +5615,7 @@ export default function App() {
 
       {/* 3. Global Bottom Status Bar */}
       <BottomStatusBar
-        layout={layout}
+        layout={effectiveLayout}
         activePane={activePane}
         currentTab={currentTab}
         activeFiles={activeDisplayFiles}

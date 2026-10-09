@@ -208,6 +208,8 @@ export const translations = {
       invalidPath: 'La ruta no es válida o no está disponible.',
     },
     header: {
+      openSidebar: 'Abrir panel lateral',
+      closeSidebar: 'Cerrar panel lateral',
       layoutModes: 'Disposición de paneles',
       layoutDualVertical: 'Doble Vertical',
       layoutDualHorizontal: 'Doble Horizontal',
@@ -611,6 +613,7 @@ export const translations = {
       selectNone: 'Deseleccionar',
       invertSelection: 'Invertir',
       tools: 'Herramientas',
+      moreActions: 'Más acciones',
       batchRename: 'Renombrar en Lote',
       calculateSizes: 'Calcular Tamaños',
       filterGraphics: 'Filtrar Gráficos',
@@ -1393,6 +1396,8 @@ export const translations = {
       invalidPath: 'The path is invalid or unavailable.',
     },
     header: {
+      openSidebar: 'Open sidebar',
+      closeSidebar: 'Close sidebar',
       layoutModes: 'Panel layout',
       layoutDualVertical: 'Dual Vertical',
       layoutDualHorizontal: 'Dual Horizontal',
@@ -1796,6 +1801,7 @@ export const translations = {
       selectNone: 'Select None',
       invertSelection: 'Invert Selection',
       tools: 'Tools',
+      moreActions: 'More actions',
       batchRename: 'Batch Rename',
       calculateSizes: 'Calculate Folder Sizes',
       filterGraphics: 'Filter Graphics',
