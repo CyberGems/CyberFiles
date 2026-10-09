@@ -298,6 +298,11 @@ html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][
   background: linear-gradient(180deg, #197ab8 0%, #126598 100%);
 }
 
+html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'].cyberfiles-compact-file-item:hover,
+html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'].cyberfiles-icon-file-item:hover {
+  border-color: transparent;
+}
+
 html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'] .text-neutral-400,
 html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'] .text-neutral-300\/90 {
   color: #e4f3fb;

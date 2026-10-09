@@ -3262,7 +3262,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`cyberfiles-file-row relative flex min-w-0 h-[30px] items-center gap-2 rounded-md border border-transparent px-2 py-1 text-xs transition-colors ${
+                  className={`cyberfiles-file-row cyberfiles-compact-file-item relative flex min-w-0 h-[30px] items-center gap-2 rounded-md border border-transparent px-2 py-1 text-xs transition-colors ${
                     isSelected
                       ? 'bg-cyan-500/20 hover:bg-cyan-500/25 text-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]'
                       : 'text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
@@ -3316,7 +3316,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onMouseEnter={() => handleFolderTooltipMouseEnter(item)}
                   onMouseLeave={() => handleFolderTooltipMouseLeave(item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`relative flex min-w-0 ${virtualizeFiles ? 'h-36' : ''} flex-col items-center justify-start gap-1.5 rounded-lg border border-transparent p-2.5 text-center cursor-pointer transition-colors ${
+                  className={`cyberfiles-icon-file-item relative flex min-w-0 ${virtualizeFiles ? 'h-36' : ''} flex-col items-center justify-start gap-1.5 rounded-lg border border-transparent p-2.5 text-center cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-cyan-500/20 hover:bg-cyan-500/25 text-neutral-100 shadow-md shadow-cyan-950/20'
                       : 'bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60'
