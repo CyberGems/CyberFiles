@@ -2415,7 +2415,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         onMouseEnter={category === 'folder' ? () => handleFolderTooltipMouseEnter(item) : undefined}
         onMouseLeave={category === 'folder' ? () => handleFolderTooltipMouseLeave(item) : undefined}
         style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, selected) }}
-        className={`group flex min-h-[68px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
+        className={`cyberfiles-system-home-card group flex min-h-[68px] w-full min-w-0 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
           selected
             ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
             : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'
@@ -2423,7 +2423,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       >
         <span
           data-system-home-icon={category === 'folder' ? 'folder' : drive?.type ?? 'drive'}
-          className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg ${
+          className={`cyberfiles-system-home-icon flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg ${
           category === 'folder'
             ? 'bg-amber-300/10 text-amber-300 group-hover:bg-amber-300/15'
             : drive?.type === 'network'
@@ -2435,7 +2435,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           {icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="inline-block max-w-full truncate text-xs text-neutral-100 font-medium" style={getItemNameStyle(item, selected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+          <span className={`cyberfiles-system-home-name block max-w-full text-xs text-neutral-100 font-medium ${category === 'folder' ? 'whitespace-normal break-words' : 'truncate'}`} style={getItemNameStyle(item, selected)}>{getDisplayItemName(item, showFileExtensions)}</span>
           {category === 'folder' ? (
             <span className="mt-1 block truncate text-[10px] text-neutral-500">{item.path}</span>
           ) : hasCapacity && drive ? (
@@ -2501,15 +2501,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
           onDoubleClick={() => handleSystemHomeShortcutDoubleClick(() => onNavigate(item.path))}
           aria-label={`${item.name}: ${item.path}`}
           aria-current={isCurrentLocation ? 'location' : undefined}
-          aria-pressed={selectedSystemHomeShortcutId === shortcutId}
           style={{ cursor: singleClickOpens ? 'pointer' : 'default' }}
-          className={`group flex min-h-[68px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${isSelected ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]' : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'}`}
+          className={`cyberfiles-system-home-card group flex min-h-[68px] w-full min-w-0 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${isSelected ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]' : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'}`}
         >
-          <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-amber-300/10 text-amber-300 group-hover:bg-amber-300/15">
+          <span data-system-home-icon="folder" className="cyberfiles-system-home-icon flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-amber-300/10 text-amber-300 group-hover:bg-amber-300/15">
             {customIcon ? <FolderIconRenderer config={customIcon} size="large" /> : <Folder className="h-7 w-7" />}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-xs font-medium text-neutral-100">{item.name}</span>
+            <span className="cyberfiles-system-home-name block text-xs font-medium text-neutral-100">{item.name}</span>
             <span className="mt-1 block truncate text-[10px] text-neutral-500">{item.path}</span>
           </span>
         </button>
@@ -2531,15 +2530,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
           onDoubleClick={() => handleSystemHomeShortcutDoubleClick(open)}
           aria-label={`${label}: ${folder.path}`}
           aria-current={isCurrentLocation ? 'location' : undefined}
-          aria-pressed={selectedSystemHomeShortcutId === shortcutId}
           style={{ cursor: singleClickOpens ? 'pointer' : 'default' }}
-          className={`group flex min-h-[68px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${isSelected ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]' : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'}`}
+          className={`cyberfiles-system-home-card group flex min-h-[68px] w-full min-w-0 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${isSelected ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]' : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'}`}
         >
-          <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg ${folder.isFile ? 'bg-cyan-400/10 text-cyan-300' : 'bg-amber-300/10 text-amber-300 group-hover:bg-amber-300/15'}`}>
+          <span data-system-home-icon={folder.isFile ? 'file' : 'folder'} className={`cyberfiles-system-home-icon flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg ${folder.isFile ? 'bg-cyan-400/10 text-cyan-300' : 'bg-amber-300/10 text-amber-300 group-hover:bg-amber-300/15'}`}>
             {folder.isFile ? <FileText className="h-7 w-7" /> : <Folder className="h-7 w-7" />}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-xs font-medium text-neutral-100">{label}</span>
+            <span className="cyberfiles-system-home-name block text-xs font-medium text-neutral-100">{label}</span>
             <span className="mt-1 block truncate text-[10px] text-neutral-500">{folder.path}</span>
           </span>
         </button>
@@ -3206,11 +3204,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
             )}
           </div>
         ) : isSystemHome ? (
-          <div className="space-y-5 py-3 sm:py-4">
+          <div className="cyberfiles-system-home space-y-5 py-3 sm:py-4">
             {quickAccessItemCount > 0 && (
               <section>
                 {sectionHeading('folders', t.pane.systemFolders.replace('{count}', String(quickAccessItemCount)))}
-                <div id={`${paneId}-system-home-folders-content`} style={{ display: collapsedSystemHomeSections.folders ? 'none' : undefined }} className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 2xl:grid-cols-3">
+                <div id={`${paneId}-system-home-folders-content`} style={{ display: collapsedSystemHomeSections.folders ? 'none' : undefined }} className="cyberfiles-system-home-grid grid grid-cols-1 gap-1.5">
                   {systemFolders.map(item => renderSystemHomeCard(item, files.indexOf(item), 'folder'))}
                   {customQuickAccessItems.map(renderQuickAccessCard)}
                 </div>
@@ -3219,7 +3217,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             {deviceVolumes.length > 0 && (
               <section>
                 {sectionHeading('devices', t.pane.systemDevices.replace('{count}', String(deviceVolumes.length)))}
-                <div id={`${paneId}-system-home-devices-content`} style={{ display: collapsedSystemHomeSections.devices ? 'none' : undefined }} className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 2xl:grid-cols-3">
+                <div id={`${paneId}-system-home-devices-content`} style={{ display: collapsedSystemHomeSections.devices ? 'none' : undefined }} className="cyberfiles-system-home-grid grid grid-cols-1 gap-1.5">
                   {deviceVolumes.map(item => renderSystemHomeCard(item, files.indexOf(item), 'drive'))}
                 </div>
               </section>
@@ -3227,7 +3225,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             {networkVolumes.length > 0 && (
               <section>
                 {sectionHeading('network', t.pane.systemNetwork.replace('{count}', String(networkVolumes.length)))}
-                <div id={`${paneId}-system-home-network-content`} style={{ display: collapsedSystemHomeSections.network ? 'none' : undefined }} className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 2xl:grid-cols-3">
+                <div id={`${paneId}-system-home-network-content`} style={{ display: collapsedSystemHomeSections.network ? 'none' : undefined }} className="cyberfiles-system-home-grid grid grid-cols-1 gap-1.5">
                   {networkVolumes.map(item => renderSystemHomeCard(item, files.indexOf(item), 'network'))}
                 </div>
               </section>
@@ -3235,7 +3233,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             {windowsSpecialFolders.length > 0 && (
               <section>
                 {sectionHeading('advancedWindowsFolders', t.pane.systemAdvancedWindowsFolders.replace('{count}', String(windowsSpecialFolders.length)))}
-                <div id={`${paneId}-system-home-advancedWindowsFolders-content`} style={{ display: collapsedSystemHomeSections.advancedWindowsFolders ? 'none' : undefined }} className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 2xl:grid-cols-3">
+                <div id={`${paneId}-system-home-advancedWindowsFolders-content`} style={{ display: collapsedSystemHomeSections.advancedWindowsFolders ? 'none' : undefined }} className="cyberfiles-system-home-grid grid grid-cols-1 gap-1.5">
                   {windowsSpecialFolders.map(renderWindowsSpecialFolderCard)}
                 </div>
               </section>

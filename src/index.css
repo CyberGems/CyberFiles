@@ -326,6 +326,46 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-pane-status 
   container-type: inline-size;
 }
 
+.cyberfiles-file-viewport {
+  container-name: cyberfiles-file-content;
+  container-type: inline-size;
+}
+
+.cyberfiles-system-home-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@container cyberfiles-file-content (min-width: 620px) {
+  .cyberfiles-system-home-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container cyberfiles-file-content (min-width: 1080px) {
+  .cyberfiles-system-home-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container cyberfiles-file-content (max-width: 360px) {
+  .cyberfiles-system-home-card {
+    gap: 0.5rem;
+    padding: 0.5rem;
+  }
+
+  .cyberfiles-system-home-icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    flex-basis: 2.25rem;
+  }
+
+  .cyberfiles-system-home-icon svg {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+}
+
 .cyberfiles-selected-status-compact {
   display: none;
 }
