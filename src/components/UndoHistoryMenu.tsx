@@ -98,6 +98,7 @@ export const UndoHistoryMenu: React.FC<UndoHistoryMenuProps> = ({ items, disable
         >
           <Undo2 className="h-3.5 w-3.5 text-cyan-400" />
           <span className="core-action-label">{t.toolbar.undo}</span>
+          <kbd className="keyboard-hint">Ctrl+Z</kbd>
         </button>
       </Tooltip>
       <Tooltip label={t.toolbar.undoHistory} placement="bottom">

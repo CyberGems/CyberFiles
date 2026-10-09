@@ -3015,7 +3015,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* 3. Live Filter Bar (Find as you type) */}
       <div className="cyberfiles-pane-filter px-2 py-1 bg-neutral-950/60 border-b border-neutral-800/80 flex items-center gap-2 text-xs">
         <div className="relative flex-1">
-          <Search className="w-3.5 h-3.5 absolute left-2 top-2 text-neutral-500" />
+          <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-neutral-500" />
           <input
             type="text"
             placeholder={isSystemHome ? t.pane.systemHomeFilterPlaceholder : t.pane.filterPlaceholder}

@@ -99,6 +99,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   const menuRootRef = React.useRef<HTMLDivElement>(null);
   const hasDriveRoot = /^[a-z]:/i.test(currentFolderPath) && (currentFolderPath[2] === '\\' || currentFolderPath[2] === '/');
   const canUseFolderActions = windowsActionsAvailable && !currentFolderPath.startsWith('::') && (hasDriveRoot || currentFolderPath.startsWith('\\\\'));
+  const canCreateFolder = Boolean(currentFolderPath) && !currentFolderPath.startsWith('::');
   const terminalLabels: Record<WindowsTerminalOption, string> = {
     cmd: t.toolbar.commandPromptHere,
     'cmd-admin': t.toolbar.commandPromptAdminHere,
@@ -128,7 +129,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         <div className="header-actions flex items-center gap-1 overflow-x-auto min-w-0">
           <UndoHistoryMenu items={undoHistory} onUndo={onUndoAction} disabled={undoBusy} />
           <Tooltip label={t.toolbar.delete} shortcut="Del" disabled={disabled}><button onClick={onDeleteSelected} disabled={disabled} className="header-action text-rose-200"><Trash2 className="w-3.5 h-3.5 text-rose-400" /><span className="core-action-label">{language === 'es' ? 'Eliminar' : 'Delete'}</span><kbd className="keyboard-hint">Del</kbd></button></Tooltip>
-          <Tooltip label={t.toolbar.newFolder} shortcut="F7"><button onClick={() => onNewFolder()} className="header-action"><FolderPlus className="w-3.5 h-3.5 text-emerald-400" /><span className="action-label">{language === 'es' ? 'Nueva carpeta' : 'New folder'}</span><kbd className="keyboard-hint">F7</kbd></button></Tooltip>
+          <Tooltip label={t.toolbar.newFolder} shortcut="F7" disabled={!canCreateFolder}><button onClick={onNewFolder} disabled={!canCreateFolder} className="header-action"><FolderPlus className="w-3.5 h-3.5 text-emerald-400" /><span className="action-label">{language === 'es' ? 'Nueva carpeta' : 'New folder'}</span><kbd className="keyboard-hint">F7</kbd></button></Tooltip>
         </div>
       </div>
 
