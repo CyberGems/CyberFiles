@@ -41,7 +41,7 @@ import {
 } from 'lucide-react';
 import { ArchiveExtractionMode, DriveInfo, FileItem, FileType, QuickAccessItem, QuickAccessSortMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, formatRelativeTime, getParentPath } from '../utils/fileSystem';
-import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus } from '../utils/nativeFileSystem';
+import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
 import { FolderIconRenderer } from './folderIconsData';
@@ -80,6 +80,8 @@ interface SidebarProps {
   currentPath: string;
   onNavigate: (path: string) => void;
   onOpenDrive?: (path: string) => void;
+  windowsSpecialFolders: WindowsSpecialFolder[];
+  onOpenWindowsSpecialFolder: (folder: WindowsSpecialFolder) => void;
   onSelectRecentFile?: (file: FileItem) => void;
   onClearRecentFiles?: () => void;
   selectedItems: FileItem[];
@@ -138,6 +140,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentPath,
   onNavigate,
   onOpenDrive,
+  windowsSpecialFolders,
+  onOpenWindowsSpecialFolder,
   onSelectRecentFile,
   onClearRecentFiles,
   selectedItems,
@@ -178,6 +182,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onRequestEmptyRecycleBin,
 }) => {
   const { t, language } = useLanguage();
+  const windowsSpecialFolderLabels: Record<WindowsSpecialFolder['id'], string> = {
+    programFilesX86: t.toolbar.programFilesX86,
+    programFiles: t.toolbar.programFiles,
+    appData: t.toolbar.appData,
+    programData: t.toolbar.programData,
+    system32: t.toolbar.system32,
+    windows: t.toolbar.windowsFolder,
+    editHosts: t.toolbar.editHostsFile,
+  };
   const ForwardPaneArrow = isHorizontalDual ? ArrowDown : ArrowRight;
   const BackwardPaneArrow = isHorizontalDual ? ArrowUp : ArrowLeft;
   type SidebarTab = 'tree' | 'recent' | 'context';
@@ -1291,6 +1304,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           )}
 
+          {windowsSpecialFolders.length > 0 && (
+            <section className="space-y-1.5">
+              <h2 className="px-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.toolbar.advancedWindowsFolders}</h2>
+              <div className="space-y-0.5">
+                {windowsSpecialFolders.map(folder => {
+                  const label = windowsSpecialFolderLabels[folder.id];
+                  const isSelected = currentPath.toLowerCase() === folder.path.toLowerCase();
+                  return (
+                    <Tooltip key={folder.id} label={folder.path} placement="right">
+                      <button
+                        type="button"
+                        onClick={() => onOpenWindowsSpecialFolder(folder)}
+                        aria-label={`${label}: ${folder.path}`}
+                        aria-current={isSelected ? 'location' : undefined}
+                        className={`flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors ${isSelected ? 'bg-neutral-800/90 font-medium text-cyan-300' : 'text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100'}`}
+                      >
+                        {folder.isFile ? <FileText className={`h-4 w-4 flex-shrink-0 ${isSelected ? 'text-cyan-300' : 'text-neutral-500'}`} /> : <FolderOpen className={`h-4 w-4 flex-shrink-0 ${isSelected ? 'text-cyan-300' : 'text-neutral-500'}`} />}
+                        <span className="min-w-0 truncate text-[11px]">{label}</span>
+                      </button>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+            </section>
+          )}
           <div className="flex items-center gap-1">
             <Tooltip label={recycleBinSupported ? t.sidebar.openRecycleBinAction : t.sidebar.recycleBinDesktopOnly} placement="right">
               <button

@@ -37,10 +37,10 @@ import {
   Home,
   Keyboard,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
+import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, getParentPath, isSameOrDescendantPath, normalizeWindowsPath } from '../utils/fileSystem';
-import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest } from '../utils/nativeFileSystem';
+import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { advanceMouseGesturePath, MOUSE_GESTURE_MIN_DISTANCE, type MouseGesturePath } from '../utils/mouseGesture';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
@@ -90,6 +90,9 @@ interface FilePaneProps {
   relativeGraphsEnabled: boolean;
   dateFormat: DateFormatMode;
   drives: DriveInfo[];
+  windowsSpecialFolders: WindowsSpecialFolder[];
+  onOpenWindowsSpecialFolder: (folder: WindowsSpecialFolder) => void;
+  quickAccessItems: QuickAccessItem[];
   hasMore?: boolean;
   totalItemCount?: number;
   isLoadingDirectory?: boolean;
@@ -118,7 +121,7 @@ interface FilePaneProps {
   onColumnPreferencesChange: (pane: 'left' | 'right', preferences: PaneColumnsSnapshot) => void;
 }
 
-type SystemHomeSection = 'folders' | 'devices' | 'network';
+type SystemHomeSection = 'folders' | 'devices' | 'network' | 'advancedWindowsFolders';
 type CollapsedSystemHomeSections = Record<SystemHomeSection, boolean>;
 type FileColumn = 'extension' | 'name' | 'type' | 'size' | 'created' | 'modified';
 type RelativeGraphColumn = 'size' | 'created' | 'modified';
@@ -207,6 +210,7 @@ const DEFAULT_COLLAPSED_SYSTEM_HOME_SECTIONS: CollapsedSystemHomeSections = {
   folders: false,
   devices: false,
   network: false,
+  advancedWindowsFolders: true,
 };
 
 function resizeFileColumns(widths: FileColumnWidths, column: ResizableColumn, delta: number): FileColumnWidths {
@@ -235,6 +239,7 @@ function readCollapsedSystemHomeSections(paneId: 'left' | 'right'): CollapsedSys
       folders: saved.folders === true,
       devices: saved.devices === true,
       network: saved.network === true,
+      advancedWindowsFolders: typeof saved.advancedWindowsFolders === 'boolean' ? saved.advancedWindowsFolders : true,
     };
   } catch {
     return DEFAULT_COLLAPSED_SYSTEM_HOME_SECTIONS;
@@ -349,6 +354,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   relativeGraphsEnabled,
   dateFormat,
   drives,
+  windowsSpecialFolders,
+  onOpenWindowsSpecialFolder,
+  quickAccessItems,
   hasMore = false,
   totalItemCount,
   isLoadingDirectory = false,
@@ -377,6 +385,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onColumnPreferencesChange,
 }) => {
   const { t, language } = useLanguage();
+  const windowsSpecialFolderLabels: Record<WindowsSpecialFolder['id'], string> = {
+    programFilesX86: t.toolbar.programFilesX86,
+    programFiles: t.toolbar.programFiles,
+    appData: t.toolbar.appData,
+    programData: t.toolbar.programData,
+    system32: t.toolbar.system32,
+    windows: t.toolbar.windowsFolder,
+    editHosts: t.toolbar.editHostsFile,
+  };
   const tooltipsEnabled = useContext(TooltipPreferenceContext);
   const isSystemHome = tab.currentPath === SYSTEM_HOME_PATH;
   const isRecycleBin = tab.currentPath === RECYCLE_BIN_PATH;
@@ -2442,7 +2459,56 @@ export const FilePane: React.FC<FilePaneProps> = ({
     );
   };
 
+  const renderQuickAccessCard = (item: QuickAccessItem) => {
+    const customIcon = getCustomFolderIcon(item.path, customFolderIcons ?? {});
+    const isSelected = tab.currentPath.toLowerCase() === item.path.toLowerCase();
+    return (
+      <Tooltip key={item.id} label={item.path} placement="top">
+        <button
+          type="button"
+          onClick={() => { onActivate(); onNavigate(item.path); }}
+          aria-label={`${item.name}: ${item.path}`}
+          aria-current={isSelected ? 'location' : undefined}
+          className={`group flex min-h-[68px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${isSelected ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]' : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'}`}
+        >
+          <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-amber-300/10 text-amber-300 group-hover:bg-amber-300/15">
+            {customIcon ? <FolderIconRenderer config={customIcon} size="large" /> : <Folder className="h-7 w-7" />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-xs font-medium text-neutral-100">{item.name}</span>
+            <span className="mt-1 block truncate text-[10px] text-neutral-500">{item.path}</span>
+          </span>
+        </button>
+      </Tooltip>
+    );
+  };
+
+  const renderWindowsSpecialFolderCard = (folder: WindowsSpecialFolder) => {
+    const label = windowsSpecialFolderLabels[folder.id];
+    const isSelected = tab.currentPath.toLowerCase() === folder.path.toLowerCase();
+    return (
+      <Tooltip key={folder.id} label={folder.path} placement="top">
+        <button
+          type="button"
+          onClick={() => { onActivate(); if (folder.isFile) onOpenWindowsSpecialFolder(folder); else onNavigate(folder.path); }}
+          aria-label={`${label}: ${folder.path}`}
+          aria-current={isSelected ? 'location' : undefined}
+          className={`group flex min-h-[68px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${isSelected ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]' : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'}`}
+        >
+          <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg ${folder.isFile ? 'bg-cyan-400/10 text-cyan-300' : 'bg-amber-300/10 text-amber-300 group-hover:bg-amber-300/15'}`}>
+            {folder.isFile ? <FileText className="h-7 w-7" /> : <Folder className="h-7 w-7" />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-xs font-medium text-neutral-100">{label}</span>
+            <span className="mt-1 block truncate text-[10px] text-neutral-500">{folder.path}</span>
+          </span>
+        </button>
+      </Tooltip>
+    );
+  };
   const systemFolders = files.filter(item => item.id.startsWith('system-location-'));
+  const customQuickAccessItems = quickAccessItems.filter(item => item.isCustom);
+  const quickAccessItemCount = systemFolders.length + customQuickAccessItems.length;
   const systemVolumes = files.filter(item => item.id.startsWith('system-drive-'));
   const networkVolumes = systemVolumes.filter(item => drives.find(drive => item.id === `system-drive-${drive.id}`)?.type === 'network');
   const deviceVolumes = systemVolumes.filter(item => !networkVolumes.includes(item));
@@ -3101,11 +3167,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </div>
         ) : isSystemHome ? (
           <div className="space-y-5 py-3 sm:py-4">
-            {systemFolders.length > 0 && (
+            {quickAccessItemCount > 0 && (
               <section>
-                {sectionHeading('folders', t.pane.systemFolders.replace('{count}', String(systemFolders.length)))}
+                {sectionHeading('folders', t.pane.systemFolders.replace('{count}', String(quickAccessItemCount)))}
                 <div id={`${paneId}-system-home-folders-content`} style={{ display: collapsedSystemHomeSections.folders ? 'none' : undefined }} className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 2xl:grid-cols-3">
                   {systemFolders.map(item => renderSystemHomeCard(item, files.indexOf(item), 'folder'))}
+                  {customQuickAccessItems.map(renderQuickAccessCard)}
                 </div>
               </section>
             )}
@@ -3122,6 +3189,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 {sectionHeading('network', t.pane.systemNetwork.replace('{count}', String(networkVolumes.length)))}
                 <div id={`${paneId}-system-home-network-content`} style={{ display: collapsedSystemHomeSections.network ? 'none' : undefined }} className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 2xl:grid-cols-3">
                   {networkVolumes.map(item => renderSystemHomeCard(item, files.indexOf(item), 'network'))}
+                </div>
+              </section>
+            )}
+            {windowsSpecialFolders.length > 0 && (
+              <section>
+                {sectionHeading('advancedWindowsFolders', t.pane.systemAdvancedWindowsFolders.replace('{count}', String(windowsSpecialFolders.length)))}
+                <div id={`${paneId}-system-home-advancedWindowsFolders-content`} style={{ display: collapsedSystemHomeSections.advancedWindowsFolders ? 'none' : undefined }} className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 2xl:grid-cols-3">
+                  {windowsSpecialFolders.map(renderWindowsSpecialFolderCard)}
                 </div>
               </section>
             )}

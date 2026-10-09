@@ -5121,12 +5121,10 @@ export default function App() {
         onToggleShowFileExtensions={() => setShowFileExtensions(enabled => !enabled)}
         currentFolderPath={currentTab.currentPath}
         windowsActionsAvailable={isTauriDesktop()}
-        windowsSpecialFolders={windowsSpecialFolders}
         lastTerminalOption={lastTerminalOption}
         onLastTerminalOptionChange={setLastTerminalOption}
         onShowInWindowsExplorer={handleShowCurrentFolderInExplorer}
         onLaunchTerminal={handleLaunchWindowsTerminal}
-        onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
         propertiesPanelOpen={previewOpen}
         onTogglePropertiesPanel={() => setPreviewOpen(value => !value)}
         onNewFolder={() => handleNewFolder()}
@@ -5167,6 +5165,8 @@ export default function App() {
           currentPath={currentTab.currentPath}
           onNavigate={(path) => handleNavigate(path, activePane, false, sidebarLocationsOpenInNewTab)}
           onOpenDrive={handleOpenDrive}
+          windowsSpecialFolders={windowsSpecialFolders}
+          onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
           onSelectRecentFile={handleSelectRecentFile}
           onClearRecentFiles={handleClearRecentFiles}
           selectedItems={selectedItemsForDelete}
@@ -5251,6 +5251,9 @@ export default function App() {
                   relativeGraphsEnabled={relativeGraphsEnabled}
                   dateFormat={dateFormat}
                   drives={drives}
+                  windowsSpecialFolders={windowsSpecialFolders}
+                  onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
+                  quickAccessItems={sidebarQuickAccess}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
                   totalItemCount={leftKnownCounts?.totalCount}
                   isLoadingDirectory={(leftDisplayTab.flatView && !leftAtSystemHome && !leftAtRecycleBin && !leftDirectoryState) || leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
@@ -5319,6 +5322,9 @@ export default function App() {
                   relativeGraphsEnabled={relativeGraphsEnabled}
                   dateFormat={dateFormat}
                   drives={drives}
+                  windowsSpecialFolders={windowsSpecialFolders}
+                  onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
+                  quickAccessItems={sidebarQuickAccess}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
                   totalItemCount={rightKnownCounts?.totalCount}
                   isLoadingDirectory={(rightDisplayTab.flatView && !rightAtSystemHome && !rightAtRecycleBin && !rightDirectoryState) || rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
@@ -5388,6 +5394,9 @@ export default function App() {
                   relativeGraphsEnabled={relativeGraphsEnabled}
                   dateFormat={dateFormat}
                   drives={drives}
+                  windowsSpecialFolders={windowsSpecialFolders}
+                  onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
+                  quickAccessItems={sidebarQuickAccess}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
                   totalItemCount={leftKnownCounts?.totalCount}
                   isLoadingDirectory={(leftDisplayTab.flatView && !leftAtSystemHome && !leftAtRecycleBin && !leftDirectoryState) || leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
@@ -5452,6 +5461,9 @@ export default function App() {
                   relativeGraphsEnabled={relativeGraphsEnabled}
                   dateFormat={dateFormat}
                   drives={drives}
+                  windowsSpecialFolders={windowsSpecialFolders}
+                  onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
+                  quickAccessItems={sidebarQuickAccess}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
                   totalItemCount={rightKnownCounts?.totalCount}
                   isLoadingDirectory={(rightDisplayTab.flatView && !rightAtSystemHome && !rightAtRecycleBin && !rightDirectoryState) || rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
@@ -5521,6 +5533,9 @@ export default function App() {
                   relativeGraphsEnabled={relativeGraphsEnabled}
                   dateFormat={dateFormat}
                   drives={drives}
+                  windowsSpecialFolders={windowsSpecialFolders}
+                  onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
+                  quickAccessItems={sidebarQuickAccess}
                   hasMore={currentAtRecycleBin ? recycleBinPage.hasMore : (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.hasMore}
                   totalItemCount={activeKnownCounts?.totalCount}
                   isLoadingDirectory={(currentTab.flatView && !currentTab.currentPath.startsWith('::') && !(activePane === 'left' ? leftDirectoryState : rightDirectoryState)) || (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.loading || (currentTab.currentPath === SYSTEM_HOME_PATH && systemHomeLoading) || (currentAtRecycleBin && recycleBinPage.loading)}

@@ -18,13 +18,12 @@ import {
   EyeOff,
   ExternalLink,
   FileText,
-  FolderOpen,
   Terminal,
 } from 'lucide-react';
 import { SYSTEM_HOME_PATH, ViewLayout, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
-import type { WindowsSpecialFolder, WindowsTerminalOption } from '../utils/nativeFileSystem';
+import type { WindowsTerminalOption } from '../utils/nativeFileSystem';
 import { UndoHistoryMenu, type UndoHistoryItem } from './UndoHistoryMenu';
 
 interface HeaderBarProps {
@@ -40,12 +39,10 @@ interface HeaderBarProps {
   onToggleShowFileExtensions: () => void;
   currentFolderPath: string;
   windowsActionsAvailable: boolean;
-  windowsSpecialFolders: WindowsSpecialFolder[];
   lastTerminalOption: WindowsTerminalOption;
   onLastTerminalOptionChange: (option: WindowsTerminalOption) => void;
   onShowInWindowsExplorer: () => void;
   onLaunchTerminal: (option: WindowsTerminalOption) => void;
-  onOpenWindowsSpecialFolder: (folder: WindowsSpecialFolder) => void;
   propertiesPanelOpen: boolean;
   onTogglePropertiesPanel: () => void;
   onNewFolder: () => void;
@@ -76,12 +73,10 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onToggleShowFileExtensions,
   currentFolderPath,
   windowsActionsAvailable,
-  windowsSpecialFolders,
   lastTerminalOption,
   onLastTerminalOptionChange,
   onShowInWindowsExplorer,
   onLaunchTerminal,
-  onOpenWindowsSpecialFolder,
   propertiesPanelOpen,
   onTogglePropertiesPanel,
   onNewFolder,
@@ -100,7 +95,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 }) => {
   const { t, language } = useLanguage();
   const disabled = selectedCount === 0;
-  const [openToolbarMenu, setOpenToolbarMenu] = React.useState<'terminal' | 'windows-folders' | null>(null);
+  const [openToolbarMenu, setOpenToolbarMenu] = React.useState<'terminal' | null>(null);
   const menuRootRef = React.useRef<HTMLDivElement>(null);
   const hasDriveRoot = /^[a-z]:/i.test(currentFolderPath) && (currentFolderPath[2] === '\\' || currentFolderPath[2] === '/');
   const canUseFolderActions = windowsActionsAvailable && !currentFolderPath.startsWith('::') && (hasDriveRoot || currentFolderPath.startsWith('\\\\'));
@@ -109,15 +104,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
     'cmd-admin': t.toolbar.commandPromptAdminHere,
     powershell: t.toolbar.powerShellHere,
     'powershell-admin': t.toolbar.powerShellAdminHere,
-  };
-  const specialFolderLabels: Record<WindowsSpecialFolder['id'], string> = {
-    programFilesX86: t.toolbar.programFilesX86,
-    programFiles: t.toolbar.programFiles,
-    appData: t.toolbar.appData,
-    programData: t.toolbar.programData,
-    system32: t.toolbar.system32,
-    windows: t.toolbar.windowsFolder,
-    editHosts: t.toolbar.editHostsFile,
   };
   React.useEffect(() => {
     if (!openToolbarMenu) return;
@@ -179,25 +165,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               )}
             </div>
 
-            <div className="relative">
-              <Tooltip label={t.toolbar.advancedWindowsFolders} placement="bottom">
-                <button type="button" aria-label={t.toolbar.advancedWindowsFolders} aria-haspopup="menu" aria-expanded={openToolbarMenu === 'windows-folders'} onClick={() => setOpenToolbarMenu(openToolbarMenu === 'windows-folders' ? null : 'windows-folders')} className="flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-300 transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-200">
-                  <FolderOpen className="h-4 w-4" />
-                </button>
-              </Tooltip>
-              {openToolbarMenu === 'windows-folders' && (
-                <div role="menu" className="absolute right-0 top-full z-50 mt-2 max-h-[70vh] min-w-56 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-2xl">
-                  {windowsSpecialFolders.length > 0 ? windowsSpecialFolders.map(folder => (
-                    <button key={folder.id} type="button" role="menuitem" aria-label={specialFolderLabels[folder.id]} onClick={() => { onOpenWindowsSpecialFolder(folder); setOpenToolbarMenu(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-800 hover:text-cyan-200">
-                      <FolderOpen className="h-3.5 w-3.5 flex-shrink-0 text-amber-300" />
-                      <span>{specialFolderLabels[folder.id]}</span>
-                    </button>
-                  )) : (
-                    <div className="px-3 py-2 text-xs text-neutral-500">{t.toolbar.windowsFoldersUnavailable}</div>
-                  )}
-                </div>
-              )}
-            </div>
           </>
         )}
 
