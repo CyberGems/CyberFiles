@@ -376,9 +376,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       return {
         drives: saved?.drives === true,
         quickAccess: saved?.quickAccess === true,
+        advancedWindowsFolders: typeof saved?.advancedWindowsFolders === 'boolean' ? saved.advancedWindowsFolders : true,
       };
     } catch {
-      return { drives: false, quickAccess: false };
+      return { drives: false, quickAccess: false, advancedWindowsFolders: true };
     }
   });
 
@@ -459,7 +460,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     };
   }, [quickAccessSortOpen]);
 
-  const toggleSection = (section: 'drives' | 'quickAccess') => {
+  const toggleSection = (section: 'drives' | 'quickAccess' | 'advancedWindowsFolders') => {
     setCollapsedSections(previous => ({ ...previous, [section]: !previous[section] }));
   };
 
@@ -1305,9 +1306,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {windowsSpecialFolders.length > 0 && (
-            <section className="space-y-1.5">
-              <h2 className="px-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t.toolbar.advancedWindowsFolders}</h2>
-              <div className="space-y-0.5">
+            <section className="space-y-1">
+              <button
+                type="button"
+                onClick={() => toggleSection('advancedWindowsFolders')}
+                aria-expanded={!collapsedSections.advancedWindowsFolders}
+                aria-label={`${t.toolbar.advancedWindowsFolders}: ${collapsedSections.advancedWindowsFolders ? t.sidebar.expandSection : t.sidebar.collapseSection}`}
+                className="collapse-toggle flex w-full min-w-0 items-center gap-1 rounded-lg px-2 py-1.5 text-left text-[10px] font-semibold uppercase tracking-wider text-neutral-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+              >
+                {collapsedSections.advancedWindowsFolders ? <ChevronRight data-collapse-chevron="true" className="h-3 w-3" /> : <ChevronDown data-collapse-chevron="true" className="h-3 w-3" />}
+                <span>{t.toolbar.advancedWindowsFolders}</span>
+              </button>
+              {!collapsedSections.advancedWindowsFolders && <div className="space-y-0.5">
                 {windowsSpecialFolders.map(folder => {
                   const label = windowsSpecialFolderLabels[folder.id];
                   const isSelected = currentPath.toLowerCase() === folder.path.toLowerCase();
@@ -1326,7 +1336,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     </Tooltip>
                   );
                 })}
-              </div>
+              </div>}
             </section>
           )}
           <div className="flex items-center gap-1">

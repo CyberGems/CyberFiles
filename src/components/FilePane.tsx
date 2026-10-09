@@ -411,6 +411,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [editingItemName, setEditingItemName] = useState('');
   const renameCommitItemRef = useRef<string | null>(null);
   const [collapsedSystemHomeSections, setCollapsedSystemHomeSections] = useState(() => readCollapsedSystemHomeSections(paneId));
+  const [selectedSystemHomeShortcutId, setSelectedSystemHomeShortcutId] = useState<string | null>(null);
+  useEffect(() => setSelectedSystemHomeShortcutId(null), [tab.currentPath]);
   const [folderSizeStates, setFolderSizeStates] = useState<Record<string, FolderSizeState>>({});
   const folderSizeStatesRef = useRef(folderSizeStates);
   folderSizeStatesRef.current = folderSizeStates;
@@ -2459,16 +2461,48 @@ export const FilePane: React.FC<FilePaneProps> = ({
     );
   };
 
+  const handleSystemHomeShortcutClick = (event: React.MouseEvent<HTMLButtonElement>, shortcutId: string, open: () => void) => {
+    onActivate();
+    if (!singleClickOpens && event.detail !== 0) {
+      setSelectedSystemHomeShortcutId(shortcutId);
+      return;
+    }
+
+    setSelectedSystemHomeShortcutId(null);
+    if (singleClickOpens && event.detail > 0) {
+      const timestamp = Date.now();
+      const previous = lastSingleClickOpenRef.current;
+      if (previous?.itemId === shortcutId && timestamp - previous.timestamp < 450) {
+        previous.timestamp = timestamp;
+        return;
+      }
+      lastSingleClickOpenRef.current = { itemId: shortcutId, timestamp };
+    }
+    open();
+  };
+
+  const handleSystemHomeShortcutDoubleClick = (open: () => void) => {
+    if (singleClickOpens) return;
+    setSelectedSystemHomeShortcutId(null);
+    onActivate();
+    open();
+  };
+
   const renderQuickAccessCard = (item: QuickAccessItem) => {
     const customIcon = getCustomFolderIcon(item.path, customFolderIcons ?? {});
-    const isSelected = tab.currentPath.toLowerCase() === item.path.toLowerCase();
+    const shortcutId = `quick-access:${item.id}`;
+    const isCurrentLocation = tab.currentPath.toLowerCase() === item.path.toLowerCase();
+    const isSelected = selectedSystemHomeShortcutId === shortcutId || isCurrentLocation;
     return (
       <Tooltip key={item.id} label={item.path} placement="top">
         <button
           type="button"
-          onClick={() => { onActivate(); onNavigate(item.path); }}
+          onClick={event => handleSystemHomeShortcutClick(event, shortcutId, () => onNavigate(item.path))}
+          onDoubleClick={() => handleSystemHomeShortcutDoubleClick(() => onNavigate(item.path))}
           aria-label={`${item.name}: ${item.path}`}
-          aria-current={isSelected ? 'location' : undefined}
+          aria-current={isCurrentLocation ? 'location' : undefined}
+          aria-pressed={selectedSystemHomeShortcutId === shortcutId}
+          style={{ cursor: singleClickOpens ? 'pointer' : 'default' }}
           className={`group flex min-h-[68px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${isSelected ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]' : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'}`}
         >
           <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-amber-300/10 text-amber-300 group-hover:bg-amber-300/15">
@@ -2485,14 +2519,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   const renderWindowsSpecialFolderCard = (folder: WindowsSpecialFolder) => {
     const label = windowsSpecialFolderLabels[folder.id];
-    const isSelected = tab.currentPath.toLowerCase() === folder.path.toLowerCase();
+    const shortcutId = `windows-folder:${folder.id}`;
+    const isCurrentLocation = tab.currentPath.toLowerCase() === folder.path.toLowerCase();
+    const isSelected = selectedSystemHomeShortcutId === shortcutId || isCurrentLocation;
+    const open = () => { if (folder.isFile) onOpenWindowsSpecialFolder(folder); else onNavigate(folder.path); };
     return (
       <Tooltip key={folder.id} label={folder.path} placement="top">
         <button
           type="button"
-          onClick={() => { onActivate(); if (folder.isFile) onOpenWindowsSpecialFolder(folder); else onNavigate(folder.path); }}
+          onClick={event => handleSystemHomeShortcutClick(event, shortcutId, open)}
+          onDoubleClick={() => handleSystemHomeShortcutDoubleClick(open)}
           aria-label={`${label}: ${folder.path}`}
-          aria-current={isSelected ? 'location' : undefined}
+          aria-current={isCurrentLocation ? 'location' : undefined}
+          aria-pressed={selectedSystemHomeShortcutId === shortcutId}
+          style={{ cursor: singleClickOpens ? 'pointer' : 'default' }}
           className={`group flex min-h-[68px] w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors ${isSelected ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]' : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'}`}
         >
           <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg ${folder.isFile ? 'bg-cyan-400/10 text-cyan-300' : 'bg-amber-300/10 text-amber-300 group-hover:bg-amber-300/15'}`}>
