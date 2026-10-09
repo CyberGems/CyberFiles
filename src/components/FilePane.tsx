@@ -2545,8 +2545,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
     );
   };
   const systemFolders = files.filter(item => item.id.startsWith('system-location-'));
-  const customQuickAccessItems = quickAccessItems.filter(item => item.isCustom);
+  const systemHomeFilterQuery = isSystemHome ? tab.filterQuery.trim().toLowerCase() : '';
+  const normalizedSystemHomeFilterQuery = systemHomeFilterQuery.startsWith('*.')
+    ? systemHomeFilterQuery.slice(2)
+    : systemHomeFilterQuery.replace(/^\./, '');
+  const matchesSystemHomeFilter = (...values: string[]) => !systemHomeFilterQuery || values.some(value => {
+    const normalizedValue = value.toLowerCase();
+    return normalizedValue.includes(systemHomeFilterQuery)
+      || (normalizedSystemHomeFilterQuery !== '' && normalizedValue.includes(normalizedSystemHomeFilterQuery));
+  });
+  const customQuickAccessItems = quickAccessItems.filter(item => item.isCustom && matchesSystemHomeFilter(item.name, item.path, 'folder'));
+  const visibleWindowsSpecialFolders = windowsSpecialFolders.filter(folder =>
+    matchesSystemHomeFilter(windowsSpecialFolderLabels[folder.id], folder.path, folder.isFile ? 'file' : 'folder'),
+  );
   const quickAccessItemCount = systemFolders.length + customQuickAccessItems.length;
+  const systemHomeVisibleItemCount = files.length + customQuickAccessItems.length + visibleWindowsSpecialFolders.length;
   const systemVolumes = files.filter(item => item.id.startsWith('system-drive-'));
   const networkVolumes = systemVolumes.filter(item => drives.find(drive => item.id === `system-drive-${drive.id}`)?.type === 'network');
   const deviceVolumes = systemVolumes.filter(item => !networkVolumes.includes(item));
@@ -2568,7 +2581,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     );
   };
 
-  const visibleItemCount = `${files.length}${hasMore ? '+' : ''}`;
+  const visibleItemCount = `${isSystemHome ? systemHomeVisibleItemCount : files.length}${hasMore ? '+' : ''}`;
   const itemCountLabel = isLoadingDirectory && tab.flatView ? t.pane.loadingFolder : hasMore && totalItemCount !== undefined
     ? t.pane.loadedOfTotal.replace('{loaded}', String(files.length)).replace('{total}', String(totalItemCount))
     : t.pane.itemsCount.replace('{count}', visibleItemCount);
@@ -3005,7 +3018,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <Search className="w-3.5 h-3.5 absolute left-2 top-2 text-neutral-500" />
           <input
             type="text"
-            placeholder={t.pane.filterPlaceholder}
+            placeholder={isSystemHome ? t.pane.systemHomeFilterPlaceholder : t.pane.filterPlaceholder}
             value={tab.filterQuery}
             onChange={(e) => onFilterChange(e.target.value)}
             className="w-full bg-neutral-900 pl-7 pr-7 py-1 rounded text-xs text-neutral-200 placeholder:text-neutral-500 border border-neutral-800 focus:border-cyan-500/60 focus:outline-none font-sans"
@@ -3184,10 +3197,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </div>
         )}
         <div className={`min-h-full ${isSystemHome ? 'px-2' : 'px-4'} ${effectiveViewMode === 'compact' ? 'h-full w-max min-w-full' : ''}`}>
-        {files.length === 0 ? (
+        {files.length === 0 && (!isSystemHome || systemHomeVisibleItemCount === 0) ? (
           <div className="h-full flex flex-col items-center justify-center text-neutral-500 gap-2 p-6">
             {isLoadingDirectory ? <RotateCw className="w-7 h-7 text-cyan-500 animate-spin" /> : <Folder className="w-8 h-8 text-neutral-600 stroke-[1.5]" />}
-            <div className="text-xs">{isLoadingDirectory ? t.pane.loadingFolder : flatViewStatus?.error ? t.pane.flatViewLoadFailed : tab.currentPath ? t.pane.emptyFolder : t.pane.noFolderOpen}</div>
+            <div className="text-xs">{isLoadingDirectory ? t.pane.loadingFolder : flatViewStatus?.error ? t.pane.flatViewLoadFailed : tab.filterQuery.trim() ? t.pane.filterNoResults : tab.currentPath ? t.pane.emptyFolder : t.pane.noFolderOpen}</div>
             {!isLoadingDirectory && !tab.filterQuery && tab.currentPath && !isSystemHome && !isRecycleBin && getParentPath(tab.currentPath) !== tab.currentPath && (
               <div className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-neutral-800 bg-neutral-900/60 px-2.5 py-1 text-[11px] tracking-wide text-neutral-500">
                 <CornerUpLeft className="h-3 w-3 text-cyan-500/80" aria-hidden="true" />
@@ -3199,7 +3212,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 onClick={() => onFilterChange('')}
                 className="text-[11px] text-cyan-400 hover:underline"
               >
-                Limpiar filtro de búsqueda
+                {t.pane.clearFilter}
               </button>
             )}
           </div>
@@ -3230,11 +3243,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 </div>
               </section>
             )}
-            {windowsSpecialFolders.length > 0 && (
+            {visibleWindowsSpecialFolders.length > 0 && (
               <section>
-                {sectionHeading('advancedWindowsFolders', t.pane.systemAdvancedWindowsFolders.replace('{count}', String(windowsSpecialFolders.length)))}
+                {sectionHeading('advancedWindowsFolders', t.pane.systemAdvancedWindowsFolders.replace('{count}', String(visibleWindowsSpecialFolders.length)))}
                 <div id={`${paneId}-system-home-advancedWindowsFolders-content`} style={{ display: collapsedSystemHomeSections.advancedWindowsFolders ? 'none' : undefined }} className="cyberfiles-system-home-grid grid grid-cols-1 gap-1.5">
-                  {windowsSpecialFolders.map(renderWindowsSpecialFolderCard)}
+                  {visibleWindowsSpecialFolders.map(renderWindowsSpecialFolderCard)}
                 </div>
               </section>
             )}

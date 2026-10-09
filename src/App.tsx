@@ -2082,12 +2082,12 @@ export default function App() {
 
     // Simple, predictable filtering. Advanced filters belong in the global search.
     if (tabState.filterQuery.trim()) {
-      const q = tabState.filterQuery.toLowerCase();
+      const q = tabState.filterQuery.trim().toLowerCase();
       const normalizedQuery = q.startsWith('*.') ? q.slice(2) : q.replace(/^\./, '');
       items = items.filter(i =>
         i.name.toLowerCase().includes(q) ||
-        (tabState.flatView && i.path.toLowerCase().includes(q)) ||
-        i.extension.toLowerCase().includes(normalizedQuery) ||
+        ((tabState.flatView || tabState.currentPath === SYSTEM_HOME_PATH) && i.path.toLowerCase().includes(q)) ||
+        (normalizedQuery !== '' && i.extension.toLowerCase().includes(normalizedQuery)) ||
         i.type.toLowerCase().includes(q)
       );
     }
