@@ -11,7 +11,6 @@ import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
 import { isTauriDesktop } from '../utils/nativeFileSystem';
 import { ColorValueEditor } from './ColorValueEditor';
-import { translations, type Language } from '../locales/translations';
 
 interface GlobalShortcutSettingsState {
   enabled: boolean;
@@ -111,16 +110,6 @@ function normalizeSettingsSearch(value: string): string {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-function collectTranslationLeaves(value: unknown, path = '', result = new Map<string, string>()): Map<string, string> {
-  if (typeof value === 'string') {
-    result.set(path, value);
-  } else if (Array.isArray(value)) {
-    value.forEach((child, index) => collectTranslationLeaves(child, `${path}.${index}`, result));
-  } else if (value && typeof value === 'object') {
-    Object.entries(value).forEach(([key, child]) => collectTranslationLeaves(child, path ? `${path}.${key}` : key, result));
-  }
-  return result;
-}
 const RECENT_ITEM_AUTO_COLORS: Record<AppTheme, string> = {
   cyberfiles: '#fef3c7',
   gray: '#e5e5e5',
@@ -225,6 +214,8 @@ export function SettingsModal({
   const tabSettingsRef = useRef<HTMLDivElement>(null);
   const lastFocusTabSettingsRequest = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const [isSearchResultsOpen, setIsSearchResultsOpen] = useState(false);
   const [settingsSearch, setSettingsSearch] = useState('');
   const [settingsSearchIndex, setSettingsSearchIndex] = useState<SettingsSearchEntry[]>([]);
   const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
@@ -236,20 +227,6 @@ export function SettingsModal({
     folders: t.settings.foldersTab,
     shortcuts: t.settings.shortcutsTab,
   };
-  const counterpartText = useMemo(() => {
-    const otherLanguage: Language = language === 'es' ? 'en' : 'es';
-    const current = collectTranslationLeaves(translations[language]);
-    const other = collectTranslationLeaves(translations[otherLanguage]);
-    const lookup = new Map<string, string[]>();
-    current.forEach((value, path) => {
-      const counterpart = other.get(path);
-      if (!counterpart || counterpart === value) return;
-      const values = lookup.get(value) ?? [];
-      values.push(counterpart);
-      lookup.set(value, values);
-    });
-    return lookup;
-  }, [language]);
   useEffect(() => {
     if (!isOpen || focusTabSettingsRequest <= lastFocusTabSettingsRequest.current) return;
     lastFocusTabSettingsRequest.current = focusTabSettingsRequest;
@@ -496,10 +473,23 @@ export function SettingsModal({
 
   const chooseSettingsSearchResult = (result: { id: string; tab: SettingsTab }) => {
     selectTab(result.tab);
+    setSettingsSearch('');
+    setIsSearchResultsOpen(false);
     setActiveSearchResultId(result.id.startsWith('tab:') ? null : result.id);
     setActiveSearchIndex(-1);
     searchInputRef.current?.focus({ preventScroll: true });
   };
+  useEffect(() => {
+    if (!isOpen || !isSearchResultsOpen) return;
+    const closeSearchResultsOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !searchContainerRef.current?.contains(event.target)) {
+        setIsSearchResultsOpen(false);
+        setActiveSearchIndex(-1);
+      }
+    };
+    document.addEventListener('pointerdown', closeSearchResultsOutside, true);
+    return () => document.removeEventListener('pointerdown', closeSearchResultsOutside, true);
+  }, [isOpen, isSearchResultsOpen]);
   useEffect(() => {
     if (!isOpen) return;
     const focusSettingsSearch = (event: KeyboardEvent) => {
@@ -534,7 +524,6 @@ export function SettingsModal({
           const part = currentNode.textContent?.trim();
           if (part) {
             textParts.push(part);
-            textParts.push(...(counterpartText.get(part) ?? []));
           }
         }
         const controlParts: string[] = [];
@@ -543,7 +532,6 @@ export function SettingsModal({
             const value = control.getAttribute(attribute);
             if (value) {
               controlParts.push(value);
-              controlParts.push(...(counterpartText.get(value) ?? []));
             }
           }
           if (control instanceof HTMLSelectElement) controlParts.push(...Array.from(control.options, option => option.text));
@@ -579,10 +567,9 @@ export function SettingsModal({
     if (searchTokens.length === 0) return [];
     const tabResults = settingsTabs.flatMap(tabName => {
       const label = settingsTabLabels[tabName];
-      const aliases = counterpartText.get(label) ?? [];
-      const corpus = normalizeSettingsSearch([label, ...aliases].join(' '));
+      const corpus = normalizeSettingsSearch(label);
       return searchTokens.every(token => corpus.includes(token))
-        ? [{ id: `tab:${tabName}`, tab: tabName, title: label, text: label, target: contentRef.current?.querySelector<HTMLElement>(`[data-settings-tab-content="${tabName}"]`) ?? null, tabOnly: true }]
+        ? [{ id: 'tab:' + tabName, tab: tabName, title: label, text: label, target: contentRef.current?.querySelector<HTMLElement>('[data-settings-tab-content=' + tabName + ']') ?? null, tabOnly: true }]
         : [];
     }).filter((entry): entry is { id: string; tab: SettingsTab; title: string; text: string; target: HTMLElement; tabOnly: true } => entry.target !== null);
     const matching = settingsSearchIndex.filter(entry => {
@@ -600,7 +587,7 @@ export function SettingsModal({
       return score(right) - score(left);
     });
     return [...tabResults, ...uniqueMatches];
-  }, [counterpartText, normalizedSearch, searchTokens, settingsSearchIndex, settingsTabLabels]);
+  }, [normalizedSearch, searchTokens, settingsSearchIndex, settingsTabLabels]);
 
   useEffect(() => {
     if (!isOpen || !activeSearchResultId) return;
@@ -653,7 +640,7 @@ export function SettingsModal({
         </div>
 
         <div className="relative z-30 border-b border-neutral-800 px-5 py-3">
-          <div className="relative">
+          <div ref={searchContainerRef} className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" aria-hidden="true" />
             <input
               ref={searchInputRef}
@@ -662,14 +649,16 @@ export function SettingsModal({
               role="combobox"
               aria-label={t.settings.searchPlaceholder}
               aria-autocomplete="list"
-              aria-expanded={settingsSearchResults.length > 0}
-              aria-controls={settingsSearchResults.length > 0 ? 'settings-search-results' : undefined}
-              aria-activedescendant={settingsSearchResults[activeSearchIndex] ? `settings-search-result-${activeSearchIndex}` : undefined}
+              aria-expanded={settingsSearch.trim().length > 0 && isSearchResultsOpen}
+              aria-controls={settingsSearch.trim().length > 0 && isSearchResultsOpen && settingsSearchResults.length > 0 ? 'settings-search-results' : undefined}
+              aria-activedescendant={settingsSearch.trim().length > 0 && isSearchResultsOpen && settingsSearchResults[activeSearchIndex] ? `settings-search-result-${activeSearchIndex}` : undefined}
               autoComplete="off"
               spellCheck={false}
               value={settingsSearch}
+              onFocus={() => { if (settingsSearch.trim()) setIsSearchResultsOpen(true); }}
               onChange={event => {
                 setSettingsSearch(event.target.value);
+                setIsSearchResultsOpen(Boolean(event.target.value.trim()));
                 setActiveSearchIndex(-1);
                 setActiveSearchResultId(null);
               }}
@@ -691,6 +680,7 @@ export function SettingsModal({
                   event.preventDefault();
                   event.stopPropagation();
                   setSettingsSearch('');
+                  setIsSearchResultsOpen(false);
                   setActiveSearchIndex(-1);
                   setActiveSearchResultId(null);
                 }
@@ -700,13 +690,13 @@ export function SettingsModal({
             />
             <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
               {settingsSearch && (
-                <button type="button" aria-label={t.settings.searchClear} onClick={() => { setSettingsSearch(''); setActiveSearchIndex(-1); setActiveSearchResultId(null); searchInputRef.current?.focus(); }} className="rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200">
+                <button type="button" aria-label={t.settings.searchClear} onClick={() => { setSettingsSearch(''); setIsSearchResultsOpen(false); setActiveSearchIndex(-1); setActiveSearchResultId(null); searchInputRef.current?.focus(); }} className="rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200">
                   <X className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
               )}
               <kbd className="keyboard-hint text-neutral-500">Ctrl+F</kbd>
             </div>
-            {settingsSearch.trim() && (
+            {settingsSearch.trim() && isSearchResultsOpen && (
               <div className="absolute inset-x-0 top-[calc(100%+8px)] z-[100] overflow-hidden rounded-lg border border-neutral-700 bg-neutral-950/98 shadow-2xl backdrop-blur-md">
                 <div aria-live="polite" className="border-b border-neutral-800 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
                   {settingsSearchResults.length === 0
