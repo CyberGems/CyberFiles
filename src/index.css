@@ -1125,9 +1125,29 @@ body.cyberfiles-file-pointer-drag-move * {
   .cyberfiles-settings-panel { animation: none; }
 }
 
-[data-settings-search-highlight="true"] {
-  border-radius: 0.75rem;
-  outline: 1px solid rgb(34 211 238 / 82%);
-  outline-offset: 2px;
-  box-shadow: 0 0 0 3px rgb(8 145 178 / 18%), 0 0 16px rgb(34 211 238 / 20%);
+.cyberfiles-settings-search::-webkit-search-cancel-button {
+  display: none;
+}
+
+.cyberfiles-settings-search-mode [data-settings-search-hidden] {
+  display: none !important;
+}
+
+.cyberfiles-settings-search-mode [data-settings-tab-content='general'] { order: 0; }
+.cyberfiles-settings-search-mode [data-settings-tab-content='appearance'] { order: 1; }
+.cyberfiles-settings-search-mode [data-settings-tab-content='navigation'] { order: 2; }
+.cyberfiles-settings-search-mode [data-settings-tab-content='folders'] { order: 3; }
+.cyberfiles-settings-search-mode [data-settings-tab-content='shortcuts'] { order: 4; }
+
+.cyberfiles-settings-search-mode [data-settings-search-show-category]::before {
+  content: attr(data-settings-search-category);
+  display: block;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgb(40 80 104 / 70%);
+  color: rgb(103 232 249);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
