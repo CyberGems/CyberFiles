@@ -92,6 +92,14 @@ export function TrayMenu() {
   }, [refresh]);
 
   useEffect(() => {
+    const onFocus = () => {
+      void refresh();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refresh]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         void invoke('hide_tray_menu').catch(() => {});
@@ -128,7 +136,7 @@ export function TrayMenu() {
           <div className={`tray-status ${snapshot.visible ? '' : 'is-hidden'}`} role="status">
             <span className="tray-status-dot" aria-hidden="true" />
             <span className="tray-status-text">
-              {snapshot.visible ? t.statusVisible : t.statusHidden}
+              {snapshot.visible ? t.statusOpen : t.statusHidden}
             </span>
           </div>
           <button type="button" role="menuitem" className="tray-item" onClick={() => runAction('toggle')}>

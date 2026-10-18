@@ -3,8 +3,8 @@ export type Language = 'es' | 'en';
 export const translations = {
   es: {
     trayMenu: {
-      statusVisible: 'En pantalla',
-      statusHidden: 'Oculta',
+      statusOpen: 'Abierto',
+      statusHidden: 'Oculto',
       show: 'Mostrar CyberFiles',
       hide: 'Ocultar CyberFiles',
       settings: 'Configuración…',
@@ -1213,7 +1213,7 @@ export const translations = {
   },
   en: {
     trayMenu: {
-      statusVisible: 'On screen',
+      statusOpen: 'Open',
       statusHidden: 'Hidden',
       show: 'Show CyberFiles',
       hide: 'Hide CyberFiles',
