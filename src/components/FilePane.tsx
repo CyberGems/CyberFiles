@@ -2856,7 +2856,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
               <span>{t.sidebar.recycleBinTitle}</span>
             </div>
           ) : (
-            <>
             <div ref={breadcrumbViewportRef} className="relative flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden font-sans text-xs">
               <div ref={breadcrumbMeasureRef} aria-hidden="true" className="pointer-events-none invisible absolute flex w-max gap-1.5">
                 {breadcrumbSegments.map(segment => <span key={segment.fullPath} className="shrink-0 whitespace-nowrap px-1.5 py-1">{segment.label}</span>)}
@@ -2918,21 +2917,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 </React.Fragment>
               ))}
             </div>
-            {tab.flatView && onExitFlatView && (
-              <Tooltip label={t.toolbar.flatViewExitLabel} placement="bottom">
-                <button
-                  type="button"
-                  aria-label={t.toolbar.flatViewExitLabel}
-                  onClick={event => { event.stopPropagation(); onExitFlatView(); }}
-                  className="ml-1 flex h-6 flex-shrink-0 items-center gap-1 rounded-full border border-cyan-700/60 bg-cyan-950/70 px-2 text-[10px] font-semibold uppercase tracking-wide text-cyan-200 transition-colors hover:border-cyan-500/70 hover:bg-cyan-900/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/70"
-                >
-                  <ListTree className="h-3 w-3 flex-shrink-0" />
-                  <span className="max-w-[7.5rem] truncate">{t.toolbar.flatView}</span>
-                  <X className="h-3 w-3 flex-shrink-0" />
-                </button>
-              </Tooltip>
-            )}
-            </>
           )}
           <Tooltip label={t.pane.recentFolders} placement="bottom">
             <button
@@ -3056,6 +3040,27 @@ export const FilePane: React.FC<FilePaneProps> = ({
           {itemCountLabel}
         </div>
       </div>
+
+      {/* Flat view banner: first row of the listing, always visible above the results */}
+      {tab.flatView && (
+        <div className="flex flex-shrink-0 items-center gap-2 border-b border-cyan-900/60 bg-cyan-950/30 px-2 py-1 text-[10px] text-cyan-200">
+          <ListTree className="h-3.5 w-3.5 flex-shrink-0 text-cyan-300" />
+          <span className="flex-shrink-0 font-semibold uppercase tracking-wider">{t.toolbar.flatView}</span>
+          <span className="min-w-0 flex-1 truncate text-cyan-300/70">{t.toolbar.flatViewBannerHint}</span>
+          {onExitFlatView && (
+            <Tooltip label={t.toolbar.flatViewExitLabel} placement="bottom">
+              <button
+                type="button"
+                aria-label={t.toolbar.flatViewExitLabel}
+                onClick={event => { event.stopPropagation(); onExitFlatView(); }}
+                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border border-cyan-800/60 text-cyan-300 transition-colors hover:border-cyan-500/70 hover:bg-cyan-900/60 hover:text-cyan-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/70"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </Tooltip>
+          )}
+        </div>
+      )}
 
       <div ref={horizontalScrollContainerRef} className={`flex min-h-0 flex-1 flex-col ${styleLocked && !isSystemHome && effectiveViewMode === 'details' ? 'overflow-x-auto' : 'overflow-x-hidden'} overflow-y-hidden`}>
         <div className="flex min-h-0 flex-1 flex-col" style={{ width: styleLocked && !isSystemHome && effectiveViewMode === 'details' ? `max(100%, ${detailsTableMinimumWidth}px)` : '100%' }}>
