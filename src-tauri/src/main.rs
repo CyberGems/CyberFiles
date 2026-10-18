@@ -10,9 +10,8 @@ use std::{
     sync::{Arc, Condvar, Mutex, OnceLock},
 };
 use tauri::{
-    menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, PhysicalPosition, PhysicalSize,
+    Emitter, Manager, PhysicalPosition, PhysicalSize, WindowEvent,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
@@ -35,12 +34,14 @@ struct RuntimeInfo {
 }
 
 struct TrayMenuState {
-    toggle: MenuItem<tauri::Wry>,
-    quit: MenuItem<tauri::Wry>,
     english: Mutex<bool>,
     shortcut_hint: Mutex<Option<String>>,
     tray: Mutex<Option<TrayIcon<tauri::Wry>>>,
 }
+
+/// Screen position of the tray click that opened the custom tray menu. It is
+/// kept so the window can be re-anchored once the page reports its real size.
+struct TrayMenuAnchor(Mutex<Option<(i32, i32)>>);
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -3887,29 +3888,6 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
     Ok(())
 }
 
-fn refresh_tray_toggle_label(
-    app: &tauri::AppHandle,
-    toggle: &MenuItem<tauri::Wry>,
-    window: &tauri::WebviewWindow,
-) {
-    let state = app.state::<TrayMenuState>();
-    let english = state.english.lock().map(|value| *value).unwrap_or(false);
-    let shortcut_hint = state
-        .shortcut_hint
-        .lock()
-        .map(|value| value.clone())
-        .unwrap_or(None);
-    let visible = window.is_visible().unwrap_or(true) && !window.is_minimized().unwrap_or(false);
-    let label = match (english, visible) {
-        (true, true) => "Hide CyberFiles",
-        (true, false) => "Show CyberFiles",
-        (false, true) => "Ocultar CyberFiles",
-        (false, false) => "Mostrar CyberFiles",
-    };
-    let text = shortcut_hint.map_or_else(|| label.to_string(), |hint| format!("{label}    {hint}"));
-    let _ = toggle.set_text(text);
-}
-
 fn update_tray_hotkey_hint(app: &tauri::AppHandle, shortcut: Option<&str>) -> Result<(), String> {
     let state = app.state::<TrayMenuState>();
     *state
@@ -3929,13 +3907,10 @@ fn update_tray_hotkey_hint(app: &tauri::AppHandle, shortcut: Option<&str>) -> Re
         );
         let _ = tray.set_tooltip(Some(tooltip));
     }
-    if let Some(window) = app.get_webview_window("main") {
-        refresh_tray_toggle_label(app, &state.toggle, &window);
-    }
     Ok(())
 }
 
-fn toggle_main_window(app: &tauri::AppHandle, toggle: &MenuItem<tauri::Wry>) {
+fn toggle_main_window(app: &tauri::AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
@@ -3949,7 +3924,6 @@ fn toggle_main_window(app: &tauri::AppHandle, toggle: &MenuItem<tauri::Wry>) {
         let _ = window.show();
         let _ = window.set_focus();
     }
-    refresh_tray_toggle_label(app, toggle, &window);
 }
 
 #[tauri::command]
@@ -3957,11 +3931,202 @@ fn set_tray_language(language: String, app: tauri::AppHandle) -> Result<(), Stri
     let english = language == "en";
     let state = app.state::<TrayMenuState>();
     *state.english.lock().map_err(|error| error.to_string())? = english;
-    if let Some(window) = app.get_webview_window("main") {
-        refresh_tray_toggle_label(&app, &state.toggle, &window);
-    }
-    let _ = state.quit.set_text(if english { "Quit" } else { "Salir" });
     Ok(())
+}
+
+// ── Custom tray menu window ────────────────────────────────────────────
+// The menu is its own transparent window so it can carry the CyberGems suite
+// look instead of the plain native popup.
+
+const TRAY_MENU_EST_WIDTH: f64 = 292.0;
+const TRAY_MENU_EST_HEIGHT: f64 = 284.0;
+/// Transparent padding around the card, reserved for its drop shadow.
+const TRAY_MENU_SHADOW_PAD: f64 = 12.0;
+
+fn monitor_contains(monitor: &tauri::Monitor, x: i32, y: i32) -> bool {
+    let position = monitor.position();
+    let size = monitor.size();
+    x >= position.x
+        && x < position.x + size.width as i32
+        && y >= position.y
+        && y < position.y + size.height as i32
+}
+
+/// Places the tray card next to the tray icon, clamped to the monitor that
+/// contains the anchor. `logical_w`/`logical_h` describe the whole window,
+/// including the transparent padding used for the shadow.
+fn tray_menu_geometry(
+    window: &tauri::WebviewWindow,
+    anchor_x: i32,
+    anchor_y: i32,
+    logical_w: f64,
+    logical_h: f64,
+) -> (i32, i32, u32, u32) {
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let width_px = (logical_w * scale).round() as i32;
+    let height_px = (logical_h * scale).round() as i32;
+
+    let monitor = window
+        .available_monitors()
+        .unwrap_or_default()
+        .into_iter()
+        .find(|monitor| monitor_contains(monitor, anchor_x, anchor_y))
+        .or_else(|| window.primary_monitor().ok().flatten())
+        .or_else(|| window.current_monitor().ok().flatten());
+
+    let (min_x, min_y, max_x, max_y) = if let Some(monitor) = monitor {
+        let position = monitor.position();
+        let size = monitor.size();
+        (
+            position.x,
+            position.y,
+            position.x + size.width as i32,
+            position.y + size.height as i32,
+        )
+    } else {
+        (0, 0, 1920, 1080)
+    };
+
+    let gap = (4.0 * scale).round() as i32;
+    let shadow_pad = (TRAY_MENU_SHADOW_PAD * scale).round() as i32;
+
+    let max_card_h = (max_y - min_y - 2 * gap).max(200);
+    let card_w = (width_px - 2 * shadow_pad).max(1);
+    let card_h = (height_px - 2 * shadow_pad).min(max_card_h).max(1);
+
+    // A taskbar docked to the left edge puts the icon outside the monitor
+    // bounds; open to its right instead of above/below.
+    let anchor_in_left_strip = anchor_x < min_x;
+    let (mut card_x, mut card_y);
+    if anchor_in_left_strip {
+        card_x = anchor_x + gap;
+        card_y = anchor_y - card_h / 2;
+    } else {
+        card_x = anchor_x - card_w / 2;
+        if anchor_y < (min_y + max_y) / 2 {
+            card_y = anchor_y + gap;
+        } else {
+            card_y = (anchor_y - card_h - gap).max(min_y);
+        }
+    }
+
+    card_x = card_x.clamp(min_x, (max_x - card_w).max(min_x));
+    card_y = card_y.clamp(min_y, (max_y - card_h).max(min_y));
+
+    (
+        card_x - shadow_pad,
+        card_y - shadow_pad,
+        (card_w + 2 * shadow_pad) as u32,
+        (card_h + 2 * shadow_pad) as u32,
+    )
+}
+
+fn apply_tray_menu_geometry(app: &tauri::AppHandle, width: f64, height: f64) {
+    let Some(window) = app.get_webview_window("tray_menu") else {
+        return;
+    };
+    let anchor = app
+        .state::<TrayMenuAnchor>()
+        .0
+        .lock()
+        .ok()
+        .and_then(|value| *value);
+    let Some((anchor_x, anchor_y)) = anchor else {
+        return;
+    };
+    let (x, y, width_px, height_px) = tray_menu_geometry(&window, anchor_x, anchor_y, width, height);
+    let _ = window.set_size(PhysicalSize::new(width_px, height_px));
+    let _ = window.set_position(PhysicalPosition::new(x, y));
+}
+
+fn show_tray_menu_at(app: tauri::AppHandle, anchor_x: i32, anchor_y: i32) {
+    let Some(window) = app.get_webview_window("tray_menu") else {
+        return;
+    };
+    // A second right click while the menu is open closes it, like a native menu.
+    if window.is_visible().unwrap_or(false) {
+        let _ = window.hide();
+        return;
+    }
+    if let Ok(mut anchor) = app.state::<TrayMenuAnchor>().0.lock() {
+        *anchor = Some((anchor_x, anchor_y));
+    }
+    apply_tray_menu_geometry(&app, TRAY_MENU_EST_WIDTH, TRAY_MENU_EST_HEIGHT);
+    let _ = window.show();
+    let _ = window.set_focus();
+    let _ = app.emit("tray-menu-show", ());
+}
+
+fn reveal_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+#[tauri::command]
+fn tray_menu_ready(app: tauri::AppHandle, width: f64, height: f64) {
+    apply_tray_menu_geometry(&app, width, height);
+}
+
+#[tauri::command]
+fn hide_tray_menu(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("tray_menu") {
+        let _ = window.hide();
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TrayMenuSnapshot {
+    visible: bool,
+    hotkey: Option<String>,
+    english: bool,
+    version: &'static str,
+}
+
+#[tauri::command]
+fn get_tray_menu_state(app: tauri::AppHandle) -> TrayMenuSnapshot {
+    let state = app.state::<TrayMenuState>();
+    let english = state.english.lock().map(|value| *value).unwrap_or(false);
+    let hotkey = state
+        .shortcut_hint
+        .lock()
+        .ok()
+        .and_then(|value| value.clone());
+    let visible = app
+        .get_webview_window("main")
+        .map(|window| window.is_visible().unwrap_or(true) && !window.is_minimized().unwrap_or(false))
+        .unwrap_or(false);
+    TrayMenuSnapshot {
+        visible,
+        hotkey,
+        english,
+        version: env!("CARGO_PKG_VERSION"),
+    }
+}
+
+#[tauri::command]
+fn tray_menu_action(app: tauri::AppHandle, action: String) {
+    if let Some(menu) = app.get_webview_window("tray_menu") {
+        let _ = menu.hide();
+    }
+    match action.as_str() {
+        "toggle" => toggle_main_window(&app),
+        "settings" => {
+            reveal_main_window(&app);
+            let _ = app.emit("tray-open-settings", ());
+        }
+        "about" => {
+            reveal_main_window(&app);
+            let _ = app.emit("tray-open-about", ());
+        }
+        "quit" => {
+            let _ = app.emit("tray-quit-requested", ());
+        }
+        _ => {}
+    }
 }
 
 #[derive(Serialize)]
@@ -5404,8 +5569,7 @@ fn main() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        let toggle = app.state::<TrayMenuState>().toggle.clone();
-                        toggle_main_window(app, &toggle);
+                        toggle_main_window(app);
                     }
                 })
                 .build(),
@@ -5426,19 +5590,12 @@ fn main() {
                 config_path: shortcut_config_path,
             });
 
-            let toggle =
-                MenuItem::with_id(app, "toggle", "Ocultar CyberFiles", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Salir", true, None::<&str>)?;
             app.manage(TrayMenuState {
-                toggle: toggle.clone(),
-                quit: quit.clone(),
                 english: Mutex::new(false),
                 shortcut_hint: Mutex::new(None),
                 tray: Mutex::new(None),
             });
-            let menu = Menu::with_items(app, &[&toggle, &quit])?;
-            let tray_toggle = toggle.clone();
-            let click_toggle = toggle.clone();
+            app.manage(TrayMenuAnchor(Mutex::new(None)));
 
             let tray_icon = TrayIconBuilder::with_id("cyberfiles-tray")
                 .icon(
@@ -5447,31 +5604,23 @@ fn main() {
                         .clone(),
                 )
                 .tooltip("CyberFiles")
-                .menu(&menu)
                 .show_menu_on_left_click(false)
-                .on_menu_event(move |app, event| match event.id.as_ref() {
-                    "toggle" => toggle_main_window(app, &tray_toggle),
-                    "quit" => {
-                        let _ = app.emit("tray-quit-requested", ());
-                    }
-                    _ => {}
-                })
                 .on_tray_icon_event(move |tray, event| match event {
                     TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
                         ..
-                    } => toggle_main_window(tray.app_handle(), &click_toggle),
+                    } => toggle_main_window(tray.app_handle()),
                     TrayIconEvent::Click {
                         button: MouseButton::Right,
                         button_state: MouseButtonState::Up,
+                        position,
                         ..
-                    } => {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            refresh_tray_toggle_label(app, &click_toggle, &window);
-                        }
-                    }
+                    } => show_tray_menu_at(
+                        tray.app_handle().clone(),
+                        position.x as i32,
+                        position.y as i32,
+                    ),
                     _ => {}
                 })
                 .build(app)?;
@@ -5510,28 +5659,22 @@ fn main() {
             let state_path = window_state_path(app)?;
             restore_window_state(&main_window, &state_path)?;
             let window_for_close = main_window.clone();
-            let app_for_window_events = app.handle().clone();
-            let toggle_for_window_events = toggle.clone();
-            main_window.on_window_event(move |event| match event {
-                tauri::WindowEvent::CloseRequested { .. } => {
+            main_window.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { .. } = event {
                     let _ = save_window_state(&window_for_close, &state_path);
                 }
-                tauri::WindowEvent::Resized(_) => {
-                    refresh_tray_toggle_label(
-                        &app_for_window_events,
-                        &toggle_for_window_events,
-                        &window_for_close,
-                    );
-                }
-                tauri::WindowEvent::Focused(_) => {
-                    refresh_tray_toggle_label(
-                        &app_for_window_events,
-                        &toggle_for_window_events,
-                        &window_for_close,
-                    );
-                }
-                _ => {}
             });
+
+            // The custom tray menu closes as soon as it loses focus, the same
+            // way a native popup menu does.
+            if let Some(tray_window) = app.get_webview_window("tray_menu") {
+                let tray_window_for_blur = tray_window.clone();
+                tray_window.on_window_event(move |event| {
+                    if let WindowEvent::Focused(false) = event {
+                        let _ = tray_window_for_blur.hide();
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -5586,6 +5729,10 @@ fn main() {
             list_windows_special_folders,
             edit_hosts_file,
             set_tray_language,
+            get_tray_menu_state,
+            tray_menu_action,
+            tray_menu_ready,
+            hide_tray_menu,
             get_global_shortcut_settings,
             set_global_shortcut_settings,
             get_instance_preferences,

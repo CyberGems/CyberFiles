@@ -14,6 +14,10 @@ export default defineConfig(() => {
     plugins: [react(), tailwindcss()],
     build: {
       rolldownOptions: {
+        input: {
+          main: path.resolve(projectRoot, 'index.html'),
+          tray: path.resolve(projectRoot, 'tray.html'),
+        },
         output: {
           codeSplitting: {
             groups: [

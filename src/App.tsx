@@ -3263,6 +3263,25 @@ export default function App() {
     };
   }, [language, showToast, t.core.operationFailedWithReason]);
 
+  // The tray menu runs in its own window and asks the main window to open these.
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    let cancelled = false;
+    const stops: Array<() => void> = [];
+    void listen('tray-open-settings', () => setIsSettingsOpen(true)).then(stop => {
+      if (cancelled) stop();
+      else stops.push(stop);
+    });
+    void listen('tray-open-about', () => setIsAboutOpen(true)).then(stop => {
+      if (cancelled) stop();
+      else stops.push(stop);
+    });
+    return () => {
+      cancelled = true;
+      stops.forEach(stop => stop());
+    };
+  }, []);
+
   const queueNativeTransfer = useCallback((kind: TransferKind, paths: string[], targetPath: string, options: { sourcePane?: 'left' | 'right'; selectionPane?: 'left' | 'right'; clipboardSequence?: number; extractionMode?: ArchiveExtractionMode; archiveName?: string; undoActionId?: string; preserveNames?: boolean } = {}) => {
     if (paths.length === 0) return;
     const operation: TransferOperationView = {

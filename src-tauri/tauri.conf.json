@@ -22,6 +22,22 @@
         "resizable": true,
         "visible": false,
         "theme": "Dark"
+      },
+      {
+        "label": "tray_menu",
+        "title": "CyberFiles Tray Menu",
+        "url": "tray.html",
+        "width": 292,
+        "height": 300,
+        "resizable": false,
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "visible": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "theme": "Dark"
       }
     ],
     "security": {

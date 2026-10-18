@@ -2,6 +2,16 @@ export type Language = 'es' | 'en';
 
 export const translations = {
   es: {
+    trayMenu: {
+      statusVisible: 'En pantalla',
+      statusHidden: 'Oculta',
+      show: 'Mostrar CyberFiles',
+      hide: 'Ocultar CyberFiles',
+      settings: 'Configuración…',
+      about: 'Acerca de CyberFiles…',
+      quit: 'Salir',
+      headerTooltip: 'Acerca de CyberFiles',
+    },
     tabMenu: {
       label: 'Opciones de pestaña',
       tabsLabel: 'Pestañas de carpetas',
@@ -1202,6 +1212,16 @@ export const translations = {
     }
   },
   en: {
+    trayMenu: {
+      statusVisible: 'On screen',
+      statusHidden: 'Hidden',
+      show: 'Show CyberFiles',
+      hide: 'Hide CyberFiles',
+      settings: 'Settings…',
+      about: 'About CyberFiles…',
+      quit: 'Exit',
+      headerTooltip: 'About CyberFiles',
+    },
     tabMenu: {
       label: 'Tab options',
       tabsLabel: 'Folder tabs',
