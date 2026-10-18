@@ -2270,6 +2270,9 @@ export default function App() {
         folderStyle: rememberedStyle,
         folderStyleOnEntry: rememberedStyle,
         filterQuery: '',
+        // A new tab in a different folder starts without flat view, even when
+        // the folder style lock is on.
+        flatView: getPathKey(sourceTab.currentPath) === pathKey ? sourceTab.flatView : false,
         selectedIds: [],
         focusedId: null,
       };
@@ -2309,6 +2312,9 @@ export default function App() {
           folderStyle: rememberedStyle,
           folderStyleOnEntry: rememberedStyle,
           filterQuery: '',
+          // Leaving the folder always drops flat view, even when the folder
+          // style lock is on, so a recursive listing cannot follow you around.
+          flatView: false,
           selectedIds: [],
           focusedId: null,
         };
@@ -2543,6 +2549,7 @@ export default function App() {
         folderStyle: rememberedStyle,
         folderStyleOnEntry: rememberedStyle,
         filterQuery: '',
+        flatView: false,
         selectedIds: [],
         focusedId: null,
       };
@@ -2870,6 +2877,7 @@ export default function App() {
           folderStyle: rememberedStyle,
           folderStyleOnEntry: rememberedStyle,
           filterQuery: '',
+          flatView: false,
           selectedIds: [],
           focusedId: null,
         }, index);
