@@ -1,10 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { Eye, EyeOff, Info, Power, Settings } from 'lucide-react';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Bug,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Gem,
+  Globe,
+  Heart,
+  HelpCircle,
+  Info,
+  Power,
+  ScrollText,
+  Settings,
+} from 'lucide-react';
 import { translations, type Language } from '../locales/translations';
+import { CYBERFILES_REPO, CYBERGEMS_APPS, CYBERGEMS_SITE, SUITE_APPS } from './suiteApps';
 import './tray.css';
 
+type TrayView = 'main' | 'help' | 'suite';
 type TrayWindowState = 'visible' | 'minimized' | 'hidden';
 
 interface TrayMenuSnapshot {
@@ -19,6 +37,14 @@ const INITIAL_SNAPSHOT: TrayMenuSnapshot = {
   hotkey: null,
   english: false,
   version: __APP_VERSION__,
+};
+
+const HELP_URLS = {
+  faq: `${CYBERFILES_REPO}/wiki#faq`,
+  changelog: `${CYBERFILES_REPO}/releases`,
+  website: CYBERGEMS_SITE,
+  donate: 'https://ko-fi.com/cybergems',
+  issues: `${CYBERFILES_REPO}/issues`,
 };
 
 /** The tray window shares localStorage with the main window, so the language
@@ -46,6 +72,7 @@ function readTheme() {
 export function TrayMenu() {
   const [snapshot, setSnapshot] = useState<TrayMenuSnapshot>(INITIAL_SNAPSHOT);
   const [language, setLanguage] = useState<Language>('es');
+  const [view, setView] = useState<TrayView>('main');
   const cardRef = useRef<HTMLDivElement>(null);
   const t = translations[language].trayMenu;
   const isVisible = snapshot.windowState === 'visible';
@@ -72,6 +99,7 @@ export function TrayMenu() {
 
   const refresh = useCallback(async () => {
     document.documentElement.dataset.theme = readTheme();
+    setView('main');
     try {
       const next = await invoke<TrayMenuSnapshot>('get_tray_menu_state');
       setSnapshot(next);
@@ -86,6 +114,15 @@ export function TrayMenu() {
     void invoke('tray_menu_action', { action }).catch(error => {
       console.error('tray_menu_action failed:', error);
     });
+  };
+
+  const openExternal = (url: string) => {
+    void openUrl(url).catch(error => {
+      console.error('openUrl failed:', error);
+    });
+    window.setTimeout(() => {
+      void invoke('hide_tray_menu').catch(() => {});
+    }, 250);
   };
 
   useEffect(() => {
@@ -113,6 +150,10 @@ export function TrayMenu() {
   }, [refresh]);
 
   useEffect(() => {
+    window.requestAnimationFrame(() => window.requestAnimationFrame(reportSize));
+  }, [view, reportSize]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         void invoke('hide_tray_menu').catch(() => {});
@@ -130,55 +171,173 @@ export function TrayMenu() {
   return (
     <div className="tray-root">
       <div className="tray-card" role="menu" aria-label="CyberFiles" ref={cardRef}>
-        <button
-          type="button"
-          className="tray-header"
-          title={t.headerTooltip}
-          onClick={() => runAction('about')}
-        >
-          <img className="tray-header-icon" src="/icon.png" alt="" />
-          <span className="tray-header-name">
-            Cyber<span className="tray-header-accent">Files</span>
-          </span>
-          <span className="tray-header-version">v{snapshot.version}</span>
-        </button>
+        <div className="tray-deck" data-view={view}>
+          {/* ── Main view ── */}
+          <div className="tray-view" id="view-main">
+            <button
+              type="button"
+              className="tray-header"
+              title={t.headerTooltip}
+              onClick={() => runAction('about')}
+            >
+              <img className="tray-header-icon" src="/icon.png" alt="" />
+              <span className="tray-header-name">
+                Cyber<span className="tray-header-accent">Files</span>
+              </span>
+              <span className="tray-header-version">v{snapshot.version}</span>
+            </button>
 
-        <div className="tray-divider" />
+            <div className="tray-divider" />
 
-        <div className="tray-group">
-          <div className={`tray-status ${statusTone}`} role="status">
-            <span className="tray-status-dot" aria-hidden="true" />
-            <span className="tray-status-text">{statusLabel}</span>
+            <div className="tray-group">
+              <div className={`tray-status ${statusTone}`} role="status">
+                <span className="tray-status-dot" aria-hidden="true" />
+                <span className="tray-status-text">{statusLabel}</span>
+              </div>
+              <button type="button" role="menuitem" className="tray-item" onClick={() => runAction('toggle')}>
+                <span className="tray-item-icon">
+                  {isVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                </span>
+                <span className="tray-item-label">{isVisible ? t.hide : t.show}</span>
+                {snapshot.hotkey && <span className="tray-item-hotkey">{snapshot.hotkey}</span>}
+              </button>
+            </div>
+
+            <div className="tray-divider" />
+
+            <div className="tray-group">
+              <button type="button" role="menuitem" className="tray-item" onClick={() => runAction('settings')}>
+                <span className="tray-item-icon"><Settings size={16} /></span>
+                <span className="tray-item-label">{t.settings}</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="tray-item tray-nav-item"
+                onClick={() => setView('help')}
+              >
+                <span className="tray-item-icon"><HelpCircle size={16} /></span>
+                <span className="tray-item-label">{t.help}</span>
+                <span className="tray-nav-arrow"><ChevronRight size={14} /></span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="tray-item tray-nav-item"
+                onClick={() => setView('suite')}
+              >
+                <span className="tray-item-icon"><Gem size={16} /></span>
+                <span className="tray-item-label">{t.suite}</span>
+                <span className="tray-nav-arrow"><ChevronRight size={14} /></span>
+              </button>
+            </div>
+
+            <div className="tray-divider" />
+
+            <div className="tray-group tray-group-exit">
+              <button type="button" role="menuitem" className="tray-item tray-item-exit" onClick={() => runAction('quit')}>
+                <span className="tray-item-icon"><Power size={16} /></span>
+                <span className="tray-item-label">{t.quit}</span>
+              </button>
+            </div>
           </div>
-          <button type="button" role="menuitem" className="tray-item" onClick={() => runAction('toggle')}>
-            <span className="tray-item-icon">
-              {isVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-            </span>
-            <span className="tray-item-label">{isVisible ? t.hide : t.show}</span>
-            {snapshot.hotkey && <span className="tray-item-hotkey">{snapshot.hotkey}</span>}
-          </button>
-        </div>
 
-        <div className="tray-divider" />
+          {/* ── Help view ── */}
+          <div className="tray-view" id="view-help">
+            <div className="tray-sub-header">
+              <button type="button" className="tray-back-btn" onClick={() => setView('main')}>
+                <span className="tray-back-icon"><ArrowLeft size={13} /></span>
+                <span>{t.back}</span>
+              </button>
+              <span className="tray-sub-title">{t.help}</span>
+            </div>
 
-        <div className="tray-group">
-          <button type="button" role="menuitem" className="tray-item" onClick={() => runAction('settings')}>
-            <span className="tray-item-icon"><Settings size={16} /></span>
-            <span className="tray-item-label">{t.settings}</span>
-          </button>
-          <button type="button" role="menuitem" className="tray-item" onClick={() => runAction('about')}>
-            <span className="tray-item-icon"><Info size={16} /></span>
-            <span className="tray-item-label">{t.about}</span>
-          </button>
-        </div>
+            <div className="tray-divider" />
 
-        <div className="tray-divider" />
+            <div className="tray-group">
+              <button type="button" role="menuitem" className="tray-item tray-sub-item" onClick={() => openExternal(HELP_URLS.faq)}>
+                <span className="tray-item-icon"><HelpCircle size={14} /></span>
+                <span className="tray-item-label">{t.faq}</span>
+              </button>
+              <button type="button" role="menuitem" className="tray-item tray-sub-item" onClick={() => openExternal(HELP_URLS.changelog)}>
+                <span className="tray-item-icon"><ScrollText size={14} /></span>
+                <span className="tray-item-label">{t.changelog}</span>
+              </button>
+              <div className="tray-sub-sep" />
+              <button type="button" role="menuitem" className="tray-item tray-sub-item" onClick={() => openExternal(HELP_URLS.website)}>
+                <span className="tray-item-icon"><Globe size={14} /></span>
+                <span className="tray-item-label">{t.website}</span>
+              </button>
+              <button type="button" role="menuitem" className="tray-item tray-sub-item" onClick={() => openExternal(HELP_URLS.donate)}>
+                <span className="tray-item-icon tray-item-icon-heart"><Heart size={14} /></span>
+                <span className="tray-item-label">{t.donate}</span>
+              </button>
+              <button type="button" role="menuitem" className="tray-item tray-sub-item" onClick={() => openExternal(HELP_URLS.issues)}>
+                <span className="tray-item-icon"><Bug size={14} /></span>
+                <span className="tray-item-label">{t.issues}</span>
+              </button>
+              <div className="tray-sub-sep" />
+              <button type="button" role="menuitem" className="tray-item tray-sub-item" onClick={() => runAction('about')}>
+                <span className="tray-item-icon"><Info size={14} /></span>
+                <span className="tray-item-label">{t.about}</span>
+              </button>
+            </div>
+          </div>
 
-        <div className="tray-group tray-group-exit">
-          <button type="button" role="menuitem" className="tray-item tray-item-exit" onClick={() => runAction('quit')}>
-            <span className="tray-item-icon"><Power size={16} /></span>
-            <span className="tray-item-label">{t.quit}</span>
-          </button>
+          {/* ── Suite view ── */}
+          <div className="tray-view" id="view-suite">
+            <div className="tray-sub-header">
+              <button type="button" className="tray-back-btn" onClick={() => setView('main')}>
+                <span className="tray-back-icon"><ArrowLeft size={13} /></span>
+                <span>{t.back}</span>
+              </button>
+              <button
+                type="button"
+                className="tray-brand-link"
+                aria-label="CyberGems"
+                onClick={() => openExternal(CYBERGEMS_SITE)}
+              >
+                <img className="tray-brand-mark" src="/cybergems-logo.svg" alt="" />
+                <span className="tray-brand-name">CyberGems</span>
+              </button>
+            </div>
+
+            <div className="tray-divider" />
+
+            <div className="tray-group tray-suite-list">
+              {SUITE_APPS.map(app => (
+                <button
+                  key={app.slug}
+                  type="button"
+                  role="menuitem"
+                  className="tray-item tray-suite-item"
+                  onClick={() => openExternal(app.site)}
+                >
+                  <span className="tray-suite-icon">
+                    <img src={`/suite/${app.slug}.png`} alt="" />
+                  </span>
+                  <span className="tray-suite-copy">
+                    <span className="tray-suite-name">{app.name}</span>
+                    <span className="tray-suite-short">{app.short[language]}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <div className="tray-divider" />
+
+            <div className="tray-group">
+              <button
+                type="button"
+                role="menuitem"
+                className="tray-item tray-suite-all-btn"
+                onClick={() => openExternal(CYBERGEMS_APPS)}
+              >
+                <span className="tray-item-icon"><ArrowRight size={13} /></span>
+                <span className="tray-item-label">{t.suiteAll}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
