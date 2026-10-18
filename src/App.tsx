@@ -115,6 +115,9 @@ const OnboardingWelcome = lazy(() => import('./components/OnboardingWelcome').th
 const FilePane = lazy(() => import('./components/FilePane').then(module => ({ default: module.FilePane })));
 const ONBOARDING_STORAGE_KEY = 'cyberfiles_onboarding_complete';
 const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
+// Flat view reads every subfolder recursively, so ask for confirmation once a
+// folder is large enough for an accidental click to be expensive.
+const FLAT_VIEW_CONFIRM_FOLDER_THRESHOLD = 20;
 const PANEL_VIEW_PREFERENCES_KEY = 'cyberfiles_panel_view_preferences_v1';
 const EMPTY_AREA_DOUBLE_CLICK_KEY = 'cyberfiles_empty_area_double_click_navigate_up';
 const MOUSE_GESTURES_ENABLED_KEY = 'cyberfiles_mouse_gestures_enabled_v1';
@@ -1158,6 +1161,10 @@ export default function App() {
   const [renameRequest, setRenameRequest] = useState<{ requestId: number; itemId: string; paneId: 'left' | 'right' } | null>(null);
   const renameRequestSequence = useRef(0);
   const [isEmptyRecycleBinConfirmOpen, setIsEmptyRecycleBinConfirmOpen] = useState(false);
+  const [isFlatViewConfirmOpen, setIsFlatViewConfirmOpen] = useState(false);
+  // Kept in a ref so the global keyboard handler reads the current value
+  // without depending on directory counts that load after it is registered.
+  const flatViewFolderCountRef = useRef(0);
   const shouldMountBatchRenameModal = useKeepModalMountedAfterFirstOpen(isBatchRenameOpen);
   const shouldMountShortcutsModal = useKeepModalMountedAfterFirstOpen(isShortcutsOpen);
   const shouldMountSearchModal = useKeepModalMountedAfterFirstOpen(isSearchOpen);
@@ -1166,7 +1173,7 @@ export default function App() {
   const shouldMountCloseWindowModal = useKeepModalMountedAfterFirstOpen(isCloseDialogOpen);
   const shouldMountOnboardingModal = useKeepModalMountedAfterFirstOpen(isOnboardingOpen);
   const shouldMountConfirmActionModal = useKeepModalMountedAfterFirstOpen(
-    pendingDeleteItems.length > 0 || isEmptyRecycleBinConfirmOpen,
+    pendingDeleteItems.length > 0 || isEmptyRecycleBinConfirmOpen || isFlatViewConfirmOpen,
   );
   const [isRecycleBinBusy, setIsRecycleBinBusy] = useState(false);
   const recycleBinRestoreInFlight = useRef(false);
@@ -4713,7 +4720,11 @@ export default function App() {
         e.preventDefault();
         const canToggleFlat = isTauriDesktop() && !!currentTab.currentPath && !currentTab.currentPath.startsWith('::');
         if (canToggleFlat) {
-          updateActiveTab(tab => ({ ...tab, flatView: !tab.flatView, selectedIds: [], focusedId: null }));
+          if (!currentTab.flatView && flatViewFolderCountRef.current >= FLAT_VIEW_CONFIRM_FOLDER_THRESHOLD) {
+            setIsFlatViewConfirmOpen(true);
+          } else {
+            updateActiveTab(tab => ({ ...tab, flatView: !tab.flatView, selectedIds: [], focusedId: null }));
+          }
         }
         return;
       }
@@ -4862,6 +4873,22 @@ export default function App() {
         : currentDirectFolderCount === 0
           ? t.toolbar.flatViewNoSubfolders
           : t.toolbar.flatViewTooltip;
+  const flatViewNeedsConfirmation = currentTab.flatView !== true
+    && (currentDirectFolderCount ?? 0) >= FLAT_VIEW_CONFIRM_FOLDER_THRESHOLD;
+  flatViewFolderCountRef.current = currentDirectFolderCount ?? 0;
+  const applyFlatViewToggle = () => {
+    const key = getPathKey(currentTab.currentPath);
+    if (!currentTab.flatView && flatDirectories[key]?.error) invalidateFlatDirectories([currentTab.currentPath]);
+    updateActiveTab(tab => ({ ...tab, flatView: !tab.flatView, selectedIds: [], focusedId: null }));
+  };
+  const handleToggleFlatView = () => {
+    if (!flatViewAvailable) return;
+    if (flatViewNeedsConfirmation) {
+      setIsFlatViewConfirmOpen(true);
+      return;
+    }
+    applyFlatViewToggle();
+  };
   const leftAtSystemHome = leftTabs[activeLeftTabIndex].currentPath === SYSTEM_HOME_PATH;
   const rightAtSystemHome = rightTabs[activeRightTabIndex].currentPath === SYSTEM_HOME_PATH;
   const leftAtRecycleBin = leftTabs[activeLeftTabIndex].currentPath === RECYCLE_BIN_PATH;
@@ -5157,12 +5184,7 @@ export default function App() {
         flatViewAvailable={flatViewAvailable}
         flatViewTooltip={flatViewTooltip}
         flatViewLoading={Boolean(currentTab.flatView && !currentTab.currentPath.startsWith('::') && (!flatDirectories[getPathKey(currentTab.currentPath)] || flatDirectories[getPathKey(currentTab.currentPath)].loading))}
-        onToggleFlatView={() => {
-          if (!flatViewAvailable) return;
-          const key = getPathKey(currentTab.currentPath);
-          if (!currentTab.flatView && flatDirectories[key]?.error) invalidateFlatDirectories([currentTab.currentPath]);
-          updateActiveTab(tab => ({ ...tab, flatView: !tab.flatView, selectedIds: [], focusedId: null }));
-        }}
+        onToggleFlatView={handleToggleFlatView}
       />
 
       {/* 2. Main Workstation Area */}
@@ -5285,6 +5307,7 @@ export default function App() {
                   totalItemCount={leftKnownCounts?.totalCount}
                   isLoadingDirectory={(leftDisplayTab.flatView && !leftAtSystemHome && !leftAtRecycleBin && !leftDirectoryState) || leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
                   flatViewStatus={leftDisplayTab.flatView ? flatDirectories[getPathKey(leftDisplayTab.currentPath)] : undefined}
+                  onExitFlatView={() => updatePaneTab('left', tab => ({ ...tab, flatView: false, selectedIds: [], focusedId: null }))}
                   onLoadMore={leftAtRecycleBin ? () => void loadMoreRecycleBin() : undefined}
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'left')}
@@ -5356,6 +5379,7 @@ export default function App() {
                   totalItemCount={rightKnownCounts?.totalCount}
                   isLoadingDirectory={(rightDisplayTab.flatView && !rightAtSystemHome && !rightAtRecycleBin && !rightDirectoryState) || rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
                   flatViewStatus={rightDisplayTab.flatView ? flatDirectories[getPathKey(rightDisplayTab.currentPath)] : undefined}
+                  onExitFlatView={() => updatePaneTab('right', tab => ({ ...tab, flatView: false, selectedIds: [], focusedId: null }))}
                   onLoadMore={rightAtRecycleBin ? () => void loadMoreRecycleBin() : undefined}
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'right')}
@@ -5428,6 +5452,7 @@ export default function App() {
                   totalItemCount={leftKnownCounts?.totalCount}
                   isLoadingDirectory={(leftDisplayTab.flatView && !leftAtSystemHome && !leftAtRecycleBin && !leftDirectoryState) || leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
                   flatViewStatus={leftDisplayTab.flatView ? flatDirectories[getPathKey(leftDisplayTab.currentPath)] : undefined}
+                  onExitFlatView={() => updatePaneTab('left', tab => ({ ...tab, flatView: false, selectedIds: [], focusedId: null }))}
                   onLoadMore={leftAtRecycleBin ? () => void loadMoreRecycleBin() : undefined}
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'left')}
@@ -5495,6 +5520,7 @@ export default function App() {
                   totalItemCount={rightKnownCounts?.totalCount}
                   isLoadingDirectory={(rightDisplayTab.flatView && !rightAtSystemHome && !rightAtRecycleBin && !rightDirectoryState) || rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
                   flatViewStatus={rightDisplayTab.flatView ? flatDirectories[getPathKey(rightDisplayTab.currentPath)] : undefined}
+                  onExitFlatView={() => updatePaneTab('right', tab => ({ ...tab, flatView: false, selectedIds: [], focusedId: null }))}
                   onLoadMore={rightAtRecycleBin ? () => void loadMoreRecycleBin() : undefined}
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'right')}
@@ -5567,6 +5593,7 @@ export default function App() {
                   totalItemCount={activeKnownCounts?.totalCount}
                   isLoadingDirectory={(currentTab.flatView && !currentTab.currentPath.startsWith('::') && !(activePane === 'left' ? leftDirectoryState : rightDirectoryState)) || (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.loading || (currentTab.currentPath === SYSTEM_HOME_PATH && systemHomeLoading) || (currentAtRecycleBin && recycleBinPage.loading)}
                   flatViewStatus={currentTab.flatView ? flatDirectories[getPathKey(currentTab.currentPath)] : undefined}
+                  onExitFlatView={() => updatePaneTab(activePane, tab => ({ ...tab, flatView: false, selectedIds: [], focusedId: null }))}
                   onLoadMore={currentAtRecycleBin ? () => void loadMoreRecycleBin() : undefined}
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, activePane)}
@@ -5865,6 +5892,23 @@ export default function App() {
               isBusy={isRecycleBinBusy}
               onCancel={() => setIsEmptyRecycleBinConfirmOpen(false)}
               onConfirm={handleConfirmEmptyRecycleBin}
+            />
+          )}
+          {isFlatViewConfirmOpen && (
+            <ConfirmActionModal
+              items={[]}
+              title={t.toolbar.flatViewConfirmTitle}
+              description={t.toolbar.flatViewConfirmMessage.replace(
+                '{count}',
+                new Intl.NumberFormat(language === 'es' ? 'es' : 'en').format(currentDirectFolderCount ?? 0),
+              )}
+              confirmLabel={t.toolbar.flatViewConfirmAction}
+              confirmVariant="secondary"
+              onCancel={() => setIsFlatViewConfirmOpen(false)}
+              onConfirm={() => {
+                setIsFlatViewConfirmOpen(false);
+                applyFlatViewToggle();
+              }}
             />
           )}
         </Suspense>

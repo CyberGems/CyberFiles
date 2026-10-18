@@ -22,6 +22,7 @@ import {
   Calculator,
   LoaderCircle,
   ChevronRight, 
+  ListTree,
   FileCheck,
   Monitor,
   Download,
@@ -97,6 +98,7 @@ interface FilePaneProps {
   totalItemCount?: number;
   isLoadingDirectory?: boolean;
   flatViewStatus?: { error?: string; skippedCount?: number };
+  onExitFlatView?: () => void;
   onLoadMore?: () => void;
   allFiles: FileItem[];
   onNavigate: (path: string) => void;
@@ -361,6 +363,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   totalItemCount,
   isLoadingDirectory = false,
   flatViewStatus,
+  onExitFlatView,
   onLoadMore,
   allFiles,
   onNavigate,
@@ -2853,6 +2856,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               <span>{t.sidebar.recycleBinTitle}</span>
             </div>
           ) : (
+            <>
             <div ref={breadcrumbViewportRef} className="relative flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden font-sans text-xs">
               <div ref={breadcrumbMeasureRef} aria-hidden="true" className="pointer-events-none invisible absolute flex w-max gap-1.5">
                 {breadcrumbSegments.map(segment => <span key={segment.fullPath} className="shrink-0 whitespace-nowrap px-1.5 py-1">{segment.label}</span>)}
@@ -2914,6 +2918,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 </React.Fragment>
               ))}
             </div>
+            {tab.flatView && onExitFlatView && (
+              <Tooltip label={t.toolbar.flatViewExitLabel} placement="bottom">
+                <button
+                  type="button"
+                  aria-label={t.toolbar.flatViewExitLabel}
+                  onClick={event => { event.stopPropagation(); onExitFlatView(); }}
+                  className="ml-1 flex h-6 flex-shrink-0 items-center gap-1 rounded-full border border-cyan-700/60 bg-cyan-950/70 px-2 text-[10px] font-semibold uppercase tracking-wide text-cyan-200 transition-colors hover:border-cyan-500/70 hover:bg-cyan-900/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/70"
+                >
+                  <ListTree className="h-3 w-3 flex-shrink-0" />
+                  <span className="max-w-[7.5rem] truncate">{t.toolbar.flatView}</span>
+                  <X className="h-3 w-3 flex-shrink-0" />
+                </button>
+              </Tooltip>
+            )}
+            </>
           )}
           <Tooltip label={t.pane.recentFolders} placement="bottom">
             <button
