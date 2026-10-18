@@ -5,15 +5,17 @@ import { Eye, EyeOff, Info, Power, Settings } from 'lucide-react';
 import { translations, type Language } from '../locales/translations';
 import './tray.css';
 
+type TrayWindowState = 'visible' | 'minimized' | 'hidden';
+
 interface TrayMenuSnapshot {
-  visible: boolean;
+  windowState: TrayWindowState;
   hotkey: string | null;
   english: boolean;
   version: string;
 }
 
 const INITIAL_SNAPSHOT: TrayMenuSnapshot = {
-  visible: false,
+  windowState: 'hidden',
   hotkey: null,
   english: false,
   version: __APP_VERSION__,
@@ -46,6 +48,17 @@ export function TrayMenu() {
   const [language, setLanguage] = useState<Language>('es');
   const cardRef = useRef<HTMLDivElement>(null);
   const t = translations[language].trayMenu;
+  const isVisible = snapshot.windowState === 'visible';
+  const statusLabel = snapshot.windowState === 'visible'
+    ? t.statusVisible
+    : snapshot.windowState === 'minimized'
+      ? t.statusMinimized
+      : t.statusHidden;
+  const statusTone = snapshot.windowState === 'visible'
+    ? ''
+    : snapshot.windowState === 'minimized'
+      ? 'is-minimized'
+      : 'is-hidden';
 
   const reportSize = useCallback(() => {
     const card = cardRef.current;
@@ -133,17 +146,15 @@ export function TrayMenu() {
         <div className="tray-divider" />
 
         <div className="tray-group">
-          <div className={`tray-status ${snapshot.visible ? '' : 'is-hidden'}`} role="status">
+          <div className={`tray-status ${statusTone}`} role="status">
             <span className="tray-status-dot" aria-hidden="true" />
-            <span className="tray-status-text">
-              {snapshot.visible ? t.statusOpen : t.statusHidden}
-            </span>
+            <span className="tray-status-text">{statusLabel}</span>
           </div>
           <button type="button" role="menuitem" className="tray-item" onClick={() => runAction('toggle')}>
             <span className="tray-item-icon">
-              {snapshot.visible ? <EyeOff size={16} /> : <Eye size={16} />}
+              {isVisible ? <EyeOff size={16} /> : <Eye size={16} />}
             </span>
-            <span className="tray-item-label">{snapshot.visible ? t.hide : t.show}</span>
+            <span className="tray-item-label">{isVisible ? t.hide : t.show}</span>
             {snapshot.hotkey && <span className="tray-item-hotkey">{snapshot.hotkey}</span>}
           </button>
         </div>

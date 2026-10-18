@@ -4080,7 +4080,8 @@ fn hide_tray_menu(app: tauri::AppHandle) {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TrayMenuSnapshot {
-    visible: bool,
+    /// One of "visible", "minimized" or "hidden".
+    window_state: &'static str,
     hotkey: Option<String>,
     english: bool,
     version: &'static str,
@@ -4095,12 +4096,13 @@ fn get_tray_menu_state(app: tauri::AppHandle) -> TrayMenuSnapshot {
         .lock()
         .ok()
         .and_then(|value| value.clone());
-    let visible = app
-        .get_webview_window("main")
-        .map(|window| window.is_visible().unwrap_or(true) && !window.is_minimized().unwrap_or(false))
-        .unwrap_or(false);
+    let window_state = match app.get_webview_window("main") {
+        Some(window) if window.is_minimized().unwrap_or(false) => "minimized",
+        Some(window) if window.is_visible().unwrap_or(true) => "visible",
+        _ => "hidden",
+    };
     TrayMenuSnapshot {
-        visible,
+        window_state,
         hotkey,
         english,
         version: env!("CARGO_PKG_VERSION"),

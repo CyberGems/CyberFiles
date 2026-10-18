@@ -175,6 +175,13 @@
   box-shadow: none;
 }
 
+/* Minimized: still running, just not on screen. Amber reads as "attention"
+   without competing with the live green of a visible window. */
+.tray-status.is-minimized .tray-status-dot {
+  background: #fbbf24;
+  box-shadow: 0 0 6px rgba(251, 191, 36, 0.7);
+}
+
 .tray-status-text {
   min-width: 0;
   color: var(--tray-text-md);
