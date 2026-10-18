@@ -2588,6 +2588,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const itemCountLabel = isLoadingDirectory && tab.flatView ? t.pane.loadingFolder : hasMore && totalItemCount !== undefined
     ? t.pane.loadedOfTotal.replace('{loaded}', String(files.length)).replace('{total}', String(totalItemCount))
     : t.pane.itemsCount.replace('{count}', visibleItemCount);
+  // The style lock carries view styling between folders, which has no meaning
+  // while flat view merges several folders into one listing.
+  const styleLockInactive = tab.flatView === true;
+  const styleLockLabel = styleLockInactive
+    ? t.pane.folderStyleLockUnavailableFlatView
+    : styleLocked ? t.pane.folderStyleLocked : t.pane.folderStyleUnlocked;
   const listerShortcuts = [
     { key: 'Enter', label: t.pane.listerShortcutOpen },
     { key: 'Ctrl + A', label: t.pane.listerShortcutSelectAll },
@@ -3002,16 +3008,23 @@ export const FilePane: React.FC<FilePaneProps> = ({
           document.body,
         )}
 
-        <Tooltip label={styleLocked ? t.pane.folderStyleLocked : t.pane.folderStyleUnlocked} placement="bottom">
-          <button
-            type="button"
-            aria-label={styleLocked ? t.pane.folderStyleLocked : t.pane.folderStyleUnlocked}
-            aria-pressed={styleLocked}
-            onClick={onStyleLockToggle}
-            className={`rounded border p-1 transition-colors ${styleLocked ? 'border-cyan-700/60 bg-cyan-950/60 text-cyan-300' : 'border-transparent text-neutral-500 hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-200'}`}
+        <Tooltip label={styleLockLabel} placement="bottom">
+          <span
+            className={`inline-flex rounded ${styleLockInactive ? 'cursor-not-allowed' : ''}`}
+            tabIndex={styleLockInactive ? 0 : undefined}
+            aria-label={styleLockInactive ? styleLockLabel : undefined}
           >
-            {styleLocked ? <LockKeyhole className="h-3.5 w-3.5" /> : <UnlockKeyhole className="h-3.5 w-3.5" />}
-          </button>
+            <button
+              type="button"
+              aria-label={styleLockLabel}
+              aria-pressed={styleLocked}
+              disabled={styleLockInactive}
+              onClick={onStyleLockToggle}
+              className={`rounded border p-1 transition-colors disabled:pointer-events-none ${styleLockInactive ? 'border-transparent text-neutral-600 opacity-40' : styleLocked ? 'border-cyan-700/60 bg-cyan-950/60 text-cyan-300' : 'border-transparent text-neutral-500 hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-200'}`}
+            >
+              {styleLocked ? <LockKeyhole className="h-3.5 w-3.5" /> : <UnlockKeyhole className="h-3.5 w-3.5" />}
+            </button>
+          </span>
         </Tooltip>
       </div>
 
