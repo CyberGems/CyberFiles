@@ -14,6 +14,7 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/License-GPL--3.0-1F2428.svg?style=flat-square&color=334155" alt="License" />&nbsp;
   <img src="https://img.shields.io/badge/Platform-Windows_10%2F11-1F2428.svg?style=flat-square&color=334155" alt="Platform" />&nbsp;
   <img src="https://img.shields.io/badge/Tauri-2.x-1F2428.svg?style=flat-square&logo=tauri&logoColor=white&color=334155" alt="Tauri" />&nbsp;
   <img src="https://img.shields.io/badge/React-19-1F2428.svg?style=flat-square&logo=react&logoColor=white&color=334155" alt="React" />&nbsp;
@@ -26,7 +27,7 @@
 
 CyberFiles is a **dual-pane file manager for Windows** built for people who move files all day and want the keyboard to do most of the work. It combines two independent panes, each with its own tabs and history, with details, list and icon views, saved layouts and sessions, queued copy and move operations with undo, ZIP and RAR tools, and a properties panel that previews text, images, PDFs and archive contents. Windows drive discovery, native file icons, the Recycle Bin and the Windows properties dialog are wired through the Windows Shell rather than emulated. Built with **Tauri 2**, **Rust**, **React** and **TypeScript**.
 
-*No ads, no tracking, no telemetry, no account. Everything runs on your PC.*
+*Free and open source (GPLv3): no ads, no tracking, no telemetry, no account. Everything runs on your PC.*
 
 ---
 
@@ -314,13 +315,13 @@ If you’d like to support future updates, I’d truly appreciate it. Your donat
 <details>
 <summary><b>Crypto donations (BTC, ETH, USDT, LTC): click to view addresses</b></summary>
 
-| Asset | Address |
-|---|---|
-| **BTC** | <pre><code>bc1q5mxzz05nmvsheqzx7970euswta3fksxzcfzag4</code></pre> |
-| **ETH** | <pre><code>0x79b703Ec0f77493679Fcd280aF3b983E20c580B8</code></pre> |
-| **USDT (ERC20 / BEP20)** | <pre><code>0x79b703Ec0f77493679Fcd280aF3b983E20c580B8</code></pre> |
-| **USDT (TRC20)** | <pre><code>TSVbSk1HSyZ1NprCnAYiw56ECwXgH887mD</code></pre> |
-| **LTC** | <pre><code>LWGnEHgcFCE2BRkzLnsdPDD8Y8ZeDK577X</code></pre> |
+| Asset | Address | QR |
+|---|---|---|
+| **BTC** | <pre><code>bc1q5mxzz05nmvsheqzx7970euswta3fksxzcfzag4</code></pre> | <img src="assets/donate/qr-btc.png" width="90" height="90" alt="BTC QR" /> |
+| **ETH** | <pre><code>0x79b703Ec0f77493679Fcd280aF3b983E20c580B8</code></pre> | <img src="assets/donate/qr-eth.png" width="90" height="90" alt="ETH QR" /> |
+| **USDT (ERC20 / BEP20)** | <pre><code>0x79b703Ec0f77493679Fcd280aF3b983E20c580B8</code></pre> | <img src="assets/donate/qr-eth.png" width="90" height="90" alt="USDT QR" /> |
+| **USDT (TRC20)** | <pre><code>TSVbSk1HSyZ1NprCnAYiw56ECwXgH887mD</code></pre> | <img src="assets/donate/qr-usdt-tron.png" width="90" height="90" alt="USDT TRC20 QR" /> |
+| **LTC** | <pre><code>LWGnEHgcFCE2BRkzLnsdPDD8Y8ZeDK577X</code></pre> | <img src="assets/donate/qr-ltc.png" width="90" height="90" alt="LTC QR" /> |
 
 > ⚠️ Send only the selected asset on the indicated network. Using the wrong network will result in permanent loss of funds.
 
@@ -332,7 +333,7 @@ If you’d like to support future updates, I’d truly appreciate it. Your donat
 
 ## 📄 License
 
-No license has been declared for CyberFiles yet. Until a license file is added, all rights remain with the copyright holder, and the source is published for inspection and contribution rather than for redistribution.
+CyberFiles is distributed under the terms of the GNU General Public License v3.0. See [`LICENSE`](LICENSE) for the full license text.
 
 Copyright (C) 2026 CyberGems
 

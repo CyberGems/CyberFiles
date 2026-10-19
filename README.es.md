@@ -14,6 +14,7 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/Licencia-GPL--3.0-1F2428.svg?style=flat-square&color=334155" alt="Licencia" />&nbsp;
   <img src="https://img.shields.io/badge/Plataforma-Windows_10%2F11-1F2428.svg?style=flat-square&color=334155" alt="Plataforma" />&nbsp;
   <img src="https://img.shields.io/badge/Tauri-2.x-1F2428.svg?style=flat-square&logo=tauri&logoColor=white&color=334155" alt="Tauri" />&nbsp;
   <img src="https://img.shields.io/badge/React-19-1F2428.svg?style=flat-square&logo=react&logoColor=white&color=334155" alt="React" />&nbsp;
@@ -26,7 +27,7 @@
 
 CyberFiles es un **gestor de archivos de doble panel para Windows** pensado para quienes mueven archivos todo el día y quieren que el teclado haga casi todo el trabajo. Combina dos paneles independientes, cada uno con sus propias pestañas e historial, con vistas de detalles, lista e iconos, diseños y sesiones guardados, operaciones de copia y movimiento en cola con deshacer, herramientas para ZIP y RAR y un panel de propiedades que previsualiza texto, imágenes, PDF y el contenido de archivos comprimidos. El descubrimiento de unidades, los iconos nativos, la Papelera de reciclaje y el diálogo de propiedades de Windows se resuelven a través del Shell de Windows, no con imitaciones. Creado con **Tauri 2**, **Rust**, **React** y **TypeScript**.
 
-*Sin anuncios, sin rastreo, sin telemetría y sin cuenta. Todo se ejecuta en tu PC.*
+*Gratuito y de código abierto (GPLv3): sin anuncios, sin rastreo, sin telemetría y sin cuenta. Todo se ejecuta en tu PC.*
 
 ---
 
@@ -314,13 +315,13 @@ Si te apetece apoyar futuras actualizaciones, lo agradecería de verdad. Tu dona
 <details>
 <summary><b>Donaciones en criptomonedas (BTC, ETH, USDT, LTC): pulsa para ver las direcciones</b></summary>
 
-| Activo | Dirección |
-|---|---|
-| **BTC** | <pre><code>bc1q5mxzz05nmvsheqzx7970euswta3fksxzcfzag4</code></pre> |
-| **ETH** | <pre><code>0x79b703Ec0f77493679Fcd280aF3b983E20c580B8</code></pre> |
-| **USDT (ERC20 / BEP20)** | <pre><code>0x79b703Ec0f77493679Fcd280aF3b983E20c580B8</code></pre> |
-| **USDT (TRC20)** | <pre><code>TSVbSk1HSyZ1NprCnAYiw56ECwXgH887mD</code></pre> |
-| **LTC** | <pre><code>LWGnEHgcFCE2BRkzLnsdPDD8Y8ZeDK577X</code></pre> |
+| Activo | Dirección | QR |
+|---|---|---|
+| **BTC** | <pre><code>bc1q5mxzz05nmvsheqzx7970euswta3fksxzcfzag4</code></pre> | <img src="assets/donate/qr-btc.png" width="90" height="90" alt="QR BTC" /> |
+| **ETH** | <pre><code>0x79b703Ec0f77493679Fcd280aF3b983E20c580B8</code></pre> | <img src="assets/donate/qr-eth.png" width="90" height="90" alt="QR ETH" /> |
+| **USDT (ERC20 / BEP20)** | <pre><code>0x79b703Ec0f77493679Fcd280aF3b983E20c580B8</code></pre> | <img src="assets/donate/qr-eth.png" width="90" height="90" alt="QR USDT" /> |
+| **USDT (TRC20)** | <pre><code>TSVbSk1HSyZ1NprCnAYiw56ECwXgH887mD</code></pre> | <img src="assets/donate/qr-usdt-tron.png" width="90" height="90" alt="QR USDT TRC20" /> |
+| **LTC** | <pre><code>LWGnEHgcFCE2BRkzLnsdPDD8Y8ZeDK577X</code></pre> | <img src="assets/donate/qr-ltc.png" width="90" height="90" alt="QR LTC" /> |
 
 > ⚠️ Envía solo el activo seleccionado en la red indicada. Usar la red equivocada provoca la pérdida permanente de los fondos.
 
@@ -332,7 +333,7 @@ Si te apetece apoyar futuras actualizaciones, lo agradecería de verdad. Tu dona
 
 ## 📄 Licencia
 
-CyberFiles aún no ha declarado una licencia. Mientras no se añada un archivo de licencia, todos los derechos quedan en manos del titular del copyright, y el código se publica para inspección y contribución, no para redistribución.
+CyberFiles se distribuye bajo los términos de la Licencia Pública General GNU v3.0. Consulta [LICENSE](LICENSE) para el texto completo de la licencia.
 
 Copyright (C) 2026 CyberGems
 
