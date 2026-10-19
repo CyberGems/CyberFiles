@@ -3313,7 +3313,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   data-file-item="true"
                   data-file-id={item.id}
                   data-selected={isSelected ? 'true' : undefined}
-                  data-zebra={isZebra ? 'true' : undefined}
                   data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
                   data-file-drop-path={item.isFolder && !item.recycleBinId ? item.path : undefined}
                   onPointerDown={event => beginFilePointerDrag(event, item)}

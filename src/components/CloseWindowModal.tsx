@@ -160,7 +160,7 @@ export function CloseWindowModal({
               <span className="block text-sm font-semibold text-neutral-100">{t.closeWindow.hideToTray}</span>
               <span className="mt-1 block text-xs leading-5 text-neutral-400">{t.closeWindow.hideToTrayDescription}</span>
             </span>
-            <kbd aria-hidden="true" className="keyboard-hint-lg shrink-0"><CornerDownLeft className="h-5 w-5" /></kbd>
+            <kbd aria-hidden="true" className="keyboard-hint-lg shrink-0"><CornerDownLeft className="h-3 w-3" /></kbd>
           </button>
           <button
             type="button"

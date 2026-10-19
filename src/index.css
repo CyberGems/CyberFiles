@@ -16,6 +16,7 @@
   --cyberfiles-scrollbar-track: #07121c;
   --cyberfiles-scrollbar-thumb: #315b72;
   --cyberfiles-scrollbar-thumb-hover: #4683a2;
+  --cyberfiles-details-row-background: rgba(27, 49, 63, 0.28);
 
   /* Industrial blue-black hierarchy for the default workbench theme. */
   --color-neutral-950: #050b12;
@@ -98,15 +99,15 @@ html[data-theme='light'] select option {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 2.75rem;
-  min-height: 2.5rem;
-  padding: 0 0.7rem;
+  min-width: 1.65rem;
+  min-height: 1.5rem;
+  padding: 0 0.42rem;
   border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 0.5rem;
+  border-radius: 0.3rem;
   background: rgba(255, 255, 255, 0.07);
   color: var(--color-neutral-200);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 1rem;
+  font-size: 0.625rem;
   font-weight: 600;
   line-height: 1;
   letter-spacing: 0;
@@ -304,8 +305,13 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-file-row {
   box-shadow: none;
 }
 
-html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-file-row[data-zebra='true']:not([data-selected='true']) {
-  background: rgba(27, 49, 63, 0.28);
+/* Every details row shares one background in the dark themes; the light theme keeps its zebra striping. */
+html:not([data-theme='light']) .cyberfiles-details-list .cyberfiles-file-row:not([data-selected='true']) {
+  background-color: var(--cyberfiles-details-row-background);
+}
+
+html[data-theme='gray'] .cyberfiles-details-list .cyberfiles-file-row:not([data-selected='true']):hover {
+  background-color: rgb(38 38 38 / 0.7);
 }
 
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-file-row:not([data-selected='true']):hover {
@@ -517,6 +523,7 @@ html[data-theme='gray'] {
   --color-violet-700: oklch(0.50 0 0);
   --color-violet-900: oklch(0.32 0 0);
   --color-violet-950: oklch(0.22 0 0);
+  --cyberfiles-details-row-background: rgb(23 23 23 / 0.35);
 }
 
 html[data-theme='gray'] body,
