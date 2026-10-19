@@ -5,6 +5,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import {
   ArrowLeft,
   ArrowRight,
+  BookOpen,
   Bug,
   ChevronRight,
   Eye,
@@ -40,10 +41,11 @@ const INITIAL_SNAPSHOT: TrayMenuSnapshot = {
 };
 
 const HELP_URLS = {
+  docs: `${CYBERFILES_REPO}/wiki`,
   faq: `${CYBERFILES_REPO}/wiki#faq`,
   changelog: `${CYBERFILES_REPO}/releases`,
   website: CYBERGEMS_SITE,
-  donate: 'https://ko-fi.com/cybergems',
+  donate: `${CYBERFILES_REPO}#%EF%B8%8F-donate`,
   issues: `${CYBERFILES_REPO}/issues`,
 };
 
@@ -255,6 +257,10 @@ export function TrayMenu() {
             <div className="tray-divider" />
 
             <div className="tray-group">
+              <button type="button" role="menuitem" className="tray-item tray-sub-item" onClick={() => openExternal(HELP_URLS.docs)}>
+                <span className="tray-item-icon"><BookOpen size={14} /></span>
+                <span className="tray-item-label">{t.docs}</span>
+              </button>
               <button type="button" role="menuitem" className="tray-item tray-sub-item" onClick={() => openExternal(HELP_URLS.faq)}>
                 <span className="tray-item-icon"><HelpCircle size={14} /></span>
                 <span className="tray-item-label">{t.faq}</span>
