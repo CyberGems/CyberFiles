@@ -1295,8 +1295,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     </div>
 
                     <div className="flex justify-between text-[9px] text-neutral-400 mt-1 font-sans">
-                      <span>{language === 'es' ? 'Libre' : 'Free'}: {hasCapacity ? formatFileSize(drive.totalBytes - drive.usedBytes) : '—'}</span>
-                      <span>Total: {hasCapacity ? formatFileSize(drive.totalBytes) : '—'}</span>
+                      <span>{t.sidebar.freeOf.replace('{free}', hasCapacity ? formatFileSize(drive.totalBytes - drive.usedBytes) : '—')}</span>
+                      <span>{t.sidebar.totalOf.replace('{total}', hasCapacity ? formatFileSize(drive.totalBytes) : '—')}</span>
                     </div>
                   </button>
                 );
@@ -1383,7 +1383,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="text"
                 value={recentSearch}
                 onChange={(e) => setRecentSearch(e.target.value)}
-                placeholder="Filtrar recientes..."
+                placeholder={t.sidebar.recentFilterPlaceholder}
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-md pl-8 pr-7 py-1 text-xs text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-cyan-500/60 font-sans"
               />
               {recentSearch && (
@@ -1400,11 +1400,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="flex items-center gap-1 overflow-x-auto pb-0.5 scrollbar-none text-[10px]">
               {(['all', 'code', 'document', 'image', 'media'] as const).map(cat => {
                 const labels: Record<string, string> = {
-                  all: 'Todos',
-                  code: 'Código',
-                  document: 'Docs',
-                  image: 'Imágenes',
-                  media: 'Media',
+                  all: t.sidebar.categoryAll,
+                  code: t.sidebar.categoryCode,
+                  document: t.sidebar.categoryDocs,
+                  image: t.sidebar.categoryImages,
+                  media: t.sidebar.categoryMedia,
                 };
                 const isSelected = recentCategory === cat;
                 return (
@@ -1425,7 +1425,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {/* Sub-header with Count & Clear */}
             <div className="flex items-center justify-between text-[10px] text-neutral-400 pt-0.5">
-              <span>{filteredRecentFiles.length} de {recentFiles.length} archivos</span>
+              <span>
+                {t.sidebar.recentCount
+                  .replace('{filtered}', String(filteredRecentFiles.length))
+                  .replace('{total}', String(recentFiles.length))}
+              </span>
               {onClearRecentFiles && recentFiles.length > 0 && (
                 <Tooltip label={t.sidebar.clearRecentTooltip}>
                   <button
@@ -1445,9 +1449,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {filteredRecentFiles.length === 0 ? (
               <div className="p-6 text-center text-neutral-500 flex flex-col items-center justify-center space-y-2">
                 <Clock className="w-8 h-8 text-neutral-700" />
-                <p className="text-xs font-medium text-neutral-400">Sin archivos recientes</p>
+                <p className="text-xs font-medium text-neutral-400">{t.sidebar.noRecentFiles}</p>
                 <p className="text-[10px] text-neutral-500 leading-relaxed max-w-[190px]">
-                  Los archivos que abras, muevas o renombres en cualquier unidad aparecerán aquí automáticamente.
+                  {t.sidebar.noRecentFilesDesc}
                 </p>
               </div>
             ) : (
@@ -1485,7 +1489,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <div className="flex items-center justify-between text-[9px] font-sans text-neutral-400 mt-1">
                           <span className="flex items-center gap-1 text-amber-400/90">
                             <Clock className="w-2.5 h-2.5" />
-                            {file.lastAccessed ? formatRelativeTime(file.lastAccessed) : 'Reciente'}
+                            {file.lastAccessed ? formatRelativeTime(file.lastAccessed, language) : t.sidebar.tabRecent}
                           </span>
 
                           {/* Quick Actions on Hover */}
