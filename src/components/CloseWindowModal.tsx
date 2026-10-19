@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { ArrowLeft, Download, Power, Save, X } from 'lucide-react';
+import { CornerDownLeft, Download, Power, Save, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 
@@ -114,20 +114,15 @@ export function CloseWindowModal({
         onMouseDown={event => event.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-4 px-5 pt-5 sm:px-7 sm:pt-7">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-cyan-800/60 bg-cyan-950/50 text-cyan-300">
-              <Power className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <h2 id="close-window-title" className="text-xl font-semibold tracking-tight text-neutral-100 sm:text-2xl">
-                {t.closeWindow.title}
-              </h2>
-              <p id="close-window-description" className="mt-1 text-sm leading-6 text-neutral-400">
-                {t.closeWindow.description}
-              </p>
-            </div>
+          <div className="min-w-0">
+            <h2 id="close-window-title" className="text-xl font-semibold tracking-tight text-neutral-100 sm:text-2xl">
+              {t.closeWindow.title}
+            </h2>
+            <p id="close-window-description" className="mt-1 text-sm leading-6 text-neutral-400">
+              {t.closeWindow.description}
+            </p>
           </div>
-          <Tooltip label={t.closeWindow.cancel} placement="bottom">
+          <Tooltip label={t.closeWindow.cancel} shortcut={t.closeWindow.keys.escape} placement="bottom">
             <button
               type="button"
               aria-label={t.closeWindow.cancel}
@@ -152,51 +147,36 @@ export function CloseWindowModal({
           )}
 
           <button
-              type="button"
-              disabled={isBusy || rememberChoice}
-              onClick={onCancel}
-              className="flex w-full items-center gap-4 rounded-xl border border-neutral-800 bg-neutral-900/70 px-4 py-3.5 text-left transition-colors hover:border-neutral-600 hover:bg-neutral-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:pointer-events-none disabled:opacity-50 sm:px-5"
-            >
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-neutral-600 bg-neutral-800 text-neutral-200">
-                <ArrowLeft className="h-5 w-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-neutral-100">{t.closeWindow.continueWorking}</span>
-                <span className="mt-1 block text-xs leading-5 text-neutral-400">{rememberChoice ? t.closeWindow.continueDisabledDescription : t.closeWindow.continueDescription}</span>
-              </span>
-              <kbd className="keyboard-hint shrink-0">{t.closeWindow.keys.escape}</kbd>
-            </button>
-            <button
-              ref={hideButtonRef}
-              type="button"
-              disabled={isBusy}
-              onClick={onHideToTray}
-              className="flex w-full items-center gap-4 rounded-xl border border-cyan-900/70 bg-neutral-900/70 px-4 py-3.5 text-left transition-colors hover:border-cyan-700 hover:bg-cyan-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:pointer-events-none disabled:opacity-50 sm:px-5"
-            >
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-cyan-800/70 bg-cyan-950/60 text-cyan-300">
-                <Download className="h-5 w-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-neutral-100">{t.closeWindow.hideToTray}</span>
-                <span className="mt-1 block text-xs leading-5 text-neutral-400">{t.closeWindow.hideToTrayDescription}</span>
-              </span>
-              <kbd className="keyboard-hint shrink-0">{t.closeWindow.keys.enter}</kbd>
-            </button>
-            <button
-              type="button"
-              disabled={isBusy}
-              onClick={onExit}
-              className="flex w-full items-center gap-4 rounded-xl border border-rose-950/80 bg-neutral-900/70 px-4 py-3.5 text-left transition-colors hover:border-rose-800 hover:bg-rose-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 disabled:pointer-events-none disabled:opacity-50 sm:px-5"
-            >
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-rose-900/70 bg-rose-950/40 text-rose-300">
-                <Power className="h-5 w-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-neutral-100">{t.closeWindow.exit}</span>
-                <span className="mt-1 block text-xs leading-5 text-neutral-400">{t.closeWindow.exitDescription}</span>
-              </span>
-              <kbd className="keyboard-hint shrink-0">{t.closeWindow.keys.space}</kbd>
-            </button>
+            ref={hideButtonRef}
+            type="button"
+            disabled={isBusy}
+            onClick={onHideToTray}
+            className="flex w-full items-center gap-4 rounded-xl border border-cyan-900/70 bg-neutral-900/70 px-4 py-3.5 text-left transition-colors hover:border-cyan-700 hover:bg-cyan-950/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 disabled:pointer-events-none disabled:opacity-50 sm:px-5"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-cyan-800/70 bg-cyan-950/60 text-cyan-300">
+              <Download className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-neutral-100">{t.closeWindow.hideToTray}</span>
+              <span className="mt-1 block text-xs leading-5 text-neutral-400">{t.closeWindow.hideToTrayDescription}</span>
+            </span>
+            <kbd aria-hidden="true" className="keyboard-hint-lg shrink-0"><CornerDownLeft className="h-5 w-5" /></kbd>
+          </button>
+          <button
+            type="button"
+            disabled={isBusy}
+            onClick={onExit}
+            className="flex w-full items-center gap-4 rounded-xl border border-rose-950/80 bg-neutral-900/70 px-4 py-3.5 text-left transition-colors hover:border-rose-800 hover:bg-rose-950/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 disabled:pointer-events-none disabled:opacity-50 sm:px-5"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-rose-900/70 bg-rose-950/40 text-rose-300">
+              <Power className="h-5 w-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-neutral-100">{t.closeWindow.exit}</span>
+              <span className="mt-1 block text-xs leading-5 text-neutral-400">{t.closeWindow.exitDescription}</span>
+            </span>
+            <kbd aria-hidden="true" className="keyboard-hint-lg shrink-0">{t.closeWindow.keys.space}</kbd>
+          </button>
         </div>
 
         <footer className="border-t border-neutral-800/90 px-5 py-4 sm:px-7">

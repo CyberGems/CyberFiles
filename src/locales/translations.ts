@@ -487,9 +487,6 @@ export const translations = {
     closeWindow: {
       title: 'Cerrar CyberFiles',
       description: '¿Qué prefieres que ocurra al cerrar CyberFiles?',
-      continueWorking: 'Seguir trabajando',
-      continueDescription: 'Volver al explorador y dejar todo abierto.',
-      continueDisabledDescription: 'Desactiva la opción de recordar para volver al explorador.',
       remember: 'Recordar mi elección',
       rememberDescription: 'Aplicar automáticamente la opción de bandeja o salida la próxima vez que cierres la ventana.',
       cancel: 'Cancelar',
@@ -504,7 +501,6 @@ export const translations = {
       keys: {
         escape: 'Esc',
         space: 'Espacio',
-        enter: '↵',
       },
       closeFailed: 'No se pudo completar la acción de cierre. Inténtalo de nuevo.',
     },
@@ -1541,9 +1537,6 @@ export const translations = {
     closeWindow: {
       title: 'Close CyberFiles',
       description: 'What would you like CyberFiles to do when you close this window?',
-      continueWorking: 'Keep working',
-      continueDescription: 'Return to the file manager and leave everything open.',
-      continueDisabledDescription: 'Turn off the remembered choice to return to the file manager.',
       remember: 'Remember my choice',
       rememberDescription: 'Automatically use your tray or exit choice the next time you close the window.',
       cancel: 'Cancel',
@@ -1558,7 +1551,6 @@ export const translations = {
       keys: {
         escape: 'Esc',
         space: 'Space',
-        enter: '↵',
       },
       closeFailed: 'The close action could not be completed. Please try again.',
     },
