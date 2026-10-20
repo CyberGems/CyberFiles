@@ -801,7 +801,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
     .join(' ');
   const detailsRowWidth = visibleFileColumns.reduce((total, column) => total + (column === 'name' ? columnWidths.name ?? MIN_NAME_COLUMN_WIDTH : columnWidths[column]), 0)
     + Math.max(0, visibleFileColumns.length - 1) * 8 + 18;
-  const detailsContentWidth = styleLocked && columnWidths.name !== null ? `${detailsRowWidth}px` : '100%';
+  const detailsWidthLocked = styleLocked && columnWidths.name !== null;
+  const detailsContentWidth = detailsWidthLocked ? `${detailsRowWidth}px` : '100%';
   const detailsHeaderWidth = styleLocked && columnWidths.name !== null
     ? `${detailsRowWidth + viewportScrollbarWidth}px`
     : `calc(100% - ${LISTER_HORIZONTAL_GUTTER * 2}px)`;
@@ -3291,8 +3292,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </div>
         ) : effectiveViewMode === 'details' ? (
           <div
-            className="cyberfiles-details-list min-h-full border-x border-b border-neutral-800/80 bg-neutral-950/50 py-1 shadow-inner overflow-hidden"
-            style={{ width: detailsContentWidth }}
+            className={`cyberfiles-details-list min-h-full border-x border-b border-neutral-800/80 bg-neutral-950/50 py-1 shadow-inner overflow-hidden ${detailsWidthLocked ? '' : 'cyberfiles-details-list-bleed'}`}
+            style={detailsWidthLocked ? { width: detailsContentWidth } : undefined}
           >
             {renderGroups.map(group => {
               const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
@@ -3330,7 +3331,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 >
                   {visibleFileColumns.map(column => {
                     if (column === 'extension') {
-                      return <div key={column} className="cyberfiles-file-cell min-w-0 overflow-hidden truncate font-mono text-[10.5px] font-medium uppercase tracking-wide text-cyan-400/90"><span data-file-column-content={column} className="inline-block max-w-full truncate">{item.isFolder || !showFileExtensions ? '' : (item.extension || '')}</span></div>;
+                      return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center overflow-hidden truncate font-mono text-[10.5px] font-medium uppercase tracking-wide text-cyan-400/90"><span data-file-column-content={column} className="inline-block max-w-full truncate">{item.isFolder || !showFileExtensions ? '' : (item.extension || '')}</span></div>;
                     }
                     if (column === 'name') {
                       return (
@@ -3357,11 +3358,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       );
                     }
                     if (column === 'type') {
-                      return <div key={column} className="cyberfiles-file-cell min-w-0 overflow-hidden truncate font-sans text-[10.5px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-full truncate">{getFileTypeLabel(item)}</span></div>;
+                      return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center overflow-hidden truncate font-sans text-[10.5px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-full truncate">{getFileTypeLabel(item)}</span></div>;
                     }
                     if (column === 'size') {
                       const folderSize = folderSizeStates[item.id];
-                      return <div key={column} className="cyberfiles-file-cell min-w-0 overflow-hidden text-right font-sans text-[11px] tabular-nums text-neutral-300/90" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.size, 'size')}>{item.isFolder ? (
+                      return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[11px] tabular-nums text-neutral-300/90" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.size, 'size')}>{item.isFolder ? (
                         isTauriDesktop() && !isRecycleBin && !item.recycleBinId ? (
                           folderSize?.status === 'done' ? (
                             <span data-file-column-content={column} className="inline-flex h-5 min-w-0 max-w-full items-center justify-end truncate leading-none tabular-nums font-mono">{formatFileSize(folderSize.size ?? 0)}</span>
@@ -3384,10 +3385,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     }
                     if (column === 'created') {
                       const createdDate = formatDateTimeForDisplay(item.createdAtMs, item.createdDate, dateFormat, language);
-                      return <div key={column} className="cyberfiles-file-cell min-w-0 overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.created, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{createdDate || '--'}</span></div>;
+                      return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.created, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{createdDate || '--'}</span></div>;
                     }
                     const modifiedDate = formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language);
-                    return <div key={column} className="cyberfiles-file-cell min-w-0 overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.modified, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{modifiedDate || '--'}</span></div>;
+                    return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.modified, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{modifiedDate || '--'}</span></div>;
                   })}
                 </div>
               );

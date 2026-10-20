@@ -297,12 +297,33 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-details-list
   box-shadow: none;
 }
 
+/* Let the list span the lister gutter so the row band can reach the pane edges. */
+html:not([data-theme='light']) .cyberfiles-details-list-bleed {
+  width: calc(100% + 2rem);
+  margin-inline: -1rem;
+  padding-inline: 1rem;
+}
+
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-file-row {
   border-width: 0 0 1px;
-  border-color: rgba(39, 75, 97, 0.34);
+  border-color: rgba(39, 75, 97, 0.17);
   border-radius: 0;
   background-color: transparent;
   box-shadow: none;
+}
+
+/* The row band bleeds into the lister gutter, so the marquee safety zones share the row background. */
+html:not([data-theme='light']) .cyberfiles-details-list .cyberfiles-file-row::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  left: -1rem;
+  right: -1rem;
+  background: inherit;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(to right, #000 0 1rem, transparent 1rem calc(100% - 1rem), #000 calc(100% - 1rem));
+  mask-image: linear-gradient(to right, #000 0 1rem, transparent 1rem calc(100% - 1rem), #000 calc(100% - 1rem));
 }
 
 /* Every details row shares one background in the dark themes; the light theme keeps its zebra striping. */
