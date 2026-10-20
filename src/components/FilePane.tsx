@@ -3306,7 +3306,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
               const idx = fileIndexById.get(item.id) ?? 0;
               const isSelected = visibleSelectedIdSet.has(item.id);
               const isEditing = editingItemId === item.id;
-              const isZebra = idx % 2 === 1;
 
               return (
                 <div
@@ -3322,12 +3321,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ width: detailsContentWidth, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
                   className={`cyberfiles-file-row relative grid h-[30px] items-center gap-2 rounded-md border border-transparent px-2 text-xs cursor-pointer transition-colors ${
-                    isSelected
-                      ? 'bg-cyan-500/20 hover:bg-cyan-500/25 text-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]'
-                      : isZebra
-                        ? 'bg-neutral-900/35 text-neutral-200 hover:bg-neutral-800/70 hover:text-neutral-100'
-                        : 'bg-transparent text-neutral-300 hover:bg-neutral-800/70 hover:text-neutral-100'
-                  } ${isSelected ? 'before:absolute before:left-0.5 before:top-1.5 before:bottom-1.5 before:w-[3px] before:rounded-full before:bg-cyan-400' : ''}`}
+                    isSelected ? 'text-neutral-100' : 'text-neutral-300 hover:text-neutral-100'
+                  }`}
                 >
                   {visibleFileColumns.map(column => {
                     if (column === 'extension') {

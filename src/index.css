@@ -16,7 +16,18 @@
   --cyberfiles-scrollbar-track: #07121c;
   --cyberfiles-scrollbar-thumb: #315b72;
   --cyberfiles-scrollbar-thumb-hover: #4683a2;
-  --cyberfiles-details-row-background: rgba(27, 49, 63, 0.28);
+
+  /* Lister surface and row states. Every palette defines the same tokens, so the list background,
+     hover and selection read identically in all themes instead of each theme inventing its own
+     treatment. */
+  --cyberfiles-lister-background: #0b1219;
+  --cyberfiles-row-hover: #18374a;
+  --cyberfiles-row-selected: #0f5796;
+  --cyberfiles-row-selected-hover: #12629f;
+  --cyberfiles-row-selected-text: #ffffff;
+  --cyberfiles-row-selected-muted: rgba(255, 255, 255, 0.82);
+  --cyberfiles-row-selected-tint: rgba(255, 255, 255, 0.14);
+  --cyberfiles-row-focus-ring: rgba(255, 255, 255, 0.5);
 
   /* Industrial blue-black hierarchy for the default workbench theme. */
   --color-neutral-950: #050b12;
@@ -285,15 +296,22 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-column-heade
   background: rgba(91, 167, 205, 0.13);
 }
 
+/* The lister is one surface: the viewport and the details list share a single background token, so
+   the area covered by items and the empty area below them can never drift apart. */
+html[data-theme] .cyberfiles-file-viewport,
+html[data-theme] .cyberfiles-details-list {
+  background: var(--cyberfiles-lister-background);
+}
+
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-file-viewport {
-  background: #0b1219;
   box-shadow: inset 0 1px 0 #02070b;
 }
 
-html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-details-list {
+/* The details list is not a box: no frame, no radius and no inner shadow in any theme, so it reads
+   as the same surface as the rest of the lister instead of a card wrapped around the rows. */
+html[data-theme] .cyberfiles-details-list {
   border: 0;
   border-radius: 0;
-  background: #0c141c;
   box-shadow: none;
 }
 
@@ -304,6 +322,8 @@ html:not([data-theme='light']) .cyberfiles-details-list-bleed {
   padding-inline: 1rem;
 }
 
+/* Every details row sits directly on the lister background: no per-row tint and no zebra striping,
+   so the list looks identical whether it holds items or not. Only hover and selection paint. */
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-file-row {
   border-width: 0 0 1px;
   border-color: rgba(39, 75, 97, 0.17);
@@ -335,34 +355,81 @@ html[data-theme='gray'] .cyberfiles-details-list .cyberfiles-file-row::after {
   top: -1px;
 }
 
-/* Every details row shares one background in the dark themes; the light theme keeps its zebra striping. */
-html:not([data-theme='light']) .cyberfiles-details-list .cyberfiles-file-row:not([data-selected='true']) {
-  background-color: var(--cyberfiles-details-row-background);
+/* Rows are square and separated by a single hairline in every palette. The dark themes get both
+   from their row reset above; the light theme has no reset of its own, so it gets them here. */
+html[data-theme] .cyberfiles-details-list .cyberfiles-file-row {
+  border-radius: 0;
 }
 
-html[data-theme='gray'] .cyberfiles-details-list .cyberfiles-file-row:not([data-selected='true']):hover {
-  background-color: rgb(38 38 38 / 0.7);
+html[data-theme='light'] .cyberfiles-details-list .cyberfiles-file-row {
+  border-bottom-color: rgba(15, 23, 42, 0.09);
 }
 
-html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-file-row:not([data-selected='true']):hover {
-  background: #18374a;
-  color: #f4f8fa;
+/* Row states come from the per-theme tokens, so every palette reads the same way: hover is a dark
+   tint that can never be mistaken for a selection, and selection is one flat block of colour. */
+html[data-theme] .cyberfiles-details-list .cyberfiles-file-row:not([data-selected='true']):hover {
+  background-color: var(--cyberfiles-row-hover);
 }
 
-html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'] {
+/* A selected details row is a plain block of colour: no radius, no border, no inner highlight and
+   no per-row accent. Adjacent selected rows then read as one continuous band instead of a stack of
+   outlined pills, and the band keeps painting the lister gutter through its ::after. */
+html[data-theme] .cyberfiles-details-list .cyberfiles-file-row[data-selected='true'] {
+  border-color: transparent;
+  border-radius: 0;
+  background: var(--cyberfiles-row-selected);
+  color: var(--cyberfiles-row-selected-text);
+  box-shadow: none;
+}
+
+html[data-theme] .cyberfiles-details-list .cyberfiles-file-row[data-selected='true']:hover {
+  background: var(--cyberfiles-row-selected-hover);
+}
+
+/* Inside a selected row every column switches to the selection palette: the name keeps the
+   brightest tone and the secondary columns step back to a muted one. Without this the dates, the
+   types and the size button stay on their row-level grey and turn unreadable against the blue. */
+html[data-theme] .cyberfiles-details-list .cyberfiles-file-row[data-selected='true'] .cyberfiles-file-cell {
+  color: var(--cyberfiles-row-selected-muted);
+}
+
+html[data-theme] .cyberfiles-details-list .cyberfiles-file-row[data-selected='true'] .cyberfiles-file-cell [data-file-column-content='name'] {
+  color: var(--cyberfiles-row-selected-text);
+}
+
+/* A relative graph is a data hint, not a state: on a selected row its tint blends with the
+   selection and reads as a second, meaningless highlight. */
+html[data-theme] .cyberfiles-details-list .cyberfiles-file-row[data-selected='true'] .cyberfiles-file-cell {
+  background-image: none !important;
+}
+
+/* Inline controls keep their hover feedback, but with a light tint instead of a dark neutral that
+   would punch a hole in the selection band. */
+html[data-theme] .cyberfiles-details-list .cyberfiles-file-row[data-selected='true'] .cyberfiles-file-cell button:hover {
+  background-color: var(--cyberfiles-row-selected-tint);
+  color: var(--cyberfiles-row-selected-text);
+}
+
+/* The keyboard cursor is the only thing the old accent dash was hinting at, so it gets a proper
+   inset outline like the focus rectangle of a classic file manager. */
+html[data-theme] .cyberfiles-details-list .cyberfiles-file-row[data-focused='true'] {
+  outline: 1px solid var(--cyberfiles-row-focus-ring);
+  outline-offset: -1px;
+}
+
+/* Compact and icon views keep their own rounded selection treatment. */
+html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'].cyberfiles-compact-file-item,
+html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'].cyberfiles-icon-file-item {
   border-color: #268ac0;
   background: linear-gradient(180deg, #176fa8 0%, #105987 100%);
   color: #ffffff;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -1px 0 rgba(0, 0, 0, 0.3);
 }
 
-html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true']:hover {
-  background: linear-gradient(180deg, #197ab8 0%, #126598 100%);
-}
-
 html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'].cyberfiles-compact-file-item:hover,
 html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'].cyberfiles-icon-file-item:hover {
   border-color: transparent;
+  background: linear-gradient(180deg, #197ab8 0%, #126598 100%);
 }
 
 html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'] .text-neutral-400,
@@ -370,25 +437,7 @@ html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][
   color: #e4f3fb;
 }
 
-/* A selected details row keeps the flat band and the hairline divider of an unselected one: no
-   outline, no radius and no inner highlight, so a multi-row selection reads as one continuous block
-   instead of a stack of outlined pills. The vertical gradient is dropped here because it restarts on
-   every row and that restart draws a line between two selected rows. */
-html:not([data-theme='light']) .cyberfiles-details-list .cyberfiles-file-row[data-selected='true'] {
-  border-radius: 0;
-  box-shadow: none;
-}
-
-html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-details-list .cyberfiles-file-row[data-selected='true'] {
-  border-color: rgba(39, 75, 97, 0.17);
-  background: #136497;
-}
-
-html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-details-list .cyberfiles-file-row[data-selected='true']:hover {
-  background: #1570a6;
-}
-
-html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-file-cell {
+.cyberfiles-file-cell {
   min-height: 20px;
   padding-right: 7px;
 }
@@ -571,7 +620,15 @@ html[data-theme='gray'] {
   --color-violet-700: oklch(0.50 0 0);
   --color-violet-900: oklch(0.32 0 0);
   --color-violet-950: oklch(0.22 0 0);
-  --cyberfiles-details-row-background: rgb(23 23 23 / 0.35);
+
+  --cyberfiles-lister-background: #111111;
+  --cyberfiles-row-hover: #2c2c2c;
+  --cyberfiles-row-selected: #414141;
+  --cyberfiles-row-selected-hover: #4d4d4d;
+  --cyberfiles-row-selected-text: #ffffff;
+  --cyberfiles-row-selected-muted: rgba(255, 255, 255, 0.8);
+  --cyberfiles-row-selected-tint: rgba(255, 255, 255, 0.14);
+  --cyberfiles-row-focus-ring: rgba(255, 255, 255, 0.55);
 }
 
 html[data-theme='gray'] body,
@@ -712,6 +769,15 @@ html[data-theme='light'] {
   --cyberfiles-dialog-background: var(--color-neutral-950);
   --cyberfiles-workspace-dialog-background: var(--color-neutral-950);
   --cyberfiles-workspace-card-background: var(--color-neutral-900);
+
+  --cyberfiles-lister-background: #f4f7fa;
+  --cyberfiles-row-hover: #e4edf6;
+  --cyberfiles-row-selected: #cfe4f7;
+  --cyberfiles-row-selected-hover: #c1daf2;
+  --cyberfiles-row-selected-text: #0b2338;
+  --cyberfiles-row-selected-muted: #2f4a5e;
+  --cyberfiles-row-selected-tint: rgba(11, 35, 56, 0.1);
+  --cyberfiles-row-focus-ring: rgba(11, 35, 56, 0.55);
 }
 
 html[data-theme='light'] body,
