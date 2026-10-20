@@ -2265,12 +2265,39 @@ export const FilePane: React.FC<FilePaneProps> = ({
     onItemContextMenu(event, item);
   };
 
+  /* The marquee is a fixed-position overlay, so it is not clipped by the pane and would otherwise be
+     painted on top of the neighbouring pane while the pointer is held over it. A details viewport is
+     also wider than the pane it scrolls in (the columns scroll horizontally), so its own box is not
+     the visible area either: intersect the rectangle with every clipping ancestor up to the pane. */
+  const clipMarqueeToPane = (left: number, top: number, right: number, bottom: number) => {
+    let clipLeft = left;
+    let clipTop = top;
+    let clipRight = right;
+    let clipBottom = bottom;
+    let element: HTMLElement | null = viewportRef.current;
+    while (element) {
+      const style = window.getComputedStyle(element);
+      if (style.overflowX !== 'visible' || style.overflowY !== 'visible') {
+        const bounds = element.getBoundingClientRect();
+        clipLeft = Math.max(clipLeft, bounds.left);
+        clipTop = Math.max(clipTop, bounds.top);
+        clipRight = Math.min(clipRight, bounds.right);
+        clipBottom = Math.min(clipBottom, bounds.bottom);
+      }
+      if (element.classList.contains('cyberfiles-pane')) break;
+      element = element.parentElement;
+    }
+    return clipRight > clipLeft && clipBottom > clipTop
+      ? { left: clipLeft, top: clipTop, width: clipRight - clipLeft, height: clipBottom - clipTop }
+      : null;
+  };
+
   const updateMarqueeSelection = (drag: MarqueeDrag, clientX: number, clientY: number) => {
     const left = Math.min(drag.startX, clientX);
     const top = Math.min(drag.startY, clientY);
     const right = Math.max(drag.startX, clientX);
     const bottom = Math.max(drag.startY, clientY);
-    setMarqueeBounds({ left, top, width: right - left, height: bottom - top });
+    setMarqueeBounds(clipMarqueeToPane(left, top, right, bottom));
 
     const matchingIds = [...(viewportRef.current?.querySelectorAll<HTMLElement>('[data-file-item][data-file-id]') ?? [])]
       .filter(element => {
