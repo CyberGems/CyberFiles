@@ -312,18 +312,27 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-file-row {
   box-shadow: none;
 }
 
-/* The row band bleeds into the lister gutter, so the marquee safety zones share the row background. */
+/* The row band bleeds into the lister gutter, so the marquee safety zones share the row background.
+   The band is anchored to the row's border box and paints the hairline divider itself, otherwise the
+   band steps one pixel at the gutter edge and the divider stops where the row box ends. */
 html:not([data-theme='light']) .cyberfiles-details-list .cyberfiles-file-row::after {
   content: '';
   position: absolute;
-  top: -1px;
+  top: 0;
   bottom: -1px;
   left: -1rem;
   right: -1rem;
   background: inherit;
+  border-bottom: 1px solid;
+  border-color: inherit;
   pointer-events: none;
   -webkit-mask-image: linear-gradient(to right, #000 0 1rem, transparent 1rem calc(100% - 1rem), #000 calc(100% - 1rem));
   mask-image: linear-gradient(to right, #000 0 1rem, transparent 1rem calc(100% - 1rem), #000 calc(100% - 1rem));
+}
+
+/* The gray palette keeps a full 1px border on the row, so its band starts one pixel higher. */
+html[data-theme='gray'] .cyberfiles-details-list .cyberfiles-file-row::after {
+  top: -1px;
 }
 
 /* Every details row shares one background in the dark themes; the light theme keeps its zebra striping. */
@@ -359,6 +368,24 @@ html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][
 html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'] .text-neutral-400,
 html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'] .text-neutral-300\/90 {
   color: #e4f3fb;
+}
+
+/* A selected details row keeps the flat band and the hairline divider of an unselected one: no
+   outline, no radius and no inner highlight, so a multi-row selection reads as one continuous block
+   instead of a stack of outlined pills. The vertical gradient is dropped here because it restarts on
+   every row and that restart draws a line between two selected rows. */
+html:not([data-theme='light']) .cyberfiles-details-list .cyberfiles-file-row[data-selected='true'] {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-details-list .cyberfiles-file-row[data-selected='true'] {
+  border-color: rgba(39, 75, 97, 0.17);
+  background: #136497;
+}
+
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-details-list .cyberfiles-file-row[data-selected='true']:hover {
+  background: #1570a6;
 }
 
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-file-cell {

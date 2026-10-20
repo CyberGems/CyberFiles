@@ -3327,7 +3327,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       : isZebra
                         ? 'bg-neutral-900/35 text-neutral-200 hover:bg-neutral-800/70 hover:text-neutral-100'
                         : 'bg-transparent text-neutral-300 hover:bg-neutral-800/70 hover:text-neutral-100'
-                  } ${isActive && tab.focusedId === item.id ? 'before:absolute before:left-0.5 before:top-1.5 before:bottom-1.5 before:w-[3px] before:rounded-full before:bg-cyan-400' : ''}`}
+                  } ${isSelected ? 'before:absolute before:left-0.5 before:top-1.5 before:bottom-1.5 before:w-[3px] before:rounded-full before:bg-cyan-400' : ''}`}
                 >
                   {visibleFileColumns.map(column => {
                     if (column === 'extension') {
