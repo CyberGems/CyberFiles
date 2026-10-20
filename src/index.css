@@ -263,6 +263,19 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-address-bar:
   border-color: #3d7793;
 }
 
+/* The breadcrumb separator is a glyph, not a 16px icon: it costs 10px instead of 28px with its
+   gaps, and that difference is what lets a narrow pane show the folder name instead of one letter.
+   The width is also hard-coded in BREADCRUMB_SEPARATOR_WIDTH, keep both in sync. */
+.cyberfiles-breadcrumb-separator {
+  flex: 0 0 10px;
+  width: 10px;
+  color: var(--color-neutral-500);
+  font-size: 11px;
+  line-height: 1;
+  text-align: center;
+  user-select: none;
+}
+
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-pane-filter {
   border-bottom-color: #1d4055;
   background: #07131d;

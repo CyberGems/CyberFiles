@@ -21,7 +21,6 @@ import {
   RotateCw,
   Calculator,
   LoaderCircle,
-  ChevronRight, 
   ListTree,
   FileCheck,
   Monitor,
@@ -34,8 +33,6 @@ import {
   Trash2,
   LockKeyhole,
   UnlockKeyhole,
-  History,
-  Home,
   Keyboard,
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
@@ -200,6 +197,10 @@ const COLLAPSED_SYSTEM_HOME_SECTIONS_KEY = 'cyberfiles_system_home_collapsed_sec
 const FILE_COLUMNS: FileColumn[] = ['extension', 'name', 'type', 'size', 'created', 'modified'];
 const MIN_NAME_COLUMN_WIDTH = 100;
 const RECENT_ITEM_WINDOW_MS = 24 * 60 * 60 * 1000;
+/* Rendered widths of the breadcrumb's fixed pieces, used by the fit calculation so it never
+   charges space that is not there (or forgets space that is). */
+const BREADCRUMB_MORE_WIDTH = 24;
+const BREADCRUMB_SEPARATOR_WIDTH = 10;
 const DEFAULT_COLLAPSED_SYSTEM_HOME_SECTIONS: CollapsedSystemHomeSections = {
   folders: false,
   devices: false,
@@ -392,13 +393,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const tooltipsEnabled = useContext(TooltipPreferenceContext);
   const isSystemHome = tab.currentPath === SYSTEM_HOME_PATH;
   const isRecycleBin = tab.currentPath === RECYCLE_BIN_PATH;
-  const showBreadcrumbHome = isTauriDesktop();
   const effectiveViewMode = tab.viewMode;
   const nativeFileIconSize = effectiveViewMode === 'icons' ? 'large' : 'small';
   const nativeFileIconScope = `${tab.currentPath}\u0000${nativeFileIconSize}`;
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [isEditingPath, setIsEditingPath] = useState(false);
-  const [recentFoldersMenuPosition, setRecentFoldersMenuPosition] = useState<{ left: number; top: number; width: number } | null>(null);
   const [breadcrumbMenuPosition, setBreadcrumbMenuPosition] = useState<{ left: number; top: number; width: number } | null>(null);
   const [firstVisibleBreadcrumb, setFirstVisibleBreadcrumb] = useState(0);
   const [pathInput, setPathInput] = useState(tab.currentPath);
@@ -439,8 +438,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   const pathInputRef = useRef<HTMLInputElement>(null);
-  const recentFoldersMenuRef = useRef<HTMLDivElement>(null);
-  const recentFoldersButtonRef = useRef<HTMLButtonElement>(null);
   const breadcrumbViewportRef = useRef<HTMLDivElement>(null);
   const breadcrumbMeasureRef = useRef<HTMLDivElement>(null);
   const breadcrumbMenuButtonRef = useRef<HTMLButtonElement>(null);
@@ -1209,29 +1206,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, [tab.currentPath]);
 
   useEffect(() => {
-    if (!recentFoldersMenuPosition) return;
-    const dismiss = (event: Event) => {
-      const target = event.target;
-      if (target instanceof Node && (
-        recentFoldersMenuRef.current?.contains(target)
-        || recentFoldersButtonRef.current?.contains(target)
-      )) return;
-      setRecentFoldersMenuPosition(null);
-    };
-    const dismissOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setRecentFoldersMenuPosition(null);
-    };
-    document.addEventListener('pointerdown', dismiss, true);
-    document.addEventListener('keydown', dismissOnEscape, true);
-    window.addEventListener('resize', dismiss);
-    return () => {
-      document.removeEventListener('pointerdown', dismiss, true);
-      document.removeEventListener('keydown', dismissOnEscape, true);
-      window.removeEventListener('resize', dismiss);
-    };
-  }, [recentFoldersMenuPosition]);
-
-  useEffect(() => {
     const input = pathInputRef.current;
     if (!input) return;
     const navigateToClipboardAddress = (event: Event) => {
@@ -1531,22 +1505,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }
   };
 
-  const toggleRecentFoldersMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    setBreadcrumbMenuPosition(null);
-    if (recentFoldersMenuPosition) {
-      setRecentFoldersMenuPosition(null);
-      return;
-    }
-    const bounds = event.currentTarget.getBoundingClientRect();
-    const width = Math.min(360, window.innerWidth - 16);
-    setRecentFoldersMenuPosition({
-      left: Math.max(8, Math.min(bounds.right - width, window.innerWidth - width - 8)),
-      top: Math.max(8, Math.min(bounds.bottom + 4, window.innerHeight - 400)),
-      width,
-    });
-  };
-
   const handleRenameSubmit = (itemId: string, originalName: string) => {
     if (renameCommitItemRef.current !== itemId) return;
     renameCommitItemRef.current = null;
@@ -1666,17 +1624,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
       const widths = Array.from(measure.children, child => child.getBoundingClientRect().width);
       const available = viewport.clientWidth;
       const gap = parseFloat(window.getComputedStyle(viewport).columnGap) || 0;
+      const leafIndex = widths.length - 1;
+      /* Mirrors the rendered markup exactly: an optional "…" button, then one separator before
+         every segment. The old calculation charged a 24px home button, a 24px "…" and a 16px
+         chevron on both sides of it, so in a narrow pane the fixed pieces alone could exceed the
+         bar and the last segment was left with a couple of pixels, hence the single letter. */
       const requiredWidth = (start: number) => {
-        const pieces: number[] = showBreadcrumbHome ? [24, 16] : [];
-        if (start > 0) pieces.push(24, 16);
-        for (let index = start; index < widths.length; index++) {
+        const pieces: number[] = [];
+        if (start > 0) pieces.push(BREADCRUMB_MORE_WIDTH, BREADCRUMB_SEPARATOR_WIDTH);
+        for (let index = start; index <= leafIndex; index++) {
+          if (index > start) pieces.push(BREADCRUMB_SEPARATOR_WIDTH);
           pieces.push(widths[index]);
-          if (index < widths.length - 1) pieces.push(16);
         }
         return pieces.reduce((total, width) => total + width, 0) + Math.max(0, pieces.length - 1) * gap;
       };
       let start = 0;
-      while (start < widths.length - 1 && requiredWidth(start) > available) start++;
+      while (start < leafIndex && requiredWidth(start) > available) start++;
       setFirstVisibleBreadcrumb(previous => previous === start ? previous : start);
     };
     update();
@@ -1688,7 +1651,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       observer?.disconnect();
       window.removeEventListener('resize', update);
     };
-  }, [breadcrumbSegments, isEditingPath, isSystemHome, isRecycleBin, showBreadcrumbHome]);
+  }, [breadcrumbSegments, isEditingPath, isSystemHome, isRecycleBin]);
 
   useEffect(() => setBreadcrumbMenuPosition(null), [tab.currentPath, firstVisibleBreadcrumb]);
 
@@ -2854,84 +2817,54 @@ export const FilePane: React.FC<FilePaneProps> = ({
               <span>{t.sidebar.recycleBinTitle}</span>
             </div>
           ) : (
-            <div ref={breadcrumbViewportRef} className="relative flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden font-sans text-xs">
-              <div ref={breadcrumbMeasureRef} aria-hidden="true" className="pointer-events-none invisible absolute flex w-max gap-1.5">
+            <div ref={breadcrumbViewportRef} className="relative flex min-w-0 flex-1 items-center gap-1 overflow-hidden font-sans text-xs" title={tab.currentPath || undefined}>
+              <div ref={breadcrumbMeasureRef} aria-hidden="true" className="pointer-events-none invisible absolute flex w-max gap-1">
                 {breadcrumbSegments.map(segment => <span key={segment.fullPath} className="shrink-0 whitespace-nowrap px-1.5 py-1">{segment.label}</span>)}
               </div>
-              {showBreadcrumbHome && (
-                <>
-                  <Tooltip label={t.sidebar.thisPc} placement="bottom">
-                    <button type="button" aria-label={t.sidebar.thisPc} onClick={event => { event.stopPropagation(); onNavigate(SYSTEM_HOME_PATH); }} className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-amber-950/40 text-amber-300 transition-colors hover:bg-amber-950/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-amber-400/70">
-                      <Home className="h-3.5 w-3.5" />
-                    </button>
-                  </Tooltip>
-                  {breadcrumbSegments.length > 0 && <ChevronRight aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-neutral-500" />}
-                </>
-              )}
               {visibleBreadcrumbStart > 0 && (
-                <>
-                  <Tooltip label={t.pane.earlierFolders} placement="bottom">
-                    <button
-                      ref={breadcrumbMenuButtonRef}
-                      type="button"
-                      aria-label={t.pane.earlierFolders}
-                      aria-haspopup="menu"
-                      aria-expanded={Boolean(breadcrumbMenuPosition)}
-                      onClick={event => {
-                        event.stopPropagation();
-                        if (breadcrumbMenuPosition) { setBreadcrumbMenuPosition(null); return; }
-                        setRecentFoldersMenuPosition(null);
-                        const bounds = event.currentTarget.getBoundingClientRect();
-                        const width = Math.min(260, window.innerWidth - 16);
-                        setBreadcrumbMenuPosition({
-                          left: Math.max(8, Math.min(bounds.left, window.innerWidth - width - 8)),
-                          top: Math.max(8, Math.min(bounds.bottom + 4, window.innerHeight - 220)),
-                          width,
-                        });
-                      }}
-                      className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
-                    >
-                      <span aria-hidden="true" className="text-base leading-none">…</span>
-                    </button>
-                  </Tooltip>
-                  <ChevronRight aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-neutral-500" />
-                </>
+                <Tooltip label={t.pane.earlierFolders} placement="bottom">
+                  <button
+                    ref={breadcrumbMenuButtonRef}
+                    type="button"
+                    aria-label={t.pane.earlierFolders}
+                    aria-haspopup="menu"
+                    aria-expanded={Boolean(breadcrumbMenuPosition)}
+                    onClick={event => {
+                      event.stopPropagation();
+                      if (breadcrumbMenuPosition) { setBreadcrumbMenuPosition(null); return; }
+                      const bounds = event.currentTarget.getBoundingClientRect();
+                      const width = Math.min(280, window.innerWidth - 16);
+                      setBreadcrumbMenuPosition({
+                        left: Math.max(8, Math.min(bounds.left, window.innerWidth - width - 8)),
+                        top: Math.max(8, Math.min(bounds.bottom + 4, window.innerHeight - 320)),
+                        width,
+                      });
+                    }}
+                    className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+                  >
+                    <span aria-hidden="true" className="text-base leading-none">…</span>
+                  </button>
+                </Tooltip>
               )}
               {breadcrumbSegments.length === 0 && <span className="px-1 text-neutral-500">{t.pane.noFolderOpen}</span>}
               {breadcrumbSegments.slice(visibleBreadcrumbStart).map((seg, i, visibleSegments) => (
                 <React.Fragment key={seg.fullPath}>
+                  {(i > 0 || visibleBreadcrumbStart > 0) && (
+                    <span aria-hidden="true" className="cyberfiles-breadcrumb-separator">›</span>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       onNavigate(seg.fullPath);
                     }}
-                    className={`min-w-0 whitespace-nowrap rounded-md px-1.5 py-1 text-neutral-300 transition-colors duration-150 hover:bg-neutral-800/80 hover:text-neutral-100 active:bg-neutral-700/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${i === visibleSegments.length - 1 ? 'truncate' : 'flex-shrink-0'}`}
+                    className={`min-w-0 whitespace-nowrap rounded-md px-1.5 py-1 transition-colors duration-150 hover:bg-neutral-800/80 hover:text-neutral-100 active:bg-neutral-700/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${i === visibleSegments.length - 1 ? 'truncate font-medium text-neutral-100' : 'flex-shrink-0 text-neutral-400'}`}
                   >
                     {seg.label}
                   </button>
-                  {i < visibleSegments.length - 1 && (
-                    <ChevronRight aria-hidden="true" className="h-4 w-4 flex-shrink-0 text-neutral-500" />
-                  )}
                 </React.Fragment>
               ))}
             </div>
           )}
-          <Tooltip label={t.pane.recentFolders} placement="bottom">
-            <button
-              ref={recentFoldersButtonRef}
-              type="button"
-              aria-label={t.pane.recentFolders}
-              aria-haspopup="menu"
-              aria-expanded={Boolean(recentFoldersMenuPosition)}
-              aria-hidden={isEditingPath}
-              tabIndex={isEditingPath ? -1 : undefined}
-              disabled={isEditingPath}
-              onClick={toggleRecentFoldersMenu}
-              className={`ml-auto h-6 w-6 flex-shrink-0 rounded p-1 transition-colors ${isEditingPath ? 'invisible pointer-events-none' : recentFoldersMenuPosition ? 'bg-neutral-800 text-cyan-200' : 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200'}`}
-            >
-              <History className="h-3.5 w-3.5" />
-            </button>
-          </Tooltip>
         </div>
 
         {breadcrumbMenuPosition && createPortal(
@@ -2940,8 +2873,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
             role="menu"
             aria-label={t.pane.earlierFolders}
             style={breadcrumbMenuPosition}
-            className="fixed z-[110] max-h-[min(20rem,calc(100vh-1rem))] overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-950/95 p-1.5 text-xs shadow-2xl backdrop-blur-md"
+            className="fixed z-[110] max-h-[min(24rem,calc(100vh-1rem))] overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-950/95 p-1.5 text-xs shadow-2xl backdrop-blur-md"
           >
+            <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.pane.earlierFolders}</div>
             {breadcrumbSegments.slice(0, visibleBreadcrumbStart).map(segment => (
               <button
                 key={segment.fullPath}
@@ -2953,31 +2887,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 <span className="truncate">{segment.label}</span>
               </button>
             ))}
-          </div>,
-          document.body,
-        )}
-
-        {recentFoldersMenuPosition && createPortal(
-          <div
-            ref={recentFoldersMenuRef}
-            role="menu"
-            aria-label={t.pane.recentFolders}
-            style={{ left: recentFoldersMenuPosition.left, top: recentFoldersMenuPosition.top, width: recentFoldersMenuPosition.width }}
-            className="fixed z-[110] max-h-[min(24rem,calc(100vh-1rem))] overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-950/95 p-1.5 text-xs shadow-2xl backdrop-blur-md animate-in fade-in zoom-in-95 duration-100"
-          >
+            <div className="my-1 h-px bg-neutral-800" />
             <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.pane.recentFolders}</div>
-            {recentFolderPaths.length > 0 ? recentFolderPaths.map(path => (
+            {recentFolderPaths.length > 0 ? recentFolderPaths.slice(0, 8).map(path => (
               <button
                 key={path}
                 type="button"
                 role="menuitem"
-                onClick={() => {
-                  setPathInput(path);
-                  setIsEditingPath(false);
-                  setRecentFoldersMenuPosition(null);
-                  onNavigate(path);
-                }}
-                className="flex w-full min-w-0 items-center gap-2 rounded px-2.5 py-2 text-left text-neutral-200 transition-colors hover:bg-neutral-800 hover:text-cyan-200"
+                onClick={event => { event.stopPropagation(); setBreadcrumbMenuPosition(null); onNavigate(path); }}
+                className="flex w-full min-w-0 items-center gap-2 rounded px-2.5 py-2 text-left text-neutral-200 transition-colors hover:bg-neutral-800 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
               >
                 <Folder className="h-3.5 w-3.5 flex-shrink-0 text-cyan-400" />
                 <span className="min-w-0 flex-1 truncate font-sans">{path}</span>
@@ -2990,7 +2908,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               type="button"
               role="menuitem"
               disabled={recentFolderPaths.length === 0}
-              onClick={onClearRecentFolders}
+              onClick={event => { event.stopPropagation(); setBreadcrumbMenuPosition(null); onClearRecentFolders(); }}
               className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-rose-300 transition-colors hover:bg-rose-950/40 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Trash2 className="h-3.5 w-3.5" />
