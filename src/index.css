@@ -1054,40 +1054,9 @@ html[data-theme='light'] #root .collapse-toggle:hover:not(:disabled) {
   }
 }
 
-@keyframes column-resize-guide-in {
-  0% { opacity: 0; }
-  42% { opacity: 0.42; }
-  68% { opacity: 0.28; }
-  100% { opacity: 0.5; }
-}
-
-@keyframes column-resize-guide-out {
-  0% { opacity: 0.5; }
-  44% { opacity: 0.25; }
-  100% { opacity: 0; }
-}
-
-.column-resize-guide {
-  box-shadow: 0 0 3px 1px rgb(34 211 238 / 14%);
-  will-change: transform, opacity;
-}
-
-.column-resize-guide-in {
-  animation: column-resize-guide-in 110ms ease-out both;
-}
-
-.column-resize-guide-out {
-  animation: column-resize-guide-out 120ms ease-in both;
-}
-
 @media (prefers-reduced-motion: reduce) {
   #root {
     transition: none;
-  }
-
-  .column-resize-guide-in,
-  .column-resize-guide-out {
-    animation: none;
   }
 
   .workspace-manager-backdrop,
