@@ -54,12 +54,14 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Three layouts**: dual vertical, dual horizontal and single pane, with a draggable divider between panes
 - **Independent tabs**: each pane keeps its own tabs, navigation history, filter and selection
 - **Tab control**: duplicate, rename, color, lock or reopen tabs from the tab menu; place the tab bar above, below, left or right; choose horizontal or vertical tabs with automatic, fixed or equal widths
+- **New tab content**: choose whether a new tab opens the default folder, the current folder, a duplicate of the tab, your home folder, an empty tab or a specific location
 - **Layouts, sessions and workspaces**: save the current layout, save a tab session, and combine both into a workspace that restores in one step
 - **Startup behavior**: continue where you left off, open This PC, or load a saved session, chosen in Settings or the welcome screen
 - **Unsaved change prompts**: saving, updating or discarding pending layout and session changes when you close the window
 
 ### 📁 Browsing & Views
 - **This PC view**: drives, common Windows folders, network locations and advanced Windows folders in one place
+- **Address bar**: the current folder path with clickable segments; click a parent to jump back, click the current segment to refresh the listing, and open recent folders from the chevron at the right edge
 - **Sidebar**: locations, recent files with filters and history, Recycle Bin status, and a context panel that follows the current folder or selection, plus a lazy-loaded folder tree
 - **Quick Access**: pin up to 100 folders, rename or remove shortcuts, and sort them A–Z, Z–A or manually by dragging (Alt+Up and Alt+Down also work)
 - **Views**: Details, List and Large Icons, with resizable columns, add or hide columns, sortable headers, and grouping by date or size
@@ -67,6 +69,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Progressive loading**: large folders load as you scroll while the status bar keeps accurate file, folder and item totals
 - **Flat view**: recursively list every subfolder in one list, with a confirmation when the tree is large
 - **Filter**: narrow the current list as you type, without running a full search
+- **Mouse gestures**: hold the right button and drag left or right to go back or forward, or up or down to jump to the start or end of the list; a normal right-click still opens the context menu
 - **Folder style Lock**: keep view, sorting and column widths while navigating, or let each folder use its own saved style
 - **Custom folder icons**: pick an icon, color and status badge for a folder, stored by CyberFiles and never written to Windows
 
@@ -108,6 +111,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Bilingual UI**: complete English and Spanish interface
 - **Date formats**: application style, system locale or ISO
 - **Display options**: recent-item highlighting and hidden-item styling with your own colors, image thumbnails in tooltips, optional notification banners and tooltips
+- **Settings search**: filter settings across every tab from a single field
 - **Welcome screen**: first-run setup for language, theme, folder style and startup behavior
 
 ---

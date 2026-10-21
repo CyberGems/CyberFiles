@@ -54,12 +54,14 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Tres diseños**: doble vertical, doble horizontal y panel único, con un divisor arrastrable entre paneles
 - **Pestañas independientes**: cada panel conserva sus pestañas, historial de navegación, filtro y selección
 - **Control de pestañas**: duplicar, renombrar, colorear, bloquear o reabrir desde el menú de la pestaña; colocar la barra de pestañas arriba, abajo, a la izquierda o a la derecha; elegir pestañas horizontales o verticales con ancho automático, fijo o uniforme
+- **Contenido de la pestaña nueva**: elige si una pestaña nueva abre la carpeta predeterminada, la carpeta actual, un duplicado de la pestaña, tu carpeta personal, una pestaña vacía o una ubicación concreta
 - **Diseños, sesiones y espacios de trabajo**: guarda el diseño actual, guarda una sesión de pestañas y combina ambos en un espacio de trabajo que se restaura en un paso
 - **Comportamiento al iniciar**: continuar donde lo dejaste, abrir Este equipo o cargar una sesión guardada, desde Configuración o la pantalla de bienvenida
 - **Avisos de cambios sin guardar**: guardar, actualizar o descartar los cambios pendientes de diseño y sesión al cerrar la ventana
 
 ### 📁 Navegación y vistas
 - **Vista Este equipo**: unidades, carpetas habituales de Windows, ubicaciones de red y carpetas avanzadas de Windows en un solo lugar
+- **Barra de direcciones**: la ruta de la carpeta actual con segmentos en los que puedes hacer clic; pulsa un nivel superior para volver, pulsa el segmento actual para actualizar la lista y abre carpetas recientes desde el chevron del borde derecho
 - **Barra lateral**: ubicaciones, archivos recientes con filtros e historial, estado de la Papelera de reciclaje y un panel de contexto que sigue a la carpeta o a la selección, además de un árbol de carpetas con carga diferida
 - **Acceso rápido**: fija hasta 100 carpetas, renombra o elimina accesos y ordénalos A–Z, Z–A o manualmente arrastrando (Alt+Arriba y Alt+Abajo también funcionan)
 - **Vistas**: Detalles, Lista e Iconos grandes, con columnas redimensionables, columnas que se añaden u ocultan, encabezados ordenables y agrupación por fecha o tamaño
@@ -67,6 +69,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Carga progresiva**: las carpetas grandes cargan mientras te desplazas y la barra de estado mantiene totales exactos de archivos, carpetas y elementos
 - **Vista plana**: lista de forma recursiva todas las subcarpetas en una sola lista, con confirmación cuando el árbol es grande
 - **Filtro**: reduce la lista actual mientras escribes, sin lanzar una búsqueda completa
+- **Gestos de mouse**: mantén el botón derecho y arrastra a izquierda o derecha para retroceder o avanzar, o arriba y abajo para ir al inicio o al final de la lista; un clic derecho normal sigue abriendo el menú contextual
 - **Bloqueo de estilo de carpeta**: mantén la vista, el orden y el ancho de columnas al navegar, o deja que cada carpeta use su estilo guardado
 - **Iconos de carpeta personalizados**: elige icono, color e insignia de estado para una carpeta; CyberFiles lo guarda y nunca modifica Windows
 
@@ -108,6 +111,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Interfaz bilingüe**: interfaz completa en inglés y español
 - **Formatos de fecha**: estilo de la aplicación, configuración regional del sistema o ISO
 - **Opciones de visualización**: resaltado de elementos recientes y estilo de elementos ocultos con tus propios colores, miniaturas de imágenes en tooltips, avisos y tooltips opcionales
+- **Búsqueda en la configuración**: filtra los ajustes de todas las pestañas desde un solo campo
 - **Pantalla de bienvenida**: configuración inicial de idioma, tema, estilo de carpetas y comportamiento al iniciar
 
 ---
