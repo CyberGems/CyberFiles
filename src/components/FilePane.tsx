@@ -2227,13 +2227,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
        on that button, and the next letter still belongs to the list, not to the button. */
     if (isTextEntryTarget(target)) return;
     if (!/[^\s]/u.test(event.key)) return;
-    /* Typing can feed the filter instead of jumping to a name. It works with a selection too:
-       the row keeps the selection chip and its actions and shows the filter as a chip input. */
+    /* Typing feeds the filter instead of jumping to a name. A search is a fresh action, so it
+       also drops the selection: the row then shows the real filter field, which can be typed
+       into without the row swapping states (and unmounting the caret) mid-word. */
     if (typingActivatesFilter) {
       event.preventDefault();
       event.stopPropagation();
       const nextQuery = pendingFilterRef.current + event.key;
       pendingFilterRef.current = nextQuery;
+      if (tab.selectedIds.length > 0) onSelectItems([], false, false, true);
       pendingFilterFocusRef.current = true;
       onFilterChange(nextQuery);
       return;

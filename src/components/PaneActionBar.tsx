@@ -107,9 +107,6 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
   const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRootRef = useRef<HTMLDivElement>(null);
-  /* The filter chip stays mounted while it is being edited even if the query becomes empty,
-     so deleting the last character does not close the field under the caret. */
-  const [filterEditing, setFilterEditing] = useState(false);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -135,16 +132,6 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
     : null;
   const singleFolder = singleItem?.isFolder ? singleItem : null;
 
-  useEffect(() => {
-    if (!hasSelection) setFilterEditing(false);
-  }, [hasSelection]);
-
-  /* Only the explicit ways out close the field: × and Escape. Backspace keeps it open. */
-  const closeFilterChip = () => {
-    onFilterChange('');
-    setFilterEditing(false);
-    onFocusList?.();
-  };
   /* The transfer target is always the *other* pane, so the arrow points away from this one:
      side by side the right pane points left, stacked the bottom pane points up. */
   const transferDirection: 'right' | 'left' | 'down' | 'up' = actions.isHorizontalDual
@@ -417,43 +404,30 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
               <span className="tabular-nums">{selectedItems.length}</span>
             </span>
           </Tooltip>
-          {/* The filter lives inside the selection row as an editable chip: typing keeps the
-              selection and its actions on screen instead of swapping the row back to the
-              filter field and hiding what was selected. */}
-          {(filterQuery || filterEditing) && (
-            <span className="flex h-6 flex-shrink-0 items-center gap-1 rounded-md border border-amber-700/60 bg-amber-950/30 px-1.5 text-[11px] text-amber-200 focus-within:border-amber-500/80">
-              <Tooltip label={t.pane.filterActive} placement="bottom">
-                <span className="flex flex-shrink-0 items-center"><Search className="h-3 w-3" /></span>
-              </Tooltip>
-              <input
-                ref={filterInputRef}
-                type="text"
-                value={filterQuery}
-                aria-label={t.pane.filterActive}
-                onFocus={() => setFilterEditing(true)}
-                onBlur={() => setFilterEditing(false)}
-                onChange={event => onFilterChange(event.target.value)}
-                onKeyDown={event => {
-                  if (event.key !== 'Escape') return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  closeFilterChip();
-                }}
-                style={{ width: `${Math.min(18, Math.max(3, filterQuery.length + 1))}ch` }}
-                className="min-w-0 bg-transparent font-sans text-[11px] text-amber-100 focus:outline-none"
-              />
-              <button
-                type="button"
-                aria-label={t.pane.clearFilter}
-                /* Keep the caret in the field: without this the blur would unmount the chip
-                   before the click lands when the query is already empty. */
-                onMouseDown={event => event.preventDefault()}
-                onClick={closeFilterChip}
-                className="flex-shrink-0 text-amber-300/70 transition-colors hover:text-amber-100"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
+          {/* Read-only on purpose: typing from the list starts a fresh search and drops the
+              selection, so the row never keeps an input mounted here. This chip only reports
+              the active filter and offers a way to clear it without losing the selection. */}
+          {filterQuery && (
+            <Tooltip label={t.pane.filterActive} placement="bottom">
+              <span className="flex h-6 max-w-[9rem] flex-shrink-0 items-center gap-1 rounded-md border border-amber-700/60 bg-amber-950/30 px-1.5 text-[11px] text-amber-200">
+                <Search className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">{filterQuery}</span>
+                <button
+                  type="button"
+                  aria-label={t.pane.clearFilter}
+                  /* Never takes the focus: the chip disappears once the query is empty, and a
+                     focused element that unmounts drops the caret on the document body. */
+                  onMouseDown={event => event.preventDefault()}
+                  onClick={() => {
+                    onFilterChange('');
+                    onFocusList?.();
+                  }}
+                  className="flex-shrink-0 text-amber-300/70 transition-colors hover:text-amber-100"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            </Tooltip>
           )}
           <div className="flex min-w-0 items-center gap-1 overflow-hidden">
             {selectionActions.map(entry => (
@@ -503,6 +477,8 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
                 event.preventDefault();
                 event.stopPropagation();
                 onFilterChange('');
+                /* Back to the list: the field is cleared, so the keyboard belongs to the rows. */
+                onFocusList?.();
               }}
               className="w-full rounded border border-neutral-800 bg-neutral-900 py-1 pl-7 pr-7 font-sans text-xs text-neutral-200 placeholder:text-neutral-500 focus:border-cyan-500/60 focus:outline-none"
             />
@@ -510,6 +486,7 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
               <button
                 type="button"
                 aria-label={t.contextMenu.clearFilter}
+                onMouseDown={event => event.preventDefault()}
                 onClick={() => onFilterChange('')}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-200"
               >
