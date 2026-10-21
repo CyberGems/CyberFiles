@@ -93,6 +93,15 @@ interface TooltipProps {
   children: ReactElement;
   disabled?: boolean;
   followPointer?: boolean;
+  /* Selector for the element the card must stay inside (the pane a row lives in). Without it
+     the window is the only limit, and a card near the top of a pane covers the pane's own
+     bars — the filter field above all. */
+  boundary?: string;
+}
+
+interface VerticalBounds {
+  top: number;
+  bottom: number;
 }
 
 interface PointerPoint {
@@ -159,6 +168,7 @@ function getPosition(
   anchor: DOMRect,
   card: { width: number; height: number },
   preferredPlacement: Placement,
+  bounds: VerticalBounds | null,
 ): TooltipPosition {
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
@@ -171,6 +181,20 @@ function getPosition(
   if (placement === 'left' && anchor.left - GAP - card.width < VIEWPORT_MARGIN) placement = 'right';
   if (placement === 'right' && anchor.right + GAP + card.width > viewportWidth - VIEWPORT_MARGIN) placement = 'left';
 
+  /* A bounded card is measured against its container, not the window: a row tooltip that would
+     cover the pane's navigation or filter bar moves to the other side of the row instead, and
+     when it fits on neither side it takes the roomier one (the list, never the bars). */
+  const ceiling = bounds ? Math.max(bounds.top, VIEWPORT_MARGIN) : VIEWPORT_MARGIN;
+  const floor = bounds ? Math.min(bounds.bottom, viewportHeight - VIEWPORT_MARGIN) : viewportHeight - VIEWPORT_MARGIN;
+  if (bounds && (placement === 'top' || placement === 'bottom')) {
+    const spaceAbove = anchor.top - GAP - ceiling;
+    const spaceBelow = floor - anchor.bottom - GAP;
+    const fitsTop = spaceAbove >= card.height;
+    const fitsBottom = spaceBelow >= card.height;
+    if (placement === 'top' && !fitsTop) placement = fitsBottom || spaceBelow > spaceAbove ? 'bottom' : 'top';
+    if (placement === 'bottom' && !fitsBottom) placement = fitsTop || spaceAbove > spaceBelow ? 'top' : 'bottom';
+  }
+
   if (placement === 'top' || placement === 'bottom') {
     const left = clamp(
       anchorCenterX - card.width / 2,
@@ -179,8 +203,8 @@ function getPosition(
     );
     const top = clamp(
       placement === 'top' ? anchor.top - GAP - card.height : anchor.bottom + GAP,
-      VIEWPORT_MARGIN,
-      viewportHeight - card.height - VIEWPORT_MARGIN,
+      ceiling,
+      floor - card.height,
     );
 
     return {
@@ -193,8 +217,8 @@ function getPosition(
 
   const top = clamp(
     anchorCenterY - card.height / 2,
-    VIEWPORT_MARGIN,
-    viewportHeight - card.height - VIEWPORT_MARGIN,
+    ceiling,
+    floor - card.height,
   );
   const left = clamp(
     placement === 'left' ? anchor.left - GAP - card.width : anchor.right + GAP,
@@ -230,7 +254,7 @@ function getArrowStyle(position: TooltipPosition): CSSProperties {
 }
 
 /** A viewport-aware tooltip that does not alter the layout of its trigger. */
-export function Tooltip({ label, shortcut, placement = 'bottom', children, disabled = false, followPointer = false }: TooltipProps) {
+export function Tooltip({ label, shortcut, placement = 'bottom', children, disabled = false, followPointer = false, boundary }: TooltipProps) {
   const preferenceEnabled = useContext(TooltipPreferenceContext);
   const isDisabled = disabled || !preferenceEnabled;
   const [anchorElement, setAnchorElement] = useState<HTMLElement | null>(null);
@@ -331,7 +355,9 @@ export function Tooltip({ label, shortcut, placement = 'bottom', children, disab
       width: cardEl.offsetWidth || cardEl.getBoundingClientRect().width,
       height: cardEl.offsetHeight || cardEl.getBoundingClientRect().height,
     };
-    const nextPosition = getPosition(anchor, cardRect, placement);
+    const boundsElement = boundary ? anchorElement.closest(boundary) : null;
+    const bounds = boundsElement ? boundsElement.getBoundingClientRect() : null;
+    const nextPosition = getPosition(anchor, cardRect, placement, bounds);
     setPosition(previous => {
       if (
         previous &&
@@ -344,7 +370,7 @@ export function Tooltip({ label, shortcut, placement = 'bottom', children, disab
       }
       return nextPosition;
     });
-  }, [anchorElement, label, placement, pointerPoint]);
+  }, [anchorElement, label, placement, pointerPoint, boundary]);
 
   useEffect(() => {
     if (!anchorElement) return;

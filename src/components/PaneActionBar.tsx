@@ -473,11 +473,12 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
               placeholder={filterPlaceholder}
               onChange={event => onFilterChange(event.target.value)}
               onKeyDown={event => {
-                if (event.key !== 'Escape' || !filterQuery) return;
+                /* Escape always leaves the field, even when it is already empty: being in the
+                   filter is itself the mode the user wants out of. */
+                if (event.key !== 'Escape') return;
                 event.preventDefault();
                 event.stopPropagation();
                 onFilterChange('');
-                /* Back to the list: the field is cleared, so the keyboard belongs to the rows. */
                 onFocusList?.();
               }}
               className="w-full rounded border border-neutral-800 bg-neutral-900 py-1 pl-7 pr-7 font-sans text-xs text-neutral-200 placeholder:text-neutral-500 focus:border-cyan-500/60 focus:outline-none"
