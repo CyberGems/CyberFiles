@@ -93,9 +93,9 @@ interface TooltipProps {
   children: ReactElement;
   disabled?: boolean;
   followPointer?: boolean;
-  /* Selector for the element the card must stay inside (the pane a row lives in). Without it
-     the window is the only limit, and a card near the top of a pane covers the pane's own
-     bars — the filter field above all. */
+  /* Selector for the element the card must stay inside — the visible list band of a pane.
+     Without it the window is the only limit, and a row near the top of a pane covers the
+     pane's own bars: breadcrumb, filter field, column headers. */
   boundary?: string;
 }
 
@@ -182,8 +182,9 @@ function getPosition(
   if (placement === 'right' && anchor.right + GAP + card.width > viewportWidth - VIEWPORT_MARGIN) placement = 'left';
 
   /* A bounded card is measured against its container, not the window: a row tooltip that would
-     cover the pane's navigation or filter bar moves to the other side of the row instead, and
-     when it fits on neither side it takes the roomier one (the list, never the bars). */
+     cover the pane's breadcrumb, filter bar or column headers moves to the other side of the
+     row instead, and when it fits on neither side it takes the roomier one (the list, never
+     the bars). */
   const ceiling = bounds ? Math.max(bounds.top, VIEWPORT_MARGIN) : VIEWPORT_MARGIN;
   const floor = bounds ? Math.min(bounds.bottom, viewportHeight - VIEWPORT_MARGIN) : viewportHeight - VIEWPORT_MARGIN;
   if (bounds && (placement === 'top' || placement === 'bottom')) {

@@ -644,7 +644,7 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
               {isEditing ? (
                 handlers.renderRenameInput(item, 'min-w-0 flex-1')
               ) : (
-                <Tooltip label={renderItemTooltipContent(item, { t, language, folderChildCountState, folderSizeState, isTauri, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, isRecycleBin, dateFormat, isRecentlyActive, isHidden })} placement="top" boundary=".cyberfiles-pane">
+                <Tooltip label={renderItemTooltipContent(item, { t, language, folderChildCountState, folderSizeState, isTauri, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, isRecycleBin, dateFormat, isRecentlyActive, isHidden })} placement="top" boundary=".cyberfiles-file-viewport">
                   <span data-file-column-content={column} onMouseEnter={() => handlers.onNameMouseEnter(item)} onMouseLeave={() => handlers.onNameMouseLeave(item)} className={`${flatLabel ? 'max-w-[55%] ' : ''}truncate text-[11.5px] font-medium text-neutral-100`} style={detailsItemNameStyle(isSelected, isHidden, isRecentlyChanged, hiddenItemStyle, recentItemStyle)} >{getDisplayItemName(item, showFileExtensions)}</span>
                 </Tooltip>
               )}
@@ -662,7 +662,7 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
                 folderSizeState?.status === 'done' ? (
                   <span data-file-column-content={column} className="inline-flex h-5 min-w-0 max-w-full items-center justify-end truncate leading-none tabular-nums font-mono">{formatFileSize(folderSizeState.size ?? 0)}</span>
                 ) : (
-                  <Tooltip label={folderSizeState?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip} placement="top" boundary=".cyberfiles-pane">
+                  <Tooltip label={folderSizeState?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip} placement="top" boundary=".cyberfiles-file-viewport">
                     <button type="button" disabled={folderSizeState?.status === 'loading'} onClick={event => handlers.onCalculateFolderSize(event, item)} className="ml-auto inline-flex h-5 w-[44px] shrink-0 items-center justify-end gap-1 rounded px-1 py-0 text-right leading-none text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSizeState?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
                       <span data-file-column-content={column} className="inline-flex items-center gap-1 whitespace-nowrap font-mono text-[10px]">
                         <span className={folderSizeState?.status === 'loading' ? 'invisible' : ''}>{folderSizeState?.status === 'error' ? '!' : t.pane.folderSizeCalculate}</span>
@@ -1219,7 +1219,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const key = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
     const isCollapsed = collapsedGroups[key] === true;
     return (
-      <Tooltip label={group.label} placement="top" boundary=".cyberfiles-pane">
+      <Tooltip label={group.label} placement="top" boundary=".cyberfiles-file-viewport">
         <button
           key={`group-${key}`}
           type="button"
@@ -1662,7 +1662,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   const resizeHandle = (column: ResizableColumn, label: string) => (
-    <Tooltip label={t.pane.resizeColumn.replace('{column}', label)} placement="top" boundary=".cyberfiles-pane">
+    <Tooltip label={t.pane.resizeColumn.replace('{column}', label)} placement="bottom">
       <button
         type="button"
         role="separator"
@@ -2744,7 +2744,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       ) : undefined);
 
     return (
-      <Tooltip key={item.id} label={tooltipLabel} placement="top" boundary=".cyberfiles-pane">
+      <Tooltip key={item.id} label={tooltipLabel} placement="top" boundary=".cyberfiles-file-viewport">
       <button
         type="button"
         data-file-item="true"
@@ -2834,7 +2834,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const isCurrentLocation = tab.currentPath.toLowerCase() === item.path.toLowerCase();
     const isSelected = selectedSystemHomeShortcutId === shortcutId || isCurrentLocation;
     return (
-      <Tooltip key={item.id} label={item.path} placement="top" boundary=".cyberfiles-pane">
+      <Tooltip key={item.id} label={item.path} placement="top" boundary=".cyberfiles-file-viewport">
         <button
           type="button"
           onClick={event => handleSystemHomeShortcutClick(event, shortcutId, () => onNavigate(item.path))}
@@ -2863,7 +2863,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const isSelected = selectedSystemHomeShortcutId === shortcutId || isCurrentLocation;
     const open = () => { if (folder.isFile) onOpenWindowsSpecialFolder(folder); else onNavigate(folder.path); };
     return (
-      <Tooltip key={folder.id} label={folder.path} placement="top" boundary=".cyberfiles-pane">
+      <Tooltip key={folder.id} label={folder.path} placement="top" boundary=".cyberfiles-file-viewport">
         <button
           type="button"
           onClick={event => handleSystemHomeShortcutClick(event, shortcutId, open)}
@@ -3705,7 +3705,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   {editingItemId === item.id ? (
                     renderInlineRenameInput(item, 'min-w-0 flex-1')
                   ) : (
-                    <Tooltip label={renderItemTooltip(item)} placement="top" boundary=".cyberfiles-pane">
+                    <Tooltip label={renderItemTooltip(item)} placement="top" boundary=".cyberfiles-file-viewport">
                       <span className="min-w-0 flex-1">
                         <span onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate" style={getItemNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
                         {flatParentLabel(item) && <span className="ml-1 inline-block max-w-[45%] align-bottom truncate font-sans text-[10px] text-neutral-500">· {flatParentLabel(item)}</span>}
@@ -3735,7 +3735,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               const isSelected = visibleSelectedIdSet.has(item.id);
 
               return (
-                <Tooltip key={item.id} label={renderItemTooltip(item)} placement="top" boundary=".cyberfiles-pane" disabled={editingItemId === item.id}>
+                <Tooltip key={item.id} label={renderItemTooltip(item)} placement="top" boundary=".cyberfiles-file-viewport" disabled={editingItemId === item.id}>
                 <div
                   data-file-item="true"
                   data-file-id={item.id}
