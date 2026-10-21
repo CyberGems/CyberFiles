@@ -64,7 +64,14 @@
     "windows": {
       "nsis": {
         "installMode": "both",
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "sidebarImage": "icons/installerSidebar.bmp",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "languages": [
+          "English",
+          "Spanish"
+        ]
       },
       "webviewInstallMode": {
         "type": "downloadBootstrapper",
