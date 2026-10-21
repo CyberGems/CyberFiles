@@ -62,7 +62,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 ### 📁 Navegación y vistas
 - **Vista Este equipo**: unidades, carpetas habituales de Windows, ubicaciones de red y carpetas avanzadas de Windows en un solo lugar
 - **Barra de direcciones**: la ruta de la carpeta actual con segmentos en los que puedes hacer clic; pulsa un nivel superior para volver, pulsa el segmento actual para actualizar la lista y abre carpetas recientes desde el chevron del borde derecho
-- **Barra lateral**: ubicaciones, archivos recientes con filtros e historial, estado de la Papelera de reciclaje y un panel de contexto que sigue a la carpeta o a la selección, además de un árbol de carpetas con carga diferida
+- **Barra lateral**: solo ubicaciones, para que el árbol no salga nunca de la pantalla: acceso rápido con árbol de carpetas de carga diferida, unidades con barras de capacidad, carpetas avanzadas de Windows y estado de la Papelera de reciclaje
 - **Acceso rápido**: fija hasta 100 carpetas, renombra o elimina accesos y ordénalos A–Z, Z–A o manualmente arrastrando (Alt+Arriba y Alt+Abajo también funcionan)
 - **Vistas**: Detalles, Lista e Iconos grandes, con columnas redimensionables, columnas que se añaden u ocultan, encabezados ordenables y agrupación por fecha o tamaño
 - **Gráficos relativos**: barras opcionales detrás de tamaños y fechas que muestran de un vistazo la forma de una carpeta

@@ -5216,12 +5216,11 @@ export default function App() {
 
       {/* 2. Main Workstation Area */}
       <div className="relative grid min-h-0 min-w-0 flex-1 overflow-hidden" style={{ gridTemplateColumns: isCompactWindow ? 'minmax(0, 1fr)' : 'minmax(0, ' + sidebarSplitPercent + 'fr) 8px minmax(0, ' + (100 - sidebarSplitPercent) + 'fr)' }}>
-        {/* Left Sidebar (Drives, Quick Access & Recent Files) */}
+        {/* Left Sidebar: locations only (quick access, drives, recycle bin) */}
         <div className={isCompactWindow
           ? `absolute inset-y-0 left-0 z-50 w-[min(84vw,20rem)] min-w-0 overflow-hidden border-r border-cyan-900/70 bg-neutral-950 shadow-2xl ${sidebarDrawerOpen ? 'translate-x-0 visible' : '-translate-x-full invisible'} transition-transform duration-150`
           : 'min-h-0 min-w-0 overflow-hidden'} aria-hidden={isCompactWindow && !sidebarDrawerOpen}>
         <Sidebar
-          activeTabId={currentTab.id}
           drives={drives}
           quickAccess={sidebarQuickAccess}
           onAddQuickAccess={handleAddCustomQuickAccess}
@@ -5232,51 +5231,16 @@ export default function App() {
           onOpenCustomQuickAccess={item => { handleOpenCustomQuickAccess(item); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           onRenameQuickAccess={handleRenameCustomQuickAccess}
           onRemoveQuickAccess={handleRemoveCustomQuickAccess}
-          allFiles={allFiles}
-          currentFolderItem={activeFolderItem}
           currentPath={currentTab.currentPath}
           onNavigate={(path) => { handleNavigate(path, activePane, false, sidebarLocationsOpenInNewTab); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           onOpenDrive={path => { handleOpenDrive(path); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           windowsSpecialFolders={windowsSpecialFolders}
           onOpenWindowsSpecialFolder={folder => { handleOpenWindowsSpecialFolder(folder); if (isCompactWindow) setSidebarDrawerOpen(false); }}
-          onSelectRecentFile={file => { handleSelectRecentFile(file); if (isCompactWindow) setSidebarDrawerOpen(false); }}
-          onClearRecentFiles={handleClearRecentFiles}
-          selectedItems={selectedItemsForDelete}
-          onClearSelection={() => updateActiveTab(tab => ({ ...tab, selectedIds: [], focusedId: null }))}
-          onSelectAll={handleSelectAllVisible}
-          currentFolderItems={activeDisplayFiles}
-          onSelectCurrentFolderFiles={() => handleSelectCurrentFolderItemsByType(false)}
-          onSelectCurrentFolderFolders={() => handleSelectCurrentFolderItemsByType(true)}
-          onUnselectAll={handleUnselectAll}
-          onInvertSelection={handleInvertVisibleSelection}
-          onTogglePropertiesPanel={() => setPreviewOpen(value => !value)}
-          propertiesPanelOpen={previewOpen}
-          onRenameSelected={handleRenameSelected}
-          onDeleteSelected={() => handleDeleteSelected(selectedItemsForDelete)}
-          onPreviewSelectedFile={handleSelectRecentFile}
-          supportsArchiveExtraction={isTauriDesktop()}
-          onExtractSelected={(item, mode) => queueNativeTransfer('extract', [item.path], getParentPath(item.path), { selectionPane: activePane, extractionMode: mode })}
-          supportsArchiveCreation={isTauriDesktop()}
-          onCreateZipSelected={() => openZipCreation(selectedItemsForDelete, currentTab.currentPath, activePane)}
-          onCopySelectedPaths={handleCopySelectedPaths}
-          onCopyFolderPath={handleCopyFolderPath}
-          onCreateZipFolder={item => openZipCreation([item], getParentPath(item.path), activePane)}
           recycleBinSupported={isTauriDesktop()}
           recycleBinStatus={recycleBinStatus}
-          isDualPane={effectiveLayout !== 'single'}
-          isHorizontalDual={effectiveLayout === 'dual-horizontal'}
-          hasLeftPaneSelection={canTransferLeftToRight && activePane === 'left'}
-          hasRightPaneSelection={canTransferRightToLeft && activePane === 'right'}
-          onCopyLeftToRight={() => handleCopySelectedFromPane('left')}
-          onCopyRightToLeft={() => handleCopySelectedFromPane('right')}
-          onMoveLeftToRight={() => { void handleMoveSelectedFromPane('left'); }}
-          onMoveRightToLeft={() => { void handleMoveSelectedFromPane('right'); }}
           onOpenRecycleBin={() => { void handleOpenRecycleBin(); if (isCompactWindow) setSidebarDrawerOpen(false); }}
-          onRestoreRecycleBinItems={() => { void handleRestoreRecycleBinItems(selectedItemsForDelete); }}
           onRequestEmptyRecycleBin={handleRequestEmptyRecycleBin}
           customFolderIcons={customFolderIcons}
-          onCustomizeFolderIcon={item => handleOpenFolderIconModal({ path: item.path, name: item.name })}
-          onCustomizeCurrentFolderIcon={() => handleOpenFolderIconModal({ path: currentTab.currentPath, name: activeFolderItem?.name || currentTab.currentPath.split(/[\\/]/).pop() || currentTab.currentPath })}
         />
         </div>
 
@@ -5769,6 +5733,15 @@ export default function App() {
         onBatchRename={() => setIsBatchRenameOpen(true)}
         onDelete={(item) => handleDeleteSelected([item])}
         onRestore={(item) => { void handleRestoreRecycleBinItems([item]); }}
+        onSelectAll={handleSelectAllVisible}
+        onSelectNone={handleUnselectAll}
+        onInvertSelection={handleInvertVisibleSelection}
+        onSelectOnlyFiles={() => handleSelectCurrentFolderItemsByType(false)}
+        onSelectOnlyFolders={() => handleSelectCurrentFolderItemsByType(true)}
+        hasSelectableItems={activeDisplayFiles.length > 0}
+        hasFoldersInFolder={activeDisplayFiles.some(item => item.isFolder)}
+        onCopyPath={() => handleCopySelectedPaths(selectedItemsForDelete)}
+        onCopyFolderPath={() => handleCopyFolderPath(contextPaneTab.currentPath)}
         onCustomizeFolderIcon={item => handleOpenFolderIconModal({ path: item.path, name: item.name })}
         onCustomizeCurrentFolderIcon={() => handleOpenFolderIconModal({ path: contextPaneTab.currentPath, name: contextPaneTab.title || contextPaneTab.currentPath.split(/[\\/]/).pop() || contextPaneTab.currentPath })}
       />

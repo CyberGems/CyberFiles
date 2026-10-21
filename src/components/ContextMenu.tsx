@@ -25,6 +25,12 @@ import {
   Scissors,
   ArrowDown,
   ArrowUp,
+  ArrowLeftRight,
+  BoxSelect,
+  ClipboardCopy,
+  FileText,
+  ListChecks,
+  Square,
   Palette,
 } from 'lucide-react';
 import { ArchiveExtractionMode, ContextMenuPosition, FileItem, GroupByField, SortField, SortOrder, ViewMode } from '../types';
@@ -71,6 +77,15 @@ interface ContextMenuProps {
   onBatchRename: () => void;
   onDelete: (item: FileItem) => void;
   onRestore: (item: FileItem) => void;
+  onSelectAll?: () => void;
+  onSelectNone?: () => void;
+  onInvertSelection?: () => void;
+  onSelectOnlyFiles?: () => void;
+  onSelectOnlyFolders?: () => void;
+  hasSelectableItems?: boolean;
+  hasFoldersInFolder?: boolean;
+  onCopyPath?: () => void;
+  onCopyFolderPath?: () => void;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -113,17 +128,28 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onBatchRename,
   onDelete,
   onRestore,
+  onSelectAll,
+  onSelectNone,
+  onInvertSelection,
+  onSelectOnlyFiles,
+  onSelectOnlyFolders,
+  hasSelectableItems = true,
+  hasFoldersInFolder = false,
+  onCopyPath,
+  onCopyFolderPath,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [groupMenuOpen, setGroupMenuOpen] = useState(false);
+  const [selectMenuOpen, setSelectMenuOpen] = useState(false);
   const { t } = useLanguage();
 
   useEffect(() => {
     setNewMenuOpen(false);
     setSortMenuOpen(false);
     setGroupMenuOpen(false);
+    setSelectMenuOpen(false);
   }, [position]);
 
   useEffect(() => {
@@ -148,7 +174,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const isSystemLocation = Boolean(item && (item.id.startsWith('system-drive-') || item.id.startsWith('system-location-')));
   const menuWidth = 264;
   const archiveItem = Boolean(item && !item.isFolder && ["zip", "rar"].includes(item.extension.toLowerCase()));
-  const menuHeight = (isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? (supportsArchiveCreation ? 410 : 370) : item ? (archiveItem && supportsArchiveExtraction ? (supportsArchiveCreation ? 450 : 410) : supportsArchiveCreation ? 360 : 330) : sortMenuOpen ? 600 : groupMenuOpen ? 580 : newMenuOpen ? 460 : 440) + (!item && canModifyFolder ? (hasSavedFolderStyle ? 76 : 42) : 0);
+  const menuHeight = (isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? (supportsArchiveCreation ? 410 : 370) : item ? (archiveItem && supportsArchiveExtraction ? (supportsArchiveCreation ? 450 : 410) : supportsArchiveCreation ? 360 : 330) : sortMenuOpen ? 600 : groupMenuOpen ? 580 : newMenuOpen ? 460 : 440) + (!item && canModifyFolder ? (hasSavedFolderStyle ? 76 : 42) : 0) + (!item && onSelectAll ? (selectMenuOpen ? 160 : 30) : 0) + (!item && onCopyFolderPath ? 26 : 0) + (item && !isSystemLocation && !item.recycleBinId && onCopyPath ? 26 : 0);
   const adjustedX = Math.max(8, Math.min(position.x, window.innerWidth - menuWidth - 8));
   const adjustedY = Math.max(8, Math.min(position.y, window.innerHeight - menuHeight - 8));
 
@@ -203,6 +229,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             {supportsArchiveCreation && <MenuButton icon={<Archive className="h-3.5 w-3.5 text-violet-300" />} label={t.contextMenu.compressToZip} onClick={() => { onCompressToZip(item); onClose(); }} />}
             <MenuButton icon={<Copy className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.copyToClipboard} shortcut="Ctrl+C" onClick={() => { onCopyToClipboard(item); onClose(); }} />
             <MenuButton icon={<Scissors className="h-3.5 w-3.5 text-amber-400" />} label={t.contextMenu.cutToClipboard} shortcut="Ctrl+X" onClick={() => { onCutToClipboard(item); onClose(); }} />
+            {onCopyPath && <MenuButton icon={<ClipboardCopy className="h-3.5 w-3.5 text-neutral-300" />} label={t.sidebar.copySelectedPath} onClick={() => { onCopyPath(); onClose(); }} />}
             <MenuButton icon={<Copy className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.copyToOpposite} shortcut="F5" onClick={() => { onCopyOpposite(item); onClose(); }} />
             <MenuButton icon={<MoveRight className="h-3.5 w-3.5 text-blue-400" />} label={t.contextMenu.moveToOpposite} shortcut="F6" onClick={() => { onMoveOpposite(item); onClose(); }} />
           </div>
@@ -227,7 +254,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               disabled={!canModifyFolder}
               expanded={newMenuOpen}
               trailing={<ChevronRight className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${newMenuOpen ? 'rotate-90' : ''}`} />}
-              onClick={() => { setSortMenuOpen(false); setGroupMenuOpen(false); setNewMenuOpen(open => !open); }}
+              onClick={() => { setSortMenuOpen(false); setGroupMenuOpen(false); setSelectMenuOpen(false); setNewMenuOpen(open => !open); }}
             />
             {newMenuOpen && (
               <div role="menu" aria-label={t.contextMenu.new} className="ml-5 border-l border-neutral-700/80 py-0.5 pl-1">
@@ -239,6 +266,29 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             <MenuButton icon={<ClipboardPaste className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.paste} shortcut="Ctrl+V" disabled={!canModifyFolder || !fileClipboardSupported} onClick={() => { onPaste(); onClose(); }} />
             <MenuButton icon={<RotateCw className="h-3.5 w-3.5 text-neutral-400" />} label={t.toolbar.refresh} disabled={!hasFolder} onClick={() => { onRefresh(); onClose(); }} />
             {hasFilter && <MenuButton icon={<FilterX className="h-3.5 w-3.5 text-amber-400" />} label={t.contextMenu.clearFilter} onClick={() => { onClearFilter(); onClose(); }} />}
+            {onCopyFolderPath && <MenuButton icon={<ClipboardCopy className="h-3.5 w-3.5 text-neutral-300" />} label={t.sidebar.copyFolderPath} disabled={!hasFolder} onClick={() => { onCopyFolderPath(); onClose(); }} />}
+            {onSelectAll && (
+              <>
+                <MenuButton
+                  icon={<ListChecks className="h-3.5 w-3.5 text-cyan-300" />}
+                  label={t.contextMenu.select}
+                  disabled={!hasFolder}
+                  expanded={selectMenuOpen}
+                  trailing={<ChevronRight className={`h-3.5 w-3.5 text-neutral-500 transition-transform ${selectMenuOpen ? 'rotate-90' : ''}`} />}
+                  onClick={() => { setNewMenuOpen(false); setSortMenuOpen(false); setGroupMenuOpen(false); setSelectMenuOpen(open => !open); }}
+                />
+                {selectMenuOpen && (
+                  <div role="menu" aria-label={t.contextMenu.select} className="ml-5 border-l border-neutral-700/80 py-0.5 pl-1">
+                    <MenuButton icon={<BoxSelect className="h-3.5 w-3.5 text-cyan-300" />} label={t.sidebar.selectAll} shortcut="Ctrl+A" disabled={!hasSelectableItems} onClick={() => { onSelectAll(); onClose(); }} />
+                    <MenuButton icon={<Square className="h-3.5 w-3.5 text-neutral-400" />} label={t.sidebar.unselectAll} onClick={() => { onSelectNone?.(); onClose(); }} />
+                    <MenuButton icon={<ArrowLeftRight className="h-3.5 w-3.5 text-amber-300" />} label={t.sidebar.invertSelection} disabled={!hasSelectableItems} onClick={() => { onInvertSelection?.(); onClose(); }} />
+                    <MenuDivider />
+                    <MenuButton icon={<FileText className="h-3.5 w-3.5 text-cyan-300" />} label={t.contextMenu.selectOnlyFiles} onClick={() => { onSelectOnlyFiles?.(); onClose(); }} />
+                    <MenuButton icon={<FolderOpen className="h-3.5 w-3.5 text-amber-300" />} label={t.contextMenu.selectOnlyFolders} disabled={!hasFoldersInFolder} onClick={() => { onSelectOnlyFolders?.(); onClose(); }} />
+                  </div>
+                )}
+              </>
+            )}
           </div>
           <MenuDivider />
           <div className="py-0.5">
@@ -247,7 +297,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               label={t.contextMenu.sortBy}
               expanded={sortMenuOpen}
               trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-500" />}
-              onClick={() => { setNewMenuOpen(false); setGroupMenuOpen(false); setSortMenuOpen(open => !open); }}
+              onClick={() => { setNewMenuOpen(false); setGroupMenuOpen(false); setSelectMenuOpen(false); setSortMenuOpen(open => !open); }}
             />
             {sortMenuOpen && (
               <div role="menu" aria-label={t.contextMenu.sortBy} className="ml-5 border-l border-neutral-700/80 py-0.5 pl-1">
@@ -267,7 +317,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               disabled={!supportsGrouping}
               expanded={groupMenuOpen}
               trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-500" />}
-              onClick={() => { setNewMenuOpen(false); setSortMenuOpen(false); setGroupMenuOpen(open => !open); }}
+              onClick={() => { setNewMenuOpen(false); setSortMenuOpen(false); setSelectMenuOpen(false); setGroupMenuOpen(open => !open); }}
             />
             {groupMenuOpen && (
               <div role="menu" aria-label={t.contextMenu.groupBy} className="ml-5 border-l border-neutral-700/80 py-0.5 pl-1">

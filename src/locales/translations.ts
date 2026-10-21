@@ -968,6 +968,9 @@ export const translations = {
       batchRename: 'Renombrado múltiple avanzado...',
       delete: 'Eliminar (Supr)',
       restore: 'Restaurar a su ubicación original',
+      select: 'Seleccionar',
+      selectOnlyFiles: 'Solo archivos',
+      selectOnlyFolders: 'Solo carpetas',
     },
     findFiles: {
       title: 'Buscador Global de Archivos',
@@ -2018,6 +2021,9 @@ export const translations = {
       batchRename: 'Advanced Multi-Rename Studio...',
       delete: 'Delete (Del)',
       restore: 'Restore to original location',
+      select: 'Select',
+      selectOnlyFiles: 'Files only',
+      selectOnlyFolders: 'Folders only',
     },
     findFiles: {
       title: 'Global File Finder',

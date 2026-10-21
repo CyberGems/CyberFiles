@@ -62,7 +62,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 ### 📁 Browsing & Views
 - **This PC view**: drives, common Windows folders, network locations and advanced Windows folders in one place
 - **Address bar**: the current folder path with clickable segments; click a parent to jump back, click the current segment to refresh the listing, and open recent folders from the chevron at the right edge
-- **Sidebar**: locations, recent files with filters and history, Recycle Bin status, and a context panel that follows the current folder or selection, plus a lazy-loaded folder tree
+- **Sidebar**: locations only, so the tree never leaves the screen: quick access with a lazy-loaded folder tree, drives with capacity bars, advanced Windows folders and Recycle Bin status
 - **Quick Access**: pin up to 100 folders, rename or remove shortcuts, and sort them A–Z, Z–A or manually by dragging (Alt+Up and Alt+Down also work)
 - **Views**: Details, List and Large Icons, with resizable columns, add or hide columns, sortable headers, and grouping by date or size
 - **Relative graphs**: optional bars behind sizes and dates that make the shape of a folder visible at a glance
