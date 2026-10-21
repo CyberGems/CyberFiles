@@ -5759,7 +5759,6 @@ export default function App() {
         onClose={() => setContextMenuPos(null)}
         onOpenLocation={item => { void handleNavigate(item.path, contextPane); }}
         onAddToQuickAccess={handleAddFolderToQuickAccess}
-        onRefresh={() => void handleNavigate(contextPaneTab.currentPath, contextPane, true)}
         onClearFilter={() => updatePaneTab(contextPane, tab => ({ ...tab, filterQuery: '' }))}
         onViewModeChange={mode => updatePaneTab(contextPane, tab => setTabViewMode(tab, mode))}
         hasSavedFolderStyle={Boolean(savedFolderStyles[folderStylePathKey(contextPaneTab.currentPath)])}
@@ -5791,9 +5790,7 @@ export default function App() {
         hasSelectableItems={activeDisplayFiles.length > 0}
         hasFoldersInFolder={activeDisplayFiles.some(item => item.isFolder)}
         onCopyPath={() => handleCopySelectedPaths(selectedItemsForDelete)}
-        onCopyFolderPath={() => handleCopyFolderPath(contextPaneTab.currentPath)}
         onCustomizeFolderIcon={item => handleOpenFolderIconModal({ path: item.path, name: item.name })}
-        onCustomizeCurrentFolderIcon={() => handleOpenFolderIconModal({ path: contextPaneTab.currentPath, name: contextPaneTab.title || contextPaneTab.currentPath.split(/[\\/]/).pop() || contextPaneTab.currentPath })}
       />
       {pendingCreateItem && (
         <CreateItemModal

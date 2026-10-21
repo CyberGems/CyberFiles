@@ -3,17 +3,14 @@ import {
   Archive,
   ArrowDown,
   ArrowLeft,
-  ArrowLeftRight,
   ArrowRight,
   ArrowUp,
   Check,
   ClipboardCopy,
   Copy,
   Eye,
-  FileText,
   FolderOpen,
   Info,
-  ListChecks,
   MoreHorizontal,
   Palette,
   Pencil,
@@ -66,7 +63,6 @@ interface PaneActionBarProps {
   /* Returns focus to the list after the filter chip disappears, so typing keeps working. */
   onFocusList?: () => void;
   itemCountLabel: string;
-  visibleFiles: FileItem[];
   selectedItems: FileItem[];
   onSetSelection: (ids: string[]) => void;
   folderPath: string;
@@ -97,7 +93,6 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
   filterInputRef,
   onFocusList,
   itemCountLabel,
-  visibleFiles,
   selectedItems,
   onSetSelection,
   folderPath,
@@ -305,48 +300,9 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
     ]);
   }
 
+  /* The select shortcuts (todo / solo archivos / solo carpetas) live in the status-bar counters
+     and in the pane context menu, so the folder menu keeps only the actions on the folder. */
   const folderMenuGroups: ActionEntry[][] = [
-    [
-      {
-        key: 'select-all',
-        label: t.sidebar.selectAll,
-        icon: <ListChecks className="h-3.5 w-3.5 text-cyan-300" />,
-        shortcut: 'Ctrl+A',
-        disabled: visibleFiles.length === 0,
-        onSelect: () => onSetSelection(visibleFiles.map(item => item.id)),
-      },
-      {
-        key: 'select-none',
-        label: t.sidebar.unselectAll,
-        icon: <Square className="h-3.5 w-3.5 text-neutral-400" />,
-        disabled: visibleFiles.length === 0,
-        onSelect: () => onSetSelection([]),
-      },
-      {
-        key: 'select-invert',
-        label: t.sidebar.invertSelection,
-        icon: <ArrowLeftRight className="h-3.5 w-3.5 text-amber-300" />,
-        disabled: visibleFiles.length === 0,
-        onSelect: () => {
-          const selectedIds = new Set(selectedItems.map(item => item.id));
-          onSetSelection(visibleFiles.filter(item => !selectedIds.has(item.id)).map(item => item.id));
-        },
-      },
-      {
-        key: 'select-files',
-        label: t.contextMenu.selectOnlyFiles,
-        icon: <FileText className="h-3.5 w-3.5 text-cyan-300" />,
-        disabled: !visibleFiles.some(item => !item.isFolder),
-        onSelect: () => onSetSelection(visibleFiles.filter(item => !item.isFolder).map(item => item.id)),
-      },
-      {
-        key: 'select-folders',
-        label: t.contextMenu.selectOnlyFolders,
-        icon: <FolderOpen className="h-3.5 w-3.5 text-amber-300" />,
-        disabled: !visibleFiles.some(item => item.isFolder),
-        onSelect: () => onSetSelection(visibleFiles.filter(item => item.isFolder).map(item => item.id)),
-      },
-    ],
     [
       {
         key: 'copy-folder-path',

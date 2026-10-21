@@ -17,7 +17,6 @@ import {
   List,
   Link2,
   MoveRight,
-  RotateCw,
   StretchHorizontal,
   Trash2,
   Layers,
@@ -53,8 +52,6 @@ interface ContextMenuProps {
   onOpenLocation: (item: FileItem) => void;
   onAddToQuickAccess: (item: FileItem) => void;
   onCustomizeFolderIcon?: (item: FileItem) => void;
-  onCustomizeCurrentFolderIcon?: () => void;
-  onRefresh: () => void;
   onClearFilter: () => void;
   onViewModeChange: (mode: ViewMode) => void;
   hasSavedFolderStyle: boolean;
@@ -85,7 +82,6 @@ interface ContextMenuProps {
   hasSelectableItems?: boolean;
   hasFoldersInFolder?: boolean;
   onCopyPath?: () => void;
-  onCopyFolderPath?: () => void;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -104,8 +100,6 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onOpenLocation,
   onAddToQuickAccess,
   onCustomizeFolderIcon,
-  onCustomizeCurrentFolderIcon,
-  onRefresh,
   onClearFilter,
   onViewModeChange,
   hasSavedFolderStyle,
@@ -136,7 +130,6 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   hasSelectableItems = true,
   hasFoldersInFolder = false,
   onCopyPath,
-  onCopyFolderPath,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
@@ -174,7 +167,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const isSystemLocation = Boolean(item && (item.id.startsWith('system-drive-') || item.id.startsWith('system-location-')));
   const menuWidth = 264;
   const archiveItem = Boolean(item && !item.isFolder && ["zip", "rar"].includes(item.extension.toLowerCase()));
-  const menuHeight = (isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? (supportsArchiveCreation ? 410 : 370) : item ? (archiveItem && supportsArchiveExtraction ? (supportsArchiveCreation ? 450 : 410) : supportsArchiveCreation ? 360 : 330) : sortMenuOpen ? 600 : groupMenuOpen ? 580 : newMenuOpen ? 460 : 440) + (!item && canModifyFolder ? (hasSavedFolderStyle ? 76 : 42) : 0) + (!item && onSelectAll ? (selectMenuOpen ? 160 : 30) : 0) + (!item && onCopyFolderPath ? 26 : 0) + (item && !isSystemLocation && !item.recycleBinId && onCopyPath ? 26 : 0);
+  const menuHeight = (isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? (supportsArchiveCreation ? 410 : 370) : item ? (archiveItem && supportsArchiveExtraction ? (supportsArchiveCreation ? 450 : 410) : supportsArchiveCreation ? 360 : 330) : sortMenuOpen ? 600 : groupMenuOpen ? 580 : newMenuOpen ? 460 : 388) + (!item && canModifyFolder ? (hasSavedFolderStyle ? 50 : 26) : 0) + (!item && onSelectAll ? (selectMenuOpen ? 160 : 30) : 0) + (item && !isSystemLocation && !item.recycleBinId && onCopyPath ? 26 : 0);
   const adjustedX = Math.max(8, Math.min(position.x, window.innerWidth - menuWidth - 8));
   const adjustedY = Math.max(8, Math.min(position.y, window.innerHeight - menuHeight - 8));
 
@@ -264,9 +257,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               </div>
             )}
             <MenuButton icon={<ClipboardPaste className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.paste} shortcut="Ctrl+V" disabled={!canModifyFolder || !fileClipboardSupported} onClick={() => { onPaste(); onClose(); }} />
-            <MenuButton icon={<RotateCw className="h-3.5 w-3.5 text-neutral-400" />} label={t.toolbar.refresh} disabled={!hasFolder} onClick={() => { onRefresh(); onClose(); }} />
             {hasFilter && <MenuButton icon={<FilterX className="h-3.5 w-3.5 text-amber-400" />} label={t.contextMenu.clearFilter} onClick={() => { onClearFilter(); onClose(); }} />}
-            {onCopyFolderPath && <MenuButton icon={<ClipboardCopy className="h-3.5 w-3.5 text-neutral-300" />} label={t.sidebar.copyFolderPath} disabled={!hasFolder} onClick={() => { onCopyFolderPath(); onClose(); }} />}
             {onSelectAll && (
               <>
                 <MenuButton
@@ -341,9 +332,6 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             <div className="py-0.5">
               <MenuButton icon={<BookmarkPlus className="h-3.5 w-3.5 text-cyan-300" />} label={hasSavedFolderStyle ? t.contextMenu.updateFolderStyle : t.contextMenu.saveFolderStyle} onClick={() => { onSaveFolderStyle(); onClose(); }} />
               {hasSavedFolderStyle && <MenuButton icon={<BookmarkX className="h-3.5 w-3.5 text-amber-300" />} label={t.contextMenu.removeFolderStyle} onClick={() => { onRemoveFolderStyle(); onClose(); }} />}
-              {onCustomizeCurrentFolderIcon && (
-                <MenuButton icon={<Palette className="h-3.5 w-3.5 text-pink-400" />} label={t.contextMenu.customizeThisFolderIcon} onClick={() => { onCustomizeCurrentFolderIcon(); onClose(); }} />
-              )}
             </div>
           </>}
         </>

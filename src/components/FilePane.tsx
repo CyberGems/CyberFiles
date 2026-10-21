@@ -23,6 +23,7 @@ import {
   LoaderCircle,
   ListTree,
   FileCheck,
+  FolderOpen,
   Monitor,
   Download,
   HardDrive,
@@ -30,6 +31,7 @@ import {
   Disc3,
   Network,
   ChevronDown,
+  ChevronUp,
   Trash2,
   LockKeyhole,
   UnlockKeyhole,
@@ -798,6 +800,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [columnWidths, setColumnWidths] = useState(() => columnPreferences.widths);
   const [columnLayout, setColumnLayout] = useState(() => columnPreferences.layout);
   const [columnMenuPosition, setColumnMenuPosition] = useState<{ left: number; top: number } | null>(null);
+  /* The status-bar item count opens the selection shortcuts (todo / solo archivos / solo carpetas),
+     the home they got when the toolbar's select-all grid went away. */
+  const [statusCountMenuPosition, setStatusCountMenuPosition] = useState<{ left: number; top: number } | null>(null);
+  const statusCountMenuRef = useRef<HTMLDivElement>(null);
+  const statusCountButtonRef = useRef<HTMLButtonElement>(null);
   const [resizingColumn, setResizingColumn] = useState<ResizableColumn | null>(null);
   const [columnDropTarget, setColumnDropTarget] = useState<FileColumn | null>(null);
   const [nativeFileIconState, setNativeFileIconState] = useState<{ scope: string; byItemId: Record<string, string> }>({ scope: '', byItemId: {} });
@@ -1499,6 +1506,29 @@ export const FilePane: React.FC<FilePaneProps> = ({
       window.removeEventListener('resize', dismiss);
     };
   }, [recentFoldersMenuPosition]);
+
+  useEffect(() => {
+    if (!statusCountMenuPosition) return;
+    const dismiss = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Node && (
+        statusCountMenuRef.current?.contains(target)
+        || statusCountButtonRef.current?.contains(target)
+      )) return;
+      setStatusCountMenuPosition(null);
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setStatusCountMenuPosition(null);
+    };
+    document.addEventListener('pointerdown', dismiss, true);
+    document.addEventListener('keydown', dismissOnEscape, true);
+    window.addEventListener('resize', dismiss);
+    return () => {
+      document.removeEventListener('pointerdown', dismiss, true);
+      document.removeEventListener('keydown', dismissOnEscape, true);
+      window.removeEventListener('resize', dismiss);
+    };
+  }, [statusCountMenuPosition]);
 
   useEffect(() => {
     const input = pathInputRef.current;
@@ -2711,6 +2741,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   const folderBytes = React.useMemo(() => files.reduce((total, file) => total + (file.isFolder ? 0 : file.size), 0), [files]);
 
+  /* The counters in the status bar are the permanent home of the selection shortcuts. */
+  const openStatusCountMenu = () => {
+    const rect = statusCountButtonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const menuHeight = 132;
+    setStatusCountMenuPosition({
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - 200)),
+      top: Math.max(8, rect.top - 8 - menuHeight),
+    });
+  };
+  const selectVisibleItems = (predicate?: (item: FileItem) => boolean) => {
+    const source = predicate ? navigableFiles.filter(predicate) : navigableFiles;
+    onSelectItems(source.map(item => item.id), false, false, true);
+    viewportRef.current?.focus();
+  };
+
   const renderSystemHomeCard = (item: FileItem, index: number, category: 'folder' | 'drive' | 'network') => {
     const selected = visibleSelectedIdSet.has(item.id);
     const drive = category === 'folder' ? undefined : drives.find(candidate => item.id === `system-drive-${candidate.id}`);
@@ -3363,6 +3409,49 @@ export const FilePane: React.FC<FilePaneProps> = ({
           document.body,
         )}
 
+        {statusCountMenuPosition && createPortal(
+          <div
+            ref={statusCountMenuRef}
+            role="menu"
+            aria-label={t.contextMenu.select}
+            style={statusCountMenuPosition}
+            className="fixed z-[110] w-48 rounded-lg border border-neutral-700 bg-neutral-950/95 p-1.5 text-xs shadow-2xl backdrop-blur-md"
+          >
+            <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.contextMenu.select}</div>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={navigableFiles.length === 0}
+              onClick={() => { setStatusCountMenuPosition(null); selectVisibleItems(); }}
+              className="flex w-full items-center justify-between gap-2 rounded px-2.5 py-2 text-left text-neutral-200 transition-colors hover:bg-neutral-800 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <span className="truncate">{t.sidebar.selectAll}</span>
+              <kbd className="keyboard-hint shrink-0">Ctrl+A</kbd>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!navigableFiles.some(item => !item.isFolder)}
+              onClick={() => { setStatusCountMenuPosition(null); selectVisibleItems(item => !item.isFolder); }}
+              className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-neutral-200 transition-colors hover:bg-neutral-800 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <FileText className="h-3.5 w-3.5 flex-shrink-0 text-cyan-300" />
+              <span className="truncate">{t.contextMenu.selectOnlyFiles}</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!navigableFiles.some(item => item.isFolder)}
+              onClick={() => { setStatusCountMenuPosition(null); selectVisibleItems(item => item.isFolder); }}
+              className="flex w-full items-center gap-2 rounded px-2.5 py-2 text-left text-neutral-200 transition-colors hover:bg-neutral-800 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <FolderOpen className="h-3.5 w-3.5 flex-shrink-0 text-amber-300" />
+              <span className="truncate">{t.contextMenu.selectOnlyFolders}</span>
+            </button>
+          </div>,
+          document.body,
+        )}
+
         <Tooltip label={styleLockLabel} placement="bottom">
           <span
             className={`inline-flex rounded ${styleLockInactive ? 'cursor-not-allowed' : ''}`}
@@ -3391,7 +3480,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
         filterInputRef={filterInputRef}
         onFocusList={() => viewportRef.current?.focus()}
         itemCountLabel={itemCountLabel}
-        visibleFiles={files}
         selectedItems={selectedItems}
         onSetSelection={ids => onSelectItems(ids, false, false, true)}
         folderPath={tab.currentPath}
@@ -3810,25 +3898,51 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* 6. Footer Status Bar with Mini Storage Distribution Strip */}
       <div className="cyberfiles-pane-status grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-t border-neutral-800 bg-neutral-950 px-2.5 py-1 font-sans text-[10px] text-neutral-400 select-none">
         <div className="cyberfiles-pane-status-summary flex min-w-0 items-center gap-2.5 overflow-hidden">
-          <span className="shrink-0">{itemCountLabel}</span>
+          <Tooltip label={t.pane.statusCountHint} placement="top">
+            <button
+              ref={statusCountButtonRef}
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={statusCountMenuPosition !== null}
+              /* Never takes the focus: the status bar sits outside the pane body that owns the
+                 keyboard, so a focused button here would leave typing dead. */
+              onMouseDown={event => event.preventDefault()}
+              onClick={openStatusCountMenu}
+              className="flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 -mx-1 text-neutral-400 outline-none transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 focus-visible:text-cyan-200"
+            >
+              {itemCountLabel}
+              <ChevronUp className="h-3 w-3 opacity-60" />
+            </button>
+          </Tooltip>
           {selectedFiles.length > 0 ? (
             <>
-              <span className="cyberfiles-selected-status-full truncate font-semibold text-cyan-300">
-                {t.pane.selectedCount.replace('{count}', String(selectedFiles.length))} ({formatFileSize(selectedBytes)})
-              </span>
-              <Tooltip
-                placement="top"
-                label={`${t.pane.selectedCount.replace('{count}', String(selectedFiles.length))} (${formatFileSize(selectedBytes)})`}
-              >
-                <span className="cyberfiles-selected-status-compact shrink-0 cursor-help font-semibold text-cyan-200">
+              <Tooltip label={t.pane.cancelSelection} placement="top" shortcut="Esc">
+                <button
+                  type="button"
+                  onMouseDown={event => event.preventDefault()}
+                  onClick={() => { onSelectItems([], false, false, true); viewportRef.current?.focus(); }}
+                  className="cyberfiles-selected-status-full min-w-0 truncate rounded px-1 py-0.5 text-left font-semibold text-cyan-300 outline-none transition-colors hover:bg-neutral-800/70 hover:text-cyan-100 focus-visible:text-cyan-100"
+                >
+                  {t.pane.selectedCount.replace('{count}', String(selectedFiles.length))} ({formatFileSize(selectedBytes)})
+                </button>
+              </Tooltip>
+              <Tooltip label={t.pane.cancelSelection} placement="top" shortcut="Esc">
+                <button
+                  type="button"
+                  onMouseDown={event => event.preventDefault()}
+                  onClick={() => { onSelectItems([], false, false, true); viewportRef.current?.focus(); }}
+                  className="cyberfiles-selected-status-compact shrink-0 rounded px-1 py-0.5 font-semibold text-cyan-200 outline-none transition-colors hover:bg-neutral-800/70 hover:text-cyan-100 focus-visible:text-cyan-100"
+                >
                   {t.pane.selectedCountCompact.replace('{count}', String(selectedFiles.length))}
-                </span>
+                </button>
               </Tooltip>
             </>
           ) : (
-            <span className="text-neutral-500 hidden sm:inline">
-              ({formatFileSize(folderBytes)})
-            </span>
+            <Tooltip label={t.pane.folderBytesHint} placement="top">
+              <span className="cursor-help rounded px-1 py-0.5 text-neutral-500 hidden sm:inline">
+                ({formatFileSize(folderBytes)})
+              </span>
+            </Tooltip>
           )}
           {hasMore && <span className="hidden truncate text-cyan-500/80 2xl:inline">{t.pane.moreItemsAvailable}</span>}
         </div>

@@ -3,7 +3,7 @@ import { X, FileText, Folder, Image as ImageIcon, Code2, Copy, Check, Info, Musi
 import { FileItem } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, isTextPreviewableFile } from '../utils/fileSystem';
-import { isTauriDesktop, loadNativeImageThumbnail, loadNativePdfPreviewUrl, loadNativeArchivePreview, MAX_PDF_PREVIEW_BYTES, type NativeArchivePreview } from '../utils/nativeFileSystem';
+import { isTauriDesktop, loadNativeImageThumbnail, loadNativePdfPreviewUrl, loadNativeArchivePreview, calculateNativeFolderSizeBounded, MAX_PDF_PREVIEW_BYTES, type NativeArchivePreview } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
@@ -119,6 +119,8 @@ function renderMarkdown(source: string): React.ReactNode[] {
   return blocks;
 }
 
+const FOLDER_SIZE_PREVIEW_MAX_ENTRIES = 20_000;
+
 function createSafeHtmlPreview(content: string): string {
   const policy = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; media-src data: blob:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">`;
   if (/<head(?:\s[^>]*)?>/i.test(content)) {
@@ -153,7 +155,28 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
   const [archivePassword, setArchivePassword] = useState('');
   const [archivePasswordError, setArchivePasswordError] = useState(false);
   const [folderContent, setFolderContent] = useState<{ itemId: string; status: 'loading' | 'done' | 'error'; summary?: FolderContentSummary } | null>(null);
+  const [folderSize, setFolderSize] = useState<{ itemId: string; status: 'loading' | 'done' | 'error'; size?: number; complete?: boolean } | null>(null);
   const { t, language } = useLanguage();
+
+  /* The folder total size: one bounded pass so a huge folder cannot hang the inspector; a partial
+     result is labelled as such instead of pretending it is complete. */
+  useEffect(() => {
+    if (!item?.isFolder || !isTauriDesktop()) {
+      setFolderSize(null);
+      return;
+    }
+    let cancelled = false;
+    setFolderSize({ itemId: item.id, status: 'loading' });
+    calculateNativeFolderSizeBounded(item.path, FOLDER_SIZE_PREVIEW_MAX_ENTRIES).then(
+      result => {
+        if (!cancelled) setFolderSize({ itemId: item.id, status: 'done', size: result.size, complete: result.complete });
+      },
+      () => {
+        if (!cancelled) setFolderSize({ itemId: item.id, status: 'error' });
+      },
+    );
+    return () => { cancelled = true; };
+  }, [item?.id, item?.path, item?.isFolder]);
 
   useEffect(() => {
     if (!item || item.isFolder || item.type !== 'image') {
@@ -459,16 +482,25 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
                 ) : (
                   <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.fileSize}:</span><span className="text-right text-neutral-200">{formatFileSize(item.size)} ({item.size.toLocaleString()} bytes)</span></div>
                 )}
-                {item.isFolder && (
-                  <div className="flex items-center justify-between gap-3 text-neutral-400">
-                    <span>{t.pane.folderContentTypeLabel}:</span>
-                    <span className="text-right text-neutral-200">
-                      {folderContent?.itemId === item.id && folderContent.status === 'done' && folderContent.summary
-                        ? formatFolderContentLabel(folderContent.summary, t.pane.folderContentKinds)
-                        : folderContent?.itemId === item.id && folderContent.status === 'error'
-                          ? t.pane.folderTooltipCountFailed
-                          : t.pane.folderTooltipCounting}
-                    </span>
+                {item.isFolder && folderContent?.itemId === item.id && folderContent.status === 'done' && folderContent.summary && (
+                  <div className="space-y-1.5 rounded-lg border border-cyan-400/20 bg-cyan-950/20 p-2.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-cyan-300">{t.preview.folderContents}</div>
+                    <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.folderFiles}</span><span className="text-right tabular-nums text-neutral-200">{folderContent.summary.fileCount.toLocaleString(language === 'es' ? 'es-CR' : 'en-US')}</span></div>
+                    <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.folderFolders}</span><span className="text-right tabular-nums text-neutral-200">{folderContent.summary.folderCount.toLocaleString(language === 'es' ? 'es-CR' : 'en-US')}</span></div>
+                    <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.pane.folderContentTypeLabel}</span><span className="text-right text-neutral-200">{formatFolderContentLabel(folderContent.summary, t.pane.folderContentKinds)}</span></div>
+                    <div className="flex items-center justify-between gap-3 text-neutral-400">
+                      <span>{t.preview.folderTotalSize}</span>
+                      <span className="text-right text-neutral-200">
+                        {!isTauriDesktop() ? t.pane.folderSizeHoverDesktopOnly
+                          : folderSize?.itemId === item.id && folderSize.status === 'done' && folderSize.complete && folderSize.size !== undefined
+                            ? formatFileSize(folderSize.size)
+                            : folderSize?.itemId === item.id && folderSize.status === 'done' && folderSize.size !== undefined
+                              ? t.preview.folderSizePartial.replace('{size}', formatFileSize(folderSize.size))
+                              : folderSize?.itemId === item.id && folderSize.status === 'error'
+                                ? t.pane.folderSizeFailed
+                                : t.preview.folderSizePending}
+                      </span>
+                    </div>
                   </div>
                 )}
                 <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.modified}:</span><span className="text-right text-neutral-200">{formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language) || '----'}</span></div>
