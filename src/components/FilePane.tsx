@@ -43,6 +43,7 @@ import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentS
 import { advanceMouseGesturePath, MOUSE_GESTURE_MIN_DISTANCE, type MouseGesturePath } from '../utils/mouseGesture';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
 import { FolderIconRenderer, FolderStatusBadge } from './folderIconsData';
+import { PaneActionBar, type PaneSelectionActions } from './PaneActionBar';
 import { listen } from '@tauri-apps/api/event';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip, TooltipPreferenceContext, TooltipShortcut } from './Tooltip';
@@ -118,6 +119,7 @@ interface FilePaneProps {
   columnPreferencesRevision: number;
   columnPreferences: PaneColumnsSnapshot;
   onColumnPreferencesChange: (pane: 'left' | 'right', preferences: PaneColumnsSnapshot) => void;
+  paneActions: PaneSelectionActions;
 }
 
 type SystemHomeSection = 'folders' | 'devices' | 'network' | 'advancedWindowsFolders';
@@ -742,6 +744,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   columnPreferencesRevision,
   columnPreferences,
   onColumnPreferencesChange,
+  paneActions,
 }) => {
   const { t, language } = useLanguage();
   const windowsSpecialFolderLabels: Record<WindowsSpecialFolder['id'], string> = {
@@ -1069,6 +1072,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const selectionContext = `${tab.id}\u0000${tab.currentPath}`;
   const navigableIdSet = React.useMemo(() => new Set(navigableFiles.map(item => item.id)), [navigableFiles]);
   const selectedIdSet = React.useMemo(() => new Set(tab.selectedIds), [tab.selectedIds]);
+  const selectedItems = React.useMemo(
+    () => files.filter(item => selectedIdSet.has(item.id)),
+    [files, selectedIdSet],
+  );
   const fileIndexById = React.useMemo(() => new Map(files.map((item, index) => [item.id, index])), [files]);
   const virtualizeFiles = !isSystemHome && effectiveViewMode !== 'compact' && files.length > 300;
   const compactRowCount = Math.max(1, Math.floor(
@@ -3287,31 +3294,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
         </Tooltip>
       </div>
 
-      {/* 3. Live Filter Bar (Find as you type) */}
-      <div className="cyberfiles-pane-filter px-2 py-1 bg-neutral-950/60 border-b border-neutral-800/80 flex items-center gap-2 text-xs">
-        <div className="relative flex-1">
-          <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-neutral-500" />
-          <input
-            type="text"
-            placeholder={isSystemHome ? t.pane.systemHomeFilterPlaceholder : t.pane.filterPlaceholder}
-            value={tab.filterQuery}
-            onChange={(e) => onFilterChange(e.target.value)}
-            className="w-full bg-neutral-900 pl-7 pr-7 py-1 rounded text-xs text-neutral-200 placeholder:text-neutral-500 border border-neutral-800 focus:border-cyan-500/60 focus:outline-none font-sans"
-          />
-          {tab.filterQuery && (
-            <button
-              onClick={() => onFilterChange('')}
-              className="absolute right-2 top-2 text-neutral-400 hover:text-neutral-200"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-
-        <div className="text-[10px] text-neutral-400 font-sans whitespace-nowrap">
-          {itemCountLabel}
-        </div>
-      </div>
+      {/* 3. Filter / selection bar: one row, two states, constant height */}
+      <PaneActionBar
+        filterQuery={tab.filterQuery}
+        filterPlaceholder={isSystemHome ? t.pane.systemHomeFilterPlaceholder : t.pane.filterPlaceholder}
+        onFilterChange={onFilterChange}
+        itemCountLabel={itemCountLabel}
+        visibleFiles={files}
+        selectedItems={selectedItems}
+        onSetSelection={ids => onSelectItems(ids, false, false, true)}
+        folderPath={tab.currentPath}
+        onRefresh={onRefresh}
+        actions={paneActions}
+      />
 
       {/* Flat view banner: first row of the listing, always visible above the results */}
       {tab.flatView && (

@@ -51,6 +51,7 @@ import { HeaderBar } from './components/HeaderBar';
 import type { CommandPaletteCommand } from './components/CommandPalette';
 import { WindowTitleBar } from './components/WindowTitleBar';
 import { Sidebar } from './components/Sidebar';
+import type { PaneSelectionActions } from './components/PaneActionBar';
 import { PaneSplitter } from './components/PaneSplitter';
 import { PreviewPane } from './components/PreviewPane';
 import { BottomStatusBar } from './components/BottomStatusBar';
@@ -2634,27 +2635,6 @@ export default function App() {
     );
   }, []);
 
-  const handleClearRecentFiles = useCallback(() => {
-    setAllFiles(prev => prev.map(f => ({ ...f, lastAccessed: undefined })));
-    showToast('Historial de archivos recientes limpiado');
-  }, []);
-
-  // Quick jump & preview from Recent Files tab in Sidebar
-  const handleSelectRecentFile = useCallback((file: FileItem) => {
-    const parentPath = getParentPath(file.path);
-    handleNavigate(parentPath, activePane);
-    setTimeout(() => {
-      updateActiveTab(t => ({
-        ...t,
-        selectedIds: [file.id],
-        focusedId: file.id,
-      }));
-      setPreviewOpen(true);
-    }, 50);
-    touchFileAccessed(file.id);
-    showToast(`Accediendo a "${file.name}"`);
-  }, [activePane, handleNavigate, updateActiveTab, touchFileAccessed]);
-
   // Instant Search navigation and selection
   const handleNavigateToFile = useCallback((file: FileItem) => {
     const parentPath = getParentPath(file.path);
@@ -5158,6 +5138,47 @@ export default function App() {
   const tabMenuClosableLeft = tabMenuIndex >= 0 ? tabMenuTabs.slice(0, tabMenuIndex).filter(tab => !tab.lockClose).length : 0;
   const tabMenuClosableRight = tabMenuIndex >= 0 ? tabMenuTabs.slice(tabMenuIndex + 1).filter(tab => !tab.lockClose).length : 0;
 
+  /* Every action of a pane's bar must act on that pane, never on whichever pane is active,
+     so the pane is captured here instead of being read from state inside the handlers. */
+  const folderItemsByPath = React.useMemo(() => {
+    const map = new Map<string, FileItem>();
+    for (const item of allFiles) {
+      if (item.isFolder) map.set(getPathKey(item.path), item);
+    }
+    return map;
+  }, [allFiles]);
+
+  const paneActionsFor = (pane: 'left' | 'right'): PaneSelectionActions => {
+    const paneTab = pane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
+    const folderItem = isCommandLocation(paneTab.currentPath)
+      ? folderItemsByPath.get(getPathKey(paneTab.currentPath)) ?? null
+      : null;
+    const folderName = paneTab.title || paneTab.currentPath.split(/[\\/]/).pop() || paneTab.currentPath;
+    return {
+      isDualPane: effectiveLayout !== 'single',
+      isHorizontalDual: effectiveLayout === 'dual-horizontal',
+      transferEnabled: pane === 'left' ? canTransferLeftToRight : canTransferRightToLeft,
+      supportsArchiveCreation: isTauriDesktop(),
+      supportsArchiveExtraction: isTauriDesktop(),
+      propertiesOpen: previewOpen,
+      onDelete: items => handleDeleteSelected(items),
+      onRename: item => beginInlineRename(item, pane),
+      onPreview: item => { touchFileAccessed(item.id); setPreviewOpen(true); },
+      onCompress: items => { if (items.length > 0) openZipCreation(items, getParentPath(items[0].path), pane); },
+      onExtract: (item, mode) => queueNativeTransfer('extract', [item.path], getParentPath(item.path), { selectionPane: pane, extractionMode: mode }),
+      onCopyPath: items => handleCopySelectedPaths(items),
+      onCopyFolderPath: path => handleCopyFolderPath(path),
+      onCompressCurrentFolder: () => { if (folderItem) openZipCreation([folderItem], getParentPath(folderItem.path), pane); },
+      canCompressCurrentFolder: Boolean(folderItem),
+      onCustomizeFolderIcon: item => handleOpenFolderIconModal({ path: item.path, name: item.name }),
+      onCustomizeCurrentFolderIcon: () => handleOpenFolderIconModal({ path: paneTab.currentPath, name: folderName }),
+      onRestore: items => { void handleRestoreRecycleBinItems(items); },
+      onCopyToOtherPane: () => handleCopySelectedFromPane(pane),
+      onMoveToOtherPane: () => { void handleMoveSelectedFromPane(pane); },
+      onToggleProperties: () => setPreviewOpen(value => !value),
+    };
+  };
+
   return (
     <TooltipPreferenceContext.Provider value={tooltipsEnabled}>
       <div
@@ -5259,6 +5280,7 @@ export default function App() {
               <div className="min-w-0 min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="left"
+                  paneActions={paneActionsFor('left')}
                   tabStripPosition={tabStripPosition}
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
@@ -5331,6 +5353,7 @@ export default function App() {
               <div className="min-w-0 min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="right"
+                  paneActions={paneActionsFor('right')}
                   tabStripPosition={tabStripPosition}
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
@@ -5404,6 +5427,7 @@ export default function App() {
               <div className="min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="left"
+                  paneActions={paneActionsFor('left')}
                   tabStripPosition={tabStripPosition}
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
@@ -5472,6 +5496,7 @@ export default function App() {
               <div className="min-h-0 h-full overflow-hidden">
                 <FilePane
                   paneId="right"
+                  paneActions={paneActionsFor('right')}
                   tabStripPosition={tabStripPosition}
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
@@ -5545,6 +5570,7 @@ export default function App() {
               <FilePane
                 key={activePane}
                 paneId={activePane}
+                paneActions={paneActionsFor(activePane)}
                 tabStripPosition={tabStripPosition}
                 showNewTabButton={showNewTabButton}
                 doubleClickTabBar={doubleClickTabBar}
