@@ -424,8 +424,10 @@ html[data-theme] .cyberfiles-details-list .cyberfiles-file-row[data-selected='tr
 }
 
 /* The keyboard cursor is the only thing the old accent dash was hinting at, so it gets a proper
-   inset outline like the focus rectangle of a classic file manager. */
-html[data-theme] .cyberfiles-details-list .cyberfiles-file-row[data-focused='true'] {
+   inset outline like the focus rectangle of a classic file manager. A selected row already carries
+   the selection band, so the ring stays off it: on the default theme it drew a white frame around
+   the blue block that read as a second, meaningless highlight. */
+html[data-theme] .cyberfiles-details-list .cyberfiles-file-row[data-focused='true']:not([data-selected='true']) {
   outline: 1px solid var(--cyberfiles-row-focus-ring);
   outline-offset: -1px;
 }

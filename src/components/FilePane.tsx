@@ -315,6 +315,369 @@ function ImageFileThumbnail({
   );
 }
 
+/* ------------------------------------------------------------------------------------------------
+   Details list row.
+
+   Each row used to be an inline closure inside FilePane, so every selection change re-rendered
+   every row of every pane: two panes x a few hundred rows measured ~165ms of blocking work per
+   click or keystroke, which is what made moving the selection item by item feel slow. The row is
+   now a memoized component fed with cheap per-item scalars, so a selection change re-renders only
+   the two rows that actually changed instead of the whole list.
+------------------------------------------------------------------------------------------------ */
+
+interface DetailsRowConfig {
+  customFolderIcons?: SavedFolderIcons;
+  recentItemStyle: RecentItemStyle;
+  hiddenItemStyle: HiddenItemStyle;
+  showFileExtensions: boolean;
+  singleClickOpens: boolean;
+  isRecycleBin: boolean;
+  isTauri: boolean;
+  autoFolderSizeEnabled: boolean;
+  imageTooltipThumbnailsEnabled: boolean;
+  flatView: boolean;
+  currentPath: string;
+  dateFormat: DateFormatMode;
+}
+
+interface DetailsRowHandlers {
+  onPointerDown: (event: React.PointerEvent<HTMLElement>, item: FileItem) => void;
+  onClick: (event: React.MouseEvent, item: FileItem, index: number) => void;
+  onSingleClick: (event: React.MouseEvent, item: FileItem) => void;
+  onDoubleClick: (item: FileItem) => void;
+  onContextMenu: (event: React.MouseEvent, item: FileItem) => void;
+  onNameMouseEnter: (item: FileItem) => void;
+  onNameMouseLeave: (item: FileItem) => void;
+  onCalculateFolderSize: (event: React.MouseEvent, item: FileItem) => void;
+  renderRenameInput: (item: FileItem, formClassName: string, inputAlignment?: string) => React.ReactNode;
+}
+
+interface DetailsFileRowProps {
+  item: FileItem;
+  index: number;
+  isSelected: boolean;
+  isFocused: boolean;
+  isEditing: boolean;
+  isHidden: boolean;
+  isRecentlyChanged: boolean;
+  isRecentlyActive: boolean;
+  folderSizeState: FolderSizeState | undefined;
+  folderChildCountState: FolderChildCountState | undefined;
+  nativeIcon: string | undefined;
+  columns: FileColumn[];
+  gridTemplateColumns: string;
+  rowWidth: string;
+  sizeGraphWidth: number | undefined;
+  createdGraphWidth: number | undefined;
+  modifiedGraphWidth: number | undefined;
+  config: DetailsRowConfig;
+  handlers: DetailsRowHandlers;
+}
+
+function fileTypeGlyph(type: FileType, isFolder: boolean) {
+  if (isFolder) return <Folder className="w-4 h-4 text-amber-400 fill-amber-400/20" />;
+  switch (type) {
+    case 'image': return <ImageIcon className="w-4 h-4 text-rose-400" />;
+    case 'code': return <Code2 className="w-4 h-4 text-cyan-400" />;
+    case 'text': return <FileText className="w-4 h-4 text-blue-300" />;
+    case 'archive': return <Archive className="w-4 h-4 text-purple-400" />;
+    case 'audio': return <Music className="w-4 h-4 text-yellow-400" />;
+    case 'video': return <Video className="w-4 h-4 text-pink-400" />;
+    case 'document': return <FileCheck className="w-4 h-4 text-emerald-400" />;
+    case 'binary': return <Binary className="w-4 h-4 text-orange-400" />;
+    default: return <FileCode className="w-4 h-4 text-neutral-400" />;
+  }
+}
+
+function relativeGraphStyle(width: number | undefined, field: 'size' | 'date'): React.CSSProperties | undefined {
+  if (width === undefined || width <= 0) return undefined;
+  const percentage = Math.min(100, Math.max(0, width));
+  const color = field === 'size' ? 'var(--color-cyan-400)' : 'var(--color-amber-400)';
+  const fill = `color-mix(in srgb, ${color} 22%, transparent)`;
+  return { backgroundImage: `linear-gradient(to right, ${fill} ${percentage}%, transparent ${percentage}%)` };
+}
+
+function flatParentLabelFor(item: FileItem, flatView: boolean, currentPath: string) {
+  if (!flatView) return '';
+  const root = currentPath.replace(/[\\/]+$/, '');
+  const parent = getParentPath(item.path);
+  if (!parent.toLowerCase().startsWith(`${root.toLowerCase()}\\`) && parent.toLowerCase() !== root.toLowerCase()) return parent;
+  return parent.slice(root.length).replace(/^[\\/]+/, '');
+}
+
+function detailsRowBackgroundStyle(
+  selected: boolean,
+  isHidden: boolean,
+  isRecentlyChanged: boolean,
+  hiddenItemStyle: HiddenItemStyle,
+  recentItemStyle: RecentItemStyle,
+): React.CSSProperties | undefined {
+  if (selected) return undefined;
+  const backgroundStyle = isHidden && hiddenItemStyle.backgroundEnabled
+    ? hiddenItemStyle
+    : isRecentlyChanged && recentItemStyle.backgroundEnabled ? recentItemStyle : null;
+  return backgroundStyle
+    ? { backgroundColor: `color-mix(in srgb, ${backgroundStyle.backgroundColor} 18%, transparent)` }
+    : undefined;
+}
+
+function detailsItemNameStyle(
+  selected: boolean,
+  isHidden: boolean,
+  isRecentlyChanged: boolean,
+  hiddenItemStyle: HiddenItemStyle,
+  recentItemStyle: RecentItemStyle,
+): React.CSSProperties | undefined {
+  if (!isHidden && !isRecentlyChanged) return undefined;
+
+  const backgroundStyle = isHidden && hiddenItemStyle.backgroundEnabled
+    ? hiddenItemStyle
+    : isRecentlyChanged && recentItemStyle.backgroundEnabled ? recentItemStyle : null;
+  const textColor = isHidden
+    ? hiddenItemStyle.textColor === 'auto' ? 'var(--cyberfiles-hidden-item-color)' : hiddenItemStyle.textColor
+    : recentItemStyle.textColor === 'auto' ? 'var(--cyberfiles-recent-item-color)' : recentItemStyle.textColor;
+
+  return {
+    color: textColor,
+    fontWeight: (isHidden && hiddenItemStyle.bold) || (isRecentlyChanged && recentItemStyle.bold) ? 700 : 400,
+    fontStyle: (isHidden && hiddenItemStyle.italic) || (isRecentlyChanged && recentItemStyle.italic) ? 'italic' : 'normal',
+    ...(backgroundStyle ? {
+      borderRadius: 3,
+      paddingInline: 3,
+      ...(selected ? {
+        backgroundColor: `color-mix(in srgb, ${backgroundStyle.backgroundColor} 18%, transparent)`,
+      } : {}),
+    } : {}),
+  };
+}
+
+type TranslationSet = ReturnType<typeof useLanguage>['t'];
+
+interface ItemTooltipOptions {
+  t: TranslationSet;
+  language: ReturnType<typeof useLanguage>['language'];
+  folderChildCountState: FolderChildCountState | undefined;
+  folderSizeState: FolderSizeState | undefined;
+  isTauri: boolean;
+  autoFolderSizeEnabled: boolean;
+  imageTooltipThumbnailsEnabled: boolean;
+  isRecycleBin: boolean;
+  dateFormat: DateFormatMode;
+  isRecentlyActive: boolean;
+  isHidden: boolean;
+  additionalDetails?: React.ReactNode;
+}
+
+function renderFolderSizeStatusLine(itemId: string, folderSize: FolderSizeState | undefined, t: TranslationSet, isTauri: boolean, autoFolderSizeEnabled: boolean) {
+  const isWaitingHover = !folderSize && autoFolderSizeEnabled && isTauri;
+
+  let text = '';
+  if (folderSize?.status === 'done') {
+    text = t.pane.folderSizeTotal.replace('{size}', formatFileSize(folderSize.size ?? 0));
+  } else if (folderSize?.status === 'loading') {
+    text = t.pane.folderSizeCalculating.replace('{size}', formatFileSize(folderSize.size ?? 0)).replace('{entries}', String(folderSize.entriesScanned ?? 0));
+  } else if (folderSize?.status === 'paused') {
+    text = t.pane.folderSizePaused.replace('{size}', formatFileSize(folderSize.size ?? 0)).replace('{entries}', String(folderSize.entriesScanned ?? 0));
+  } else if (folderSize?.status === 'error') {
+    text = t.pane.folderSizeFailed;
+  } else if (!autoFolderSizeEnabled) {
+    text = t.pane.folderSizeHoverDisabled;
+  } else {
+    text = isTauri ? t.pane.folderSizeHoverHint : t.pane.folderSizeHoverDesktopOnly;
+  }
+
+  return (
+    <div className="relative mt-1 flex h-6 w-full items-center justify-center gap-1.5 overflow-hidden rounded border border-cyan-400/20 bg-cyan-950/20 px-2 text-[10px] text-cyan-200">
+      {folderSize?.status === 'loading' && (
+        <LoaderCircle className="h-2.5 w-2.5 animate-spin text-cyan-300 shrink-0" />
+      )}
+      <span className="min-w-0 truncate">{text}</span>
+      {isWaitingHover && (
+        <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[2px] bg-cyan-950/70">
+          <div
+            key={itemId}
+            className="cyberfiles-folder-hover-progress h-full w-full origin-left bg-gradient-to-r from-cyan-600 via-cyan-300 to-white shadow-[0_0_8px_rgba(34,211,238,0.8)]"
+            style={{ animationDuration: `${FOLDER_SIZE_HOVER_DELAY_MS}ms` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function renderItemTooltipContent(item: FileItem, options: ItemTooltipOptions) {
+  const { t, language, folderChildCountState, folderSizeState, isTauri, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, isRecycleBin, dateFormat, isRecentlyActive, isHidden, additionalDetails } = options;
+  return (
+    <div className={`flex flex-col items-center gap-1 text-center ${item.isFolder ? 'w-64 max-w-[calc(100vw-2rem)]' : 'max-w-[18rem]'}`}>
+      {imageTooltipThumbnailsEnabled && item.type === 'image' && !item.isFolder && (
+        <ImageFileThumbnail
+          item={item}
+          fallback={fileTypeGlyph(item.type, item.isFolder)}
+          className="h-28 w-48"
+          fit="contain"
+        />
+      )}
+      <span className={`font-semibold ${item.isFolder ? 'block w-full break-all' : ''}`}>{item.name}</span>
+      {item.path && <span className={`font-sans text-[10px] text-cyan-200 ${item.isFolder ? 'block w-full truncate' : 'break-all'}`}>{item.path}</span>}
+      {item.isFolder && !item.recycleBinId && !isRecycleBin && (
+        <>
+          <div className="mt-1 h-[76px] w-full overflow-hidden rounded-md border border-cyan-400/20 bg-cyan-950/20 px-2 py-1.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-300">{t.pane.folderTooltipContents}</div>
+            {folderChildCountState?.status === 'done' ? (
+              <>
+                <div className="mt-1 flex justify-center gap-3 text-[11px] text-neutral-100">
+                  <span>{t.pane.folderTooltipFiles.replace('{count}', new Intl.NumberFormat(language).format(folderChildCountState.summary.fileCount))}</span>
+                  <span>{t.pane.folderTooltipFolders.replace('{count}', new Intl.NumberFormat(language).format(folderChildCountState.summary.folderCount))}</span>
+                </div>
+                <div className="mt-1 truncate text-[10px] text-cyan-100">
+                  {t.pane.folderContentTypeLabel}: {formatFolderContentLabel(folderChildCountState.summary, t.pane.folderContentKinds)}
+                </div>
+              </>
+            ) : (
+              <div className="mt-1 text-[10px] text-neutral-400">
+                {folderChildCountState?.status === 'error' ? t.pane.folderTooltipCountFailed : t.pane.folderTooltipCounting}
+              </div>
+            )}
+          </div>
+          {renderFolderSizeStatusLine(item.id, folderSizeState, t, isTauri, autoFolderSizeEnabled)}
+        </>
+      )}
+      {!item.isFolder && <span>{formatFileSize(item.size)}</span>}
+      {(item.modifiedDate || item.modifiedAtMs !== undefined) && (
+        <span className={`text-[10px] text-neutral-300 ${item.isFolder ? 'block w-full truncate' : ''}`}>
+          {t.pane.itemTooltipModifiedDate.replace('{date}', formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language))}
+        </span>
+      )}
+      {isRecentlyActive && (
+        <span className="mt-0.5 rounded-full border border-cyan-400/25 bg-cyan-950/50 px-2 py-0.5 text-[10px] text-cyan-200">
+          {t.pane.itemTooltipRecentActivity}
+        </span>
+      )}
+      {isHidden && (
+        <span className="mt-0.5 rounded-full border border-rose-400/30 bg-rose-950/45 px-2 py-0.5 text-[10px] text-rose-200">
+          {item.isFolder ? t.pane.itemTooltipHiddenFolder : t.pane.itemTooltipHiddenFile}
+        </span>
+      )}
+      {additionalDetails}
+    </div>
+  );
+}
+
+const DetailsFileRow = React.memo(function DetailsFileRow({
+  item,
+  index,
+  isSelected,
+  isFocused,
+  isEditing,
+  isHidden,
+  isRecentlyChanged,
+  isRecentlyActive,
+  folderSizeState,
+  folderChildCountState,
+  nativeIcon,
+  columns,
+  gridTemplateColumns,
+  rowWidth,
+  sizeGraphWidth,
+  createdGraphWidth,
+  modifiedGraphWidth,
+  config,
+  handlers,
+}: DetailsFileRowProps) {
+  const { t, language } = useLanguage();
+  const { customFolderIcons, recentItemStyle, hiddenItemStyle, showFileExtensions, singleClickOpens, isRecycleBin, isTauri, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, flatView, currentPath, dateFormat } = config;
+  const flatLabel = flatParentLabelFor(item, flatView, currentPath);
+
+  const customFolderConfig = item.isFolder ? getCustomFolderIcon(item.path, customFolderIcons ?? {}) : undefined;
+  const folderBadge = customFolderConfig?.badge && customFolderConfig.badge.type !== 'none'
+    ? <FolderStatusBadge badge={customFolderConfig.badge} language={language} className="flex-shrink-0" />
+    : null;
+  const fileIcon = item.isFolder && customFolderConfig
+    ? <FolderIconRenderer config={customFolderConfig} size="small" />
+    : nativeIcon
+      ? <img src={nativeIcon} alt="" aria-hidden="true" draggable={false} className="h-4 w-4 flex-shrink-0 object-contain" />
+      : fileTypeGlyph(item.type, item.isFolder);
+
+  return (
+    <div
+      data-file-item="true"
+      data-file-id={item.id}
+      data-selected={isSelected ? 'true' : undefined}
+      data-focused={isFocused ? 'true' : undefined}
+      data-file-drop-path={item.isFolder && !item.recycleBinId ? item.path : undefined}
+      onPointerDown={event => handlers.onPointerDown(event, item)}
+      onClick={event => { handlers.onClick(event, item, index); handlers.onSingleClick(event, item); }}
+      onDoubleClick={() => handlers.onDoubleClick(item)}
+      onContextMenu={event => handlers.onContextMenu(event, item)}
+      style={{ width: rowWidth, gridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...detailsRowBackgroundStyle(isSelected, isHidden, isRecentlyChanged, hiddenItemStyle, recentItemStyle) }}
+      className={`cyberfiles-file-row relative grid h-[30px] items-center gap-2 rounded-md border border-transparent px-2 text-xs cursor-pointer ${
+        isSelected ? 'text-neutral-100' : 'text-neutral-300 hover:text-neutral-100'
+      }`}
+    >
+      {columns.map(column => {
+        if (column === 'extension') {
+          return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center overflow-hidden truncate font-mono text-[10.5px] font-medium uppercase tracking-wide text-cyan-400/90"><span data-file-column-content={column} className="inline-block max-w-full truncate">{item.isFolder || !showFileExtensions ? '' : (item.extension || '')}</span></div>;
+        }
+        if (column === 'name') {
+          return (
+            <div key={column} className="cyberfiles-file-cell flex min-w-0 overflow-hidden items-center gap-2">
+              <span className="flex-shrink-0">{fileIcon}</span>
+              {item.colorLabel && (
+                <span data-file-name-decoration="color-label" className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                  item.colorLabel === 'red' ? 'bg-red-400' :
+                  item.colorLabel === 'blue' ? 'bg-blue-400' :
+                  item.colorLabel === 'green' ? 'bg-emerald-400' :
+                  item.colorLabel === 'yellow' ? 'bg-amber-400' : 'bg-purple-400'
+                }`} />
+              )}
+              {isEditing ? (
+                handlers.renderRenameInput(item, 'min-w-0 flex-1')
+              ) : (
+                <Tooltip label={renderItemTooltipContent(item, { t, language, folderChildCountState, folderSizeState, isTauri, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, isRecycleBin, dateFormat, isRecentlyActive, isHidden })} placement="top">
+                  <span data-file-column-content={column} onMouseEnter={() => handlers.onNameMouseEnter(item)} onMouseLeave={() => handlers.onNameMouseLeave(item)} className={`${flatLabel ? 'max-w-[55%] ' : ''}truncate text-[11.5px] font-medium text-neutral-100`} style={detailsItemNameStyle(isSelected, isHidden, isRecentlyChanged, hiddenItemStyle, recentItemStyle)} >{getDisplayItemName(item, showFileExtensions)}</span>
+                </Tooltip>
+              )}
+              {folderBadge}
+              {flatLabel && <span className="min-w-0 truncate font-sans text-[10px] font-normal text-neutral-500">· {flatLabel}</span>}
+            </div>
+          );
+        }
+        if (column === 'type') {
+          return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center overflow-hidden truncate font-sans text-[10.5px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-full truncate">{t.pane.folderTypeLabels[item.type].replace('{extension}', item.extension.toUpperCase()).trim()}</span></div>;
+        }
+        if (column === 'size') {
+          return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[11px] tabular-nums text-neutral-300/90" style={relativeGraphStyle(sizeGraphWidth, 'size')}>{item.isFolder ? (
+              isTauri && !isRecycleBin && !item.recycleBinId ? (
+                folderSizeState?.status === 'done' ? (
+                  <span data-file-column-content={column} className="inline-flex h-5 min-w-0 max-w-full items-center justify-end truncate leading-none tabular-nums font-mono">{formatFileSize(folderSizeState.size ?? 0)}</span>
+                ) : (
+                  <Tooltip label={folderSizeState?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip} placement="top">
+                    <button type="button" disabled={folderSizeState?.status === 'loading'} onClick={event => handlers.onCalculateFolderSize(event, item)} className="ml-auto inline-flex h-5 w-[44px] shrink-0 items-center justify-end gap-1 rounded px-1 py-0 text-right leading-none text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSizeState?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
+                      <span data-file-column-content={column} className="inline-flex items-center gap-1 whitespace-nowrap font-mono text-[10px]">
+                        <span className={folderSizeState?.status === 'loading' ? 'invisible' : ''}>{folderSizeState?.status === 'error' ? '!' : t.pane.folderSizeCalculate}</span>
+                        <span className="grid h-3 w-3 flex-shrink-0 place-items-center">
+                          {folderSizeState?.status === 'loading'
+                            ? <LoaderCircle className="h-3 w-3 animate-spin" />
+                            : (!folderSizeState || folderSizeState.status === 'error') ? <Calculator className="h-3 w-3" /> : null}
+                        </span>
+                      </span>
+                    </button>
+                  </Tooltip>
+                )
+              ) : <span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-mono">--</span>
+            ) : <span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-mono">{formatFileSize(item.size)}</span>}</div>;
+        }
+        if (column === 'created') {
+          const createdDate = formatDateTimeForDisplay(item.createdAtMs, item.createdDate, dateFormat, language);
+          return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={relativeGraphStyle(createdGraphWidth, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{createdDate || '--'}</span></div>;
+        }
+        const modifiedDate = formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language);
+        return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={relativeGraphStyle(modifiedGraphWidth, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{modifiedDate || '--'}</span></div>;
+      })}
+    </div>
+  );
+});
+
 export const FilePane: React.FC<FilePaneProps> = ({
   paneId,
   tabStripPosition,
@@ -520,9 +883,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
     else if (activeBounds.right > listBounds.right) list.scrollBy({ left: activeBounds.right - listBounds.right, behavior: 'smooth' });
   }, [activeTabIndex, tabStripPosition, tabSizePreferences, tabs[activeTabIndex]?.id]);
 
-  const visibleFileColumns = columnLayout.order.filter(column =>
+  const visibleFileColumns = React.useMemo(() => columnLayout.order.filter(column =>
     columnLayout.visible.includes(column) || (editingItemId !== null && column === 'name'),
-  );
+  ), [columnLayout, editingItemId]);
   const relativeGraphWidths = React.useMemo(() => {
     const widths = new Map<string, RelativeGraphWidths>();
     if (!relativeGraphsEnabled || isSystemHome || effectiveViewMode !== 'details') return widths;
@@ -569,13 +932,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
     });
     return widths;
   }, [effectiveViewMode, files, folderSizeStates, isSystemHome, relativeGraphsEnabled]);
-  const getRelativeGraphStyle = (width: number | undefined, field: 'size' | 'date'): React.CSSProperties | undefined => {
-    if (width === undefined || width <= 0) return undefined;
-    const percentage = Math.min(100, Math.max(0, width));
-    const color = field === 'size' ? 'var(--color-cyan-400)' : 'var(--color-amber-400)';
-    const fill = `color-mix(in srgb, ${color} 22%, transparent)`;
-    return { backgroundImage: `linear-gradient(to right, ${fill} ${percentage}%, transparent ${percentage}%)` };
-  };
   const columnSortFields: Record<FileColumn, SortField> = {
     extension: 'extension',
     name: 'name',
@@ -633,151 +989,28 @@ export const FilePane: React.FC<FilePaneProps> = ({
   );
   const isHiddenItem = (item: FileItem) => hiddenItemStyle.enabled && hasHiddenAttribute(item);
 
-  const getItemNameStyle = (item: FileItem, selected = false): React.CSSProperties | undefined => {
-    const hidden = isHiddenItem(item);
-    const recent = isRecentlyChanged(item);
-    if (!hidden && !recent) return undefined;
+  const getItemNameStyle = (item: FileItem, selected = false): React.CSSProperties | undefined =>
+    detailsItemNameStyle(selected, isHiddenItem(item), isRecentlyChanged(item), hiddenItemStyle, recentItemStyle);
 
-    const backgroundStyle = hidden && hiddenItemStyle.backgroundEnabled
-      ? hiddenItemStyle
-      : recent && recentItemStyle.backgroundEnabled ? recentItemStyle : null;
-    const textColor = hidden
-      ? hiddenItemStyle.textColor === 'auto' ? 'var(--cyberfiles-hidden-item-color)' : hiddenItemStyle.textColor
-      : recentItemStyle.textColor === 'auto' ? 'var(--cyberfiles-recent-item-color)' : recentItemStyle.textColor;
+  const getItemBackgroundStyle = (item: FileItem, selected: boolean): React.CSSProperties | undefined =>
+    detailsRowBackgroundStyle(selected, isHiddenItem(item), isRecentlyChanged(item), hiddenItemStyle, recentItemStyle);
 
-    return {
-      color: textColor,
-      fontWeight: (hidden && hiddenItemStyle.bold) || (recent && recentItemStyle.bold) ? 700 : 400,
-      fontStyle: (hidden && hiddenItemStyle.italic) || (recent && recentItemStyle.italic) ? 'italic' : 'normal',
-      ...(backgroundStyle ? {
-        borderRadius: 3,
-        paddingInline: 3,
-        ...(selected ? {
-          backgroundColor: `color-mix(in srgb, ${backgroundStyle.backgroundColor} 18%, transparent)`,
-        } : {}),
-      } : {}),
-    };
-  };
+  const flatParentLabel = (item: FileItem) => flatParentLabelFor(item, tab.flatView === true, tab.currentPath);
 
-  const getItemBackgroundStyle = (item: FileItem, selected: boolean): React.CSSProperties | undefined => {
-    if (selected) return undefined;
-    const hidden = isHiddenItem(item);
-    const recent = isRecentlyChanged(item);
-    const backgroundStyle = hidden && hiddenItemStyle.backgroundEnabled
-      ? hiddenItemStyle
-      : recent && recentItemStyle.backgroundEnabled ? recentItemStyle : null;
-    return backgroundStyle
-      ? { backgroundColor: `color-mix(in srgb, ${backgroundStyle.backgroundColor} 18%, transparent)` }
-      : undefined;
-  };
-
-  const renderFolderSizeStatus = (item: FileItem) => {
-    const folderSize = folderSizeStates[item.id];
-    const isWaitingHover = !folderSize && autoFolderSizeEnabled && isTauriDesktop();
-
-    let text = '';
-    if (folderSize?.status === 'done') {
-      text = t.pane.folderSizeTotal.replace('{size}', formatFileSize(folderSize.size ?? 0));
-    } else if (folderSize?.status === 'loading') {
-      text = t.pane.folderSizeCalculating.replace('{size}', formatFileSize(folderSize.size ?? 0)).replace('{entries}', String(folderSize.entriesScanned ?? 0));
-    } else if (folderSize?.status === 'paused') {
-      text = t.pane.folderSizePaused.replace('{size}', formatFileSize(folderSize.size ?? 0)).replace('{entries}', String(folderSize.entriesScanned ?? 0));
-    } else if (folderSize?.status === 'error') {
-      text = t.pane.folderSizeFailed;
-    } else if (!autoFolderSizeEnabled) {
-      text = t.pane.folderSizeHoverDisabled;
-    } else {
-      text = isTauriDesktop() ? t.pane.folderSizeHoverHint : t.pane.folderSizeHoverDesktopOnly;
-    }
-
-    return (
-      <div className="relative mt-1 flex h-6 w-full items-center justify-center gap-1.5 overflow-hidden rounded border border-cyan-400/20 bg-cyan-950/20 px-2 text-[10px] text-cyan-200">
-        {folderSize?.status === 'loading' && (
-          <LoaderCircle className="h-2.5 w-2.5 animate-spin text-cyan-300 shrink-0" />
-        )}
-        <span className="min-w-0 truncate">{text}</span>
-        {isWaitingHover && (
-          <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[2px] bg-cyan-950/70">
-            <div
-              key={item.id}
-              className="cyberfiles-folder-hover-progress h-full w-full origin-left bg-gradient-to-r from-cyan-600 via-cyan-300 to-white shadow-[0_0_8px_rgba(34,211,238,0.8)]"
-              style={{ animationDuration: `${FOLDER_SIZE_HOVER_DELAY_MS}ms` }}
-            />
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const flatParentLabel = (item: FileItem) => {
-    if (!tab.flatView) return '';
-    const root = tab.currentPath.replace(/[\\/]+$/, '');
-    const parent = getParentPath(item.path);
-    if (!parent.toLowerCase().startsWith(`${root.toLowerCase()}\\`) && parent.toLowerCase() !== root.toLowerCase()) return parent;
-    return parent.slice(root.length).replace(/^[\\/]+/, '');
-  };
-
-  const renderFolderContents = (item: FileItem) => {
-    const state = folderChildCounts[item.id];
-    return (
-      <div className="mt-1 h-[76px] w-full overflow-hidden rounded-md border border-cyan-400/20 bg-cyan-950/20 px-2 py-1.5">
-        <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-300">{t.pane.folderTooltipContents}</div>
-        {state?.status === 'done' ? (
-          <>
-            <div className="mt-1 flex justify-center gap-3 text-[11px] text-neutral-100">
-              <span>{t.pane.folderTooltipFiles.replace('{count}', new Intl.NumberFormat(language).format(state.summary.fileCount))}</span>
-              <span>{t.pane.folderTooltipFolders.replace('{count}', new Intl.NumberFormat(language).format(state.summary.folderCount))}</span>
-            </div>
-            <div className="mt-1 truncate text-[10px] text-cyan-100">
-              {t.pane.folderContentTypeLabel}: {formatFolderContentLabel(state.summary, t.pane.folderContentKinds)}
-            </div>
-          </>
-        ) : (
-          <div className="mt-1 text-[10px] text-neutral-400">
-            {state?.status === 'error' ? t.pane.folderTooltipCountFailed : t.pane.folderTooltipCounting}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderItemTooltip = (item: FileItem, additionalDetails?: React.ReactNode) => (
-    <div className={`flex flex-col items-center gap-1 text-center ${item.isFolder ? 'w-64 max-w-[calc(100vw-2rem)]' : 'max-w-[18rem]'}`}>
-      {imageTooltipThumbnailsEnabled && item.type === 'image' && !item.isFolder && (
-        <ImageFileThumbnail
-          item={item}
-          fallback={getFileIcon(item.type, item.isFolder)}
-          className="h-28 w-48"
-          fit="contain"
-        />
-      )}
-      <span className={`font-semibold ${item.isFolder ? 'block w-full break-all' : ''}`}>{item.name}</span>
-      {item.path && <span className={`font-sans text-[10px] text-cyan-200 ${item.isFolder ? 'block w-full truncate' : 'break-all'}`}>{item.path}</span>}
-      {item.isFolder && !item.recycleBinId && !isRecycleBin && (
-        <>
-          {renderFolderContents(item)}
-          {renderFolderSizeStatus(item)}
-        </>
-      )}
-      {!item.isFolder && <span>{formatFileSize(item.size)}</span>}
-      {(item.modifiedDate || item.modifiedAtMs !== undefined) && (
-        <span className={`text-[10px] text-neutral-300 ${item.isFolder ? 'block w-full truncate' : ''}`}>
-          {t.pane.itemTooltipModifiedDate.replace('{date}', formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language))}
-        </span>
-      )}
-      {hasRecentActivity(item) && (
-        <span className="mt-0.5 rounded-full border border-cyan-400/25 bg-cyan-950/50 px-2 py-0.5 text-[10px] text-cyan-200">
-          {t.pane.itemTooltipRecentActivity}
-        </span>
-      )}
-      {hasHiddenAttribute(item) && (
-        <span className="mt-0.5 rounded-full border border-rose-400/30 bg-rose-950/45 px-2 py-0.5 text-[10px] text-rose-200">
-          {item.isFolder ? t.pane.itemTooltipHiddenFolder : t.pane.itemTooltipHiddenFile}
-        </span>
-      )}
-      {additionalDetails}
-    </div>
-  );
+  const renderItemTooltip = (item: FileItem, additionalDetails?: React.ReactNode) => renderItemTooltipContent(item, {
+    t,
+    language,
+    folderChildCountState: folderChildCounts[item.id],
+    folderSizeState: folderSizeStates[item.id],
+    isTauri: isTauriDesktop(),
+    autoFolderSizeEnabled,
+    imageTooltipThumbnailsEnabled,
+    isRecycleBin,
+    dateFormat,
+    isRecentlyActive: hasRecentActivity(item),
+    isHidden: hasHiddenAttribute(item),
+    additionalDetails,
+  });
 
   const responsiveColumnWidth = (column: FileColumn) => {
     const weight = column === 'name' ? columnWidths.name ?? 260 : columnWidths[column];
@@ -1585,21 +1818,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
     </form>
   );
 
-  const getFileIcon = (type: FileType, isFolder: boolean) => {
-    if (isFolder) return <Folder className="w-4 h-4 text-amber-400 fill-amber-400/20" />;
-    switch (type) {
-      case 'image': return <ImageIcon className="w-4 h-4 text-rose-400" />;
-      case 'code': return <Code2 className="w-4 h-4 text-cyan-400" />;
-      case 'text': return <FileText className="w-4 h-4 text-blue-300" />;
-      case 'archive': return <Archive className="w-4 h-4 text-purple-400" />;
-      case 'audio': return <Music className="w-4 h-4 text-yellow-400" />;
-      case 'video': return <Video className="w-4 h-4 text-pink-400" />;
-      case 'document': return <FileCheck className="w-4 h-4 text-emerald-400" />;
-      case 'binary': return <Binary className="w-4 h-4 text-orange-400" />;
-      default: return <FileCode className="w-4 h-4 text-neutral-400" />;
-    }
-  };
-
   const getDisplayFileIcon = (item: FileItem, size: 'small' | 'large' = 'small') => {
     if (item.isFolder) {
       const customConfig = getCustomFolderIcon(item.path, customFolderIcons ?? {});
@@ -1621,7 +1839,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         />
       );
     }
-    const fallback = getFileIcon(item.type, item.isFolder);
+    const fallback = fileTypeGlyph(item.type, item.isFolder);
     return size === 'large' ? <span className="scale-[2]">{fallback}</span> : fallback;
   };
 
@@ -2269,6 +2487,57 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if ((event.target as HTMLElement).closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
     onItemContextMenu(event, item);
   };
+
+  /* Stable wiring for the memoized details rows. The handlers are looked up through a latest-ref
+     so their identity never changes (a new closure per render would defeat React.memo), while the
+     implementation they reach always reads the current render's state. */
+  const latestRowHandlersRef = useRef<{
+    onPointerDown: (event: React.PointerEvent<HTMLElement>, item: FileItem) => void;
+    onClick: (event: React.MouseEvent, item: FileItem, index: number) => void;
+    onSingleClick: (event: React.MouseEvent, item: FileItem) => void;
+    onDoubleClick: (item: FileItem) => void;
+    onContextMenu: (event: React.MouseEvent, item: FileItem) => void;
+    onNameMouseEnter: (item: FileItem) => void;
+    onNameMouseLeave: (item: FileItem) => void;
+    onCalculateFolderSize: (event: React.MouseEvent, item: FileItem) => void;
+    renderRenameInput: (item: FileItem, formClassName: string, inputAlignment?: string) => React.ReactNode;
+  } | null>(null);
+  latestRowHandlersRef.current = {
+    onPointerDown: beginFilePointerDrag,
+    onClick: handleItemClick,
+    onSingleClick: handleConfiguredSingleClick,
+    onDoubleClick: handleConfiguredDoubleClick,
+    onContextMenu: handleFileItemContextMenu,
+    onNameMouseEnter: handleFolderTooltipMouseEnter,
+    onNameMouseLeave: handleFolderTooltipMouseLeave,
+    onCalculateFolderSize: (event, item) => { void calculateFolderSize(item, event); },
+    renderRenameInput: renderInlineRenameInput,
+  };
+  const detailsRowHandlers = React.useMemo<DetailsRowHandlers>(() => ({
+    onPointerDown: (event, item) => latestRowHandlersRef.current?.onPointerDown(event, item),
+    onClick: (event, item, index) => latestRowHandlersRef.current?.onClick(event, item, index),
+    onSingleClick: (event, item) => latestRowHandlersRef.current?.onSingleClick(event, item),
+    onDoubleClick: item => latestRowHandlersRef.current?.onDoubleClick(item),
+    onContextMenu: (event, item) => latestRowHandlersRef.current?.onContextMenu(event, item),
+    onNameMouseEnter: item => latestRowHandlersRef.current?.onNameMouseEnter(item),
+    onNameMouseLeave: item => latestRowHandlersRef.current?.onNameMouseLeave(item),
+    onCalculateFolderSize: (event, item) => latestRowHandlersRef.current?.onCalculateFolderSize(event, item),
+    renderRenameInput: (item, formClassName, inputAlignment) => latestRowHandlersRef.current?.renderRenameInput(item, formClassName, inputAlignment),
+  }), []);
+  const detailsRowConfig = React.useMemo<DetailsRowConfig>(() => ({
+    customFolderIcons,
+    recentItemStyle,
+    hiddenItemStyle,
+    showFileExtensions,
+    singleClickOpens,
+    isRecycleBin,
+    isTauri: isTauriDesktop(),
+    autoFolderSizeEnabled,
+    imageTooltipThumbnailsEnabled,
+    flatView: tab.flatView === true,
+    currentPath: tab.currentPath,
+    dateFormat,
+  }), [customFolderIcons, recentItemStyle, hiddenItemStyle, showFileExtensions, singleClickOpens, isRecycleBin, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, tab.flatView, tab.currentPath, dateFormat]);
 
   /* The marquee is a fixed-position overlay, so it is not clipped by the pane and would otherwise be
      painted on top of the neighbouring pane while the pointer is held over it. A details viewport is
@@ -3278,88 +3547,31 @@ export const FilePane: React.FC<FilePaneProps> = ({
               {group.before > 0 && <div aria-hidden="true" className="col-span-full" style={{ height: group.before }} />}
               {!groupCollapsed && group.visibleItems.map(item => {
               const idx = fileIndexById.get(item.id) ?? 0;
-              const isSelected = visibleSelectedIdSet.has(item.id);
-              const isEditing = editingItemId === item.id;
+              const graphWidths = relativeGraphWidths.get(item.id);
 
               return (
-                <div
+                <DetailsFileRow
                   key={item.id}
-                  data-file-item="true"
-                  data-file-id={item.id}
-                  data-selected={isSelected ? 'true' : undefined}
-                  data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
-                  data-file-drop-path={item.isFolder && !item.recycleBinId ? item.path : undefined}
-                  onPointerDown={event => beginFilePointerDrag(event, item)}
-                  onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
-                  onDoubleClick={() => handleConfiguredDoubleClick(item)}
-                  onContextMenu={event => handleFileItemContextMenu(event, item)}
-                  style={{ width: detailsContentWidth, gridTemplateColumns: fileGridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`cyberfiles-file-row relative grid h-[30px] items-center gap-2 rounded-md border border-transparent px-2 text-xs cursor-pointer transition-colors ${
-                    isSelected ? 'text-neutral-100' : 'text-neutral-300 hover:text-neutral-100'
-                  }`}
-                >
-                  {visibleFileColumns.map(column => {
-                    if (column === 'extension') {
-                      return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center overflow-hidden truncate font-mono text-[10.5px] font-medium uppercase tracking-wide text-cyan-400/90"><span data-file-column-content={column} className="inline-block max-w-full truncate">{item.isFolder || !showFileExtensions ? '' : (item.extension || '')}</span></div>;
-                    }
-                    if (column === 'name') {
-                      return (
-                        <div key={column} className="cyberfiles-file-cell flex min-w-0 overflow-hidden items-center gap-2">
-                          <span className="flex-shrink-0">{getDisplayFileIcon(item)}</span>
-                          {item.colorLabel && (
-                            <span data-file-name-decoration="color-label" className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                              item.colorLabel === 'red' ? 'bg-red-400' :
-                              item.colorLabel === 'blue' ? 'bg-blue-400' :
-                              item.colorLabel === 'green' ? 'bg-emerald-400' :
-                              item.colorLabel === 'yellow' ? 'bg-amber-400' : 'bg-purple-400'
-                            }`} />
-                          )}
-                          {isEditing ? (
-                            renderInlineRenameInput(item, 'min-w-0 flex-1')
-                          ) : (
-                            <Tooltip label={renderItemTooltip(item)} placement="top">
-                              <span data-file-column-content={column} onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className={`${flatParentLabel(item) ? 'max-w-[55%] ' : ''}truncate text-[11.5px] font-medium text-neutral-100`} style={getItemNameStyle(item, isSelected)} >{getDisplayItemName(item, showFileExtensions)}</span>
-                            </Tooltip>
-                          )}
-                          {renderFolderStatusBadge(item)}
-                          {flatParentLabel(item) && <span className="min-w-0 truncate font-sans text-[10px] font-normal text-neutral-500">· {flatParentLabel(item)}</span>}
-                        </div>
-                      );
-                    }
-                    if (column === 'type') {
-                      return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center overflow-hidden truncate font-sans text-[10.5px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-full truncate">{getFileTypeLabel(item)}</span></div>;
-                    }
-                    if (column === 'size') {
-                      const folderSize = folderSizeStates[item.id];
-                      return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[11px] tabular-nums text-neutral-300/90" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.size, 'size')}>{item.isFolder ? (
-                        isTauriDesktop() && !isRecycleBin && !item.recycleBinId ? (
-                          folderSize?.status === 'done' ? (
-                            <span data-file-column-content={column} className="inline-flex h-5 min-w-0 max-w-full items-center justify-end truncate leading-none tabular-nums font-mono">{formatFileSize(folderSize.size ?? 0)}</span>
-                          ) : (
-                            <Tooltip label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip} placement="top">
-                              <button type="button" disabled={folderSize?.status === 'loading'} onClick={event => { void calculateFolderSize(item, event); }} className="ml-auto inline-flex h-5 w-[44px] shrink-0 items-center justify-end gap-1 rounded px-1 py-0 text-right leading-none text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSize?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
-                                <span data-file-column-content={column} className="inline-flex items-center gap-1 whitespace-nowrap font-mono text-[10px]">
-                                  <span className={folderSize?.status === 'loading' ? 'invisible' : ''}>{folderSize?.status === 'error' ? '!' : t.pane.folderSizeCalculate}</span>
-                                  <span className="grid h-3 w-3 flex-shrink-0 place-items-center">
-                                    {folderSize?.status === 'loading'
-                                      ? <LoaderCircle className="h-3 w-3 animate-spin" />
-                                      : (!folderSize || folderSize.status === 'error') ? <Calculator className="h-3 w-3" /> : null}
-                                  </span>
-                                </span>
-                              </button>
-                            </Tooltip>
-                          )
-                        ) : <span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-mono">--</span>
-                      ) : <span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-mono">{formatFileSize(item.size)}</span>}</div>;
-                    }
-                    if (column === 'created') {
-                      const createdDate = formatDateTimeForDisplay(item.createdAtMs, item.createdDate, dateFormat, language);
-                      return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.created, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{createdDate || '--'}</span></div>;
-                    }
-                    const modifiedDate = formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language);
-                    return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={getRelativeGraphStyle(relativeGraphWidths.get(item.id)?.modified, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{modifiedDate || '--'}</span></div>;
-                  })}
-                </div>
+                  item={item}
+                  index={idx}
+                  isSelected={visibleSelectedIdSet.has(item.id)}
+                  isFocused={isActive && tab.focusedId === item.id}
+                  isEditing={editingItemId === item.id}
+                  isHidden={isHiddenItem(item)}
+                  isRecentlyChanged={isRecentlyChanged(item)}
+                  isRecentlyActive={hasRecentActivity(item)}
+                  folderSizeState={folderSizeStates[item.id]}
+                  folderChildCountState={folderChildCounts[item.id]}
+                  nativeIcon={!item.isFolder && nativeFileIconState.scope === nativeFileIconScope ? nativeFileIconState.byItemId[item.id] : undefined}
+                  columns={visibleFileColumns}
+                  gridTemplateColumns={fileGridTemplateColumns}
+                  rowWidth={detailsContentWidth}
+                  sizeGraphWidth={graphWidths?.size}
+                  createdGraphWidth={graphWidths?.created}
+                  modifiedGraphWidth={graphWidths?.modified}
+                  config={detailsRowConfig}
+                  handlers={detailsRowHandlers}
+                />
               );
               })}
               {group.after > 0 && <div aria-hidden="true" className="col-span-full" style={{ height: group.after }} />}
@@ -3394,7 +3606,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`cyberfiles-file-row cyberfiles-compact-file-item relative flex min-w-0 h-[30px] items-center gap-2 rounded-md border border-transparent px-2 py-1 text-xs transition-colors ${
+                  className={`cyberfiles-file-row cyberfiles-compact-file-item relative flex min-w-0 h-[30px] items-center gap-2 rounded-md border border-transparent px-2 py-1 text-xs ${
                     isSelected
                       ? 'bg-cyan-500/20 hover:bg-cyan-500/25 text-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]'
                       : 'text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
@@ -3448,7 +3660,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onMouseEnter={() => handleFolderTooltipMouseEnter(item)}
                   onMouseLeave={() => handleFolderTooltipMouseLeave(item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`cyberfiles-icon-file-item relative flex min-w-0 ${virtualizeFiles ? 'h-36' : ''} flex-col items-center justify-start gap-1.5 rounded-lg border border-transparent p-2.5 text-center cursor-pointer transition-colors ${
+                  className={`cyberfiles-icon-file-item relative flex min-w-0 ${virtualizeFiles ? 'h-36' : ''} flex-col items-center justify-start gap-1.5 rounded-lg border border-transparent p-2.5 text-center cursor-pointer ${
                     isSelected
                       ? 'bg-cyan-500/20 hover:bg-cyan-500/25 text-neutral-100 shadow-md shadow-cyan-950/20'
                       : 'bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60'
@@ -3456,7 +3668,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 >
                   <div className="flex w-full items-center justify-center">
                     {item.type === 'image' ? (
-                      <ImageFileThumbnail item={item} fallback={getFileIcon(item.type, item.isFolder)} />
+                      <ImageFileThumbnail item={item} fallback={fileTypeGlyph(item.type, item.isFolder)} />
                     ) : (
                       <div className="flex h-20 w-full items-center justify-center rounded-md border border-neutral-700/70 bg-neutral-900/80">
                         {getDisplayFileIcon(item, 'large')}
