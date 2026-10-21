@@ -3608,9 +3608,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
                   className={`cyberfiles-file-row cyberfiles-compact-file-item relative flex min-w-0 h-[30px] items-center gap-2 rounded-md border border-transparent px-2 py-1 text-xs ${
                     isSelected
-                      ? 'bg-cyan-500/20 hover:bg-cyan-500/25 text-neutral-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]'
-                      : 'text-neutral-300 hover:bg-neutral-800/60 hover:text-neutral-100'
-                  } ${isActive && tab.focusedId === item.id ? 'before:absolute before:left-0.5 before:top-1.5 before:bottom-1.5 before:w-[3px] before:rounded-full before:bg-cyan-400' : ''}`}
+                      ? 'text-neutral-100'
+                      : 'text-neutral-300 hover:text-neutral-100'
+                  }`}
                 >
                   <span className="flex-shrink-0">{getDisplayFileIcon(item)}</span>
                   {editingItemId === item.id ? (
@@ -3662,9 +3662,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
                   className={`cyberfiles-icon-file-item relative flex min-w-0 ${virtualizeFiles ? 'h-36' : ''} flex-col items-center justify-start gap-1.5 rounded-lg border border-transparent p-2.5 text-center cursor-pointer ${
                     isSelected
-                      ? 'bg-cyan-500/20 hover:bg-cyan-500/25 text-neutral-100 shadow-md shadow-cyan-950/20'
+                      ? 'text-neutral-100'
                       : 'bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60'
-                  } ${isActive && tab.focusedId === item.id ? 'before:absolute before:top-1 before:left-1/2 before:-translate-x-1/2 before:w-6 before:h-[3px] before:rounded-full before:bg-cyan-400' : ''}`}
+                  }`}
                 >
                   <div className="flex w-full items-center justify-center">
                     {item.type === 'image' ? (

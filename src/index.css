@@ -369,8 +369,11 @@ html[data-theme='gray'] .cyberfiles-details-list .cyberfiles-file-row::after {
 }
 
 /* Rows are square and separated by a single hairline in every palette. The dark themes get both
-   from their row reset above; the light theme has no reset of its own, so it gets them here. */
-html[data-theme] .cyberfiles-details-list .cyberfiles-file-row {
+   from their row reset above; the light theme has no reset of its own, so it gets them here. The
+   compact rows are lister rows too (they share the cyberfiles-file-row class), so they are square
+   as well; only the icon cards keep their rounded shape, being a grid of cards. */
+html[data-theme] .cyberfiles-details-list .cyberfiles-file-row,
+html[data-theme] .cyberfiles-compact-file-item {
   border-radius: 0;
 }
 
@@ -426,30 +429,47 @@ html[data-theme] .cyberfiles-details-list .cyberfiles-file-row[data-selected='tr
 /* The keyboard cursor is the only thing the old accent dash was hinting at, so it gets a proper
    inset outline like the focus rectangle of a classic file manager. A selected row already carries
    the selection band, so the ring stays off it: on the default theme it drew a white frame around
-   the blue block that read as a second, meaningless highlight. */
-html[data-theme] .cyberfiles-details-list .cyberfiles-file-row[data-focused='true']:not([data-selected='true']) {
+   the blue block that read as a second, meaningless highlight. The compact and icon items join the
+   rule: they used to paint a cyan accent bar on the focused item (a 3px dash at the left of a
+   Lista row, a 24px pill over an icon card) that read as part of the selection highlight. */
+html[data-theme] .cyberfiles-details-list .cyberfiles-file-row[data-focused='true']:not([data-selected='true']),
+html[data-theme] [data-file-item='true'].cyberfiles-compact-file-item[data-focused='true']:not([data-selected='true']),
+html[data-theme] [data-file-item='true'].cyberfiles-icon-file-item[data-focused='true']:not([data-selected='true']) {
   outline: 1px solid var(--cyberfiles-row-focus-ring);
   outline-offset: -1px;
 }
 
-/* Compact and icon views keep their own rounded selection treatment. */
-html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'].cyberfiles-compact-file-item,
-html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'].cyberfiles-icon-file-item {
-  border-color: #268ac0;
-  background: linear-gradient(180deg, #176fa8 0%, #105987 100%);
-  color: #ffffff;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), inset 0 -1px 0 rgba(0, 0, 0, 0.3);
-}
-
-html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'].cyberfiles-compact-file-item:hover,
-html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'].cyberfiles-icon-file-item:hover {
+/* Compact (Lista) and icon (Icono grande) items join the details band: one flat block of colour
+   from the per-theme tokens, no gradient, no cyan frame and no inner highlight, so the selection
+   reads the same in every view and every palette. The old treatment was a blue gradient with a
+   #268ac0 border and inset highlight lines, which left a cyan hairline under the selected row and
+   read as the pill-stack the details view got rid of. */
+html[data-theme] [data-file-item='true'][data-selected='true'].cyberfiles-compact-file-item,
+html[data-theme] [data-file-item='true'][data-selected='true'].cyberfiles-icon-file-item {
   border-color: transparent;
-  background: linear-gradient(180deg, #197ab8 0%, #126598 100%);
+  background: var(--cyberfiles-row-selected);
+  color: var(--cyberfiles-row-selected-text);
+  box-shadow: none;
 }
 
-html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'] .text-neutral-400,
-html:not([data-theme='light']):not([data-theme='gray']) [data-file-item='true'][data-selected='true'] .text-neutral-300\/90 {
-  color: #e4f3fb;
+html[data-theme] [data-file-item='true'][data-selected='true'].cyberfiles-compact-file-item:hover,
+html[data-theme] [data-file-item='true'][data-selected='true'].cyberfiles-icon-file-item:hover {
+  background: var(--cyberfiles-row-selected-hover);
+}
+
+/* A compact row is a lister row like the details ones, so its hover comes from the same token
+   instead of a translucent grey. The icon cards keep their panel hover: they are a grid of cards,
+   not rows of one surface. */
+html[data-theme] .cyberfiles-compact-file-item:not([data-selected='true']):hover {
+  background-color: var(--cyberfiles-row-hover);
+}
+
+/* Secondary labels inside a selected compact/icon item switch to the selection palette, the same
+   way the details columns do. */
+html[data-theme] [data-file-item='true'][data-selected='true'] .text-neutral-400,
+html[data-theme] [data-file-item='true'][data-selected='true'] .text-neutral-500,
+html[data-theme] [data-file-item='true'][data-selected='true'] .text-neutral-300\/90 {
+  color: var(--cyberfiles-row-selected-muted);
 }
 
 .cyberfiles-file-cell {
