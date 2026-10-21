@@ -107,6 +107,9 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
   const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRootRef = useRef<HTMLDivElement>(null);
+  /* The filter chip stays mounted while it is being edited even if the query becomes empty,
+     so deleting the last character does not close the field under the caret. */
+  const [filterEditing, setFilterEditing] = useState(false);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -131,6 +134,17 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
     ? singleItem
     : null;
   const singleFolder = singleItem?.isFolder ? singleItem : null;
+
+  useEffect(() => {
+    if (!hasSelection) setFilterEditing(false);
+  }, [hasSelection]);
+
+  /* Only the explicit ways out close the field: × and Escape. Backspace keeps it open. */
+  const closeFilterChip = () => {
+    onFilterChange('');
+    setFilterEditing(false);
+    onFocusList?.();
+  };
   /* The transfer target is always the *other* pane, so the arrow points away from this one:
      side by side the right pane points left, stacked the bottom pane points up. */
   const transferDirection: 'right' | 'left' | 'down' | 'up' = actions.isHorizontalDual
@@ -406,7 +420,7 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
           {/* The filter lives inside the selection row as an editable chip: typing keeps the
               selection and its actions on screen instead of swapping the row back to the
               filter field and hiding what was selected. */}
-          {filterQuery && (
+          {(filterQuery || filterEditing) && (
             <span className="flex h-6 flex-shrink-0 items-center gap-1 rounded-md border border-amber-700/60 bg-amber-950/30 px-1.5 text-[11px] text-amber-200 focus-within:border-amber-500/80">
               <Tooltip label={t.pane.filterActive} placement="bottom">
                 <span className="flex flex-shrink-0 items-center"><Search className="h-3 w-3" /></span>
@@ -416,20 +430,14 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
                 type="text"
                 value={filterQuery}
                 aria-label={t.pane.filterActive}
-                onChange={event => {
-                  if (event.target.value) {
-                    onFilterChange(event.target.value);
-                    return;
-                  }
-                  onFilterChange('');
-                  onFocusList?.();
-                }}
+                onFocus={() => setFilterEditing(true)}
+                onBlur={() => setFilterEditing(false)}
+                onChange={event => onFilterChange(event.target.value)}
                 onKeyDown={event => {
                   if (event.key !== 'Escape') return;
                   event.preventDefault();
                   event.stopPropagation();
-                  onFilterChange('');
-                  onFocusList?.();
+                  closeFilterChip();
                 }}
                 style={{ width: `${Math.min(18, Math.max(3, filterQuery.length + 1))}ch` }}
                 className="min-w-0 bg-transparent font-sans text-[11px] text-amber-100 focus:outline-none"
@@ -437,10 +445,10 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
               <button
                 type="button"
                 aria-label={t.pane.clearFilter}
-                onClick={() => {
-                  onFilterChange('');
-                  onFocusList?.();
-                }}
+                /* Keep the caret in the field: without this the blur would unmount the chip
+                   before the click lands when the query is already empty. */
+                onMouseDown={event => event.preventDefault()}
+                onClick={closeFilterChip}
                 className="flex-shrink-0 text-amber-300/70 transition-colors hover:text-amber-100"
               >
                 <X className="h-3 w-3" />
