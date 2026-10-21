@@ -563,7 +563,9 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-preview-pane
   border-radius: 4px;
 }
 
-html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-sidebar > div:first-child,
+/* The sidebar has no header band any more (the tab strip is gone), so this gradient
+   only belongs to the preview pane header. Painting the sidebar's first child would
+   tint the whole locations tree. */
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-preview-pane > div:first-child {
   border-color: #1f465d;
   background: linear-gradient(180deg, #0b2332 0%, #081824 100%);
