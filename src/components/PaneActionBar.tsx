@@ -63,6 +63,8 @@ interface PaneActionBarProps {
   onFilterChange: (query: string) => void;
   /* Focused when type-to-filter starts, so the following keystrokes land in the input. */
   filterInputRef?: React.RefObject<HTMLInputElement | null>;
+  /* Returns focus to the list after the filter chip disappears, so typing keeps working. */
+  onFocusList?: () => void;
   itemCountLabel: string;
   visibleFiles: FileItem[];
   selectedItems: FileItem[];
@@ -93,6 +95,7 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
   filterPlaceholder,
   onFilterChange,
   filterInputRef,
+  onFocusList,
   itemCountLabel,
   visibleFiles,
   selectedItems,
@@ -400,23 +403,49 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
               <span className="tabular-nums">{selectedItems.length}</span>
             </span>
           </Tooltip>
-          {/* The filter input is hidden while something is selected, so an active query has to
-              stay visible: the count alone would not explain the shortened list. */}
+          {/* The filter lives inside the selection row as an editable chip: typing keeps the
+              selection and its actions on screen instead of swapping the row back to the
+              filter field and hiding what was selected. */}
           {filterQuery && (
-            <Tooltip label={t.pane.filterActive} placement="bottom">
-              <span className="flex h-6 max-w-[9rem] flex-shrink-0 items-center gap-1 rounded-md border border-amber-700/60 bg-amber-950/30 px-1.5 text-[11px] text-amber-200">
-                <Search className="h-3 w-3 flex-shrink-0" />
-                <span className="truncate">{filterQuery}</span>
-                <button
-                  type="button"
-                  aria-label={t.pane.clearFilter}
-                  onClick={() => onFilterChange('')}
-                  className="flex-shrink-0 text-amber-300/70 transition-colors hover:text-amber-100"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            </Tooltip>
+            <span className="flex h-6 flex-shrink-0 items-center gap-1 rounded-md border border-amber-700/60 bg-amber-950/30 px-1.5 text-[11px] text-amber-200 focus-within:border-amber-500/80">
+              <Tooltip label={t.pane.filterActive} placement="bottom">
+                <span className="flex flex-shrink-0 items-center"><Search className="h-3 w-3" /></span>
+              </Tooltip>
+              <input
+                ref={filterInputRef}
+                type="text"
+                value={filterQuery}
+                aria-label={t.pane.filterActive}
+                onChange={event => {
+                  if (event.target.value) {
+                    onFilterChange(event.target.value);
+                    return;
+                  }
+                  onFilterChange('');
+                  onFocusList?.();
+                }}
+                onKeyDown={event => {
+                  if (event.key !== 'Escape') return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onFilterChange('');
+                  onFocusList?.();
+                }}
+                style={{ width: `${Math.min(18, Math.max(3, filterQuery.length + 1))}ch` }}
+                className="min-w-0 bg-transparent font-sans text-[11px] text-amber-100 focus:outline-none"
+              />
+              <button
+                type="button"
+                aria-label={t.pane.clearFilter}
+                onClick={() => {
+                  onFilterChange('');
+                  onFocusList?.();
+                }}
+                className="flex-shrink-0 text-amber-300/70 transition-colors hover:text-amber-100"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
           )}
           <div className="flex min-w-0 items-center gap-1 overflow-hidden">
             {selectionActions.map(entry => (

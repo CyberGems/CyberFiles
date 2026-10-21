@@ -798,12 +798,24 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const lastSingleClickOpenRef = useRef<{ itemId: string; timestamp: number } | null>(null);
   const typeAheadRef = useRef({ query: '', at: 0 });
   const filterInputRef = useRef<HTMLInputElement | null>(null);
+  /* Set when a keystroke starts the filter: the input may not exist yet (it mounts with the
+     query in the selection row), so focus is taken once it does. */
+  const pendingFilterFocusRef = useRef(false);
   /* Mirrors the filter so several keys typed inside one frame accumulate instead of the last
      one overwriting the others (state is not re-rendered between them). */
   const pendingFilterRef = useRef(tab.filterQuery);
   useEffect(() => {
     pendingFilterRef.current = tab.filterQuery;
   }, [tab.filterQuery]);
+  useLayoutEffect(() => {
+    if (!pendingFilterFocusRef.current) return;
+    const input = filterInputRef.current;
+    if (!input) return;
+    pendingFilterFocusRef.current = false;
+    input.focus();
+    const end = input.value.length;
+    input.setSelectionRange(end, end);
+  }, [tab.filterQuery, tab.selectedIds.length]);
   const selectionAnchorsRef = useRef(new Map<string, string>());
   const pendingDeselectionRef = useRef<number | null>(null);
   const suppressFileClickRef = useRef(false);
@@ -2207,22 +2219,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const target = event.target;
     if (target instanceof HTMLElement && target.closest('input, textarea, select, button, [contenteditable="true"]')) return;
     if (!/[^\s]/u.test(event.key)) return;
-    /* Typing can feed the filter instead of jumping to a name. Only while the filter input is
-       on screen: with a selection the bar shows actions, so the classic jump still applies. */
-    if (typingActivatesFilter && tab.selectedIds.length === 0) {
+    /* Typing can feed the filter instead of jumping to a name. It works with a selection too:
+       the row keeps the selection chip and its actions and shows the filter as a chip input. */
+    if (typingActivatesFilter) {
       event.preventDefault();
       event.stopPropagation();
       const nextQuery = pendingFilterRef.current + event.key;
       pendingFilterRef.current = nextQuery;
+      pendingFilterFocusRef.current = true;
       onFilterChange(nextQuery);
-      const input = filterInputRef.current;
-      if (input) {
-        input.focus();
-        requestAnimationFrame(() => {
-          const end = input.value.length;
-          input.setSelectionRange(end, end);
-        });
-      }
       return;
     }
     if (files.length === 0) return;
@@ -3357,6 +3362,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         filterPlaceholder={isSystemHome ? t.pane.systemHomeFilterPlaceholder : t.pane.filterPlaceholder}
         onFilterChange={onFilterChange}
         filterInputRef={filterInputRef}
+        onFocusList={() => viewportRef.current?.focus()}
         itemCountLabel={itemCountLabel}
         visibleFiles={files}
         selectedItems={selectedItems}
