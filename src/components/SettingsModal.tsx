@@ -41,6 +41,8 @@ interface SettingsModalProps {
   onInstancePreferencesChange?: (allowMultipleInstances: boolean) => Promise<void>;
   emptyAreaDoubleClickNavigatesUp: boolean;
   onEmptyAreaDoubleClickNavigatesUpChange: (enabled: boolean) => void;
+  typingActivatesFilter: boolean;
+  onTypingActivatesFilterChange: (enabled: boolean) => void;
   mouseGesturesEnabled: boolean;
   onMouseGesturesEnabledChange: (enabled: boolean) => void;
   folderStyleLocked: boolean;
@@ -145,6 +147,8 @@ export function SettingsModal({
   onInstancePreferencesChange: propOnInstancePreferencesChange,
   emptyAreaDoubleClickNavigatesUp,
   onEmptyAreaDoubleClickNavigatesUpChange,
+  typingActivatesFilter,
+  onTypingActivatesFilterChange,
   mouseGesturesEnabled,
   onMouseGesturesEnabledChange,
   folderStyleLocked,
@@ -1149,6 +1153,21 @@ export function SettingsModal({
               <span>
                 <span className="block font-medium text-neutral-200">{t.settings.emptyAreaDoubleClickUp}</span>
                 <span className="mt-1 block">{t.settings.emptyAreaDoubleClickDescription}</span>
+              </span>
+            </label>
+          </div>
+
+          <div data-settings-search-unit className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+            <label className="flex cursor-pointer items-start gap-2.5">
+              <input
+                type="checkbox"
+                checked={typingActivatesFilter}
+                onChange={event => onTypingActivatesFilterChange(event.target.checked)}
+                className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+              />
+              <span>
+                <span className="block font-medium text-neutral-200">{t.settings.typingActivatesFilter}</span>
+                <span className="mt-1 block">{t.settings.typingActivatesFilterDescription}</span>
               </span>
             </label>
           </div>

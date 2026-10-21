@@ -2,8 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Archive,
   ArrowDown,
+  ArrowLeft,
   ArrowLeftRight,
   ArrowRight,
+  ArrowUp,
   Check,
   ClipboardCopy,
   Copy,
@@ -13,7 +15,6 @@ import {
   Info,
   ListChecks,
   MoreHorizontal,
-  MoveRight,
   Palette,
   Pencil,
   RefreshCw,
@@ -32,6 +33,9 @@ import { Tooltip } from './Tooltip';
 export interface PaneSelectionActions {
   isDualPane: boolean;
   isHorizontalDual: boolean;
+  /* Which pane renders this bar: it decides where the transfer arrows point, so the right
+     pane offers `← Copiar` instead of always pointing right. */
+  paneSide: 'left' | 'right';
   transferEnabled: boolean;
   supportsArchiveCreation: boolean;
   supportsArchiveExtraction: boolean;
@@ -57,6 +61,8 @@ interface PaneActionBarProps {
   filterQuery: string;
   filterPlaceholder: string;
   onFilterChange: (query: string) => void;
+  /* Focused when type-to-filter starts, so the following keystrokes land in the input. */
+  filterInputRef?: React.RefObject<HTMLInputElement | null>;
   itemCountLabel: string;
   visibleFiles: FileItem[];
   selectedItems: FileItem[];
@@ -69,6 +75,8 @@ interface PaneActionBarProps {
 interface ActionEntry {
   key: string;
   label: string;
+  /* Longer explanation for the tooltip when the visible label has to stay short. */
+  tooltip?: string;
   icon: React.ReactNode;
   shortcut?: string;
   danger?: boolean;
@@ -84,6 +92,7 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
   filterQuery,
   filterPlaceholder,
   onFilterChange,
+  filterInputRef,
   itemCountLabel,
   visibleFiles,
   selectedItems,
@@ -119,7 +128,41 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
     ? singleItem
     : null;
   const singleFolder = singleItem?.isFolder ? singleItem : null;
-  const TransferArrow = actions.isHorizontalDual ? ArrowDown : ArrowRight;
+  /* The transfer target is always the *other* pane, so the arrow points away from this one:
+     side by side the right pane points left, stacked the bottom pane points up. */
+  const transferDirection: 'right' | 'left' | 'down' | 'up' = actions.isHorizontalDual
+    ? (actions.paneSide === 'left' ? 'down' : 'up')
+    : (actions.paneSide === 'left' ? 'right' : 'left');
+  const TransferArrow = {
+    right: ArrowRight,
+    left: ArrowLeft,
+    down: ArrowDown,
+    up: ArrowUp,
+  }[transferDirection];
+  const copyTransferLabel = {
+    right: t.sidebar.copyLeftToRight,
+    left: t.sidebar.copyRightToLeft,
+    down: t.sidebar.copyTopToBottom,
+    up: t.sidebar.copyBottomToTop,
+  }[transferDirection];
+  const copyTransferHint = {
+    right: t.sidebar.copyLeftToRightHint,
+    left: t.sidebar.copyRightToLeftHint,
+    down: t.sidebar.copyTopToBottomHint,
+    up: t.sidebar.copyBottomToTopHint,
+  }[transferDirection];
+  const moveTransferLabel = {
+    right: t.sidebar.moveLeftToRight,
+    left: t.sidebar.moveRightToLeft,
+    down: t.sidebar.moveTopToBottom,
+    up: t.sidebar.moveBottomToTop,
+  }[transferDirection];
+  const moveTransferHint = {
+    right: t.sidebar.moveLeftToRightHint,
+    left: t.sidebar.moveRightToLeftHint,
+    down: t.sidebar.moveTopToBottomHint,
+    up: t.sidebar.moveBottomToTopHint,
+  }[transferDirection];
 
   const selectionTooltip = (
     <div className="space-y-1">
@@ -153,15 +196,17 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
         selectionActions.push(
           {
             key: 'copy-to-pane',
-            label: actions.isHorizontalDual ? t.sidebar.copyTopToBottom : t.sidebar.copyLeftToRight,
+            label: copyTransferLabel,
+            tooltip: copyTransferHint,
             icon: <Copy className="h-3.5 w-3.5" />,
             disabled: !actions.transferEnabled,
             onSelect: actions.onCopyToOtherPane,
           },
           {
             key: 'move-to-pane',
-            label: actions.isHorizontalDual ? t.sidebar.moveTopToBottom : t.sidebar.moveLeftToRight,
-            icon: <MoveRight className="h-3.5 w-3.5" />,
+            label: moveTransferLabel,
+            tooltip: moveTransferHint,
+            icon: <TransferArrow className="h-3.5 w-3.5" />,
             disabled: !actions.transferEnabled,
             onSelect: actions.onMoveToOtherPane,
           },
@@ -375,7 +420,7 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
           )}
           <div className="flex min-w-0 items-center gap-1 overflow-hidden">
             {selectionActions.map(entry => (
-              <Tooltip key={entry.key} label={entry.label} placement="bottom" disabled={entry.disabled}>
+              <Tooltip key={entry.key} label={entry.tooltip ?? entry.label} placement="bottom" disabled={entry.disabled}>
                 <button
                   type="button"
                   aria-label={entry.label}
@@ -391,6 +436,19 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
               </Tooltip>
             ))}
           </div>
+          {/* Outside the clipping group on purpose: leaving the selection mode must stay
+              reachable even when the pane is too narrow for the action labels. */}
+          <div aria-hidden="true" className="mx-0.5 h-4 w-px flex-shrink-0 bg-neutral-800" />
+          <Tooltip label={t.pane.cancelSelection} placement="bottom" shortcut="Esc">
+            <button
+              type="button"
+              aria-label={t.pane.cancelSelection}
+              onClick={() => onSetSelection([])}
+              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900/70 text-neutral-400 transition-colors hover:border-neutral-600 hover:bg-neutral-800 hover:text-neutral-100"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
           <div className="flex-1" />
         </>
       ) : (
@@ -398,10 +456,17 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
           <div className="relative min-w-0 flex-1">
             <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-500" />
             <input
+              ref={filterInputRef}
               type="text"
               value={filterQuery}
               placeholder={filterPlaceholder}
               onChange={event => onFilterChange(event.target.value)}
+              onKeyDown={event => {
+                if (event.key !== 'Escape' || !filterQuery) return;
+                event.preventDefault();
+                event.stopPropagation();
+                onFilterChange('');
+              }}
               className="w-full rounded border border-neutral-800 bg-neutral-900 py-1 pl-7 pr-7 font-sans text-xs text-neutral-200 placeholder:text-neutral-500 focus:border-cyan-500/60 focus:outline-none"
             />
             {filterQuery && (

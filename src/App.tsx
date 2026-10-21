@@ -121,6 +121,7 @@ const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
 const FLAT_VIEW_CONFIRM_FOLDER_THRESHOLD = 20;
 const PANEL_VIEW_PREFERENCES_KEY = 'cyberfiles_panel_view_preferences_v1';
 const EMPTY_AREA_DOUBLE_CLICK_KEY = 'cyberfiles_empty_area_double_click_navigate_up';
+const TYPING_ACTIVATES_FILTER_KEY = 'cyberfiles_typing_activates_filter_v1';
 const MOUSE_GESTURES_ENABLED_KEY = 'cyberfiles_mouse_gestures_enabled_v1';
 const FOLDER_STYLE_LOCKED_KEY = 'cyberfiles_folder_style_locked';
 const SIDEBAR_LOCATIONS_NEW_TAB_KEY = 'cyberfiles_sidebar_locations_open_in_new_tab_v1';
@@ -338,6 +339,14 @@ function readPanelViewPreferences(): PanelViewPreferences {
 function readEmptyAreaDoubleClickPreference(): boolean {
   try {
     return window.localStorage.getItem(EMPTY_AREA_DOUBLE_CLICK_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+function readTypingActivatesFilterPreference(): boolean {
+  try {
+    return window.localStorage.getItem(TYPING_ACTIVATES_FILTER_KEY) !== 'false';
   } catch {
     return true;
   }
@@ -925,6 +934,7 @@ export default function App() {
   const isCompactWindow = viewportWidth <= 720;
   const effectiveLayout: ViewLayout = isCompactWindow ? 'single' : layout;
   const [emptyAreaDoubleClickNavigatesUp, setEmptyAreaDoubleClickNavigatesUp] = useState(readEmptyAreaDoubleClickPreference);
+  const [typingActivatesFilter, setTypingActivatesFilter] = useState(readTypingActivatesFilterPreference);
   const [mouseGesturesEnabled, setMouseGesturesEnabled] = useState(() => readBooleanPreference(MOUSE_GESTURES_ENABLED_KEY, true));
 
   useEffect(() => {
@@ -1940,6 +1950,14 @@ export default function App() {
       // Keep the in-memory preference when browser storage is unavailable.
     }
   }, [emptyAreaDoubleClickNavigatesUp]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(TYPING_ACTIVATES_FILTER_KEY, String(typingActivatesFilter));
+    } catch {
+      // Keep the in-memory preference when browser storage is unavailable.
+    }
+  }, [typingActivatesFilter]);
 
   useEffect(() => {
     try {
@@ -5157,6 +5175,7 @@ export default function App() {
     return {
       isDualPane: effectiveLayout !== 'single',
       isHorizontalDual: effectiveLayout === 'dual-horizontal',
+      paneSide: pane,
       transferEnabled: pane === 'left' ? canTransferLeftToRight : canTransferRightToLeft,
       supportsArchiveCreation: isTauriDesktop(),
       supportsArchiveExtraction: isTauriDesktop(),
@@ -5295,6 +5314,7 @@ export default function App() {
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
+                  typingActivatesFilter={typingActivatesFilter}
                   mouseGesturesEnabled={mouseGesturesEnabled}
                   onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('left')}
@@ -5368,6 +5388,7 @@ export default function App() {
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
+                  typingActivatesFilter={typingActivatesFilter}
                   mouseGesturesEnabled={mouseGesturesEnabled}
                   onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('right')}
@@ -5442,6 +5463,7 @@ export default function App() {
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
+                  typingActivatesFilter={typingActivatesFilter}
                   mouseGesturesEnabled={mouseGesturesEnabled}
                   onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('left')}
@@ -5511,6 +5533,7 @@ export default function App() {
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
+                  typingActivatesFilter={typingActivatesFilter}
                   mouseGesturesEnabled={mouseGesturesEnabled}
                   onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('right')}
@@ -5585,6 +5608,7 @@ export default function App() {
                   showFileExtensions={showFileExtensions}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
+                  typingActivatesFilter={typingActivatesFilter}
                   mouseGesturesEnabled={mouseGesturesEnabled}
                 onStyleLockToggle={toggleFolderStyleLock}
                 onActivate={() => {}}
@@ -5963,8 +5987,10 @@ export default function App() {
             focusTabSettingsRequest={focusTabSettingsRequest}
             onClose={() => { setIsSettingsOpen(false); setFocusTabSettingsRequest(0); }}
             emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
-            mouseGesturesEnabled={mouseGesturesEnabled}
             onEmptyAreaDoubleClickNavigatesUpChange={setEmptyAreaDoubleClickNavigatesUp}
+            typingActivatesFilter={typingActivatesFilter}
+            onTypingActivatesFilterChange={setTypingActivatesFilter}
+            mouseGesturesEnabled={mouseGesturesEnabled}
             onMouseGesturesEnabledChange={setMouseGesturesEnabled}
             folderStyleLocked={folderStyleLocked}
             onFolderStyleLockedChange={handleFolderStyleLockChange}

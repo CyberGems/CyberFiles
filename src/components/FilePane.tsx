@@ -67,6 +67,9 @@ interface FilePaneProps {
   recentItemStyle: RecentItemStyle;
   hiddenItemStyle: HiddenItemStyle;
   emptyAreaDoubleClickNavigatesUp: boolean;
+  /* When enabled, the first printable key opens the filter instead of jumping to a matching
+     name in the list (the classic type-ahead). */
+  typingActivatesFilter: boolean;
   mouseGesturesEnabled: boolean;
   imageTooltipThumbnailsEnabled: boolean;
   showFileExtensions: boolean;
@@ -692,6 +695,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   recentItemStyle,
   hiddenItemStyle,
   emptyAreaDoubleClickNavigatesUp,
+  typingActivatesFilter,
   mouseGesturesEnabled,
   imageTooltipThumbnailsEnabled,
   showFileExtensions,
@@ -793,6 +797,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [nativeFileIconState, setNativeFileIconState] = useState<{ scope: string; byItemId: Record<string, string> }>({ scope: '', byItemId: {} });
   const lastSingleClickOpenRef = useRef<{ itemId: string; timestamp: number } | null>(null);
   const typeAheadRef = useRef({ query: '', at: 0 });
+  const filterInputRef = useRef<HTMLInputElement | null>(null);
+  /* Mirrors the filter so several keys typed inside one frame accumulate instead of the last
+     one overwriting the others (state is not re-rendered between them). */
+  const pendingFilterRef = useRef(tab.filterQuery);
+  useEffect(() => {
+    pendingFilterRef.current = tab.filterQuery;
+  }, [tab.filterQuery]);
   const selectionAnchorsRef = useRef(new Map<string, string>());
   const pendingDeselectionRef = useRef<number | null>(null);
   const suppressFileClickRef = useRef(false);
@@ -2192,10 +2203,29 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   const handleTypeAhead = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!isActive || event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing || event.key.length !== 1 || files.length === 0) return;
+    if (!isActive || event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing || event.key.length !== 1) return;
     const target = event.target;
     if (target instanceof HTMLElement && target.closest('input, textarea, select, button, [contenteditable="true"]')) return;
     if (!/[^\s]/u.test(event.key)) return;
+    /* Typing can feed the filter instead of jumping to a name. Only while the filter input is
+       on screen: with a selection the bar shows actions, so the classic jump still applies. */
+    if (typingActivatesFilter && tab.selectedIds.length === 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      const nextQuery = pendingFilterRef.current + event.key;
+      pendingFilterRef.current = nextQuery;
+      onFilterChange(nextQuery);
+      const input = filterInputRef.current;
+      if (input) {
+        input.focus();
+        requestAnimationFrame(() => {
+          const end = input.value.length;
+          input.setSelectionRange(end, end);
+        });
+      }
+      return;
+    }
+    if (files.length === 0) return;
     const normalize = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase(language);
     const now = Date.now();
     const previous = typeAheadRef.current;
@@ -2232,6 +2262,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const handleViewportKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const target = event.target;
     if (target instanceof HTMLElement && target.closest('input, textarea, select, button, [contenteditable]:not([contenteditable="false"])')) return;
+    /* Escape leaves the selection mode, which is the keyboard twin of the bar's ✕. */
+    if (event.key === 'Escape' && tab.selectedIds.length > 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      onSelectItems([], false, false, true);
+      return;
+    }
     if (event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing || !isActive || navigableFiles.length === 0) {
       handleTypeAhead(event);
       return;
@@ -2861,6 +2898,26 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const itemCountLabel = isLoadingDirectory && tab.flatView ? t.pane.loadingFolder : hasMore && totalItemCount !== undefined
     ? t.pane.loadedOfTotal.replace('{loaded}', String(files.length)).replace('{total}', String(totalItemCount))
     : t.pane.itemsCount.replace('{count}', visibleItemCount);
+  /* Rendered as an overlay on the viewport instead of inside the scrolling content: the
+     viewport is wider than the pane in details view, so centring inside it drifts right. */
+  const showEmptyState = files.length === 0 && (!isSystemHome || systemHomeVisibleItemCount === 0);
+  /* The viewport keeps the lister's min-content width and an ancestor clips it, so the pane
+     box is the only measurement that matches what the user actually sees. */
+  const [paneBoxWidth, setPaneBoxWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (!showEmptyState) return;
+    const paneRoot = viewportRef.current?.closest<HTMLElement>('.cyberfiles-pane') ?? null;
+    if (!paneRoot) return;
+    const update = () => setPaneBoxWidth(paneRoot.clientWidth);
+    update();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
+    observer?.observe(paneRoot);
+    window.addEventListener('resize', update);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [showEmptyState]);
   // The style lock carries view styling between folders, which has no meaning
   // while flat view merges several folders into one listing.
   const styleLockInactive = tab.flatView === true;
@@ -3299,6 +3356,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         filterQuery={tab.filterQuery}
         filterPlaceholder={isSystemHome ? t.pane.systemHomeFilterPlaceholder : t.pane.filterPlaceholder}
         onFilterChange={onFilterChange}
+        filterInputRef={filterInputRef}
         itemCountLabel={itemCountLabel}
         visibleFiles={files}
         selectedItems={selectedItems}
@@ -3472,9 +3530,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
             {t.pane.flatViewIncomplete.replace('{count}', String(flatViewStatus?.skippedCount ?? 0))}
           </div>
         )}
-        <div className={`min-h-full ${isSystemHome ? 'px-2' : 'px-4'} ${effectiveViewMode === 'compact' ? 'h-full w-max min-w-full' : ''}`}>
-        {files.length === 0 && (!isSystemHome || systemHomeVisibleItemCount === 0) ? (
-          <div className="h-full flex flex-col items-center justify-center text-neutral-500 gap-2 p-6">
+        {showEmptyState && (
+          <div
+            className="pointer-events-none absolute inset-y-0 left-0 z-10 flex flex-col items-center justify-center gap-2 px-6 text-center text-neutral-500"
+            style={paneBoxWidth > 0 ? { width: paneBoxWidth } : undefined}
+          >
             {isLoadingDirectory ? <RotateCw className="w-7 h-7 text-cyan-500 animate-spin" /> : <Folder className="w-8 h-8 text-neutral-600 stroke-[1.5]" />}
             <div className="text-xs">{isLoadingDirectory ? t.pane.loadingFolder : flatViewStatus?.error ? t.pane.flatViewLoadFailed : tab.filterQuery.trim() ? t.pane.filterNoResults : tab.currentPath ? t.pane.emptyFolder : t.pane.noFolderOpen}</div>
             {!isLoadingDirectory && !tab.filterQuery && tab.currentPath && !isSystemHome && !isRecycleBin && getParentPath(tab.currentPath) !== tab.currentPath && (
@@ -3484,15 +3544,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
               </div>
             )}
             {tab.filterQuery && (
-              <button 
+              <button
                 onClick={() => onFilterChange('')}
-                className="text-[11px] text-cyan-400 hover:underline"
+                className="pointer-events-auto text-[11px] text-cyan-400 hover:underline"
               >
                 {t.pane.clearFilter}
               </button>
             )}
           </div>
-        ) : isSystemHome ? (
+        )}
+        <div className={`min-h-full ${isSystemHome ? 'px-2' : 'px-4'} ${effectiveViewMode === 'compact' ? 'h-full w-max min-w-full' : ''}`}>
+        {showEmptyState ? null : isSystemHome ? (
           <div className="cyberfiles-system-home space-y-5 py-3 sm:py-4">
             {quickAccessItemCount > 0 && (
               <section>
