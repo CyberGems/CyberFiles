@@ -136,6 +136,12 @@ type FolderChildCountState = { status: 'loading' | 'error' } | { status: 'done';
 type FileDragPayload = { sourcePane: 'left' | 'right'; sourcePath: string; items: DraggedFileItem[] };
 const FILE_DRAG_START_DISTANCE = 6;
 const LISTER_HORIZONTAL_GUTTER = 16;
+/* Text fields own their keystrokes. Everything else in the pane (buttons included) lets the
+   list handle them, so navigating with the mouse never leaves the keyboard stranded. */
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement
+    && Boolean(target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'));
+}
 function getDisplayItemName(item: FileItem, showFileExtensions: boolean): string {
   if (showFileExtensions || item.isFolder) return item.name;
   const extensionSeparator = item.name.lastIndexOf('.');
@@ -2217,7 +2223,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const handleTypeAhead = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!isActive || event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing || event.key.length !== 1) return;
     const target = event.target;
-    if (target instanceof HTMLElement && target.closest('input, textarea, select, button, [contenteditable="true"]')) return;
+    /* Buttons are deliberately allowed through: after clicking the back arrow the focus stays
+       on that button, and the next letter still belongs to the list, not to the button. */
+    if (isTextEntryTarget(target)) return;
     if (!/[^\s]/u.test(event.key)) return;
     /* Typing can feed the filter instead of jumping to a name. It works with a selection too:
        the row keeps the selection chip and its actions and shows the filter as a chip input. */
@@ -2266,7 +2274,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   const handleViewportKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const target = event.target;
-    if (target instanceof HTMLElement && target.closest('input, textarea, select, button, [contenteditable]:not([contenteditable="false"])')) return;
+    if (isTextEntryTarget(target)) return;
+    /* An open popup menu owns the keyboard until it closes. */
+    if (target instanceof HTMLElement && target.closest('[role="menu"]')) return;
+    /* A focused button keeps Enter and Space for itself; every other key belongs to the list. */
+    if (target instanceof HTMLElement && target.closest('button') && (event.key === 'Enter' || event.key === ' ')) return;
     /* Escape leaves the selection mode, which is the keyboard twin of the bar's ✕. */
     if (event.key === 'Escape' && tab.selectedIds.length > 0) {
       event.preventDefault();
@@ -3155,7 +3167,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {tabStripPosition === 'top' && tabStrip}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {tabStripPosition === 'left' && verticalTabStrip}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
+          /* The whole pane body handles keys, not just the list: the navigation and action
+             bars sit beside it, and a click there used to leave the keyboard dead. */
+          onKeyDown={handleViewportKeyDown}
+        >
 
       {/* 2. Navigation & Breadcrumb Bar */}
       <div className="cyberfiles-pane-navigation flex items-center gap-1.5 px-2 py-1.5 bg-neutral-900 border-b border-neutral-800 text-xs select-none">
@@ -3510,7 +3527,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
           if (nearEnd) onLoadMore();
         }}
         onClick={handleViewportClick}
-        onKeyDown={handleViewportKeyDown}
         onContextMenu={handleViewportContextMenu}
         onContextMenuCapture={handleMouseGestureContextMenu}
         onDoubleClick={handleViewportDoubleClick}
