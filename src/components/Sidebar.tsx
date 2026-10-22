@@ -17,8 +17,9 @@ import {
   GripVertical,
   Pencil,
   Check,
+  Clock,
 } from 'lucide-react';
-import { DriveInfo, FileItem, QuickAccessItem, QuickAccessSortMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
+import { DriveInfo, FileItem, QuickAccessItem, QuickAccessSortMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize } from '../utils/fileSystem';
 import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
@@ -55,6 +56,7 @@ interface SidebarProps {
   recycleBinStatus: RecycleBinStatus | null;
   onOpenRecycleBin: () => void;
   onRequestEmptyRecycleBin: () => void;
+  onOpenRecents: () => void;
   customFolderIcons?: SavedFolderIcons;
 }
 
@@ -78,6 +80,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   recycleBinStatus,
   onOpenRecycleBin,
   onRequestEmptyRecycleBin,
+  onOpenRecents,
   customFolderIcons,
 }) => {
   const { t, language } = useLanguage();
@@ -697,6 +700,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>}
           </section>
         )}
+        <div className="flex items-center gap-1">
+          <Tooltip label={t.sidebar.recentsHint} placement="right">
+            <button
+              type="button"
+              onClick={onOpenRecents}
+              aria-label={t.sidebar.recentsTitle}
+              aria-current={currentPath === RECENT_PATH ? 'page' : undefined}
+              className={"flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors " + (currentPath === RECENT_PATH ? "bg-neutral-800/90 text-cyan-300 font-medium" : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100")}
+            >
+              <Clock className={"h-4 w-4 flex-shrink-0 " + (currentPath === RECENT_PATH ? "text-cyan-300" : "text-neutral-500")} />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[11px]">{t.sidebar.recentsTitle}</span>
+                <span className="block truncate text-[9px] text-neutral-500">{t.sidebar.recentsHint}</span>
+              </span>
+            </button>
+          </Tooltip>
+        </div>
         <div className="flex items-center gap-1">
           <Tooltip label={recycleBinSupported ? t.sidebar.openRecycleBinAction : t.sidebar.recycleBinDesktopOnly} placement="right">
             <button

@@ -330,6 +330,9 @@ export function sortFiles(items: FileItem[], field: SortField, order: SortOrder)
       case 'extension':
         compare = a.extension.localeCompare(b.extension);
         break;
+      case 'lastOpened':
+        compare = (a.lastOpenedAtMs ?? 0) - (b.lastOpenedAtMs ?? 0);
+        break;
       default:
         compare = a.name.localeCompare(b.name);
     }

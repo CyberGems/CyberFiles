@@ -11,6 +11,7 @@ import {
   SortField,
   SortOrder,
   RECYCLE_BIN_PATH,
+  RECENT_PATH,
   SYSTEM_HOME_PATH,
   ContextMenuPosition, 
   DriveInfo, 
@@ -103,6 +104,7 @@ import {
 } from './utils/workspaceProfiles';
 import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
+import { recentFileActions, recordRecentEntry, removeRecentEntry, renameRecentEntries, toRecentFileItem, type RecentEntry } from './utils/recentFiles';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
 const FindFilesModal = lazy(() => import('./components/FindFilesModal').then(module => ({ default: module.FindFilesModal })));
@@ -577,8 +579,10 @@ function styleForPath(path: string, style: FolderStyle) {
 }
 
 function displayedStyleForPath(path: string, style: FolderStyle, savedStyles: SavedFolderStyles, styleLocked = false): FolderStyle {
-  if (styleLocked) return savedFolderStyleForPath(path, savedStyles) ?? style;
-  return resolveFolderStyle(path, style, savedStyles);
+  const resolved = styleLocked ? (savedFolderStyleForPath(path, savedStyles) ?? style) : resolveFolderStyle(path, style, savedStyles);
+  // Recents is a timeline: entering it always lands newest-first, whatever the carried style is.
+  if (path === RECENT_PATH) return { ...resolved, sortField: 'lastOpened', sortOrder: 'desc', groupBy: 'none' };
+  return resolved;
 }
 
 function readRecentFolderPaths(): string[] {
@@ -693,12 +697,15 @@ const createEmptyTab = (
   folderStyle: { sortField, sortOrder, groupBy: 'none', viewMode },
 });
 
-function restoreSessionTabs(snapshot: TabSessionSnapshot, pane: WorkspacePaneId, systemHomeTitle: string, recycleBinTitle: string, savedStyles: SavedFolderStyles): TabState[] {
+function restoreSessionTabs(snapshot: TabSessionSnapshot, pane: WorkspacePaneId, systemHomeTitle: string, recycleBinTitle: string, recentsTitle: string, savedStyles: SavedFolderStyles): TabState[] {
   const savedTabs = pane === 'left' ? snapshot.leftTabs : snapshot.rightTabs;
   return savedTabs.map((saved, index) => ({
     ...saved,
     id: saved.id || `${pane}-restored-${index + 1}`,
-    title: saved.currentPath === SYSTEM_HOME_PATH ? systemHomeTitle : saved.currentPath === RECYCLE_BIN_PATH ? recycleBinTitle : saved.title,
+    title: saved.currentPath === SYSTEM_HOME_PATH ? systemHomeTitle
+      : saved.currentPath === RECYCLE_BIN_PATH ? recycleBinTitle
+        : saved.currentPath === RECENT_PATH ? recentsTitle
+          : saved.title,
     filterQuery: '',
     flatView: saved.flatView === true,
     selectedIds: [],
@@ -725,7 +732,7 @@ function createSessionSnapshot(
     const savedHistory = history.slice(historyOffset);
     return {
       id,
-      title: currentPath === SYSTEM_HOME_PATH || currentPath === RECYCLE_BIN_PATH ? currentPath : title,
+      title: currentPath === SYSTEM_HOME_PATH || currentPath === RECYCLE_BIN_PATH || currentPath === RECENT_PATH ? currentPath : title,
       customTitle,
       tabColor,
       lockClose,
@@ -1000,6 +1007,49 @@ export default function App() {
   const [recycleBinPage, setRecycleBinPage] = useState({ hasMore: false, nextOffset: 0, loading: false });
   const recycleBinListingInFlight = useRef(false);
   const recycleBinLoaded = useRef(false);
+
+  /* Recents: a persisted access log of files opened (or previewed) inside CyberFiles.
+     Kept as one state array + explicit persistence so every mutation saves atomically. */
+  const [recentEntries, setRecentEntries] = useState<RecentEntry[]>(() => recentFileActions.loadEntries());
+  const commitRecentEntries = useCallback((next: RecentEntry[]) => {
+    setRecentEntries(next);
+    recentFileActions.saveEntries(next);
+  }, []);
+  const recordRecentFile = useCallback((item: FileItem) => {
+    if (item.isFolder || item.recycleBinId || item.path.startsWith('::')) return;
+    setRecentEntries(previous => {
+      const next = recordRecentEntry(previous, item);
+      recentFileActions.saveEntries(next);
+      return next;
+    });
+  }, []);
+  const removeRecentFile = useCallback((path: string) => {
+    setRecentEntries(previous => {
+      const next = removeRecentEntry(previous, path);
+      recentFileActions.saveEntries(next);
+      return next;
+    });
+  }, []);
+  const clearRecentFiles = useCallback(() => commitRecentEntries([]), [commitRecentEntries]);
+  const removeRecentPaths = useCallback((removedPaths: string[]) => {
+    if (removedPaths.length === 0) return;
+    setRecentEntries(previous => {
+      const next = previous.filter(entry => !removedPaths.some(rootPath => isSameOrDescendantPath(entry.path, rootPath)));
+      if (next.length === previous.length) return previous;
+      recentFileActions.saveEntries(next);
+      return next;
+    });
+  }, []);
+  const renameRecentPairs = useCallback((pairs: Array<{ before: string; after: string; name?: string }>) => {
+    if (pairs.length === 0) return;
+    setRecentEntries(previous => {
+      let next = previous;
+      for (const pair of pairs) next = renameRecentEntries(next, pair.before, pair.after, pair.name);
+      recentFileActions.saveEntries(next);
+      return next;
+    });
+  }, []);
+
   const refreshRecycleBinStatus = useCallback(async () => {
     if (!isTauriDesktop()) return;
     try {
@@ -1090,13 +1140,13 @@ export default function App() {
 
   // Left Pane State & Tabs
   const [leftTabs, setLeftTabs] = useState<TabState[]>([
-    ...restoreSessionTabs(initialSessionSnapshot, 'left', t.sidebar.thisPc, t.sidebar.recycleBinTitle, savedFolderStyles),
+    ...restoreSessionTabs(initialSessionSnapshot, 'left', t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, savedFolderStyles),
   ]);
   const [activeLeftTabIndex, setActiveLeftTabIndex] = useState(initialSessionSnapshot?.activeLeftTabIndex ?? 0);
 
   // Right Pane State & Tabs
   const [rightTabs, setRightTabs] = useState<TabState[]>([
-    ...restoreSessionTabs(initialSessionSnapshot, 'right', t.sidebar.thisPc, t.sidebar.recycleBinTitle, savedFolderStyles),
+    ...restoreSessionTabs(initialSessionSnapshot, 'right', t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, savedFolderStyles),
   ]);
   const [activeRightTabIndex, setActiveRightTabIndex] = useState(initialSessionSnapshot?.activeRightTabIndex ?? 0);
 
@@ -1335,7 +1385,7 @@ export default function App() {
   const setActiveTabs = activePane === 'left' ? setLeftTabs : setRightTabs;
   const activeTabIndex = activePane === 'left' ? activeLeftTabIndex : activeRightTabIndex;
   const currentTab = activeTabs[activeTabIndex] || activeTabs[0];
-  const hiddenItemsCount = currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH || !isTauriDesktop()
+  const hiddenItemsCount = currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH || currentTab.currentPath === RECENT_PATH || !isTauriDesktop()
     ? null
     : (currentTab.flatView ? flatDirectories[getPathKey(currentTab.currentPath)] : nativeDirectories[getPathKey(currentTab.currentPath)])?.counts?.hiddenCount ?? null;
   const systemQuickAccess = useMemo<QuickAccessItem[]>(() => {
@@ -1448,8 +1498,8 @@ export default function App() {
 
   const applySessionSnapshot = useCallback((snapshot: TabSessionSnapshot) => {
     const normalized = normalizeSessionSnapshot(snapshot);
-    setLeftTabs(restoreSessionTabs(normalized, 'left', t.sidebar.thisPc, t.sidebar.recycleBinTitle, savedFolderStyles));
-    setRightTabs(restoreSessionTabs(normalized, 'right', t.sidebar.thisPc, t.sidebar.recycleBinTitle, savedFolderStyles));
+    setLeftTabs(restoreSessionTabs(normalized, 'left', t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, savedFolderStyles));
+    setRightTabs(restoreSessionTabs(normalized, 'right', t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, savedFolderStyles));
     setActiveLeftTabIndex(normalized.activeLeftTabIndex);
     setActiveRightTabIndex(normalized.activeRightTabIndex);
     setActivePane(normalized.activePane);
@@ -2105,7 +2155,8 @@ export default function App() {
     }
   }, [effectiveLayout, activePane, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, flatDirectories, loadFlatDirectory]);
 
-  const filesById = useMemo(() => new Map([...allFiles, ...recycleBinItems].map(file => [file.id, file])), [allFiles, recycleBinItems]);
+  const recentItems = useMemo(() => recentEntries.map(toRecentFileItem), [recentEntries]);
+  const filesById = useMemo(() => new Map([...allFiles, ...recycleBinItems, ...recentItems].map(file => [file.id, file])), [allFiles, recycleBinItems, recentItems]);
 
   // Get filtered & sorted files for a pane
   const getPaneDisplayFiles = useCallback((tabState: TabState) => {
@@ -2113,7 +2164,9 @@ export default function App() {
       ? systemHomeItems
       : tabState.currentPath === RECYCLE_BIN_PATH
         ? recycleBinItems
-        : tabState.flatView
+        : tabState.currentPath === RECENT_PATH
+          ? recentItems
+          : tabState.flatView
           ? (flatDirectories[getPathKey(tabState.currentPath)]?.entries ?? []).map(item => filesById.get(item.id) ?? item)
           : childrenByParent.get(getPathKey(tabState.currentPath)) ?? [];
 
@@ -2150,7 +2203,7 @@ export default function App() {
       ];
     }
     return sortFiles(items, tabState.sortField, tabState.sortOrder);
-  }, [childrenByParent, filesById, flatDirectories, recycleBinItems, showHiddenFiles, systemHomeItems]);
+  }, [childrenByParent, filesById, flatDirectories, recentItems, recycleBinItems, showHiddenFiles, systemHomeItems]);
 
   const leftDisplayTab = leftTabs[activeLeftTabIndex];
   const rightDisplayTab = rightTabs[activeRightTabIndex];
@@ -2167,7 +2220,7 @@ export default function App() {
     return item ? [item] : [];
   });
   const activeFolderItem = React.useMemo(() => {
-    if (!currentTab.currentPath || currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH) return null;
+    if (!currentTab.currentPath || currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH || currentTab.currentPath === RECENT_PATH) return null;
     const currentPathKey = getPathKey(currentTab.currentPath);
     return allFiles.find(item => item.isFolder && getPathKey(item.path) === currentPathKey) ?? null;
   }, [allFiles, currentTab.currentPath]);
@@ -2221,10 +2274,10 @@ export default function App() {
 
   // Navigation handlers
   const handleNavigate = useCallback(async (newPath: string, targetPane: 'left' | 'right' = activePane, forceRefresh = false, openInNewTab = false, historyIndexOverride?: number) => {
-    const targetPath = newPath === SYSTEM_HOME_PATH || newPath === RECYCLE_BIN_PATH ? newPath : normalizeWindowsPath(newPath);
+    const targetPath = newPath === SYSTEM_HOME_PATH || newPath === RECYCLE_BIN_PATH || newPath === RECENT_PATH ? newPath : normalizeWindowsPath(newPath);
     const pathKey = getPathKey(targetPath);
     if (nativeOpeningWorkspace.current) return;
-    if (forceRefresh && targetPath !== SYSTEM_HOME_PATH && targetPath !== RECYCLE_BIN_PATH) invalidateFlatDirectories([targetPath]);
+    if (forceRefresh && targetPath !== SYSTEM_HOME_PATH && targetPath !== RECYCLE_BIN_PATH && targetPath !== RECENT_PATH) invalidateFlatDirectories([targetPath]);
     if (targetPath === SYSTEM_HOME_PATH) {
       systemHomeWorkspace.current = true;
       nativeRootPath.current = SYSTEM_HOME_PATH;
@@ -2234,7 +2287,7 @@ export default function App() {
     const targetTab = targetTabs[targetTabIndex];
     let returnedFolderPath: string | null = null;
     const departingPath = targetTab?.currentPath;
-    if (departingPath && departingPath !== SYSTEM_HOME_PATH && departingPath !== RECYCLE_BIN_PATH && getPathKey(departingPath) !== pathKey) {
+    if (departingPath && departingPath !== SYSTEM_HOME_PATH && departingPath !== RECYCLE_BIN_PATH && departingPath !== RECENT_PATH && getPathKey(departingPath) !== pathKey) {
       if (targetPath === SYSTEM_HOME_PATH) {
         returnedFolderPath = systemHomeItems
           .filter(item => isSameOrDescendantPath(departingPath, item.path))
@@ -2258,7 +2311,7 @@ export default function App() {
       : undefined;
     const systemWorkspace = systemHomeWorkspace.current || targetTab?.history.includes(SYSTEM_HOME_PATH) === true;
     const workspaceRoot = nativeRootPath.current;
-    if (targetPath !== RECYCLE_BIN_PATH && workspaceRoot && !systemWorkspace && !isSameOrDescendantPath(targetPath, workspaceRoot)) {
+    if (targetPath !== RECYCLE_BIN_PATH && targetPath !== RECENT_PATH && workspaceRoot && !systemWorkspace && !isSameOrDescendantPath(targetPath, workspaceRoot)) {
       showToast(language === 'es' ? 'Abre una unidad o carpeta para cambiar el espacio de trabajo.' : 'Open a drive or folder to change the workspace.');
       return;
     }
@@ -2267,7 +2320,9 @@ export default function App() {
       ? t.sidebar.thisPc
       : targetPath === RECYCLE_BIN_PATH
         ? t.sidebar.recycleBinTitle
-        : targetPath.split(/\\|\//).filter(Boolean).pop() || targetPath;
+        : targetPath === RECENT_PATH
+          ? t.sidebar.recentsTitle
+          : targetPath.split(/\\|\//).filter(Boolean).pop() || targetPath;
     if (openInNewTab) {
       const sourceTab = targetTab ?? createEmptyTab(`tab-source-${Date.now()}`);
       const rememberedStyle = getNavigationFolderStyle(sourceTab, folderStyleLocked, savedFolderStyles);
@@ -2356,6 +2411,10 @@ export default function App() {
       void refreshRecycleBinContents();
       return;
     }
+    if (targetPath === RECENT_PATH) {
+      // The listing is pure state (recentEntries); there is nothing to load.
+      return;
+    }
     if (!workspaceRoot || (!systemWorkspace && !isSameOrDescendantPath(targetPath, workspaceRoot))) return;
     if (!forceRefresh && nativeLoadedDirectories.current.has(pathKey)) {
       rememberRecentFolder(targetPath);
@@ -2442,7 +2501,7 @@ export default function App() {
     } finally {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
-  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, systemHomeItems, leftTabs, rightTabs, updatePaneTab, language, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, folderStyleLocked, savedFolderStyles, newTabsNextToCurrent, rememberRecentFolder, showHiddenFiles, invalidateFlatDirectories]);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, systemHomeItems, leftTabs, rightTabs, updatePaneTab, language, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, folderStyleLocked, savedFolderStyles, newTabsNextToCurrent, rememberRecentFolder, showHiddenFiles, invalidateFlatDirectories]);
 
   const lastSessionReloadHandled = useRef(0);
   useEffect(() => {
@@ -2456,6 +2515,11 @@ export default function App() {
       }
       if (tab.currentPath === RECYCLE_BIN_PATH) {
         if (explicitReload) void refreshRecycleBinContents();
+        return;
+      }
+      if (tab.currentPath === RECENT_PATH) {
+        // Pure state, no native listing to restore; re-navigating here would loop forever
+        // because the virtual location never lands in the loaded-directories cache.
         return;
       }
       const pathKey = getPathKey(tab.currentPath);
@@ -2617,7 +2681,7 @@ export default function App() {
 
   const handleNavigateUp = useCallback((targetPane: 'left' | 'right' = activePane) => {
     const activeTabObj = targetPane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
-    if (activeTabObj.currentPath === RECYCLE_BIN_PATH) {
+    if (activeTabObj.currentPath === RECYCLE_BIN_PATH || activeTabObj.currentPath === RECENT_PATH) {
       if (activeTabObj.historyIndex > 0) handleNavigateBack(targetPane);
       else if (systemHomeWorkspace.current) handleNavigate(SYSTEM_HOME_PATH, targetPane);
       return;
@@ -2665,8 +2729,9 @@ export default function App() {
       }));
     }, 50);
     touchFileAccessed(file.id);
+    recordRecentFile(file);
     showToast(`Navegando a "${file.name}"`);
-  }, [activePane, handleNavigate, updateActiveTab, touchFileAccessed]);
+  }, [activePane, handleNavigate, updateActiveTab, touchFileAccessed, recordRecentFile]);
 
   const handlePreviewFileFromSearch = useCallback((file: FileItem) => {
     const parentPath = getParentPath(file.path);
@@ -2680,8 +2745,9 @@ export default function App() {
       setPreviewOpen(true);
     }, 50);
     touchFileAccessed(file.id);
+    recordRecentFile(file);
     showToast(`Previsualizando "${file.name}"`);
-  }, [activePane, handleNavigate, updateActiveTab, touchFileAccessed]);
+  }, [activePane, handleNavigate, updateActiveTab, touchFileAccessed, recordRecentFile]);
 
   // Tab management
   const handleAddTab = (pane: 'left' | 'right', sourceIndex?: number, trigger: NewTabTrigger = 'button') => {
@@ -3010,6 +3076,7 @@ export default function App() {
       handleNavigate(item.path, pane);
     } else {
       touchFileAccessed(item.id);
+      recordRecentFile(item);
       setPreviewOpen(true);
       if (isTauriDesktop()) {
         void openNativeFileWithDefaultApp(item.path).catch(() => showToast(t.core.fileOpenFailed));
@@ -3407,6 +3474,7 @@ export default function App() {
               const originalName = pair.before.split(/[\\/]/).filter(Boolean).pop();
               if (!originalName) throw new Error(t.toolbar.undoFailed);
               await renameNativeItem(pair.after, originalName);
+              renameRecentPairs([{ before: pair.after, after: pair.before, name: originalName }]);
               completed += 1;
             } catch {
               remaining.unshift(pair);
@@ -3432,6 +3500,7 @@ export default function App() {
             return next;
           }));
           completed = descriptor.pairs.length;
+          renameRecentPairs(pairs.map(pair => ({ before: pair.after, after: pair.before })));
         }
         if (remaining.length > 0) {
           updateUndoAction(id, current => ({ ...current, count: remaining.length, undo: { type: 'rename', pairs: remaining } }));
@@ -3497,13 +3566,13 @@ export default function App() {
         setUndoBusy(undoPendingIdsRef.current.size > 0);
       }
     }
-  }, [isFileOperationBusy, queueNativeTransfer, refreshChangedDirectories, refreshRecycleBinContents, refreshRecycleBinStatus, removeUndoAction, setAllFiles, showToast, t.toolbar.undoCompleted, t.toolbar.undoFailed, t.toolbar.undoMoveUnavailable, t.toolbar.undoPartial, updateUndoAction]);
+  }, [isFileOperationBusy, queueNativeTransfer, refreshChangedDirectories, refreshRecycleBinContents, refreshRecycleBinStatus, removeUndoAction, renameRecentPairs, setAllFiles, showToast, t.toolbar.undoCompleted, t.toolbar.undoFailed, t.toolbar.undoMoveUnavailable, t.toolbar.undoPartial, updateUndoAction]);
 
   const startCopyWithProgress = useCallback((paths: string[], targetPath: string, selectionPane?: 'left' | 'right') => {
     queueNativeTransfer('copy', paths, targetPath, { selectionPane });
   }, [queueNativeTransfer]);
   const moveItemsToPath = useCallback(async (selectedIds: string[], targetPath: string, sourcePane: 'left' | 'right' = activePane) => {
-    if (targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH) {
+    if (targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH || targetPath === RECENT_PATH) {
       showToast(t.pane.chooseRealDestinationFolder);
       return;
     }
@@ -3570,7 +3639,7 @@ export default function App() {
     const roots = getRootItems(allFiles, sourceTab.selectedIds);
     if (roots.length === 0) return;
     const targetPath = destinationTab.currentPath;
-    if (targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH) {
+    if (targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH || targetPath === RECENT_PATH) {
       showToast(t.pane.chooseRealDestinationFolder);
       return;
     }
@@ -3648,7 +3717,7 @@ export default function App() {
     if (isFileOperationBusy) return;
     const paneTab = pane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
     const targetPath = destinationOverride || paneTab.currentPath;
-    if (!targetPath || targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH) {
+    if (!targetPath || targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH || targetPath === RECENT_PATH) {
       showToast(t.pane.chooseRealFolderFirst);
       return;
     }
@@ -3707,7 +3776,7 @@ export default function App() {
     }
   }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, pushUndoAction, queueNativeTransfer, refreshChangedDirectories, rightTabs, showToast, t.core.clipboardImageFileBaseName, t.core.desktopFileOperationsOnly, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.pastedImage, t.pane.chooseRealFolderFirst, updatePaneTab]);
   const handleDropFiles = useCallback((droppedItems: DraggedFileItem[], targetFolderPath: string, sourcePane: 'left' | 'right', operation: FileDropOperation) => {
-    if (targetFolderPath === SYSTEM_HOME_PATH || targetFolderPath === RECYCLE_BIN_PATH) {
+    if (targetFolderPath === SYSTEM_HOME_PATH || targetFolderPath === RECYCLE_BIN_PATH || targetFolderPath === RECENT_PATH) {
       showToast(t.pane.chooseRealDestinationFolder);
       return;
     }
@@ -3768,6 +3837,7 @@ export default function App() {
       try {
         const renamedPath = await renameNativeItem(item.path, newName);
         if (renamedPath !== item.path) {
+          renameRecentPairs([{ before: item.path, after: renamedPath, name: newName }]);
           pushUndoAction({
             kind: 'rename',
             name: newName,
@@ -3815,6 +3885,7 @@ export default function App() {
       };
     }));
     if (destination !== item.path) {
+      renameRecentPairs([{ before: item.path, after: destination, name: newName }]);
       pushUndoAction({
         kind: 'rename',
         name: newName,
@@ -3824,7 +3895,7 @@ export default function App() {
       });
     }
     showToast(t.core.renamed.replace('{name}', newName));
-  }, [activePane, allFiles, isFileOperationBusy, pushUndoAction, refreshChangedDirectories, showToast, t.core.conflict, t.core.invalidName, t.core.operationFailedWithReason, t.core.renamed, updatePaneTab]);
+  }, [activePane, allFiles, isFileOperationBusy, pushUndoAction, refreshChangedDirectories, renameRecentPairs, showToast, t.core.conflict, t.core.invalidName, t.core.operationFailedWithReason, t.core.renamed, updatePaneTab]);
 
   const beginInlineRename = useCallback((item: FileItem, paneId: 'left' | 'right') => {
     if (item.recycleBinId) {
@@ -3930,6 +4001,7 @@ export default function App() {
           }
         }
         if (undoPairs.length > 0) {
+          renameRecentPairs(undoPairs);
           pushUndoAction({
             kind: 'rename',
             name: undoPairs.length === 1 ? undoPairs[0].after.split(/[\\/]/).filter(Boolean).pop() ?? '' : '',
@@ -3978,6 +4050,7 @@ export default function App() {
       };
     }));
     if (undoPairs.length > 0) {
+      renameRecentPairs(undoPairs);
       pushUndoAction({
         kind: 'rename',
         name: undoPairs.length === 1 ? undoPairs[0].after.split(/[\\/]/).filter(Boolean).pop() ?? '' : '',
@@ -3987,7 +4060,7 @@ export default function App() {
       });
     }
     showToast(`${renames.length} ${language === 'es' ? 'elementos renombrados.' : 'items renamed.'}`);
-  }, [allFiles, isFileOperationBusy, language, pushUndoAction, refreshChangedDirectories, showToast, t.core.conflict, t.core.invalidName, t.core.operationPartial, updateActiveTab]);
+  }, [allFiles, isFileOperationBusy, language, pushUndoAction, refreshChangedDirectories, renameRecentPairs, showToast, t.core.conflict, t.core.invalidName, t.core.operationPartial, updateActiveTab]);
 
   const openCreateItem = useCallback((kind: NewItemKind, pane: 'left' | 'right' = activePane, suggestedName?: string) => {
     const paneTab = pane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
@@ -3997,7 +4070,7 @@ export default function App() {
       showToast(t.pane.noFolderOpen);
       return;
     }
-    if (activePath === SYSTEM_HOME_PATH || activePath === RECYCLE_BIN_PATH) {
+    if (activePath === SYSTEM_HOME_PATH || activePath === RECYCLE_BIN_PATH || activePath === RECENT_PATH) {
       showToast(t.pane.chooseRealFolderFirst);
       return;
     }
@@ -4014,7 +4087,7 @@ export default function App() {
       showToast(t.core.desktopFileOperationsOnly);
       return;
     }
-    if (!targetPath || targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH) {
+    if (!targetPath || targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH || targetPath === RECENT_PATH) {
       showToast(t.pane.chooseRealFolderFirst);
       return;
     }
@@ -4040,7 +4113,7 @@ export default function App() {
   const handleCreateZip = useCallback((archiveName: string, targetPath: string) => {
     const request = pendingZipCreation;
     if (!request) return;
-    if (!targetPath || targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH) {
+    if (!targetPath || targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH || targetPath === RECENT_PATH) {
       showToast(t.pane.chooseRealFolderFirst);
       return;
     }
@@ -4229,6 +4302,7 @@ export default function App() {
       );
       if (removedPaths.length > 0) {
         invalidateFlatDirectories(removedPaths.map(getParentPath));
+        removeRecentPaths(removedPaths);
         setAllFiles(previous => previous.filter(item => !removedPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath))));
         const clearRemovedSelections = (tabs: TabState[]) => tabs.map(tab => ({
           ...tab,
@@ -4294,7 +4368,7 @@ export default function App() {
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [allFiles, invalidateFlatDirectories, isFileOperationBusy, pendingDeleteItems, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecycleUnavailable, t.toolbar.undoUnavailable]);
+  }, [allFiles, invalidateFlatDirectories, isFileOperationBusy, pendingDeleteItems, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, removeRecentPaths, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecycleUnavailable, t.toolbar.undoUnavailable]);
   const handleRequestEmptyRecycleBin = useCallback(() => {
     if (!recycleBinStatus?.available || recycleBinStatus.itemCount === 0) return;
     setIsEmptyRecycleBinConfirmOpen(true);
@@ -4990,7 +5064,7 @@ export default function App() {
   const isCommandLocation = (path: string) => Boolean(path) && path !== SYSTEM_HOME_PATH && path !== RECYCLE_BIN_PATH && !path.startsWith('::');
   const currentParentPath = isCommandLocation(currentTab.currentPath) ? getParentPath(currentTab.currentPath) : '';
   const activeWorkspaceRoot = nativeRootPath.current;
-  const canNavigateUpFromCurrent = currentTab.currentPath === RECYCLE_BIN_PATH
+  const canNavigateUpFromCurrent = currentTab.currentPath === RECYCLE_BIN_PATH || currentTab.currentPath === RECENT_PATH
     ? currentTab.historyIndex > 0 || systemHomeWorkspace.current
     : currentTab.currentPath !== SYSTEM_HOME_PATH && (
       (isWindowsDriveRoot(currentTab.currentPath) && (systemHomeWorkspace.current || currentTab.history.includes(SYSTEM_HOME_PATH))) ||
@@ -5144,6 +5218,13 @@ export default function App() {
       keywords: 'trash deleted restore',
       onSelect: () => { void handleNavigate(RECYCLE_BIN_PATH, activePane); },
     }] : []),
+    {
+      id: 'recents',
+      group: t.commandPalette.groups.navigation,
+      label: t.sidebar.recentsTitle,
+      keywords: 'recent files opened history recientes',
+      onSelect: () => { void handleNavigate(RECENT_PATH, activePane); },
+    },
     ...paletteQuickAccess,
     ...paletteDrives,
     ...paletteRecentFolders,
@@ -5182,7 +5263,7 @@ export default function App() {
       propertiesOpen: previewOpen,
       onDelete: items => handleDeleteSelected(items),
       onRename: item => beginInlineRename(item, pane),
-      onPreview: item => { touchFileAccessed(item.id); setPreviewOpen(true); },
+      onPreview: item => { touchFileAccessed(item.id); recordRecentFile(item); setPreviewOpen(true); },
       onCompress: items => { if (items.length > 0) openZipCreation(items, getParentPath(items[0].path), pane); },
       onExtract: (item, mode) => queueNativeTransfer('extract', [item.path], getParentPath(item.path), { selectionPane: pane, extractionMode: mode }),
       onCopyPath: items => handleCopySelectedPaths(items),
@@ -5280,6 +5361,7 @@ export default function App() {
           recycleBinStatus={recycleBinStatus}
           onOpenRecycleBin={() => { void handleOpenRecycleBin(); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           onRequestEmptyRecycleBin={handleRequestEmptyRecycleBin}
+          onOpenRecents={() => { void handleNavigate(RECENT_PATH, activePane); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           customFolderIcons={customFolderIcons}
         />
         </div>
@@ -5345,6 +5427,7 @@ export default function App() {
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'left')}
                   onRefresh={() => void handleNavigate(leftTabs[activeLeftTabIndex].currentPath, 'left', true)}
+                  onClearRecentHistory={clearRecentFiles}
                   onNavigateBack={() => handleNavigateBack('left')}
                   onNavigateForward={() => handleNavigateForward('left')}
                   onNavigateUp={() => handleNavigateUp('left')}
@@ -5419,6 +5502,7 @@ export default function App() {
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'right')}
                   onRefresh={() => void handleNavigate(rightTabs[activeRightTabIndex].currentPath, 'right', true)}
+                  onClearRecentHistory={clearRecentFiles}
                   onNavigateBack={() => handleNavigateBack('right')}
                   onNavigateForward={() => handleNavigateForward('right')}
                   onNavigateUp={() => handleNavigateUp('right')}
@@ -5494,6 +5578,7 @@ export default function App() {
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'left')}
                   onRefresh={() => void handleNavigate(leftTabs[activeLeftTabIndex].currentPath, 'left', true)}
+                  onClearRecentHistory={clearRecentFiles}
                   onNavigateBack={() => handleNavigateBack('left')}
                   onNavigateForward={() => handleNavigateForward('left')}
                   onNavigateUp={() => handleNavigateUp('left')}
@@ -5564,6 +5649,7 @@ export default function App() {
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, 'right')}
                   onRefresh={() => void handleNavigate(rightTabs[activeRightTabIndex].currentPath, 'right', true)}
+                  onClearRecentHistory={clearRecentFiles}
                   onNavigateBack={() => handleNavigateBack('right')}
                   onNavigateForward={() => handleNavigateForward('right')}
                   onNavigateUp={() => handleNavigateUp('right')}
@@ -5639,6 +5725,7 @@ export default function App() {
                   allFiles={allFiles}
                   onNavigate={(path) => handleNavigate(path, activePane)}
                   onRefresh={() => void handleNavigate(currentTab.currentPath, activePane, true)}
+                  onClearRecentHistory={clearRecentFiles}
                 onNavigateBack={() => handleNavigateBack(activePane)}
                 onNavigateForward={() => handleNavigateForward(activePane)}
                 onNavigateUp={() => handleNavigateUp(activePane)}
@@ -5745,7 +5832,7 @@ export default function App() {
         sortField={contextPaneTab.sortField}
         sortOrder={contextPaneTab.sortOrder}
         groupBy={contextPaneTab.groupBy ?? 'none'}
-        supportsGrouping={contextPaneTab.currentPath !== SYSTEM_HOME_PATH && contextPaneTab.currentPath !== RECYCLE_BIN_PATH}
+        supportsGrouping={contextPaneTab.currentPath !== SYSTEM_HOME_PATH && contextPaneTab.currentPath !== RECYCLE_BIN_PATH && contextPaneTab.currentPath !== RECENT_PATH}
         onSortFieldChange={field => updatePaneTab(contextPane, tab => {
           const sortOrder = tab.sortField === field ? tab.sortOrder : 'asc';
           return { ...tab, sortField: field, sortOrder, folderStyle: { ...getTabFolderStyle(tab), sortField: field, sortOrder } };
@@ -5753,7 +5840,7 @@ export default function App() {
         onSortOrderChange={order => updatePaneTab(contextPane, tab => ({ ...tab, sortOrder: order, folderStyle: { ...getTabFolderStyle(tab), sortOrder: order } }))}
         onGroupByChange={groupBy => updatePaneTab(contextPane, tab => ({ ...tab, groupBy, folderStyle: { ...getTabFolderStyle(tab), groupBy } }))}
         hasFolder={Boolean(contextPaneTab.currentPath)}
-        canModifyFolder={Boolean(contextPaneTab.currentPath) && contextPaneTab.currentPath !== SYSTEM_HOME_PATH && contextPaneTab.currentPath !== RECYCLE_BIN_PATH}
+        canModifyFolder={Boolean(contextPaneTab.currentPath) && contextPaneTab.currentPath !== SYSTEM_HOME_PATH && contextPaneTab.currentPath !== RECYCLE_BIN_PATH && contextPaneTab.currentPath !== RECENT_PATH}
         fileClipboardSupported={isTauriDesktop()}
         hasFilter={Boolean(contextPaneTab.filterQuery)}
         onClose={() => setContextMenuPos(null)}
@@ -5766,6 +5853,7 @@ export default function App() {
         onRemoveFolderStyle={removeCurrentFolderStyle}
         onPreview={(item) => {
           touchFileAccessed(item.id);
+          recordRecentFile(item);
           setPreviewOpen(true);
         }}
         supportsArchiveExtraction={isTauriDesktop()}
@@ -5782,6 +5870,8 @@ export default function App() {
         onBatchRename={() => setIsBatchRenameOpen(true)}
         onDelete={(item) => handleDeleteSelected([item])}
         onRestore={(item) => { void handleRestoreRecycleBinItems([item]); }}
+        isRecentLocation={contextPaneTab.currentPath === RECENT_PATH}
+        onRemoveFromRecent={item => removeRecentFile(item.path)}
         onSelectAll={handleSelectAllVisible}
         onSelectNone={handleUnselectAll}
         onInvertSelection={handleInvertVisibleSelection}

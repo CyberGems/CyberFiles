@@ -32,12 +32,13 @@ import {
   Network,
   ChevronDown,
   ChevronUp,
+  Clock,
   Trash2,
   LockKeyhole,
   UnlockKeyhole,
   Keyboard,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
+import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, getParentPath, isSameOrDescendantPath, normalizeWindowsPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
@@ -106,6 +107,7 @@ interface FilePaneProps {
   allFiles: FileItem[];
   onNavigate: (path: string) => void;
   onRefresh?: () => void;
+  onClearRecentHistory?: () => void;
   onNavigateBack: () => void;
   onNavigateForward: () => void;
   onNavigateUp: () => void;
@@ -345,6 +347,7 @@ interface DetailsRowConfig {
   showFileExtensions: boolean;
   singleClickOpens: boolean;
   isRecycleBin: boolean;
+  isRecentLocation: boolean;
   isTauri: boolean;
   autoFolderSizeEnabled: boolean;
   imageTooltipThumbnailsEnabled: boolean;
@@ -598,7 +601,7 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
   handlers,
 }: DetailsFileRowProps) {
   const { t, language } = useLanguage();
-  const { customFolderIcons, recentItemStyle, hiddenItemStyle, showFileExtensions, singleClickOpens, isRecycleBin, isTauri, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, flatView, currentPath, dateFormat } = config;
+  const { customFolderIcons, recentItemStyle, hiddenItemStyle, showFileExtensions, singleClickOpens, isRecycleBin, isRecentLocation, isTauri, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, flatView, currentPath, dateFormat } = config;
   const flatLabel = flatParentLabelFor(item, flatView, currentPath);
 
   const customFolderConfig = item.isFolder ? getCustomFolderIcon(item.path, customFolderIcons ?? {}) : undefined;
@@ -684,7 +687,11 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
           const createdDate = formatDateTimeForDisplay(item.createdAtMs, item.createdDate, dateFormat, language);
           return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={relativeGraphStyle(createdGraphWidth, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{createdDate || '--'}</span></div>;
         }
-        const modifiedDate = formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language);
+        // In Recents the "modified" column is relabelled to "Last opened", so it shows the
+        // access-log timestamp instead of the file's modification date.
+        const modifiedDate = isRecentLocation
+          ? formatDateTimeForDisplay(item.lastOpenedAtMs, '', dateFormat, language)
+          : formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language);
         return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={relativeGraphStyle(modifiedGraphWidth, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{modifiedDate || '--'}</span></div>;
       })}
     </div>
@@ -738,6 +745,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   allFiles,
   onNavigate,
   onRefresh,
+  onClearRecentHistory,
   onNavigateBack,
   onNavigateForward,
   onNavigateUp,
@@ -771,6 +779,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const tooltipsEnabled = useContext(TooltipPreferenceContext);
   const isSystemHome = tab.currentPath === SYSTEM_HOME_PATH;
   const isRecycleBin = tab.currentPath === RECYCLE_BIN_PATH;
+  const isRecentLocation = tab.currentPath === RECENT_PATH;
   const effectiveViewMode = tab.viewMode;
   const nativeFileIconSize = effectiveViewMode === 'icons' ? 'large' : 'small';
   const nativeFileIconScope = `${tab.currentPath}\u0000${nativeFileIconSize}`;
@@ -986,7 +995,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       case 'type': return t.pane.columns.type;
       case 'size': return t.pane.columns.size;
       case 'created': return t.pane.columns.created;
-      case 'modified': return isRecycleBin ? t.pane.columns.deleted : t.pane.columns.modified;
+      case 'modified': return isRecentLocation ? t.pane.columns.opened : isRecycleBin ? t.pane.columns.deleted : t.pane.columns.modified;
     }
   };
   const columnWidth = (column: FileColumn) => {
@@ -1918,7 +1927,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   // Breadcrumbs generator for Windows paths: "C:\Users\Cali\Documents"
   const breadcrumbSegments = React.useMemo(() => {
-    if (!tab.currentPath || isSystemHome || isRecycleBin) return [];
+    if (!tab.currentPath || isSystemHome || isRecycleBin || isRecentLocation) return [];
     const raw = tab.currentPath.replace(/\/+$/, '').replace(/\\+$/, '');
     const segments = raw.split(/\\|\//);
     const result: { label: string; fullPath: string }[] = [];
@@ -1938,11 +1947,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
       }
     });
     return result;
-  }, [tab.currentPath, isSystemHome, isRecycleBin, drives]);
+  }, [tab.currentPath, isSystemHome, isRecycleBin, isRecentLocation, drives]);
   const visibleBreadcrumbStart = Math.min(firstVisibleBreadcrumb, Math.max(0, breadcrumbSegments.length - 1));
 
   useLayoutEffect(() => {
-    if (isEditingPath || isSystemHome || isRecycleBin) return;
+    if (isEditingPath || isSystemHome || isRecycleBin || isRecentLocation) return;
     const viewport = breadcrumbViewportRef.current;
     const measure = breadcrumbMeasureRef.current;
     if (!viewport || !measure) return;
@@ -2632,13 +2641,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
     showFileExtensions,
     singleClickOpens,
     isRecycleBin,
+    isRecentLocation,
     isTauri: isTauriDesktop(),
     autoFolderSizeEnabled,
     imageTooltipThumbnailsEnabled,
     flatView: tab.flatView === true,
     currentPath: tab.currentPath,
     dateFormat,
-  }), [customFolderIcons, recentItemStyle, hiddenItemStyle, showFileExtensions, singleClickOpens, isRecycleBin, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, tab.flatView, tab.currentPath, dateFormat]);
+  }), [customFolderIcons, recentItemStyle, hiddenItemStyle, showFileExtensions, singleClickOpens, isRecycleBin, isRecentLocation, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, tab.flatView, tab.currentPath, dateFormat]);
 
   /* The marquee is a fixed-position overlay, so it is not clipped by the pane and would otherwise be
      painted on top of the neighbouring pane while the pointer is held over it. A details viewport is
@@ -3240,11 +3250,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
         {/* Breadcrumb Path Box */}
         <div 
           onClick={() => {
-            if (isRecycleBin) return;
+            if (isRecycleBin || isRecentLocation) return;
             setPathInput(isSystemHome ? '' : tab.currentPath);
             setIsEditingPath(true);
           }}
-          className={`cyberfiles-address-bar flex-1 min-w-0 flex h-9 min-h-9 items-center bg-neutral-950 px-2 rounded-full border border-neutral-800 overflow-hidden ${!isRecycleBin ? 'cursor-text hover:border-neutral-700' : 'cursor-default'}`}
+          className={`cyberfiles-address-bar flex-1 min-w-0 flex h-9 min-h-9 items-center bg-neutral-950 px-2 rounded-full border border-neutral-800 overflow-hidden ${!isRecycleBin && !isRecentLocation ? 'cursor-text hover:border-neutral-700' : 'cursor-default'}`}
         >
           {isEditingPath ? (
             <form onSubmit={handlePathSubmit} onClick={event => event.stopPropagation()} className="w-full">
@@ -3268,6 +3278,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <div className="flex items-center gap-1.5 px-1 text-neutral-200 text-xs font-sans">
               <Trash2 className="h-3.5 w-3.5 text-rose-300" />
               <span>{t.sidebar.recycleBinTitle}</span>
+            </div>
+          ) : isRecentLocation ? (
+            <div className="flex items-center gap-1.5 px-1 text-neutral-200 text-xs font-sans">
+              <Clock className="h-3.5 w-3.5 text-amber-300" />
+              <span>{t.sidebar.recentsTitle}</span>
             </div>
           ) : (
             <div ref={breadcrumbViewportRef} className="relative flex min-w-0 flex-1 items-center gap-1 overflow-hidden font-sans text-xs">
@@ -3484,6 +3499,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
         onSetSelection={ids => onSelectItems(ids, false, false, true)}
         folderPath={tab.currentPath}
         onRefresh={onRefresh}
+        isRecentLocation={isRecentLocation}
+        onClearRecentHistory={onClearRecentHistory}
         actions={paneActions}
       />
 
@@ -3656,8 +3673,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
             style={paneBoxWidth > 0 ? { width: paneBoxWidth } : undefined}
           >
             {isLoadingDirectory ? <RotateCw className="w-7 h-7 text-cyan-500 animate-spin" /> : <Folder className="w-8 h-8 text-neutral-600 stroke-[1.5]" />}
-            <div className="text-xs">{isLoadingDirectory ? t.pane.loadingFolder : flatViewStatus?.error ? t.pane.flatViewLoadFailed : tab.filterQuery.trim() ? t.pane.filterNoResults : tab.currentPath ? t.pane.emptyFolder : t.pane.noFolderOpen}</div>
-            {!isLoadingDirectory && !tab.filterQuery && tab.currentPath && !isSystemHome && !isRecycleBin && getParentPath(tab.currentPath) !== tab.currentPath && (
+            <div className="text-xs">{isLoadingDirectory ? t.pane.loadingFolder : flatViewStatus?.error ? t.pane.flatViewLoadFailed : tab.filterQuery.trim() ? t.pane.filterNoResults : tab.currentPath ? (isRecentLocation ? t.pane.recentsEmpty : t.pane.emptyFolder) : t.pane.noFolderOpen}</div>
+            {!isLoadingDirectory && !tab.filterQuery && tab.currentPath && !isSystemHome && !isRecycleBin && !isRecentLocation && getParentPath(tab.currentPath) !== tab.currentPath && (
               <div className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-neutral-800 bg-neutral-900/60 px-2.5 py-1 text-[11px] tracking-wide text-neutral-500">
                 <CornerUpLeft className="h-3 w-3 text-cyan-500/80" aria-hidden="true" />
                 <span>{emptyAreaDoubleClickNavigatesUp ? t.pane.emptyFolderDoubleClickHint : t.pane.emptyFolderBackspaceHint}</span>

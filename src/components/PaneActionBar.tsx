@@ -10,6 +10,7 @@ import {
   Copy,
   Eye,
   FolderOpen,
+  History,
   Info,
   MoreHorizontal,
   Palette,
@@ -67,6 +68,8 @@ interface PaneActionBarProps {
   onSetSelection: (ids: string[]) => void;
   folderPath: string;
   onRefresh?: () => void;
+  isRecentLocation?: boolean;
+  onClearRecentHistory?: () => void;
   actions: PaneSelectionActions;
 }
 
@@ -97,6 +100,8 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
   onSetSelection,
   folderPath,
   onRefresh,
+  isRecentLocation,
+  onClearRecentHistory,
   actions,
 }) => {
   const { t } = useLanguage();
@@ -342,6 +347,12 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
         onSelect: actions.onToggleProperties,
       },
     ],
+    ...(isRecentLocation && onClearRecentHistory ? [[{
+      key: 'clear-recent-history',
+      label: t.pane.clearRecentHistory,
+      icon: <History className="h-3.5 w-3.5 text-amber-300" />,
+      onSelect: () => onClearRecentHistory(),
+    } as ActionEntry]] : []),
   ];
 
   const menuGroups = hasSelection ? selectionMenuGroups : folderMenuGroups;

@@ -32,6 +32,7 @@ export interface FileItem {
   recycleBinId?: string;
   originalPath?: string;
   lastAccessed?: string; // ISO 8601 string or timestamp when last opened, moved, or renamed
+  lastOpenedAtMs?: number; // When the file was opened or previewed; set on ::recent listings
   // If loaded via File System Access API
   handle?: FileSystemHandle;
 }
@@ -86,7 +87,7 @@ export interface NewTabActionPreference {
   path: string;
 }
 
-export type SortField = 'name' | 'size' | 'type' | 'createdDate' | 'modifiedDate' | 'extension';
+export type SortField = 'name' | 'size' | 'type' | 'createdDate' | 'modifiedDate' | 'extension' | 'lastOpened';
 export type GroupByField = 'none' | 'name' | 'modifiedDate' | 'type' | 'size';
 export type SortOrder = 'asc' | 'desc';
 export type QuickAccessSortMode = 'manual' | 'name' | 'name-desc';
@@ -97,6 +98,7 @@ export type ViewMode = 'details' | 'compact' | 'icons';
 
 export const SYSTEM_HOME_PATH = '::cyberfiles-this-pc::';
 export const RECYCLE_BIN_PATH = '::cyberfiles-recycle-bin::';
+export const RECENT_PATH = '::cyberfiles-recent::';
 
 export interface TabState {
   id: string;

@@ -31,6 +31,7 @@ import {
   ListChecks,
   Square,
   Palette,
+  History,
 } from 'lucide-react';
 import { ArchiveExtractionMode, ContextMenuPosition, FileItem, GroupByField, SortField, SortOrder, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
@@ -74,6 +75,8 @@ interface ContextMenuProps {
   onBatchRename: () => void;
   onDelete: (item: FileItem) => void;
   onRestore: (item: FileItem) => void;
+  isRecentLocation?: boolean;
+  onRemoveFromRecent?: (item: FileItem) => void;
   onSelectAll?: () => void;
   onSelectNone?: () => void;
   onInvertSelection?: () => void;
@@ -122,6 +125,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onBatchRename,
   onDelete,
   onRestore,
+  isRecentLocation = false,
+  onRemoveFromRecent,
   onSelectAll,
   onSelectNone,
   onInvertSelection,
@@ -167,7 +172,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const isSystemLocation = Boolean(item && (item.id.startsWith('system-drive-') || item.id.startsWith('system-location-')));
   const menuWidth = 264;
   const archiveItem = Boolean(item && !item.isFolder && ["zip", "rar"].includes(item.extension.toLowerCase()));
-  const menuHeight = (isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? (supportsArchiveCreation ? 410 : 370) : item ? (archiveItem && supportsArchiveExtraction ? (supportsArchiveCreation ? 450 : 410) : supportsArchiveCreation ? 360 : 330) : sortMenuOpen ? 600 : groupMenuOpen ? 580 : newMenuOpen ? 460 : 388) + (!item && canModifyFolder ? (hasSavedFolderStyle ? 50 : 26) : 0) + (!item && onSelectAll ? (selectMenuOpen ? 160 : 30) : 0) + (item && !isSystemLocation && !item.recycleBinId && onCopyPath ? 26 : 0);
+  const canRemoveFromRecent = Boolean(item && !item.isFolder && isRecentLocation && onRemoveFromRecent);
+  const menuHeight = (isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? (supportsArchiveCreation ? 410 : 370) : item ? (archiveItem && supportsArchiveExtraction ? (supportsArchiveCreation ? 450 : 410) : supportsArchiveCreation ? 360 : 330) : sortMenuOpen ? 600 : groupMenuOpen ? 580 : newMenuOpen ? 460 : 388) + (canRemoveFromRecent ? 26 : 0) + (!item && canModifyFolder ? (hasSavedFolderStyle ? 50 : 26) : 0) + (!item && onSelectAll ? (selectMenuOpen ? 160 : 30) : 0) + (item && !isSystemLocation && !item.recycleBinId && onCopyPath ? 26 : 0);
   const adjustedX = Math.max(8, Math.min(position.x, window.innerWidth - menuWidth - 8));
   const adjustedY = Math.max(8, Math.min(position.y, window.innerHeight - menuHeight - 8));
 
@@ -215,6 +221,9 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           )}
           <div className="py-0.5">
             <MenuButton icon={<Eye className="h-3.5 w-3.5 text-cyan-400" />} label={t.contextMenu.openPreview} shortcut="Space" onClick={() => { onPreview(item); onClose(); }} />
+            {canRemoveFromRecent && (
+              <MenuButton icon={<History className="h-3.5 w-3.5 text-amber-300" />} label={t.contextMenu.removeFromRecent} onClick={() => { onRemoveFromRecent!(item); onClose(); }} />
+            )}
             {archiveItem && supportsArchiveExtraction && <>
               <MenuButton icon={<Archive className="h-3.5 w-3.5 text-violet-400" />} label={t.contextMenu.extractArchiveHere} onClick={() => { onExtractArchive(item, 'here'); onClose(); }} />
               <MenuButton icon={<FolderOpen className="h-3.5 w-3.5 text-violet-300" />} label={t.contextMenu.extractArchiveFolder.replace('{folder}', item.name.replace(/\.[^.]+$/, ''))} onClick={() => { onExtractArchive(item, 'folder'); onClose(); }} />
