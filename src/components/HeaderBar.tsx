@@ -38,6 +38,8 @@ interface HeaderBarProps {
   onActivePaneChange: (pane: 'left' | 'right') => void;
   sidebarDrawerOpen: boolean;
   onToggleSidebarDrawer: () => void;
+  locationsPanelOpen: boolean;
+  onToggleLocationsPanel: () => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   relativeGraphsEnabled: boolean;
@@ -77,6 +79,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onActivePaneChange,
   sidebarDrawerOpen,
   onToggleSidebarDrawer,
+  locationsPanelOpen,
+  onToggleLocationsPanel,
   viewMode,
   onViewModeChange,
   relativeGraphsEnabled,
@@ -317,6 +321,11 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             </span>
           </Tooltip>
         </div>
+        {!isCompactWindow && (
+          <div data-overflow-group="locations-panel" className="flex items-center">
+          <Tooltip label={locationsPanelOpen ? t.toolbar.hideLocationsPanel : t.toolbar.showLocationsPanel} placement="bottom"><button type="button" onClick={onToggleLocationsPanel} aria-label={locationsPanelOpen ? t.toolbar.hideLocationsPanel : t.toolbar.showLocationsPanel} aria-pressed={locationsPanelOpen} className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors ${locationsPanelOpen ? 'bg-cyan-950/70 border-cyan-700/70 text-cyan-300' : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'}`}><PanelLeft className={`w-3.5 h-3.5 ${locationsPanelOpen ? 'text-cyan-300' : 'text-neutral-400'}`} /><span className="hidden xl:inline">{t.toolbar.locationsPanel}</span></button></Tooltip>
+          </div>
+        )}
         <div data-overflow-group="properties-panel" className="flex items-center">
         <Tooltip label={propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} shortcut="F3"><button type="button" onClick={onTogglePropertiesPanel} aria-label={`${propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} (F3)`} aria-pressed={propertiesPanelOpen} className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors ${propertiesPanelOpen ? 'bg-cyan-950/70 border-cyan-700/70 text-cyan-300' : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'}`}><Info className={`w-3.5 h-3.5 ${propertiesPanelOpen ? 'text-cyan-300' : 'text-neutral-400'}`} /><span className="hidden xl:inline">{t.toolbar.propertiesPanel}</span><kbd className="keyboard-hint">F3</kbd></button></Tooltip>
         </div>

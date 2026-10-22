@@ -32,6 +32,7 @@ export interface LayoutSnapshot {
   layout: ViewLayout;
   tabStripPosition: TabStripPosition;
   previewOpen: boolean;
+  sidebarOpen: boolean;
   verticalSplitPercent: number;
   horizontalSplitPercent: number;
   previewSplitPercent: number;
@@ -87,6 +88,7 @@ export const DEFAULT_LAYOUT_SNAPSHOT: LayoutSnapshot = {
   layout: 'dual-vertical',
   tabStripPosition: 'top',
   previewOpen: true,
+  sidebarOpen: true,
   verticalSplitPercent: 50,
   horizontalSplitPercent: 50,
   previewSplitPercent: 72,
@@ -146,6 +148,7 @@ export function normalizeLayoutSnapshot(value: unknown): LayoutSnapshot {
     layout: raw.layout === 'dual-horizontal' || raw.layout === 'single' ? raw.layout : 'dual-vertical',
     tabStripPosition: raw.tabStripPosition === 'bottom' || raw.tabStripPosition === 'left' || raw.tabStripPosition === 'right' ? raw.tabStripPosition : 'top',
     previewOpen: typeof raw.previewOpen === 'boolean' ? raw.previewOpen : DEFAULT_LAYOUT_SNAPSHOT.previewOpen,
+    sidebarOpen: typeof raw.sidebarOpen === 'boolean' ? raw.sidebarOpen : DEFAULT_LAYOUT_SNAPSHOT.sidebarOpen,
     verticalSplitPercent: clampNumber(raw.verticalSplitPercent, 50, 20, 80),
     horizontalSplitPercent: clampNumber(raw.horizontalSplitPercent, 50, 20, 80),
     previewSplitPercent: clampNumber(raw.previewSplitPercent, 72, 20, 80),

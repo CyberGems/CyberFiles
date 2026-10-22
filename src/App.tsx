@@ -193,6 +193,7 @@ interface PanelViewPreferences {
   layout: ViewLayout;
   tabStripPosition: TabStripPosition;
   previewOpen: boolean;
+  sidebarOpen: boolean;
   activePane: 'left' | 'right';
   leftViewMode: ViewMode;
   rightViewMode: ViewMode;
@@ -227,6 +228,7 @@ const DEFAULT_PANEL_VIEW_PREFERENCES: PanelViewPreferences = {
   layout: 'dual-vertical',
   tabStripPosition: 'top',
   previewOpen: true,
+  sidebarOpen: true,
   activePane: 'left',
   leftViewMode: 'details',
   rightViewMode: 'details',
@@ -250,6 +252,7 @@ function initialWorkspaceProfileStore(): WorkspaceProfileStore {
       layout: legacy.layout,
       tabStripPosition: legacy.tabStripPosition,
       previewOpen: legacy.previewOpen,
+      sidebarOpen: legacy.sidebarOpen,
       verticalSplitPercent: legacy.verticalSplitPercent,
       horizontalSplitPercent: legacy.horizontalSplitPercent,
       previewSplitPercent: legacy.previewSplitPercent,
@@ -321,6 +324,7 @@ function readPanelViewPreferences(): PanelViewPreferences {
       layout: saved.layout === 'dual-horizontal' || saved.layout === 'single' ? saved.layout : 'dual-vertical',
       tabStripPosition: saved.tabStripPosition === 'bottom' || saved.tabStripPosition === 'left' || saved.tabStripPosition === 'right' ? saved.tabStripPosition : 'top',
       previewOpen: typeof saved.previewOpen === 'boolean' ? saved.previewOpen : true,
+      sidebarOpen: typeof saved.sidebarOpen === 'boolean' ? saved.sidebarOpen : true,
       activePane: saved.activePane === 'right' ? 'right' : 'left',
       leftViewMode: isViewMode(saved.leftViewMode) ? saved.leftViewMode : 'details',
       rightViewMode: isViewMode(saved.rightViewMode) ? saved.rightViewMode : 'details',
@@ -934,6 +938,7 @@ export default function App() {
   const [previewSplitPercent, setPreviewSplitPercent] = useState(initialPanelPreferences.previewSplitPercent);
   const [compactPreviewSplitPercent, setCompactPreviewSplitPercent] = useState(70);
   const [sidebarSplitPercent, setSidebarSplitPercent] = useState(initialPanelPreferences.sidebarSplitPercent);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(initialPanelPreferences.sidebarOpen);
   const [previewOpen, setPreviewOpen] = useState<boolean>(initialPanelPreferences.previewOpen);
   const [activePane, setActivePane] = useState<WorkspacePaneId>(initialSessionSnapshot?.activePane ?? initialPanelPreferences.activePane);
   const [viewportWidth, setViewportWidth] = useState(() => typeof window === 'undefined' ? 1200 : window.innerWidth);
@@ -1446,12 +1451,13 @@ export default function App() {
     layout,
     tabStripPosition,
     previewOpen,
+    sidebarOpen,
     verticalSplitPercent,
     horizontalSplitPercent,
     previewSplitPercent,
     sidebarSplitPercent,
     columns: paneColumnPreferences,
-  }), [layout, tabStripPosition, previewOpen, verticalSplitPercent, horizontalSplitPercent, previewSplitPercent, sidebarSplitPercent, paneColumnPreferences]);
+  }), [layout, tabStripPosition, previewOpen, sidebarOpen, verticalSplitPercent, horizontalSplitPercent, previewSplitPercent, sidebarSplitPercent, paneColumnPreferences]);
   const currentSessionSnapshot = useMemo(() => createSessionSnapshot(leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, activePane), [leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, activePane]);
   const activeLayoutProfile = workspaceStore.layouts.find(profile => profile.id === activeLayoutId);
   const activeSessionProfile = workspaceStore.sessions.find(profile => profile.id === activeSessionId);
@@ -1480,6 +1486,7 @@ export default function App() {
     setLayout(snapshot.layout);
     setTabStripPosition(snapshot.tabStripPosition);
     setPreviewOpen(snapshot.previewOpen);
+    setSidebarOpen(snapshot.sidebarOpen);
     setVerticalSplitPercent(snapshot.verticalSplitPercent);
     setHorizontalSplitPercent(snapshot.horizontalSplitPercent);
     setPreviewSplitPercent(snapshot.previewSplitPercent);
@@ -1792,6 +1799,7 @@ export default function App() {
         layout,
         tabStripPosition,
         previewOpen,
+        sidebarOpen,
         activePane,
         leftViewMode,
         rightViewMode,
@@ -1807,7 +1815,7 @@ export default function App() {
     } catch {
       // Preference persistence is optional if browser storage is unavailable.
     }
-  }, [layout, tabStripPosition, previewOpen, activePane, leftViewMode, rightViewMode, leftSort.sortField, leftSort.sortOrder, rightSort.sortField, rightSort.sortOrder, verticalSplitPercent, horizontalSplitPercent, previewSplitPercent, sidebarSplitPercent]);
+  }, [layout, tabStripPosition, previewOpen, sidebarOpen, activePane, leftViewMode, rightViewMode, leftSort.sortField, leftSort.sortOrder, rightSort.sortField, rightSort.sortOrder, verticalSplitPercent, horizontalSplitPercent, previewSplitPercent, sidebarSplitPercent]);
 
   useEffect(() => {
     try {
@@ -5121,6 +5129,7 @@ export default function App() {
     { id: 'batch-rename', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.batchRename, shortcut: 'Ctrl+R', disabled: Boolean(selectionDisabledReason), disabledReason: selectionDisabledReason, keywords: 'multiple names', onSelect: () => setIsBatchRenameOpen(true) },
     { id: 'delete-selection', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.delete, shortcut: 'Delete', disabled: Boolean(selectionDisabledReason) || !isTauriDesktop(), disabledReason: !isTauriDesktop() ? t.core.desktopFileOperationsOnly : selectionDisabledReason, keywords: 'remove recycle bin', onSelect: () => handleDeleteSelected(selectedItemsForDelete) },
     { id: 'show-preview', group: t.commandPalette.groups.actions, label: previewOpen ? t.commandPalette.commands.hidePreview : t.commandPalette.commands.showPreview, shortcut: 'F3 / Space', keywords: 'properties preview pane', onSelect: () => setPreviewOpen(value => !value) },
+    { id: 'show-locations', group: t.commandPalette.groups.actions, label: sidebarOpen ? t.commandPalette.commands.hideLocations : t.commandPalette.commands.showLocations, keywords: 'sidebar locations quick access drives', onSelect: () => setSidebarOpen(value => !value) },
     { id: 'show-hidden', group: t.commandPalette.groups.actions, label: showHiddenFiles ? t.commandPalette.commands.hideHidden : t.commandPalette.commands.showHidden, keywords: 'hidden files folders', onSelect: () => setShowHiddenFiles(value => !value) },
     { id: 'show-extensions', group: t.commandPalette.groups.actions, label: showFileExtensions ? t.commandPalette.commands.hideExtensions : t.commandPalette.commands.showExtensions, keywords: 'file suffix type', onSelect: () => setShowFileExtensions(value => !value) },
     { id: 'relative-graphs', group: t.commandPalette.groups.actions, label: relativeGraphsEnabled ? t.commandPalette.commands.hideGraphs : t.commandPalette.commands.showGraphs, keywords: 'relative size date bars', onSelect: () => setRelativeGraphsEnabled(value => !value) },
@@ -5304,6 +5313,8 @@ export default function App() {
         onActivePaneChange={pane => { setActivePane(pane); setSidebarDrawerOpen(false); }}
         sidebarDrawerOpen={sidebarDrawerOpen}
         onToggleSidebarDrawer={() => setSidebarDrawerOpen(open => !open)}
+        locationsPanelOpen={sidebarOpen}
+        onToggleLocationsPanel={() => setSidebarOpen(value => !value)}
         onOpenWorkspaceManager={() => setIsWorkspaceManagerOpen(true)}
         workspaceChangesPending={layoutDirty || sessionDirty}
         viewMode={currentTab.viewMode}
@@ -5336,8 +5347,9 @@ export default function App() {
       />
 
       {/* 2. Main Workstation Area */}
-      <div className="relative grid min-h-0 min-w-0 flex-1 overflow-hidden" style={{ gridTemplateColumns: isCompactWindow ? 'minmax(0, 1fr)' : 'minmax(0, ' + sidebarSplitPercent + 'fr) 8px minmax(0, ' + (100 - sidebarSplitPercent) + 'fr)' }}>
+      <div className="relative grid min-h-0 min-w-0 flex-1 overflow-hidden" style={{ gridTemplateColumns: isCompactWindow || !sidebarOpen ? 'minmax(0, 1fr)' : 'minmax(0, ' + sidebarSplitPercent + 'fr) 8px minmax(0, ' + (100 - sidebarSplitPercent) + 'fr)' }}>
         {/* Left Sidebar: locations only (quick access, drives, recycle bin) */}
+        {(isCompactWindow || sidebarOpen) && (
         <div className={isCompactWindow
           ? `absolute inset-y-0 left-0 z-50 w-[min(84vw,20rem)] min-w-0 overflow-hidden border-r border-cyan-900/70 bg-neutral-950 shadow-2xl ${sidebarDrawerOpen ? 'translate-x-0 visible' : '-translate-x-full invisible'} transition-transform duration-150`
           : 'min-h-0 min-w-0 overflow-hidden'} aria-hidden={isCompactWindow && !sidebarDrawerOpen}>
@@ -5365,9 +5377,10 @@ export default function App() {
           customFolderIcons={customFolderIcons}
         />
         </div>
+        )}
 
         {isCompactWindow && sidebarDrawerOpen && <button type="button" aria-label={t.header.closeSidebar} onClick={() => setSidebarDrawerOpen(false)} className="absolute inset-0 z-40 cursor-default bg-neutral-950/65" />}
-        {!isCompactWindow && <PaneSplitter orientation="vertical" value={sidebarSplitPercent} onChange={setSidebarSplitPercent} minPercent={20} maxPercent={42} label={t.header.resizeSidebar} />}
+        {!isCompactWindow && sidebarOpen && <PaneSplitter orientation="vertical" value={sidebarSplitPercent} onChange={setSidebarSplitPercent} minPercent={20} maxPercent={42} label={t.header.resizeSidebar} />}
 
         {/* File Panes Canvas */}
         <div className="flex-1 grid min-h-0 min-w-0 overflow-hidden" style={isCompactWindow
