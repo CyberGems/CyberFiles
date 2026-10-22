@@ -94,7 +94,7 @@ export const ToolbarOverflowMenu: React.FC<ToolbarOverflowMenuProps> = ({ label,
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen(value => !value)}
-        className={`toolbar-overflow-trigger h-9 w-8 items-center justify-center rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70 ${open ? 'border-cyan-700/70 bg-cyan-950/70 text-cyan-200' : 'border-neutral-800 bg-neutral-900 text-neutral-300 hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-200'}`}
+        className={`command-control toolbar-overflow-trigger ${open ? 'border-cyan-700/70 text-cyan-200' : ''}`}
       >
         <ChevronsRight className="h-4 w-4" aria-hidden="true" />
       </button>

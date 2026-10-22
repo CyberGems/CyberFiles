@@ -250,6 +250,7 @@ Publicar una etiqueta anotada `v*` que coincida con las versiones de `package.js
 | `F1` | Abrir la chuleta de atajos de teclado |
 | `F2` | Renombrar el elemento seleccionado |
 | `F3` o `Espacio` | Mostrar u ocultar el panel de propiedades |
+| `Ctrl+L` | Mostrar u ocultar el panel de ubicaciones |
 | `F5` | Copiar la selección al panel opuesto |
 | `F6` | Mover la selección al panel opuesto |
 | `F7` | Crear una carpeta en la ubicación actual |

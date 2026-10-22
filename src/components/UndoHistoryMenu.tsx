@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Clock3, Undo2 } from 'lucide-react';
+import { Clock3, Undo2 } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
-import { Tooltip } from './Tooltip';
+import { CommandBarSplit, type ToolbarLabelPosition } from './CommandBarControl';
 
 export type UndoHistoryKind = 'rename' | 'create' | 'copy' | 'move' | 'extract' | 'compress' | 'recycle' | 'restore' | 'permanent-delete';
 
@@ -20,6 +20,8 @@ interface UndoHistoryMenuProps {
   items: UndoHistoryItem[];
   disabled?: boolean;
   onUndo: (id: string) => void;
+  label: string;
+  labelPosition: ToolbarLabelPosition;
 }
 
 function actionLabel(item: UndoHistoryItem, language: 'en' | 'es', translations: ReturnType<typeof useLanguage>['t']['toolbar']): string {
@@ -41,7 +43,7 @@ function actionLabel(item: UndoHistoryItem, language: 'en' | 'es', translations:
   }
 }
 
-export const UndoHistoryMenu: React.FC<UndoHistoryMenuProps> = ({ items, disabled = false, onUndo }) => {
+export const UndoHistoryMenu: React.FC<UndoHistoryMenuProps> = ({ items, disabled = false, onUndo, label, labelPosition }) => {
   const { t, language } = useLanguage();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -88,31 +90,20 @@ export const UndoHistoryMenu: React.FC<UndoHistoryMenuProps> = ({ items, disable
 
   return (
     <div ref={rootRef} className="relative flex flex-shrink-0 items-center">
-      <Tooltip label={t.toolbar.undoTooltip} shortcut="Ctrl+Z" placement="bottom">
-        <button
-          type="button"
-          onClick={() => latest?.canUndo && !disabled && onUndo(latest.id)}
-          disabled={disabled || !latest?.canUndo}
-          className="header-action rounded-r-none border-r border-neutral-800/80 disabled:cursor-not-allowed disabled:opacity-40"
-          aria-label={t.toolbar.undo}
-        >
-          <Undo2 className="h-3.5 w-3.5 text-cyan-400" />
-          <span className="core-action-label">{t.toolbar.undo}</span>
-          <kbd className="keyboard-hint">Ctrl+Z</kbd>
-        </button>
-      </Tooltip>
-      <Tooltip label={t.toolbar.undoHistory} placement="bottom">
-        <button
-          type="button"
-          onClick={() => setOpen(value => !value)}
-          aria-label={t.toolbar.undoHistory}
-          aria-expanded={open}
-          className="header-action -ml-1 rounded-l-none px-1.5 disabled:opacity-50"
-          disabled={disabled && items.length === 0}
-        >
-          <ChevronDown className="h-3.5 w-3.5" />
-        </button>
-      </Tooltip>
+      <CommandBarSplit
+        label={label}
+        labelPosition={labelPosition}
+        icon={<Undo2 className="text-cyan-400" />}
+        onClick={() => latest?.canUndo && !disabled && onUndo(latest.id)}
+        disabled={disabled || !latest?.canUndo}
+        tooltip={t.toolbar.undoTooltip}
+        tooltipShortcut="Ctrl+Z"
+        ariaLabel={t.toolbar.undo}
+        caretLabel={t.toolbar.undoHistory}
+        onCaretClick={() => setOpen(value => !value)}
+        caretExpanded={open}
+        caretDisabled={disabled && items.length === 0}
+      />
 
       {open && createPortal(
         <div ref={menuRef} style={{ left: menuPosition.left, top: menuPosition.top }} className="fixed z-[200] w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl shadow-black/60">

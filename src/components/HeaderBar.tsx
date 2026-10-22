@@ -13,7 +13,6 @@ import {
   Trash2,
   PanelsTopLeft,
   BarChart3,
-  ChevronDown,
   Eye,
   EyeOff,
   ExternalLink,
@@ -29,6 +28,13 @@ import { Tooltip } from './Tooltip';
 import type { WindowsTerminalOption } from '../utils/nativeFileSystem';
 import { UndoHistoryMenu, type UndoHistoryItem } from './UndoHistoryMenu';
 import { ToolbarOverflowMenu, type ToolbarOverflowGroup } from './ToolbarOverflowMenu';
+import {
+  CommandBarButton,
+  CommandBarGroup,
+  CommandBarSegment,
+  CommandBarSplit,
+  type ToolbarLabelPosition,
+} from './CommandBarControl';
 
 interface HeaderBarProps {
   layout: ViewLayout;
@@ -40,6 +46,7 @@ interface HeaderBarProps {
   onToggleSidebarDrawer: () => void;
   locationsPanelOpen: boolean;
   onToggleLocationsPanel: () => void;
+  toolbarLabelPosition: ToolbarLabelPosition;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   relativeGraphsEnabled: boolean;
@@ -81,6 +88,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onToggleSidebarDrawer,
   locationsPanelOpen,
   onToggleLocationsPanel,
+  toolbarLabelPosition,
   viewMode,
   onViewModeChange,
   relativeGraphsEnabled,
@@ -118,12 +126,14 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   const hasDriveRoot = /^[a-z]:/i.test(currentFolderPath) && (currentFolderPath[2] === '\\' || currentFolderPath[2] === '/');
   const canUseFolderActions = windowsActionsAvailable && !currentFolderPath.startsWith('::') && (hasDriveRoot || currentFolderPath.startsWith('\\\\'));
   const canCreateFolder = Boolean(currentFolderPath) && !currentFolderPath.startsWith('::');
+  const labels = t.toolbar.buttonLabels;
   const terminalLabels: Record<WindowsTerminalOption, string> = {
     cmd: t.toolbar.commandPromptHere,
     'cmd-admin': t.toolbar.commandPromptAdminHere,
     powershell: t.toolbar.powerShellHere,
     'powershell-admin': t.toolbar.powerShellAdminHere,
   };
+  const workspaceTooltip = `${t.workspaceProfiles.open}${workspaceChangesPending ? ` · ${t.workspaceProfiles.modified}` : ''}`;
   React.useEffect(() => {
     if (!openToolbarMenu) return;
     const handlePointerDown = (event: PointerEvent) => {
@@ -196,6 +206,18 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       ],
     },
     {
+      id: 'locations-panel',
+      label: t.toolbar.locationsPanel,
+      entries: [{
+        id: 'toggle-locations',
+        label: locationsPanelOpen ? t.toolbar.hideLocationsPanel : t.toolbar.showLocationsPanel,
+        shortcut: 'Ctrl+L',
+        icon: <PanelLeft className="h-4 w-4" />,
+        pressed: locationsPanelOpen,
+        onSelect: onToggleLocationsPanel,
+      }],
+    },
+    {
       id: 'properties-panel',
       label: t.toolbar.propertiesPanel,
       entries: [{
@@ -209,7 +231,11 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
     },
   ];
   return (
-    <header className="cyberfiles-command-bar command-bar-container min-h-14 bg-neutral-900/95 border-b border-neutral-800 px-3 py-2 flex items-center justify-between gap-3 select-none z-20 backdrop-blur-md">
+    <header
+      data-label-position={toolbarLabelPosition}
+      data-labels={toolbarLabelPosition === 'none' ? 'false' : 'true'}
+      className="cyberfiles-command-bar command-bar-container min-h-14 bg-neutral-900/95 border-b border-neutral-800 px-3 py-2 flex items-center justify-between gap-3 select-none z-20 backdrop-blur-md"
+    >
       <div className="flex items-center gap-3 min-w-0">
         {isCompactWindow && (
           <div className="compact-window-controls flex shrink-0 items-center gap-1">
@@ -233,33 +259,64 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </div>
         )}
 
-        <div className="header-actions flex items-center gap-1 overflow-x-auto min-w-0">
-          <UndoHistoryMenu items={undoHistory} onUndo={onUndoAction} disabled={undoBusy} />
-          <Tooltip label={t.toolbar.delete} shortcut="Del" disabled={disabled}><button onClick={onDeleteSelected} disabled={disabled} className="header-action text-rose-200"><Trash2 className="w-3.5 h-3.5 text-rose-400" /><span className="core-action-label">{language === 'es' ? 'Eliminar' : 'Delete'}</span><kbd className="keyboard-hint">Del</kbd></button></Tooltip>
-          <Tooltip label={t.toolbar.newFolder} shortcut="F7" disabled={!canCreateFolder}><button onClick={onNewFolder} disabled={!canCreateFolder} className="header-action"><FolderPlus className="w-3.5 h-3.5 text-emerald-400" /><span className="action-label">{language === 'es' ? 'Nueva carpeta' : 'New folder'}</span><kbd className="keyboard-hint">F7</kbd></button></Tooltip>
+        <div className="header-actions flex items-center gap-1.5 overflow-x-auto min-w-0">
+          <UndoHistoryMenu
+            items={undoHistory}
+            onUndo={onUndoAction}
+            disabled={undoBusy}
+            label={labels.undo}
+            labelPosition={toolbarLabelPosition}
+          />
+          <CommandBarButton
+            label={labels.delete}
+            labelPosition={toolbarLabelPosition}
+            icon={<Trash2 className="text-rose-400" />}
+            onClick={onDeleteSelected}
+            disabled={disabled}
+            tooltip={t.toolbar.delete}
+            tooltipShortcut="Del"
+            ariaLabel={t.toolbar.delete}
+          />
+          <CommandBarButton
+            label={labels.newFolder}
+            labelPosition={toolbarLabelPosition}
+            icon={<FolderPlus className="text-emerald-400" />}
+            onClick={onNewFolder}
+            disabled={!canCreateFolder}
+            tooltip={t.toolbar.newFolder}
+            tooltipShortcut="F7"
+            ariaLabel={t.toolbar.newFolder}
+          />
         </div>
       </div>
 
-      <div ref={menuRootRef} className="command-bar-actions flex items-center gap-2 flex-shrink-0">
+      <div ref={menuRootRef} className="command-bar-actions flex items-center gap-1.5 flex-shrink-0">
         {windowsActionsAvailable && (
-          <div data-overflow-group="windows-actions" className="flex items-center gap-2">
-            <Tooltip label={t.toolbar.showInWindowsExplorer} placement="bottom" disabled={!canUseFolderActions}>
-              <button type="button" aria-label={t.toolbar.showInWindowsExplorer} disabled={!canUseFolderActions} onClick={onShowInWindowsExplorer} className="flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-300 transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40">
-                <ExternalLink className="h-4 w-4" />
-              </button>
-            </Tooltip>
+          <div data-overflow-group="windows-actions" className="flex items-center gap-1.5">
+            <CommandBarButton
+              label={labels.explorer}
+              labelPosition={toolbarLabelPosition}
+              icon={<ExternalLink />}
+              onClick={onShowInWindowsExplorer}
+              disabled={!canUseFolderActions}
+              tooltip={t.toolbar.showInWindowsExplorer}
+              ariaLabel={t.toolbar.showInWindowsExplorer}
+            />
 
             <div className="relative flex items-center">
-              <Tooltip label={terminalLabels[lastTerminalOption]} placement="bottom" disabled={!canUseFolderActions}>
-                <button type="button" aria-label={terminalLabels[lastTerminalOption]} disabled={!canUseFolderActions} onClick={() => onLaunchTerminal(lastTerminalOption)} className="flex h-9 w-9 items-center justify-center rounded-l-md border border-r-0 border-neutral-800 bg-neutral-900 text-neutral-300 transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40">
-                  <Terminal className="h-4 w-4" />
-                </button>
-              </Tooltip>
-              <Tooltip label={t.toolbar.chooseTerminal} placement="bottom" disabled={!canUseFolderActions}>
-                <button type="button" aria-label={t.toolbar.chooseTerminal} aria-haspopup="menu" aria-expanded={openToolbarMenu === 'terminal'} disabled={!canUseFolderActions} onClick={() => setOpenToolbarMenu(openToolbarMenu === 'terminal' ? null : 'terminal')} className="flex h-9 w-6 items-center justify-center rounded-r-md border border-neutral-800 bg-neutral-900 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100 disabled:cursor-not-allowed disabled:opacity-40">
-                  <ChevronDown className="h-3.5 w-3.5" />
-                </button>
-              </Tooltip>
+              <CommandBarSplit
+                label={labels.terminal}
+                labelPosition={toolbarLabelPosition}
+                icon={<Terminal />}
+                onClick={() => onLaunchTerminal(lastTerminalOption)}
+                tooltip={terminalLabels[lastTerminalOption]}
+                ariaLabel={terminalLabels[lastTerminalOption]}
+                disabled={!canUseFolderActions}
+                caretLabel={t.toolbar.chooseTerminal}
+                caretDisabled={!canUseFolderActions}
+                caretExpanded={openToolbarMenu === 'terminal'}
+                onCaretClick={() => setOpenToolbarMenu(openToolbarMenu === 'terminal' ? null : 'terminal')}
+              />
               {openToolbarMenu === 'terminal' && (
                 <div role="menu" className="absolute right-0 top-full z-50 mt-2 min-w-56 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-2xl">
                   {(['cmd', 'cmd-admin', 'powershell', 'powershell-admin'] as WindowsTerminalOption[]).map(option => (
@@ -272,100 +329,120 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                 </div>
               )}
             </div>
-
           </div>
         )}
 
-        <div data-overflow-group="view-modes" className="view-choice-group flex items-center" role="group" aria-label={t.toolbar.viewModes}>
-          <Tooltip label={t.toolbar.viewDetails} shortcut="Ctrl+1"><button type="button" aria-label={t.toolbar.viewDetails} aria-pressed={viewMode === 'details'} onClick={() => onViewModeChange('details')} className="view-choice"><List className="h-4 w-4" /></button></Tooltip>
-          <Tooltip label={t.toolbar.viewCompact} shortcut="Ctrl+2"><button type="button" aria-label={t.toolbar.viewCompact} aria-pressed={viewMode === 'compact'} onClick={() => onViewModeChange('compact')} className="view-choice"><StretchHorizontal className="h-4 w-4" /></button></Tooltip>
-          <Tooltip label={t.toolbar.viewIcons} shortcut="Ctrl+3"><button type="button" aria-label={t.toolbar.viewIcons} aria-pressed={viewMode === 'icons'} onClick={() => onViewModeChange('icons')} className="view-choice"><LayoutGrid className="h-4 w-4" /></button></Tooltip>
+        <div data-overflow-group="view-modes" className="flex items-center">
+          <CommandBarGroup label={t.toolbar.viewModes}>
+            <CommandBarSegment label={labels.details} labelPosition={toolbarLabelPosition} icon={<List />} pressed={viewMode === 'details'} onClick={() => onViewModeChange('details')} tooltip={t.toolbar.viewDetails} tooltipShortcut="Ctrl+1" ariaLabel={t.toolbar.viewDetails} />
+            <CommandBarSegment label={labels.compact} labelPosition={toolbarLabelPosition} icon={<StretchHorizontal />} pressed={viewMode === 'compact'} onClick={() => onViewModeChange('compact')} tooltip={t.toolbar.viewCompact} tooltipShortcut="Ctrl+2" ariaLabel={t.toolbar.viewCompact} />
+            <CommandBarSegment label={labels.icons} labelPosition={toolbarLabelPosition} icon={<LayoutGrid />} pressed={viewMode === 'icons'} onClick={() => onViewModeChange('icons')} tooltip={t.toolbar.viewIcons} tooltipShortcut="Ctrl+3" ariaLabel={t.toolbar.viewIcons} />
+          </CommandBarGroup>
         </div>
 
-        <div data-overflow-group="layout-modes" className="view-choice-group flex items-center" role="group" aria-label={t.header.layoutModes}>
-          <Tooltip label={t.header.layoutDualVertical} shortcut="Alt+1"><button type="button" aria-label={t.header.layoutDualVertical} aria-pressed={layout === 'dual-vertical'} onClick={() => onLayoutChange('dual-vertical')} className="view-choice"><Columns2 className="h-4 w-4" /></button></Tooltip>
-          <Tooltip label={t.header.layoutDualHorizontal} shortcut="Alt+2"><button type="button" aria-label={t.header.layoutDualHorizontal} aria-pressed={layout === 'dual-horizontal'} onClick={() => onLayoutChange('dual-horizontal')} className="view-choice"><Rows2 className="h-4 w-4" /></button></Tooltip>
-          <Tooltip label={t.header.layoutSingle} shortcut="Alt+3"><button type="button" aria-label={t.header.layoutSingle} aria-pressed={layout === 'single'} onClick={() => onLayoutChange('single')} className="view-choice"><Square className="h-4 w-4" /></button></Tooltip>
+        <div data-overflow-group="layout-modes" className="flex items-center">
+          <CommandBarGroup label={t.header.layoutModes}>
+            <CommandBarSegment label={labels.layoutVertical} labelPosition={toolbarLabelPosition} icon={<Columns2 />} pressed={layout === 'dual-vertical'} onClick={() => onLayoutChange('dual-vertical')} tooltip={t.header.layoutDualVertical} tooltipShortcut="Alt+1" ariaLabel={t.header.layoutDualVertical} />
+            <CommandBarSegment label={labels.layoutHorizontal} labelPosition={toolbarLabelPosition} icon={<Rows2 />} pressed={layout === 'dual-horizontal'} onClick={() => onLayoutChange('dual-horizontal')} tooltip={t.header.layoutDualHorizontal} tooltipShortcut="Alt+2" ariaLabel={t.header.layoutDualHorizontal} />
+            <CommandBarSegment label={labels.layoutSingle} labelPosition={toolbarLabelPosition} icon={<Square />} pressed={layout === 'single'} onClick={() => onLayoutChange('single')} tooltip={t.header.layoutSingle} tooltipShortcut="Alt+3" ariaLabel={t.header.layoutSingle} />
+          </CommandBarGroup>
         </div>
 
         <div data-overflow-group="workspace-manager" className="flex items-center">
-        <Tooltip label={`${t.workspaceProfiles.open}${workspaceChangesPending ? ` · ${t.workspaceProfiles.modified}` : ''}`} shortcut="Ctrl+Shift+W" placement="bottom">
-          <button type="button" onClick={onOpenWorkspaceManager} aria-label={`${t.workspaceProfiles.open}${workspaceChangesPending ? `, ${t.workspaceProfiles.modified}` : ''}`} className="relative flex items-center gap-1.5 rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-xs text-neutral-300 transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-200">
-            <PanelsTopLeft className="h-3.5 w-3.5 text-cyan-400" />
-            <span className="hidden sm:inline">{t.workspaceProfiles.title}</span>
-            {workspaceChangesPending && <span aria-hidden="true" className="absolute -right-1 -top-1 h-2 w-2 rounded-full border border-neutral-950 bg-amber-300" />}
-          </button>
-        </Tooltip>
+          <CommandBarButton
+            label={labels.workspace}
+            labelPosition={toolbarLabelPosition}
+            icon={<PanelsTopLeft className="text-cyan-400" />}
+            onClick={onOpenWorkspaceManager}
+            tooltip={workspaceTooltip}
+            tooltipShortcut="Ctrl+Shift+W"
+            ariaLabel={workspaceTooltip}
+            badge={workspaceChangesPending}
+          />
         </div>
-        <div data-overflow-group="view-toggles" className="flex items-center gap-1">
-          <Tooltip label={t.toolbar.showHiddenFiles} shortcut="Ctrl+H" placement="bottom">
-            <button type="button" aria-label={t.toolbar.showHiddenFiles} aria-pressed={showHiddenFiles} onClick={onToggleShowHiddenFiles} className={showHiddenFiles ? 'flex h-9 w-9 items-center justify-center rounded-md border border-cyan-700/70 bg-cyan-950/70 text-cyan-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70' : 'flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70'}>
-              {showHiddenFiles ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-            </button>
-          </Tooltip>
-          <Tooltip label={t.toolbar.showFileExtensions} shortcut="Ctrl+E" placement="bottom">
-            <button type="button" aria-label={t.toolbar.showFileExtensions} aria-pressed={showFileExtensions} onClick={onToggleShowFileExtensions} className={showFileExtensions ? 'flex h-9 w-9 items-center justify-center rounded-md border border-cyan-700/70 bg-cyan-950/70 text-cyan-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70' : 'flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70'}>
-              <FileText className="h-4 w-4" />
-            </button>
-          </Tooltip>
-          <Tooltip label={t.toolbar.relativeGraphs} shortcut="Ctrl+G" placement="bottom">
-            <button type="button" aria-label={t.toolbar.relativeGraphs} aria-pressed={relativeGraphsEnabled} onClick={onToggleRelativeGraphs} className={relativeGraphsEnabled ? 'flex h-9 w-9 items-center justify-center rounded-md border border-cyan-700/70 bg-cyan-950/70 text-cyan-300 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70' : 'flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70'}>
-              <BarChart3 className="h-4 w-4" />
-            </button>
-          </Tooltip>
-          <Tooltip label={flatViewTooltip} shortcut="Ctrl+B" placement="bottom">
-            <span className={`inline-flex rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70 ${flatViewAvailable ? '' : 'cursor-not-allowed'}`} tabIndex={flatViewAvailable ? undefined : 0} aria-label={flatViewAvailable ? undefined : `${t.toolbar.flatView}: ${flatViewTooltip}`}>
-              <button type="button" aria-label={t.toolbar.flatView} aria-pressed={flatView} disabled={!flatViewAvailable} onClick={onToggleFlatView} className={flatView ? 'flex h-9 w-9 items-center justify-center rounded-md border border-cyan-700/70 bg-cyan-950/70 text-cyan-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70 disabled:pointer-events-none disabled:opacity-40' : 'flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70 disabled:pointer-events-none disabled:opacity-40'}>
-                {flatViewLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ListTree className="h-4 w-4" />}
-              </button>
-            </span>
-          </Tooltip>
+
+        <div data-overflow-group="view-toggles" className="flex items-center gap-1.5">
+          <CommandBarButton label={labels.hidden} labelPosition={toolbarLabelPosition} icon={showHiddenFiles ? <Eye /> : <EyeOff />} pressed={showHiddenFiles} onClick={onToggleShowHiddenFiles} tooltip={t.toolbar.showHiddenFiles} tooltipShortcut="Ctrl+H" ariaLabel={t.toolbar.showHiddenFiles} />
+          <CommandBarButton label={labels.extensions} labelPosition={toolbarLabelPosition} icon={<FileText />} pressed={showFileExtensions} onClick={onToggleShowFileExtensions} tooltip={t.toolbar.showFileExtensions} tooltipShortcut="Ctrl+E" ariaLabel={t.toolbar.showFileExtensions} />
+          <CommandBarButton label={labels.graphs} labelPosition={toolbarLabelPosition} icon={<BarChart3 />} pressed={relativeGraphsEnabled} onClick={onToggleRelativeGraphs} tooltip={t.toolbar.relativeGraphs} tooltipShortcut="Ctrl+G" ariaLabel={t.toolbar.relativeGraphs} />
+          <CommandBarButton
+            label={labels.flatView}
+            labelPosition={toolbarLabelPosition}
+            icon={flatViewLoading ? <LoaderCircle className="animate-spin" /> : <ListTree />}
+            pressed={flatView}
+            disabled={!flatViewAvailable}
+            onClick={onToggleFlatView}
+            tooltip={flatViewTooltip}
+            tooltipShortcut="Ctrl+B"
+            ariaLabel={`${t.toolbar.flatView}: ${flatViewTooltip}`}
+          />
         </div>
+
         {!isCompactWindow && (
           <div data-overflow-group="locations-panel" className="flex items-center">
-          <Tooltip label={locationsPanelOpen ? t.toolbar.hideLocationsPanel : t.toolbar.showLocationsPanel} placement="bottom"><button type="button" onClick={onToggleLocationsPanel} aria-label={locationsPanelOpen ? t.toolbar.hideLocationsPanel : t.toolbar.showLocationsPanel} aria-pressed={locationsPanelOpen} className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors ${locationsPanelOpen ? 'bg-cyan-950/70 border-cyan-700/70 text-cyan-300' : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'}`}><PanelLeft className={`w-3.5 h-3.5 ${locationsPanelOpen ? 'text-cyan-300' : 'text-neutral-400'}`} /><span className="hidden xl:inline">{t.toolbar.locationsPanel}</span></button></Tooltip>
+            <CommandBarButton
+              label={labels.locations}
+              labelPosition={toolbarLabelPosition}
+              icon={<PanelLeft />}
+              pressed={locationsPanelOpen}
+              onClick={onToggleLocationsPanel}
+              tooltip={locationsPanelOpen ? t.toolbar.hideLocationsPanel : t.toolbar.showLocationsPanel}
+              tooltipShortcut="Ctrl+L"
+              ariaLabel={locationsPanelOpen ? t.toolbar.hideLocationsPanel : t.toolbar.showLocationsPanel}
+            />
           </div>
         )}
+
         <div data-overflow-group="properties-panel" className="flex items-center">
-        <Tooltip label={propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} shortcut="F3"><button type="button" onClick={onTogglePropertiesPanel} aria-label={`${propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} (F3)`} aria-pressed={propertiesPanelOpen} className={`flex items-center gap-1 px-2 py-1.5 rounded-md text-xs font-medium border transition-colors ${propertiesPanelOpen ? 'bg-cyan-950/70 border-cyan-700/70 text-cyan-300' : 'bg-neutral-900 border-neutral-800 text-neutral-300 hover:bg-neutral-800'}`}><Info className={`w-3.5 h-3.5 ${propertiesPanelOpen ? 'text-cyan-300' : 'text-neutral-400'}`} /><span className="hidden xl:inline">{t.toolbar.propertiesPanel}</span><kbd className="keyboard-hint">F3</kbd></button></Tooltip>
+          <CommandBarButton
+            label={labels.properties}
+            labelPosition={toolbarLabelPosition}
+            icon={<Info />}
+            pressed={propertiesPanelOpen}
+            onClick={onTogglePropertiesPanel}
+            tooltip={propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel}
+            tooltipShortcut="F3"
+            ariaLabel={`${propertiesPanelOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel} (F3)`}
+          />
         </div>
+
         <ToolbarOverflowMenu label={t.toolbar.moreActions} groups={overflowGroups} />
       </div>
 
       <style>{`
         .header-actions { scrollbar-width:none; }
         .header-actions::-webkit-scrollbar { display:none; }
-        .header-action { display:flex; align-items:center; gap:.375rem; padding:.375rem .625rem; border-radius:.375rem; color:var(--color-neutral-200); font-size:.75rem; font-weight:500; white-space:nowrap; transition:background-color .15s,color .15s; }
-        .header-action:hover:not(:disabled) { background:var(--color-neutral-800); }
-        .header-action:disabled { opacity:.4; cursor:not-allowed; }
-        .header-action.accent { background:var(--color-cyan-950); border:1px solid var(--color-neutral-700); color:var(--color-cyan-200); }
-        .view-choice-group { gap:2px; padding:3px; border:1px solid var(--color-neutral-700); border-radius:6px; background:var(--color-neutral-950); box-shadow:inset 0 1px 2px rgba(0,0,0,.35); }
-        .view-choice { display:flex; width:34px; height:30px; align-items:center; justify-content:center; border:1px solid transparent; border-radius:3px; color:var(--color-neutral-500); transition:background-color .14s,color .14s,border-color .14s,box-shadow .14s; }
-        .view-choice:hover:not([aria-pressed="true"]) { background:var(--color-neutral-800); color:var(--color-neutral-200); }
-        .view-choice[aria-pressed="true"] { border-color:rgba(103,232,249,.2); background:#1d292d; color:#a5f3fc; box-shadow:inset 0 1px rgba(255,255,255,.045); }
-        .view-choice:focus-visible { outline:2px solid rgba(34,211,238,.7); outline-offset:2px; }
-        #root button.view-choice:not([data-file-item="true"]):not([role="separator"]):not(:disabled):active { scale:1; }
         .command-bar-container { container-type:inline-size; container-name:commandbar; }
-        @container commandbar (max-width: 640px) {
-          .header-action .action-label,
-          .header-action .core-action-label,
-          .command-bar-actions .keyboard-hint { display:none; }
-          .header-action { padding:.375rem; }
-        }
         .toolbar-overflow-trigger { display:none; }
-        @container commandbar (max-width: 1100px) {
+        @container commandbar (max-width: 1180px) {
           [data-overflow-group="windows-actions"],
           [data-overflow-group="workspace-manager"] { display:none !important; }
           .toolbar-overflow-trigger { display:flex; }
         }
-        @container commandbar (max-width: 920px) {
+        @container commandbar (max-width: 980px) {
           [data-overflow-group="view-modes"],
           [data-overflow-group="view-toggles"] { display:none !important; }
         }
-        @container commandbar (max-width: 740px) {
+        @container commandbar (max-width: 780px) {
           [data-overflow-group="layout-modes"] { display:none !important; }
         }
-        @media (max-width: 1535px) { .action-label { display:none; } .header-action { padding:.375rem .5rem; } }
+        /* Visible labels widen every control, so groups fold into the overflow menu sooner. */
+        @container commandbar (max-width: 1640px) {
+          .cyberfiles-command-bar[data-labels='true'] [data-overflow-group="workspace-manager"] { display:none !important; }
+          .cyberfiles-command-bar[data-labels='true'] .toolbar-overflow-trigger { display:flex; }
+        }
+        @container commandbar (max-width: 1500px) {
+          .cyberfiles-command-bar[data-labels='true'] [data-overflow-group="view-modes"] { display:none !important; }
+        }
+        @container commandbar (max-width: 1340px) {
+          .cyberfiles-command-bar[data-labels='true'] [data-overflow-group="layout-modes"] { display:none !important; }
+        }
+        @container commandbar (max-width: 1180px) {
+          .cyberfiles-command-bar[data-labels='true'] [data-overflow-group="windows-actions"] { display:none !important; }
+        }
+        @container commandbar (max-width: 1050px) {
+          .cyberfiles-command-bar[data-labels='true'] [data-overflow-group="view-toggles"] { display:none !important; }
+        }
       `}</style>
     </header>
   );

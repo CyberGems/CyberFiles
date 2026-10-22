@@ -49,6 +49,11 @@ import {
   normalizeWindowsPath,
 } from './utils/fileSystem';
 import { HeaderBar } from './components/HeaderBar';
+import {
+  DEFAULT_TOOLBAR_LABEL_POSITION,
+  normalizeToolbarLabelPosition,
+  type ToolbarLabelPosition,
+} from './components/CommandBarControl';
 import type { CommandPaletteCommand } from './components/CommandPalette';
 import { WindowTitleBar } from './components/WindowTitleBar';
 import { Sidebar } from './components/Sidebar';
@@ -127,6 +132,7 @@ const TYPING_ACTIVATES_FILTER_KEY = 'cyberfiles_typing_activates_filter_v1';
 const MOUSE_GESTURES_ENABLED_KEY = 'cyberfiles_mouse_gestures_enabled_v1';
 const FOLDER_STYLE_LOCKED_KEY = 'cyberfiles_folder_style_locked';
 const SIDEBAR_LOCATIONS_NEW_TAB_KEY = 'cyberfiles_sidebar_locations_open_in_new_tab_v1';
+const TOOLBAR_LABEL_POSITION_KEY = 'cyberfiles_toolbar_label_position_v1';
 const NEW_TABS_NEXT_TO_CURRENT_KEY = 'cyberfiles_new_tabs_next_to_current_v1';
 const SHOW_NEW_TAB_BUTTON_KEY = 'cyberfiles_show_new_tab_button_v1';
 const DOUBLE_CLICK_TAB_BAR_KEY = 'cyberfiles_double_click_tab_bar_v2';
@@ -372,6 +378,14 @@ function readBooleanPreference(key: string, defaultValue: boolean): boolean {
     return saved === null ? defaultValue : saved === 'true';
   } catch {
     return defaultValue;
+  }
+}
+
+function readToolbarLabelPositionPreference(): ToolbarLabelPosition {
+  try {
+    return normalizeToolbarLabelPosition(window.localStorage.getItem(TOOLBAR_LABEL_POSITION_KEY));
+  } catch {
+    return DEFAULT_TOOLBAR_LABEL_POSITION;
   }
 }
 
@@ -939,6 +953,7 @@ export default function App() {
   const [compactPreviewSplitPercent, setCompactPreviewSplitPercent] = useState(70);
   const [sidebarSplitPercent, setSidebarSplitPercent] = useState(initialPanelPreferences.sidebarSplitPercent);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(initialPanelPreferences.sidebarOpen);
+  const [toolbarLabelPosition, setToolbarLabelPosition] = useState<ToolbarLabelPosition>(readToolbarLabelPositionPreference);
   const [previewOpen, setPreviewOpen] = useState<boolean>(initialPanelPreferences.previewOpen);
   const [activePane, setActivePane] = useState<WorkspacePaneId>(initialSessionSnapshot?.activePane ?? initialPanelPreferences.activePane);
   const [viewportWidth, setViewportWidth] = useState(() => typeof window === 'undefined' ? 1200 : window.innerWidth);
@@ -1832,6 +1847,14 @@ export default function App() {
       // Keep the selected behavior for the current session when storage is unavailable.
     }
   }, [sidebarLocationsOpenInNewTab]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(TOOLBAR_LABEL_POSITION_KEY, toolbarLabelPosition);
+    } catch {
+      // Keep the selected label position for the current session when storage is unavailable.
+    }
+  }, [toolbarLabelPosition]);
 
   useEffect(() => {
     try {
@@ -4851,6 +4874,13 @@ export default function App() {
         return;
       }
 
+      // Ctrl + L: Toggle the locations panel
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'l' || e.key === 'L')) {
+        e.preventDefault();
+        setSidebarOpen(prev => !prev);
+        return;
+      }
+
       // Alt + 1 / 2 / 3: Layout Modes (Dual Vertical / Dual Horizontal / Single)
       if (e.altKey && !e.ctrlKey && !e.shiftKey && (e.key === '1' || e.key === '2' || e.key === '3')) {
         e.preventDefault();
@@ -5129,7 +5159,7 @@ export default function App() {
     { id: 'batch-rename', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.batchRename, shortcut: 'Ctrl+R', disabled: Boolean(selectionDisabledReason), disabledReason: selectionDisabledReason, keywords: 'multiple names', onSelect: () => setIsBatchRenameOpen(true) },
     { id: 'delete-selection', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.delete, shortcut: 'Delete', disabled: Boolean(selectionDisabledReason) || !isTauriDesktop(), disabledReason: !isTauriDesktop() ? t.core.desktopFileOperationsOnly : selectionDisabledReason, keywords: 'remove recycle bin', onSelect: () => handleDeleteSelected(selectedItemsForDelete) },
     { id: 'show-preview', group: t.commandPalette.groups.actions, label: previewOpen ? t.commandPalette.commands.hidePreview : t.commandPalette.commands.showPreview, shortcut: 'F3 / Space', keywords: 'properties preview pane', onSelect: () => setPreviewOpen(value => !value) },
-    { id: 'show-locations', group: t.commandPalette.groups.actions, label: sidebarOpen ? t.commandPalette.commands.hideLocations : t.commandPalette.commands.showLocations, keywords: 'sidebar locations quick access drives', onSelect: () => setSidebarOpen(value => !value) },
+    { id: 'show-locations', group: t.commandPalette.groups.actions, label: sidebarOpen ? t.commandPalette.commands.hideLocations : t.commandPalette.commands.showLocations, shortcut: 'Ctrl+L', keywords: 'sidebar locations quick access drives', onSelect: () => setSidebarOpen(value => !value) },
     { id: 'show-hidden', group: t.commandPalette.groups.actions, label: showHiddenFiles ? t.commandPalette.commands.hideHidden : t.commandPalette.commands.showHidden, keywords: 'hidden files folders', onSelect: () => setShowHiddenFiles(value => !value) },
     { id: 'show-extensions', group: t.commandPalette.groups.actions, label: showFileExtensions ? t.commandPalette.commands.hideExtensions : t.commandPalette.commands.showExtensions, keywords: 'file suffix type', onSelect: () => setShowFileExtensions(value => !value) },
     { id: 'relative-graphs', group: t.commandPalette.groups.actions, label: relativeGraphsEnabled ? t.commandPalette.commands.hideGraphs : t.commandPalette.commands.showGraphs, keywords: 'relative size date bars', onSelect: () => setRelativeGraphsEnabled(value => !value) },
@@ -5315,6 +5345,7 @@ export default function App() {
         onToggleSidebarDrawer={() => setSidebarDrawerOpen(open => !open)}
         locationsPanelOpen={sidebarOpen}
         onToggleLocationsPanel={() => setSidebarOpen(value => !value)}
+        toolbarLabelPosition={toolbarLabelPosition}
         onOpenWorkspaceManager={() => setIsWorkspaceManagerOpen(true)}
         workspaceChangesPending={layoutDirty || sessionDirty}
         viewMode={currentTab.viewMode}
@@ -6126,6 +6157,8 @@ export default function App() {
             onNewTabsNextToCurrentChange={setNewTabsNextToCurrent}
             tabStripPosition={tabStripPosition}
             onTabStripPositionChange={setTabStripPosition}
+            toolbarLabelPosition={toolbarLabelPosition}
+            onToolbarLabelPositionChange={setToolbarLabelPosition}
             showNewTabButton={showNewTabButton}
             onShowNewTabButtonChange={setShowNewTabButton}
             newTabButtonAction={newTabButtonAction}

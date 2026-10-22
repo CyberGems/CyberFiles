@@ -11,6 +11,7 @@ import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
 import { isTauriDesktop } from '../utils/nativeFileSystem';
 import { ColorValueEditor } from './ColorValueEditor';
+import { TOOLBAR_LABEL_POSITIONS, type ToolbarLabelPosition } from './CommandBarControl';
 
 interface GlobalShortcutSettingsState {
   enabled: boolean;
@@ -79,6 +80,8 @@ interface SettingsModalProps {
   onNewTabsNextToCurrentChange: (enabled: boolean) => void;
   tabStripPosition: TabStripPosition;
   onTabStripPositionChange: (position: TabStripPosition) => void;
+  toolbarLabelPosition: ToolbarLabelPosition;
+  onToolbarLabelPositionChange: (position: ToolbarLabelPosition) => void;
   showNewTabButton: boolean;
   onShowNewTabButtonChange: (enabled: boolean) => void;
   newTabButtonAction: NewTabActionPreference;
@@ -185,6 +188,8 @@ export function SettingsModal({
   onNewTabsNextToCurrentChange,
   tabStripPosition,
   onTabStripPositionChange,
+  toolbarLabelPosition,
+  onToolbarLabelPositionChange,
   showNewTabButton,
   onShowNewTabButtonChange,
   newTabButtonAction,
@@ -814,6 +819,30 @@ export function SettingsModal({
                       <span className="mt-1 block">{t.settings.showTooltipsDescription}</span>
                     </span>
                   </label>
+              </div>
+              <div data-settings-search-unit className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                <div className="font-medium text-neutral-200">{t.settings.toolbarLabels}</div>
+                <p className="mt-1">{t.settings.toolbarLabelsDescription}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {TOOLBAR_LABEL_POSITIONS.map(position => (
+                    <label
+                      key={position}
+                      className={toolbarLabelPosition === position
+                        ? 'flex cursor-pointer items-center gap-1.5 rounded-md border border-cyan-700 bg-cyan-950/45 px-2.5 py-1.5 text-cyan-100'
+                        : 'flex cursor-pointer items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900/60 px-2.5 py-1.5 text-neutral-300 transition-colors hover:border-neutral-600'}
+                    >
+                      <input
+                        type="radio"
+                        name="toolbar-label-position"
+                        value={position}
+                        checked={toolbarLabelPosition === position}
+                        onChange={() => onToolbarLabelPositionChange(position)}
+                        className="h-3.5 w-3.5 accent-cyan-400"
+                      />
+                      <span>{position === 'none' ? t.settings.toolbarLabelNone : position === 'right' ? t.settings.toolbarLabelRight : position === 'left' ? t.settings.toolbarLabelLeft : position === 'top' ? t.settings.toolbarLabelTop : t.settings.toolbarLabelBottom}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

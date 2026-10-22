@@ -250,6 +250,7 @@ Pushing an annotated `v*` tag that matches the versions in `package.json` and `s
 | `F1` | Open the keyboard shortcuts cheat sheet |
 | `F2` | Rename the selected item |
 | `F3` or `Space` | Show or hide the properties panel |
+| `Ctrl+L` | Show or hide the locations panel |
 | `F5` | Copy the selection to the opposite pane |
 | `F6` | Move the selection to the opposite pane |
 | `F7` | Create a folder in the current location |

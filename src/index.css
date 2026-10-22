@@ -203,6 +203,217 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   background: linear-gradient(180deg, #174764 0%, #0d3047 100%);
 }
 
+/* Command bar controls: every action shares one height, one frame and one label
+   treatment, so the row reads as a single system instead of mixed button styles. */
+.cyberfiles-command-bar {
+  --command-control-height: 34px;
+}
+
+.cyberfiles-command-bar[data-label-position='top'],
+.cyberfiles-command-bar[data-label-position='bottom'] {
+  --command-control-height: 48px;
+}
+
+.command-control,
+.command-segment {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: var(--command-control-height);
+  min-width: var(--command-control-height);
+  padding: 0 7px;
+  border: 1px solid var(--color-neutral-800);
+  border-radius: 4px;
+  background: var(--color-neutral-900);
+  color: var(--color-neutral-300);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+
+.command-control:hover:not(:disabled):not(.command-split) {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-100);
+}
+
+.command-control:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+:is(.command-control, .command-segment)[data-label='none'] {
+  padding: 0;
+}
+
+:is(.command-control, .command-segment)[data-label='left'] {
+  flex-direction: row-reverse;
+}
+
+:is(.command-control, .command-segment)[data-label='bottom'] {
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 6px;
+}
+
+:is(.command-control, .command-segment)[data-label='top'] {
+  flex-direction: column-reverse;
+  gap: 2px;
+  padding: 0 6px;
+}
+
+.command-control-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.command-control-icon > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.command-control-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+.command-control-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--color-neutral-950);
+  border-radius: 9999px;
+  background: var(--color-amber-300);
+}
+
+/* Segmented options (view modes, pane layouts) keep a single frame around them. */
+.command-group {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 2px;
+  height: var(--command-control-height);
+  padding: 3px;
+  border: 1px solid var(--color-neutral-800);
+  border-radius: 4px;
+  background: var(--color-neutral-950);
+}
+
+.command-group > .command-segment {
+  height: 100%;
+  min-width: 0;
+  border-color: transparent;
+  background: transparent;
+}
+
+.command-group > .command-segment:hover:not(:disabled) {
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-100);
+}
+
+/* Split controls: primary action and its caret share the same frame. */
+.command-split {
+  padding: 0;
+  gap: 0;
+  align-items: stretch;
+  overflow: hidden;
+}
+
+/* The label direction applies to the primary half, never to the frame itself. */
+.command-split[data-label] {
+  flex-direction: row;
+  padding: 0;
+  gap: 0;
+}
+
+.command-split > .command-split-main {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 100%;
+  padding: 0 7px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.command-split > .command-split-main[data-label='left'] {
+  flex-direction: row-reverse;
+}
+
+.command-split > .command-split-main[data-label='bottom'] {
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 6px;
+}
+
+.command-split > .command-split-main[data-label='top'] {
+  flex-direction: column-reverse;
+  gap: 2px;
+  padding: 0 6px;
+}
+
+.command-split > .command-split-main:hover:not(:disabled) {
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-100);
+}
+
+.command-split > .command-split-main:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.command-split > .command-split-caret {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  border: 0;
+  border-left: 1px solid var(--color-neutral-800);
+  background: transparent;
+  color: var(--color-neutral-400);
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.command-split > .command-split-caret:hover:not(:disabled) {
+  background: var(--color-neutral-800);
+  color: var(--color-neutral-100);
+}
+
+.command-split > .command-split-caret:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Default workbench theme keeps the navy chrome for the unified controls. */
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-control {
+  border-color: #1f465e;
+  background: linear-gradient(180deg, rgba(20, 55, 75, 0.72) 0%, rgba(9, 31, 46, 0.8) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 1px 1px rgba(0, 0, 0, 0.28);
+  color: #d7e6ef;
+}
+
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-control:hover:not(:disabled):not(.command-split) {
+  border-color: #36718f;
+  background: linear-gradient(180deg, #174764 0%, #0d3047 100%);
+}
+
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split > .command-split-caret {
+  border-left-color: #1f465e;
+}
+
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-pane {
   border-color: #193b50;
   border-radius: 0;
