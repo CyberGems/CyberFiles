@@ -89,14 +89,14 @@ export function TrayMenu() {
       ? 'is-minimized'
       : 'is-hidden';
 
-  const reportSize = useCallback(() => {
+  const reportSize = useCallback((view: TrayView) => {
     const card = cardRef.current;
     if (!card) return;
     const borderY = card.offsetHeight - card.clientHeight;
     const width = Math.ceil(card.offsetWidth + 40);
     const height = Math.ceil(card.scrollHeight + borderY + 44);
     if (width < 10 || height < 10) return;
-    void invoke('tray_menu_ready', { width, height }).catch(() => {});
+    void invoke('tray_menu_ready', { width, height, view }).catch(() => {});
   }, []);
 
   const refresh = useCallback(async () => {
@@ -109,7 +109,7 @@ export function TrayMenu() {
     } catch {
       setLanguage(readLanguage(false));
     }
-    window.requestAnimationFrame(() => window.requestAnimationFrame(reportSize));
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => reportSize('main')));
   }, [reportSize]);
 
   const runAction = (action: string) => {
@@ -129,19 +129,33 @@ export function TrayMenu() {
 
   useEffect(() => {
     void refresh();
+    // Seed the size cache synchronously while the window is still hidden, so
+    // the very first opening already uses the real geometry. requestAnimationFrame
+    // is not relied upon here because it may not fire for an invisible window.
+    reportSize('main');
     let cancelled = false;
     let stopListening: (() => void) | undefined;
+    let stopHideListening: (() => void) | undefined;
     void listen('tray-menu-show', () => {
       void refresh();
     }).then(stop => {
       if (cancelled) stop();
       else stopListening = stop;
     });
+    // Reset the deck while the menu is invisible: the next opening then shows
+    // the main view at the size cached for it, with no visible reflow.
+    void listen('tray-menu-hide', () => {
+      setView('main');
+    }).then(stop => {
+      if (cancelled) stop();
+      else stopHideListening = stop;
+    });
     return () => {
       cancelled = true;
       stopListening?.();
+      stopHideListening?.();
     };
-  }, [refresh]);
+  }, [refresh, reportSize]);
 
   useEffect(() => {
     const onFocus = () => {
@@ -152,7 +166,7 @@ export function TrayMenu() {
   }, [refresh]);
 
   useEffect(() => {
-    window.requestAnimationFrame(() => window.requestAnimationFrame(reportSize));
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => reportSize(view)));
   }, [view, reportSize]);
 
   useEffect(() => {

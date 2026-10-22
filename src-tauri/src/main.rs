@@ -43,6 +43,12 @@ struct TrayMenuState {
 /// kept so the window can be re-anchored once the page reports its real size.
 struct TrayMenuAnchor(Mutex<Option<(i32, i32)>>);
 
+/// Last size the webview reported, keyed by deck view. The menu opens at the
+/// cached size of the view it is about to show, so the window is already at
+/// its final geometry on the first frame instead of appearing at an estimated
+/// size and visibly sliding while it is resized.
+struct TrayMenuSizes(Mutex<HashMap<String, (f64, f64)>>);
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct GlobalShortcutPreferences {
@@ -4039,19 +4045,38 @@ fn apply_tray_menu_geometry(app: &tauri::AppHandle, width: f64, height: f64) {
     let _ = window.set_position(PhysicalPosition::new(x, y));
 }
 
+/// Hides the tray menu and tells the page to fall back to the main view while
+/// it is invisible, so the next opening always starts from the same state.
+fn hide_tray_menu_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("tray_menu") {
+        let _ = window.hide();
+        let _ = app.emit("tray-menu-hide", ());
+    }
+}
+
 fn show_tray_menu_at(app: tauri::AppHandle, anchor_x: i32, anchor_y: i32) {
     let Some(window) = app.get_webview_window("tray_menu") else {
         return;
     };
     // A second right click while the menu is open closes it, like a native menu.
     if window.is_visible().unwrap_or(false) {
-        let _ = window.hide();
+        hide_tray_menu_window(&app);
         return;
     }
     if let Ok(mut anchor) = app.state::<TrayMenuAnchor>().0.lock() {
         *anchor = Some((anchor_x, anchor_y));
     }
-    apply_tray_menu_geometry(&app, TRAY_MENU_EST_WIDTH, TRAY_MENU_EST_HEIGHT);
+    // The deck is always back on the main view while hidden, so the size it
+    // reported last time is the one to open with. It was measured while the
+    // window was invisible, which makes the very first opening exact too.
+    let (width, height) = app
+        .state::<TrayMenuSizes>()
+        .0
+        .lock()
+        .ok()
+        .and_then(|sizes| sizes.get("main").copied())
+        .unwrap_or((TRAY_MENU_EST_WIDTH, TRAY_MENU_EST_HEIGHT));
+    apply_tray_menu_geometry(&app, width, height);
     let _ = window.show();
     let _ = window.set_focus();
     let _ = app.emit("tray-menu-show", ());
@@ -4066,15 +4091,16 @@ fn reveal_main_window(app: &tauri::AppHandle) {
 }
 
 #[tauri::command]
-fn tray_menu_ready(app: tauri::AppHandle, width: f64, height: f64) {
+fn tray_menu_ready(app: tauri::AppHandle, width: f64, height: f64, view: String) {
+    if let Ok(mut sizes) = app.state::<TrayMenuSizes>().0.lock() {
+        sizes.insert(view, (width, height));
+    }
     apply_tray_menu_geometry(&app, width, height);
 }
 
 #[tauri::command]
 fn hide_tray_menu(app: tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("tray_menu") {
-        let _ = window.hide();
-    }
+    hide_tray_menu_window(&app);
 }
 
 #[derive(Serialize)]
@@ -4111,9 +4137,7 @@ fn get_tray_menu_state(app: tauri::AppHandle) -> TrayMenuSnapshot {
 
 #[tauri::command]
 fn tray_menu_action(app: tauri::AppHandle, action: String) {
-    if let Some(menu) = app.get_webview_window("tray_menu") {
-        let _ = menu.hide();
-    }
+    hide_tray_menu_window(&app);
     match action.as_str() {
         "toggle" => toggle_main_window(&app),
         "settings" => {
@@ -5598,6 +5622,7 @@ fn main() {
                 tray: Mutex::new(None),
             });
             app.manage(TrayMenuAnchor(Mutex::new(None)));
+            app.manage(TrayMenuSizes(Mutex::new(HashMap::new())));
 
             let tray_icon = TrayIconBuilder::with_id("cyberfiles-tray")
                 .icon(
@@ -5671,9 +5696,11 @@ fn main() {
             // way a native popup menu does.
             if let Some(tray_window) = app.get_webview_window("tray_menu") {
                 let tray_window_for_blur = tray_window.clone();
+                let app_for_blur = app.handle().clone();
                 tray_window.on_window_event(move |event| {
                     if let WindowEvent::Focused(false) = event {
                         let _ = tray_window_for_blur.hide();
+                        let _ = app_for_blur.emit("tray-menu-hide", ());
                     }
                 });
             }
