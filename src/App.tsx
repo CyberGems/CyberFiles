@@ -2272,7 +2272,7 @@ export default function App() {
   }, [activeFolderItem, currentTab.selectedIds, filesById]);
 
   useEffect(() => {
-    if (!previewItem || previewItem.isFolder || previewItem.contentPreview !== undefined || !isTextPreviewableFile(previewItem)) {
+    if (!previewItem || previewItem.isFolder || previewItem.contentPreview != null || !isTextPreviewableFile(previewItem)) {
       return;
     }
 
@@ -3895,10 +3895,15 @@ export default function App() {
           extension: item.isFolder ? '' : getFileExtension(newName),
           type: detectFileType(newName, item.isFolder),
         };
-        setAllFiles(previous => [
-          ...previous.filter(candidate => !isSameOrDescendantPath(candidate.path, item.path)),
-          renamedEntry,
-        ]);
+        setAllFiles(previous => {
+          /* The refresh above re-lists the folder, so the renamed item is normally already in the
+             list under its new path: appending the synthetic entry on top produced a second row
+             with the same id — the ghost copy that vanished on the next manual refresh. Drop the
+             old subtree and keep the refreshed entry when it is there. */
+          const kept = previous.filter(candidate => !isSameOrDescendantPath(candidate.path, item.path));
+          const alreadyListed = kept.some(candidate => getPathKey(candidate.path) === getPathKey(renamedPath));
+          return alreadyListed ? kept : [...kept, renamedEntry];
+        });
         updatePaneTab(pane, tab => ({ ...tab, selectedIds: [renamedId], focusedId: renamedId }));
         showToast(t.core.renamed.replace('{name}', newName));
       } catch (error) {
@@ -4065,10 +4070,13 @@ export default function App() {
           });
         }
         await refreshChangedDirectories(changedRoots.map(root => getParentPath(root.path)));
-        setAllFiles(previous => [
-          ...previous.filter(candidate => !changedRoots.some(root => isSameOrDescendantPath(candidate.path, root.path))),
-          ...renamedEntries,
-        ]);
+        setAllFiles(previous => {
+          /* Same guard as the inline rename: the refresh already lists the renamed items under
+             their new paths, so only the ones it did not return are added here. */
+          const kept = previous.filter(candidate => !changedRoots.some(root => isSameOrDescendantPath(candidate.path, root.path)));
+          const listedKeys = new Set(kept.map(candidate => getPathKey(candidate.path)));
+          return [...kept, ...renamedEntries.filter(entry => !listedKeys.has(getPathKey(entry.path)))];
+        });
         const renamedIds = renamedPaths.map(path => `native-${encodeURIComponent(path.toLowerCase())}`);
         if (renamedIds.length > 0) updateActiveTab(tab => ({ ...tab, selectedIds: renamedIds, focusedId: renamedIds[0] }));
         if (failures.length > 0) {

@@ -650,7 +650,7 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
                 handlers.renderRenameInput(item, 'min-w-0 flex-1')
               ) : (
                 <Tooltip label={renderItemTooltipContent(item, { t, language, folderChildCountState, folderSizeState, isTauri, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, isRecycleBin, dateFormat, isRecentlyActive, isHidden })} placement="top" boundary=".cyberfiles-file-viewport">
-                  <span data-file-column-content={column} onMouseEnter={() => handlers.onNameMouseEnter(item)} onMouseLeave={() => handlers.onNameMouseLeave(item)} className={`${flatLabel ? 'max-w-[55%] ' : ''}truncate text-[11.5px] font-medium text-neutral-100`} style={detailsItemNameStyle(isSelected, isHidden, isRecentlyChanged, hiddenItemStyle, recentItemStyle)} >{getDisplayItemName(item, showFileExtensions)}</span>
+                  <span data-file-column-content={column} data-file-name="true" onMouseEnter={() => handlers.onNameMouseEnter(item)} onMouseLeave={() => handlers.onNameMouseLeave(item)} className={`${flatLabel ? 'max-w-[55%] ' : ''}truncate text-[11.5px] font-medium text-neutral-100`} style={detailsItemNameStyle(isSelected, isHidden, isRecentlyChanged, hiddenItemStyle, recentItemStyle)} >{getDisplayItemName(item, showFileExtensions)}</span>
                 </Tooltip>
               )}
               {folderBadge}
@@ -851,6 +851,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const clearPendingDeselection = () => {
     if (pendingDeselectionRef.current !== null) window.clearTimeout(pendingDeselectionRef.current);
     pendingDeselectionRef.current = null;
+  };
+
+  /* Explorer's gesture on an already selected row: clicking its label starts an inline rename.
+     Shared by the click path and the external rename request so both leave the row in the same
+     state — the draft ref is what the memoized row commits. */
+  const beginLocalRename = (item: FileItem) => {
+    renameCommitItemRef.current = item.id;
+    renameDraftRef.current = item.name;
+    setEditingItemId(item.id);
   };
 
   const pathInputRef = useRef<HTMLInputElement>(null);
@@ -1817,9 +1826,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const item = files.find(candidate => candidate.id === renameRequest.itemId);
     onRenameRequestHandled(renameRequest.requestId);
     if (!item || item.recycleBinId) return;
-    renameCommitItemRef.current = item.id;
-    renameDraftRef.current = item.name;
-    setEditingItemId(item.id);
+    beginLocalRename(item);
   }, [files, onRenameRequestHandled, paneId, renameRequest]);
 
   useEffect(() => {
@@ -2240,6 +2247,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (e.detail > 1) return;
 
     if (e.detail === 1 && !e.ctrlKey && !e.metaKey && !e.shiftKey && tab.selectedIds.includes(item.id)) {
+      /* A click on the label of a single selected row is Explorer's rename gesture. Anything
+         else on the row keeps collapsing the selection. Both are deferred by the same 220ms
+         window, which is what lets a double click open the item instead of renaming it. */
+      const startRename = tab.selectedIds.length === 1
+        && !item.recycleBinId
+        && Boolean((e.target as Element | null)?.closest?.('[data-file-name]'));
       const selectedIds = [...tab.selectedIds];
       const currentPath = tab.currentPath;
       const tabId = tab.id;
@@ -2249,7 +2262,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
         const selectionUnchanged = currentTab.selectedIds.length === selectedIds.length
           && currentTab.selectedIds.every((id, selectedIndex) => id === selectedIds[selectedIndex]);
         if (currentTab.id === tabId && currentTab.currentPath === currentPath && selectionUnchanged) {
-          onSelectItems([item.id], false, false);
+          if (startRename) beginLocalRename(item);
+          else onSelectItems([item.id], false, false);
         }
       }, 220);
       pendingDeselectionRef.current = timer;
@@ -2385,6 +2399,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (suppressFileClickRef.current || !singleClickOpens || event.ctrlKey || event.metaKey || event.shiftKey || item.recycleBinId) return;
     const target = event.target;
     if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+    /* Clicking the label of the only selected row is the rename gesture, even in the mode where
+       a single click opens the item. */
+    if (target instanceof Element && target.closest('[data-file-name]')
+      && tab.selectedIds.length === 1 && tab.selectedIds[0] === item.id) return;
 
     const timestamp = Date.now();
     const previous = lastSingleClickOpenRef.current;
@@ -3818,7 +3836,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   ) : (
                     <Tooltip label={renderItemTooltip(item)} placement="top" boundary=".cyberfiles-file-viewport">
                       <span className="min-w-0 flex-1">
-                        <span onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate" style={getItemNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+                        <span data-file-name="true" onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate" style={getItemNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
                         {flatParentLabel(item) && <span className="ml-1 inline-block max-w-[45%] align-bottom truncate font-sans text-[10px] text-neutral-500">· {flatParentLabel(item)}</span>}
                       </span>
                     </Tooltip>
@@ -3879,7 +3897,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     renderInlineRenameInput(item, 'w-full min-w-0', 'text-center')
                   ) : (
                     <span className="w-full min-w-0 px-1">
-                      <span className="inline-block max-w-full truncate text-[11px] font-medium" style={getItemNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+                      <span data-file-name="true" className="inline-block max-w-full truncate text-[11px] font-medium" style={getItemNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
                     </span>
                   )}
                   {flatParentLabel(item) && <span className="w-full truncate px-1 font-sans text-[9px] text-neutral-500">{flatParentLabel(item)}</span>}

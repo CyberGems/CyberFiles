@@ -394,12 +394,14 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
     }
 
     if (extension === 'html' || extension === 'htm') {
-      if (item.contentPreview === undefined) return <div className="p-6 text-center text-[11px] text-neutral-400">{t.preview.textUnavailable}</div>;
+      if (item.contentPreview == null) return <div className="p-6 text-center text-[11px] text-neutral-400">{t.preview.textUnavailable}</div>;
       return <iframe title={item.name} srcDoc={createSafeHtmlPreview(item.contentPreview)} sandbox="" referrerPolicy="no-referrer" className="h-full min-h-0 w-full border-0 bg-white" />;
     }
 
     if (extension === 'md' || extension === 'markdown') {
-      if (item.contentPreview === undefined) return <div className="p-6 text-center text-[11px] text-neutral-400">{t.preview.textUnavailable}</div>;
+      /* `== null` rather than `=== undefined`: a null from the backend used to reach the markdown
+         renderer and take the whole window down with it. */
+      if (item.contentPreview == null) return <div className="p-6 text-center text-[11px] text-neutral-400">{t.preview.textUnavailable}</div>;
       return <article className="h-full w-full min-h-0 max-h-full overflow-y-auto p-3 text-left text-[11px] leading-relaxed text-neutral-300 select-text">{renderMarkdown(item.contentPreview)}</article>;
     }
 
