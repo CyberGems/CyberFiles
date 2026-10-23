@@ -103,7 +103,8 @@ function getFileNameSuffix(filename: string): string {
 }
 
 const KNOWN_FILE_EXTENSIONS = new Set([
-  'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif', 'heic', 'heif', 'tif', 'tiff',
+  'jpg', 'jpeg', 'jpe', 'jfif', 'png', 'apng', 'gif', 'webp', 'svg', 'bmp', 'ico', 'cur',
+  'avif', 'heic', 'heif', 'tif', 'tiff',
   'rs', 'ts', 'tsx', 'js', 'jsx', 'json', 'jsonl', 'toml', 'html', 'htm', 'xml', 'css', 'py', 'cpp', 'c', 'h', 'cs', 'sql', 'yaml', 'yml', 'csv',
   'txt', 'md', 'markdown', 'log', 'ini', 'cfg', 'env', 'properties', 'sh', 'java', 'go', 'rb', 'php',
   'mp3', 'wav', 'flac', 'ogg', 'aac', 'm4a', 'opus', 'wma', 'aif', 'aiff', 'alac', 'ape',
@@ -145,12 +146,16 @@ export function detectFileType(name: string, isFolder: boolean): FileType {
   switch (ext) {
     case 'jpg':
     case 'jpeg':
+    case 'jpe':
+    case 'jfif':
     case 'png':
+    case 'apng':
     case 'gif':
     case 'webp':
     case 'svg':
     case 'bmp':
     case 'ico':
+    case 'cur':
     case 'avif':
     case 'heic':
     case 'heif':

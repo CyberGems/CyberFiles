@@ -87,6 +87,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Extracción**: extrae aquí o en una carpeta con el nombre del archivo, rechazando rutas no seguras
 - **Crear ZIP**: comprime la selección o la carpeta actual en un archivo nuevo
 - **Panel de propiedades**: vistas previas de texto, código, Markdown, HTML, imágenes y PDF, además de codificación, número de líneas y metadatos completos
+- **Vistas previas de imagen**: PNG, JPEG, GIF, WebP, BMP, TIFF, ICO y SVG, con la misma miniatura en el tooltip del archivo y en la vista de iconos
 - **Acciones rápidas**: copiar el contenido del archivo, copiar la ruta completa o abrir el diálogo de propiedades original de Windows
 
 ### 🔎 Búsqueda y herramientas

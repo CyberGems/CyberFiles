@@ -87,6 +87,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Extract**: extract here or into a folder named after the archive, with unsafe paths rejected
 - **Create ZIP**: compress the selection or the current folder into a new archive
 - **Properties panel**: text, code, Markdown, HTML, image and PDF previews, plus encoding, line count and full metadata
+- **Image previews**: PNG, JPEG, GIF, WebP, BMP, TIFF, ICO and SVG, with the same thumbnail in the file tooltip and in icon view
 - **Quick actions**: copy file content, copy the full path, or open the original Windows properties dialog
 
 ### 🔎 Search & Tools

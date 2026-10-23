@@ -3,6 +3,7 @@ import test from 'node:test';
 import { FileItem } from '../types';
 import {
   applyBatchRenamePreview,
+  detectFileType,
   getChildItems,
   getFileExtension,
   getParentPath,
@@ -45,6 +46,14 @@ test('recognizes common localized media folders for their thumbnail view default
   assert.equal(isMediaPreviewPath('D:\\Media\\Música'), true);
   assert.equal(isMediaPreviewPath('D:\\Media\\Videos'), true);
   assert.equal(isMediaPreviewPath('D:\\Media\\Projects'), false);
+});
+
+test('classifies every previewable image format as an image', () => {
+  for (const extension of ['png', 'apng', 'jpg', 'jpeg', 'jpe', 'jfif', 'gif', 'webp', 'bmp', 'ico', 'cur', 'svg', 'tif', 'tiff']) {
+    assert.equal(detectFileType(`picture.${extension}`, false), 'image', extension);
+  }
+  assert.equal(detectFileType('folder.ico', true), 'folder');
+  assert.equal(detectFileType('notes.md', false), 'text');
 });
 
 test('does not mistake a date suffix for a file extension', () => {

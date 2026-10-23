@@ -13,7 +13,7 @@ tauri-build = { version = "2", features = [] }
 base64 = "0.22.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "webp"] }
+image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "tiff", "webp"] }
 tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"

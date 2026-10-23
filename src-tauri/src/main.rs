@@ -3516,6 +3516,44 @@ async fn prepare_pdf_preview(app: tauri::AppHandle, path: String) -> Result<Stri
     .await
     .map_err(|error| format!("PDF preview worker failed: {error}"))?
 }
+/// Raster formats the `image` crate can decode with the features enabled in Cargo.toml.
+/// Keep in step with that feature list and with `detectFileType` in `src/utils/fileSystem.ts`.
+///
+/// `avif`, `heic` and `heif` are deliberately absent: the crate can only read AVIF through
+/// `avif-native`, which needs a vendored dav1d build, and it cannot read HEIF at all. They are
+/// still classified as images on the frontend, so the preview area says the format is
+/// unsupported instead of silently showing the wrong thing. The way to cover them is a
+/// Windows shell thumbnail fallback (`IShellItemImageFactory`), which would also pick up any
+/// other format the OS has a thumbnail provider for.
+const RASTER_IMAGE_EXTENSIONS: &[&str] = &[
+    "apng", "bmp", "cur", "gif", "ico", "jfif", "jpe", "jpeg", "jpg", "png", "tif", "tiff", "webp",
+];
+
+/// SVG is not raster, so it is handed to the webview untouched; everything else is decoded.
+const MAX_SVG_PREVIEW_BYTES: u64 = 512 * 1024;
+const MAX_IMAGE_PREVIEW_BYTES: u64 = 64 * 1024 * 1024;
+const THUMBNAIL_MAX_WIDTH: u32 = 256;
+const THUMBNAIL_MAX_HEIGHT: u32 = 176;
+
+/// An SVG is served as a data URL instead of being rasterised: the webview already knows how
+/// to draw it, and inside an `<img>` it runs in secure static mode, so scripts and external
+/// references stay disabled. That gives a real vector preview with no rasteriser dependency.
+fn svg_thumbnail_data_url(file_path: &Path) -> Option<String> {
+    let metadata = fs::metadata(file_path).ok()?;
+    if metadata.len() == 0 || metadata.len() > MAX_SVG_PREVIEW_BYTES {
+        return None;
+    }
+    let bytes = fs::read(file_path).ok()?;
+    let head = String::from_utf8_lossy(&bytes[..bytes.len().min(4096)]).to_ascii_lowercase();
+    if !head.contains("<svg") {
+        return None;
+    }
+    Some(format!(
+        "data:image/svg+xml;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    ))
+}
+
 #[tauri::command]
 async fn image_thumbnail(path: String) -> Option<String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -3524,13 +3562,14 @@ async fn image_thumbnail(path: String) -> Option<String> {
             .extension()?
             .to_string_lossy()
             .to_ascii_lowercase();
-        if !matches!(
-            extension.as_str(),
-            "bmp" | "gif" | "jpeg" | "jpg" | "png" | "webp"
-        ) {
+
+        if extension == "svg" {
+            return svg_thumbnail_data_url(file_path);
+        }
+        if !RASTER_IMAGE_EXTENSIONS.contains(&extension.as_str()) {
             return None;
         }
-        if fs::metadata(file_path).ok()?.len() > 64 * 1024 * 1024 {
+        if fs::metadata(file_path).ok()?.len() > MAX_IMAGE_PREVIEW_BYTES {
             return None;
         }
 
@@ -3538,13 +3577,28 @@ async fn image_thumbnail(path: String) -> Option<String> {
             .ok()?
             .with_guessed_format()
             .ok()?;
+        // Cursor files reuse the ICO container but carry their own magic bytes, which the
+        // format guesser does not know; the extension is the only reliable hint.
+        if extension == "cur" {
+            reader.set_format(image::ImageFormat::Ico);
+        }
         let mut limits = image::Limits::default();
         limits.max_image_width = Some(12_000);
         limits.max_image_height = Some(12_000);
         limits.max_alloc = Some(64 * 1024 * 1024);
         reader.limits(limits);
 
-        let thumbnail = reader.decode().ok()?.thumbnail(256, 176);
+        let decoded = reader.decode().ok()?;
+        // Never upscale. An ICO usually only carries 16-48px entries, and blowing those up
+        // with the nearest-neighbour resampler turns them into mush; the browser scales the
+        // real pixels far more gently when it draws them.
+        let thumbnail = if decoded.width() > THUMBNAIL_MAX_WIDTH
+            || decoded.height() > THUMBNAIL_MAX_HEIGHT
+        {
+            decoded.thumbnail(THUMBNAIL_MAX_WIDTH, THUMBNAIL_MAX_HEIGHT)
+        } else {
+            decoded
+        };
         let mut png = Cursor::new(Vec::new());
         thumbnail.write_to(&mut png, image::ImageFormat::Png).ok()?;
         Some(format!(
