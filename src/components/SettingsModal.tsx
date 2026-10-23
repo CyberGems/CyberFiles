@@ -10,6 +10,7 @@ import type { FolderStylePreference, SavedFolderStyles } from '../utils/folderSt
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
 import { isTauriDesktop } from '../utils/nativeFileSystem';
+import type { DeleteConfirmationPreference } from '../utils/deletePreferences';
 import { ColorValueEditor } from './ColorValueEditor';
 import { TOOLBAR_LABEL_POSITIONS, type ToolbarLabelPosition } from './CommandBarControl';
 
@@ -74,6 +75,10 @@ interface SettingsModalProps {
   onAutoFolderSizeEnabledChange: (enabled: boolean) => void;
   singleClickOpen: boolean;
   onSingleClickOpenChange: (enabled: boolean) => void;
+  /* The remembered answer for the delete dialog. Turning "ask" back on is the only way out of
+     a dismissed dialog, so the card stays visible in both states. */
+  deleteConfirmation: DeleteConfirmationPreference;
+  onDeleteConfirmationChange: (preference: DeleteConfirmationPreference) => void;
   sidebarLocationsOpenInNewTab: boolean;
   onSidebarLocationsOpenInNewTabChange: (enabled: boolean) => void;
   newTabsNextToCurrent: boolean;
@@ -182,6 +187,8 @@ export function SettingsModal({
   onAutoFolderSizeEnabledChange,
   singleClickOpen,
   onSingleClickOpenChange,
+  deleteConfirmation,
+  onDeleteConfirmationChange,
   sidebarLocationsOpenInNewTab,
   onSidebarLocationsOpenInNewTabChange,
   newTabsNextToCurrent,
@@ -932,6 +939,43 @@ export function SettingsModal({
               )}
               {instancePreferencesSupported && !instancePreferencesLoaded && (
                 <p className="mt-1 pl-6">{t.settings.instancePreferencesUnavailable}</p>
+              )}
+            </div>
+          </div>
+
+          <div data-settings-search-unit className="border-t border-neutral-800 pt-4">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.deletionSection}</div>
+            <div className="space-y-2">
+              <div data-settings-search-unit className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                <label className="flex cursor-pointer items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={deleteConfirmation.ask}
+                    onChange={event => onDeleteConfirmationChange({ ...deleteConfirmation, ask: event.target.checked })}
+                    className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                  />
+                  <span>
+                    <span className="block font-medium text-neutral-200">{t.settings.confirmDelete}</span>
+                    <span className="mt-1 block">{t.settings.confirmDeleteDescription}</span>
+                  </span>
+                </label>
+              </div>
+              {/* Only meaningful while the dialog is skipped: it is the answer that will be used. */}
+              {!deleteConfirmation.ask && (
+                <div data-settings-search-unit className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                  <label className="flex cursor-pointer items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={deleteConfirmation.permanently}
+                      onChange={event => onDeleteConfirmationChange({ ...deleteConfirmation, permanently: event.target.checked })}
+                      className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-rose-500 focus:ring-rose-400"
+                    />
+                    <span>
+                      <span className="block font-medium text-neutral-200">{t.settings.deletePermanentlyDefault}</span>
+                      <span className="mt-1 block">{t.settings.deletePermanentlyDefaultDescription}</span>
+                    </span>
+                  </label>
+                </div>
               )}
             </div>
           </div>

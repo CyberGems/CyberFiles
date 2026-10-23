@@ -76,6 +76,7 @@ import type { UndoHistoryItem } from './components/UndoHistoryMenu';
 
 import { useLanguage } from './locales/LanguageContext';
 import { readPaneColumnPreferences, writePaneColumnPreferences } from './utils/fileColumnPreferences';
+import { readDeleteConfirmation, writeDeleteConfirmation, type DeleteConfirmationPreference } from './utils/deletePreferences';
 import { folderStylePathKey, folderStyleToCarry, readSavedFolderStyles, resolveFolderStyle, savedFolderStyleForPath, writeSavedFolderStyles, type SavedFolderStyles } from './utils/folderStylePreferences';
 import { FolderIconModal } from './components/FolderIconModal';
 import {
@@ -677,16 +678,19 @@ const MAX_TAB_HISTORY_ENTRIES = 200;
 const getPathKey = (path: string) => normalizeWindowsPath(path).replace(/[\\/]+$/, '').toLowerCase();
 const createOperationId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-async function findRecentRecycleBinItems(paths: string[], startedAtMs: number, previousIds: Set<string> | null): Promise<FileItem[]> {
-  if (!previousIds) return [];
+/* Resolves the Recycle Bin entry a just-deleted path turned into, which is what the undo
+   entry needs. It reads the first Shell page only (the listing walks up to 400 entries) and
+   keeps the newest match per path, so it never needs a snapshot of the bin taken before the
+   move: a path deleted twice keeps both entries, and the newest one is the one this delete
+   produced. */
+async function findRecentRecycleBinItems(paths: string[], startedAtMs: number): Promise<FileItem[]> {
   const wanted = new Set(paths.map(getPathKey));
   const newestByPath = new Map<string, FileItem>();
-  // Recycle Bin paging re-enumerates earlier Shell entries, so keep this lookup bounded.
   const page = await listNativeRecycleBin(0);
   for (const item of page.entries) {
     const originalPath = item.originalPath ?? item.path;
     const key = getPathKey(originalPath);
-    if (!item.recycleBinId || previousIds.has(item.recycleBinId) || !wanted.has(key) || (item.modifiedAtMs ?? 0) < startedAtMs - 2_000) continue;
+    if (!item.recycleBinId || !wanted.has(key) || (item.modifiedAtMs ?? 0) < startedAtMs - 2_000) continue;
     const previous = newestByPath.get(key);
     if (!previous || (item.modifiedAtMs ?? 0) > (previous.modifiedAtMs ?? 0)) newestByPath.set(key, item);
   }
@@ -844,6 +848,9 @@ export default function App() {
   const [dateFormat, setDateFormat] = useState<DateFormatMode>(readDateFormatPreference);
   const [autoFolderSizeEnabled, setAutoFolderSizeEnabled] = useState(() => readBooleanPreference(AUTO_FOLDER_SIZE_ENABLED_KEY, true));
   const [singleClickOpen, setSingleClickOpen] = useState(() => readBooleanPreference(SINGLE_CLICK_OPEN_KEY, false));
+  /* Remembered answer for the delete dialog: "do not ask again" writes the mode here, and the
+     Settings card is the way back. */
+  const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmationPreference>(readDeleteConfirmation);
 
   // Global file system state
   const [allFiles, setAllFiles] = useState<FileItem[]>([]);
@@ -1237,6 +1244,8 @@ export default function App() {
     }
   });
   const [pendingDeleteItems, setPendingDeleteItems] = useState<FileItem[]>([]);
+  /* Whether the dialog opens with the permanent checkbox already ticked (Shift+Del). */
+  const [pendingDeletePermanent, setPendingDeletePermanent] = useState(false);
   const [isFileOperationBusy, setIsFileOperationBusy] = useState(false);
   const [transferOperations, setTransferOperations] = useState<TransferOperationView[]>([]);
   const transferOperationsRef = useRef<TransferOperationView[]>([]);
@@ -4313,40 +4322,13 @@ export default function App() {
     }
   }, [allFiles, isFileOperationBusy, pendingCreateItem, pushUndoAction, refreshChangedDirectories, showToast, t.core.createdFile, t.core.createdFolder, t.core.createdShortcut, t.core.desktopFileOperationsOnly, t.core.invalidName, t.core.operationFailedWithReason, t.core.shortcutTargetRequired, updatePaneTab]);
 
-  const handleDeleteSelected = useCallback((itemsToDelete?: FileItem[]) => {
-    if (!isTauriDesktop()) {
-      showToast(t.core.desktopFileOperationsOnly);
-      return;
-    }
-    const selectedItems = itemsToDelete ?? selectedItemsForDelete;
-    if (selectedItems.some(item => item.recycleBinId)) {
-      showToast(t.core.recycleBinRestoreFirst);
-      return;
-    }
-    const idsToDelete = selectedItems.map(item => item.id);
-    const roots = getRootItems(allFiles, idsToDelete);
-    if (roots.length > 0) {
-      setPendingDeleteItems(roots);
-      return;
-    }
-
-    showToast(t.core.noSelection);
-  }, [allFiles, selectedItemsForDelete, showToast, t.core.desktopFileOperationsOnly, t.core.noSelection, t.core.recycleBinRestoreFirst]);
-
-  const handleConfirmDelete = useCallback(async (permanentlyDelete = false) => {
-    if (isFileOperationBusy || pendingDeleteItems.length === 0) return;
+  /* Deletes the given roots. Shared by the dialog and by the remembered answer, so both paths
+     update the list, the toast and the undo stack in exactly the same way. */
+  const performDelete = useCallback(async (roots: FileItem[], permanentlyDelete: boolean) => {
+    if (isFileOperationBusy || roots.length === 0) return;
     setIsFileOperationBusy(true);
     try {
-      const paths = pendingDeleteItems.map(item => item.path);
-      let previousRecycleBinIds: Set<string> | null = null;
-      if (!permanentlyDelete) {
-        try {
-          const page = await listNativeRecycleBin(0);
-          previousRecycleBinIds = new Set(page.entries.flatMap(item => item.recycleBinId ? [item.recycleBinId] : []));
-        } catch {
-          previousRecycleBinIds = null;
-        }
-      }
+      const paths = roots.map(item => item.path);
       const operationStartedAt = Date.now();
       const { removedPaths, failures } = permanentlyDelete
         ? await permanentlyDeleteNativeItems(paths).then(result => ({
@@ -4386,24 +4368,36 @@ export default function App() {
             undo: null,
           });
         } else {
-          let recycledItems: FileItem[] = [];
-          try {
-            recycledItems = await findRecentRecycleBinItems(removedPaths, operationStartedAt, previousRecycleBinIds);
-          } catch {
-            recycledItems = [];
-          }
-          const allIdsFound = recycledItems.length === removedPaths.length;
+          /* The undo entry needs the Recycle Bin ids, and only the Shell knows them. Looking
+             them up used to hold the dialog open for seconds — the listing walks a Shell page
+             of up to 400 entries, and this machine's bin holds tens of thousands. Push the
+             record now as "preparing" and upgrade it when the lookup lands. */
+          const undoId = createOperationId('undo');
           pushUndoAction({
+            id: undoId,
             kind: 'recycle',
             name: '',
             count: removedPaths.length,
-            canUndo: allIdsFound,
-            blockedReason: allIdsFound ? undefined : t.toolbar.undoRecycleUnavailable,
-            undo: allIdsFound ? {
-              type: 'restore',
-              items: recycledItems.map(item => ({ id: item.recycleBinId!, originalPath: item.originalPath ?? item.path })),
-            } : null,
+            canUndo: false,
+            blockedReason: t.toolbar.undoRecyclePending,
+            undo: null,
           });
+          void findRecentRecycleBinItems(removedPaths, operationStartedAt)
+            .then(recycledItems => {
+              if (recycledItems.length !== removedPaths.length) return;
+              updateUndoAction(undoId, current => ({
+                ...current,
+                canUndo: true,
+                blockedReason: undefined,
+                undo: {
+                  type: 'restore',
+                  items: recycledItems.map(item => ({ id: item.recycleBinId!, originalPath: item.originalPath ?? item.path })),
+                },
+              }));
+            })
+            .catch(() => {
+              /* The record keeps its "unavailable" state, which is the honest outcome. */
+            });
         }
       }
 
@@ -4423,14 +4417,62 @@ export default function App() {
       setPendingDeleteItems([]);
       if (!permanentlyDelete) {
         void refreshRecycleBinStatus();
-        void refreshRecycleBinContents();
+        /* Re-listing the bin is another full Shell page. Pay it only when the bin is on
+           screen; otherwise mark it stale so opening it reloads. */
+        if ([...leftTabs, ...rightTabs].some(tab => tab.currentPath === RECYCLE_BIN_PATH)) {
+          void refreshRecycleBinContents();
+        } else {
+          recycleBinLoaded.current = false;
+        }
       }
     } catch {
       showToast(permanentlyDelete ? t.core.permanentDeleteFailed : t.core.deleteFailed);
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [allFiles, invalidateFlatDirectories, isFileOperationBusy, pendingDeleteItems, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, removeRecentPaths, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecycleUnavailable, t.toolbar.undoUnavailable]);
+  }, [allFiles, invalidateFlatDirectories, isFileOperationBusy, leftTabs, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, removeRecentPaths, rightTabs, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecyclePending, t.toolbar.undoUnavailable, updateUndoAction]);
+
+  const handleDeleteSelected = useCallback((itemsToDelete?: FileItem[], options: { permanently?: boolean } = {}) => {
+    if (!isTauriDesktop()) {
+      showToast(t.core.desktopFileOperationsOnly);
+      return;
+    }
+    const selectedItems = itemsToDelete ?? selectedItemsForDelete;
+    if (selectedItems.some(item => item.recycleBinId)) {
+      showToast(t.core.recycleBinRestoreFirst);
+      return;
+    }
+    const idsToDelete = selectedItems.map(item => item.id);
+    const roots = getRootItems(allFiles, idsToDelete);
+    if (roots.length === 0) {
+      showToast(t.core.noSelection);
+      return;
+    }
+    /* The dialog was dismissed for good: run the remembered answer straight away. Shift does
+       not override it — the promise made when the box was ticked was "always do this", and a
+       silent switch to permanent deletion would break it. */
+    if (!deleteConfirmation.ask) {
+      void performDelete(roots, deleteConfirmation.permanently);
+      return;
+    }
+    setPendingDeletePermanent(options.permanently ?? false);
+    setPendingDeleteItems(roots);
+  }, [allFiles, deleteConfirmation, performDelete, selectedItemsForDelete, showToast, t.core.desktopFileOperationsOnly, t.core.noSelection, t.core.recycleBinRestoreFirst]);
+
+  const handleConfirmDelete = useCallback((permanentlyDelete = false, rememberChoice = false) => {
+    if (rememberChoice) {
+      const next = { ask: false, permanently: permanentlyDelete };
+      setDeleteConfirmation(next);
+      writeDeleteConfirmation(next);
+    }
+    void performDelete(pendingDeleteItems, permanentlyDelete);
+  }, [pendingDeleteItems, performDelete]);
+
+  const handleDeleteConfirmationChange = useCallback((next: DeleteConfirmationPreference) => {
+    setDeleteConfirmation(next);
+    writeDeleteConfirmation(next);
+  }, []);
+
   const handleRequestEmptyRecycleBin = useCallback(() => {
     if (!recycleBinStatus?.available || recycleBinStatus.itemCount === 0) return;
     setIsEmptyRecycleBinConfirmOpen(true);
@@ -4833,10 +4875,10 @@ export default function App() {
         return;
       }
 
-      // Delete / Supr
+      // Delete / Supr — Shift opens the dialog with the permanent checkbox already ticked
       if (e.key === 'Delete') {
         e.preventDefault();
-        handleDeleteSelected();
+        handleDeleteSelected(undefined, { permanently: e.shiftKey });
         return;
       }
 
@@ -6117,6 +6159,8 @@ export default function App() {
               onConfirm={handleConfirmDelete}
               isBusy={isFileOperationBusy}
               allowPermanentDelete
+              showRememberOption
+              initialPermanentlyDelete={pendingDeletePermanent}
               confirmVariant="secondary"
             />
           )}
@@ -6210,6 +6254,8 @@ export default function App() {
             onAutoFolderSizeEnabledChange={setAutoFolderSizeEnabled}
             singleClickOpen={singleClickOpen}
             onSingleClickOpenChange={setSingleClickOpen}
+            deleteConfirmation={deleteConfirmation}
+            onDeleteConfirmationChange={handleDeleteConfirmationChange}
             sidebarLocationsOpenInNewTab={sidebarLocationsOpenInNewTab}
             onSidebarLocationsOpenInNewTabChange={setSidebarLocationsOpenInNewTab}
             newTabsNextToCurrent={newTabsNextToCurrent}

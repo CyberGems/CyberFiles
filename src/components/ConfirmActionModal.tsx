@@ -8,7 +8,7 @@ import { DialogButton } from './DialogButton';
 interface ConfirmActionModalProps {
   items: FileItem[];
   onCancel: () => void;
-  onConfirm: (permanentlyDelete?: boolean) => void;
+  onConfirm: (permanentlyDelete?: boolean, rememberChoice?: boolean) => void;
   title?: string;
   description?: string;
   confirmLabel?: string;
@@ -16,6 +16,11 @@ interface ConfirmActionModalProps {
   isBusy?: boolean;
   allowPermanentDelete?: boolean;
   confirmVariant?: 'primary' | 'secondary' | 'danger';
+  /* Shift+Del: the permanent checkbox starts ticked instead of asking for a second click. */
+  initialPermanentlyDelete?: boolean;
+  /* Only the delete confirmation can be suppressed: the other dialogs guard operations that
+     have no remembered answer. */
+  showRememberOption?: boolean;
 }
 
 export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
@@ -29,9 +34,12 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
   isBusy = false,
   allowPermanentDelete = false,
   confirmVariant = 'danger',
+  initialPermanentlyDelete = false,
+  showRememberOption = false,
 }) => {
   const { t, language } = useLanguage();
-  const [permanentlyDelete, setPermanentlyDelete] = useState(false);
+  const [permanentlyDelete, setPermanentlyDelete] = useState(initialPermanentlyDelete);
+  const [rememberChoice, setRememberChoice] = useState(false);
   if (items.length === 0 && !title) return null;
 
   const resolvedTitle = title ?? (allowPermanentDelete ? t.core.deleteItemsTitle : permanentlyDelete ? t.core.deletePermanentlyTitle : t.core.deleteTitle);
@@ -71,6 +79,29 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
               </label>
             </Tooltip>
           )}
+          {showRememberOption && (
+            <div className="rounded-lg border border-neutral-800 bg-neutral-950/40 px-3 py-2.5">
+              <label className="flex cursor-pointer items-start gap-3 text-[12px] text-neutral-300">
+                <input
+                  type="checkbox"
+                  checked={rememberChoice}
+                  disabled={isBusy}
+                  onChange={event => setRememberChoice(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 flex-shrink-0 accent-cyan-500"
+                />
+                <span>
+                  <span className="block font-medium">{t.core.rememberDeleteChoice}</span>
+                  {/* States the exact outcome, so ticking the box is never a guess. */}
+                  <span className={`mt-0.5 block text-[11px] ${rememberChoice ? (permanentlyDelete ? 'text-rose-300' : 'text-cyan-300') : 'text-neutral-500'}`}>
+                    {permanentlyDelete ? t.core.rememberDeletePermanentHint : t.core.rememberDeleteRecycleHint}
+                  </span>
+                  {rememberChoice && (
+                    <span className="mt-0.5 block text-[11px] text-neutral-500">{t.core.rememberDeleteChangeHint}</span>
+                  )}
+                </span>
+              </label>
+            </div>
+          )}
           {items.length > 0 && (
             <div className="rounded-lg border border-neutral-800 bg-neutral-950/70 p-3">
               <div className="mb-2 text-[11px] font-medium text-neutral-500">{t.core.deleteItems.replace('{count}', String(items.length))}</div>
@@ -93,7 +124,7 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
         <div className="flex justify-end gap-2 px-4 py-3 border-t border-neutral-800 bg-neutral-950/50">
           <Tooltip label={t.core.cancel} placement="top"><span><DialogButton size="compact" disabled={isBusy} onClick={onCancel}>{t.core.cancel}</DialogButton></span></Tooltip>
           <Tooltip label={permanentlyDelete ? t.core.permanentDeleteConfirmTooltip : allowPermanentDelete ? t.core.recycleBinDeleteConfirmTooltip : resolvedDescription} placement="top">
-            <span><DialogButton size="compact" variant={permanentlyDelete ? 'danger' : confirmVariant} disabled={isBusy} onClick={() => onConfirm(permanentlyDelete)}>{isBusy ? busyLabel ?? t.core.operationInProgress : resolvedConfirmLabel}</DialogButton></span>
+            <span><DialogButton size="compact" variant={permanentlyDelete ? 'danger' : confirmVariant} disabled={isBusy} onClick={() => onConfirm(permanentlyDelete, rememberChoice)}>{isBusy ? busyLabel ?? t.core.operationInProgress : resolvedConfirmLabel}</DialogButton></span>
           </Tooltip>
         </div>
       </section>

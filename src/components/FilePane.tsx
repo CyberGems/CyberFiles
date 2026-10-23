@@ -2795,6 +2795,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
     onSelectItems(source.map(item => item.id), false, false, true);
     viewportRef.current?.focus();
   };
+  /* Inverts what this pane lists, keeping any selected id that the active filter hides: those
+     rows are out of sight, so the user cannot be asking to drop them. */
+  const invertVisibleSelection = () => {
+    const selected = new Set(tab.selectedIds);
+    const preservedIds = tab.selectedIds.filter(id => !navigableIdSet.has(id));
+    const invertedIds = navigableFiles.filter(item => !selected.has(item.id)).map(item => item.id);
+    onSelectItems([...preservedIds, ...invertedIds], false, false, true, invertedIds[0] ?? preservedIds[0]);
+    viewportRef.current?.focus();
+  };
 
   const renderSystemHomeCard = (item: FileItem, index: number, category: 'folder' | 'drive' | 'network') => {
     const selected = visibleSelectedIdSet.has(item.id);
@@ -3526,6 +3535,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
         itemCountLabel={itemCountLabel}
         selectedItems={selectedItems}
         onSetSelection={ids => onSelectItems(ids, false, false, true)}
+        onSelectAll={() => selectVisibleItems()}
+        onInvertSelection={invertVisibleSelection}
+        hasSelectableItems={navigableFiles.length > 0}
         folderPath={tab.currentPath}
         onRefresh={onRefresh}
         isRecentLocation={isRecentLocation}

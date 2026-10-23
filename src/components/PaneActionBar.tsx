@@ -3,8 +3,10 @@ import {
   Archive,
   ArrowDown,
   ArrowLeft,
+  ArrowLeftRight,
   ArrowRight,
   ArrowUp,
+  BoxSelect,
   Check,
   ClipboardCopy,
   Copy,
@@ -69,6 +71,12 @@ interface PaneActionBarProps {
   itemCountLabel: string;
   selectedItems: FileItem[];
   onSetSelection: (ids: string[]) => void;
+  /* The three select shortcuts live in this menu so they are reachable in both states: with a
+     selection the row only shows the actions on that selection, and the filter field takes the
+     room the shortcuts would need. */
+  onSelectAll: () => void;
+  onInvertSelection: () => void;
+  hasSelectableItems: boolean;
   folderPath: string;
   onRefresh?: () => void;
   isRecentLocation?: boolean;
@@ -106,6 +114,9 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
   itemCountLabel,
   selectedItems,
   onSetSelection,
+  onSelectAll,
+  onInvertSelection,
+  hasSelectableItems,
   folderPath,
   onRefresh,
   isRecentLocation,
@@ -275,11 +286,62 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
     },
   ];
 
+  /* Always visible, always in its own section: with a selection the row only carries the
+     actions on that selection and the filter field owns the rest of the space, so this menu is
+     the one place where the three shortcuts sit together. Inverting an empty selection selects
+     everything, so it stays enabled whenever the folder has items. */
+  const selectMenuGroup: ActionEntry[] = [
+    {
+      key: 'select-all',
+      label: t.sidebar.selectAll,
+      icon: <BoxSelect className="h-3.5 w-3.5 text-cyan-300" />,
+      shortcut: 'Ctrl+A',
+      disabled: !hasSelectableItems,
+      onSelect: onSelectAll,
+    },
+    {
+      key: 'unselect-all',
+      label: t.sidebar.unselectAll,
+      icon: <Square className="h-3.5 w-3.5 text-neutral-400" />,
+      disabled: !hasSelection,
+      onSelect: () => onSetSelection([]),
+    },
+    {
+      key: 'invert-selection',
+      label: t.sidebar.invertSelection,
+      icon: <ArrowLeftRight className="h-3.5 w-3.5 text-amber-300" />,
+      disabled: !hasSelectableItems,
+      onSelect: onInvertSelection,
+    },
+  ];
+
+  /* Offered in both states: after deleting or renaming from the selection row, refresh has to
+     be one click away instead of a trip back to the folder menu. */
+  const paneMenuGroup: ActionEntry[] = [
+    {
+      key: 'refresh',
+      label: t.toolbar.refresh,
+      icon: <RefreshCw className="h-3.5 w-3.5 text-neutral-400" />,
+      disabled: !onRefresh || !folderPath,
+      onSelect: () => onRefresh?.(),
+    },
+    {
+      key: 'properties',
+      label: actions.propertiesOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel,
+      icon: <Info className="h-3.5 w-3.5 text-cyan-300" />,
+      shortcut: 'F3',
+      onSelect: actions.onToggleProperties,
+    },
+  ];
+
+  /* Both states share the section order: what the menu acts on, the selection shortcuts, the
+     view modes, the pane itself. Only the first section follows the selection; everything
+     below it keeps its position, so the entry you want never moves. */
   const selectionMenuGroups: ActionEntry[][] = [];
   if (hasSelection) {
-    const primary: ActionEntry[] = [];
+    const contextGroup: ActionEntry[] = [];
     if (!allFromRecycleBin && singleItem && !singleItem.isFolder) {
-      primary.push({
+      contextGroup.push({
         key: 'preview',
         label: t.sidebar.previewSelected,
         icon: <Eye className="h-3.5 w-3.5 text-cyan-300" />,
@@ -287,7 +349,7 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
       });
     }
     if (!allFromRecycleBin && singleArchive && actions.supportsArchiveExtraction) {
-      primary.push(
+      contextGroup.push(
         {
           key: 'extract-here',
           label: t.contextMenu.extractArchiveHere,
@@ -303,7 +365,7 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
       );
     }
     if (!allFromRecycleBin && actions.supportsArchiveCreation) {
-      primary.push({
+      contextGroup.push({
         key: 'compress',
         label: t.contextMenu.compressSelectedToZip,
         icon: <Archive className="h-3.5 w-3.5 text-violet-300" />,
@@ -311,54 +373,26 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
       });
     }
     if (!allFromRecycleBin && singleFolder) {
-      primary.push({
+      contextGroup.push({
         key: 'folder-icon',
         label: t.sidebar.customizeFolderIcon,
         icon: <Palette className="h-3.5 w-3.5 text-pink-400" />,
         onSelect: () => actions.onCustomizeFolderIcon(singleFolder),
       });
     }
-    if (primary.length > 0) selectionMenuGroups.push(primary);
-
-    selectionMenuGroups.push([
-      {
-        key: 'copy-path',
-        label: selectedItems.length === 1 ? t.sidebar.copySelectedPath : t.sidebar.copySelectedPaths,
-        icon: <ClipboardCopy className="h-3.5 w-3.5 text-neutral-300" />,
-        onSelect: () => actions.onCopyPath(selectedItems),
-      },
-      {
-        key: 'properties',
-        label: actions.propertiesOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel,
-        icon: <Info className="h-3.5 w-3.5 text-cyan-300" />,
-        shortcut: 'F3',
-        onSelect: actions.onToggleProperties,
-      },
-    ]);
-
-    selectionMenuGroups.push(viewMenuGroup);
-
-    selectionMenuGroups.push([
-      {
-        key: 'clear-selection',
-        label: t.sidebar.unselectAll,
-        icon: <Square className="h-3.5 w-3.5 text-neutral-400" />,
-        onSelect: () => onSetSelection([]),
-      },
-    ]);
+    /* Last in the group in both states: the folder menu closes with its own copy-path entry. */
+    contextGroup.push({
+      key: 'copy-path',
+      label: selectedItems.length === 1 ? t.sidebar.copySelectedPath : t.sidebar.copySelectedPaths,
+      icon: <ClipboardCopy className="h-3.5 w-3.5 text-neutral-300" />,
+      onSelect: () => actions.onCopyPath(selectedItems),
+    });
+    selectionMenuGroups.push(contextGroup);
+    selectionMenuGroups.push(selectMenuGroup, viewMenuGroup, paneMenuGroup);
   }
 
-  /* The select shortcuts (todo / solo archivos / solo carpetas) live in the status-bar counters
-     and in the pane context menu, so the folder menu keeps only the actions on the folder. */
   const folderMenuGroups: ActionEntry[][] = [
     [
-      {
-        key: 'copy-folder-path',
-        label: t.sidebar.copyFolderPath,
-        icon: <ClipboardCopy className="h-3.5 w-3.5 text-neutral-300" />,
-        disabled: !folderPath,
-        onSelect: () => actions.onCopyFolderPath(folderPath),
-      },
       {
         key: 'compress-folder',
         label: t.contextMenu.compressCurrentFolderToZip,
@@ -373,24 +407,17 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
         disabled: !folderPath || folderPath.startsWith('::'),
         onSelect: actions.onCustomizeCurrentFolderIcon,
       },
+      {
+        key: 'copy-folder-path',
+        label: t.sidebar.copyFolderPath,
+        icon: <ClipboardCopy className="h-3.5 w-3.5 text-neutral-300" />,
+        disabled: !folderPath,
+        onSelect: () => actions.onCopyFolderPath(folderPath),
+      },
     ],
+    selectMenuGroup,
     viewMenuGroup,
-    [
-      {
-        key: 'refresh',
-        label: t.toolbar.refresh,
-        icon: <RefreshCw className="h-3.5 w-3.5 text-neutral-400" />,
-        disabled: !onRefresh || !folderPath,
-        onSelect: () => onRefresh?.(),
-      },
-      {
-        key: 'properties',
-        label: actions.propertiesOpen ? t.toolbar.hidePropertiesPanel : t.toolbar.showPropertiesPanel,
-        icon: <Info className="h-3.5 w-3.5 text-cyan-300" />,
-        shortcut: 'F3',
-        onSelect: actions.onToggleProperties,
-      },
-    ],
+    paneMenuGroup,
     ...(isRecentLocation && onClearRecentHistory ? [[{
       key: 'clear-recent-history',
       label: t.pane.clearRecentHistory,
