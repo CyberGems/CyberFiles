@@ -24,6 +24,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
     { key: 'Ctrl + X', desc: isSpanish ? 'Cortar archivos para moverlos con Pegar' : 'Cut files to move them with Paste' },
     { key: 'Ctrl + V', desc: isSpanish ? 'Pegar en la carpeta del panel activo' : 'Paste into the active pane folder' },
     { key: 'F2', desc: isSpanish ? 'Renombrar el elemento seleccionado' : 'Rename the selected item' },
+    { key: 'Ctrl + Shift + C', desc: isSpanish ? 'Copiar la ruta de la selección, o la de la carpeta si no hay selección' : 'Copy the path of the selection, or of the folder when nothing is selected' },
     { key: 'Ctrl + R', desc: isSpanish ? 'Abrir el renombrado múltiple' : 'Open batch rename' },
     { key: 'Espacio / F3', desc: isSpanish ? 'Mostrar u ocultar el panel de propiedades' : 'Show or hide the properties panel' },
     { key: 'Ctrl + L', desc: isSpanish ? 'Mostrar u ocultar el panel de ubicaciones' : 'Show or hide the locations panel' },

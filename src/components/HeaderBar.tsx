@@ -21,6 +21,8 @@ import {
   Menu,
   PanelLeft,
   PanelRight,
+  Pencil,
+  ClipboardCopy,
 } from 'lucide-react';
 import { SYSTEM_HOME_PATH, ViewLayout, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
@@ -65,6 +67,9 @@ interface HeaderBarProps {
   onTogglePropertiesPanel: () => void;
   onNewFolder: () => void;
   onDeleteSelected: () => void;
+  onRenameSelected: () => void;
+  onCopyPath: () => void;
+  copyPathEnabled: boolean;
   undoHistory: UndoHistoryItem[];
   onUndoAction: (id: string) => void;
   undoBusy: boolean;
@@ -107,6 +112,9 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onTogglePropertiesPanel,
   onNewFolder,
   onDeleteSelected,
+  onRenameSelected,
+  onCopyPath,
+  copyPathEnabled,
   undoHistory,
   onUndoAction,
   undoBusy,
@@ -268,6 +276,16 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             labelPosition={toolbarLabelPosition}
           />
           <CommandBarButton
+            label={labels.rename}
+            labelPosition={toolbarLabelPosition}
+            icon={<Pencil className="text-amber-400" />}
+            onClick={onRenameSelected}
+            disabled={disabled}
+            tooltip={t.toolbar.rename}
+            tooltipShortcut="F2"
+            ariaLabel={t.toolbar.rename}
+          />
+          <CommandBarButton
             label={labels.delete}
             labelPosition={toolbarLabelPosition}
             icon={<Trash2 className="text-rose-400" />}
@@ -276,6 +294,15 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             tooltip={t.toolbar.delete}
             tooltipShortcut="Del"
             ariaLabel={t.toolbar.delete}
+          />
+          <CommandBarButton
+            label={labels.copyPath}
+            labelPosition={toolbarLabelPosition}
+            icon={<ClipboardCopy />}
+            onClick={onCopyPath}
+            disabled={!copyPathEnabled}
+            tooltip={selectedCount === 0 ? t.toolbar.copyFolderPath : t.toolbar.copyPath}
+            ariaLabel={selectedCount === 0 ? t.toolbar.copyFolderPath : t.toolbar.copyPath}
           />
           <CommandBarButton
             label={labels.newFolder}

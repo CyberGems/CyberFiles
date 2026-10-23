@@ -250,6 +250,7 @@ Pushing an annotated `v*` tag that matches the versions in `package.json` and `s
 | `Tab` | Switch between the left and right pane |
 | `F1` | Open the keyboard shortcuts cheat sheet |
 | `F2` | Rename the selected item |
+| `Ctrl+Shift+C` | Copy the path of the selection, or of the folder when nothing is selected |
 | `F3` or `Space` | Show or hide the properties panel |
 | `Ctrl+L` | Show or hide the locations panel |
 | `F5` | Copy the selection to the opposite pane |

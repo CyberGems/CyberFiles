@@ -250,6 +250,7 @@ Publicar una etiqueta anotada `v*` que coincida con las versiones de `package.js
 | `Tab` | Cambiar entre el panel izquierdo y el derecho |
 | `F1` | Abrir la chuleta de atajos de teclado |
 | `F2` | Renombrar el elemento seleccionado |
+| `Ctrl+Shift+C` | Copiar la ruta de la selección, o la de la carpeta si no hay selección |
 | `F3` o `Espacio` | Mostrar u ocultar el panel de propiedades |
 | `Ctrl+L` | Mostrar u ocultar el panel de ubicaciones |
 | `F5` | Copiar la selección al panel opuesto |

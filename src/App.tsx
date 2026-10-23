@@ -3971,6 +3971,18 @@ export default function App() {
     }
   }, [showToast, t.sidebar.copyPathFailure, t.sidebar.copyPathSuccess]);
 
+  /* Copy path from the toolbar or Ctrl+Shift+C: the selection when there is one, the folder
+     otherwise, which is what Explorer's own "Copy as path" does on an empty background. */
+  const handleCopyPath = useCallback(() => {
+    if (selectedItemsForDelete.length > 0) {
+      void handleCopySelectedPaths(selectedItemsForDelete);
+      return;
+    }
+    const folderPath = currentTab.currentPath;
+    if (!folderPath || folderPath.startsWith('::')) return;
+    void handleCopyFolderPath(folderPath);
+  }, [currentTab.currentPath, handleCopyFolderPath, handleCopySelectedPaths, selectedItemsForDelete]);
+
   const handleOpenWindowsProperties = useCallback(async (item: FileItem | null) => {
     if (!item || !isTauriDesktop()) return;
     try {
@@ -4717,6 +4729,15 @@ export default function App() {
         return;
       }
 
+      // Ctrl + Shift + C: Copy the selected paths, or the current folder path when nothing is
+      // selected. It has to be handled before the plain Ctrl+C branch below, which does not
+      // look at the shift key and would otherwise copy the files themselves.
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.key === 'c' || e.key === 'C')) {
+        e.preventDefault();
+        handleCopyPath();
+        return;
+      }
+
       if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C')) {
         e.preventDefault();
         void handleFileClipboard(undefined, false);
@@ -4926,6 +4947,7 @@ export default function App() {
     handleDeleteSelected,
     handleNewFolder,
     handleRenameSelected,
+    handleCopyPath,
     handleNavigateUp,
     activeDisplayFiles,
     nativeDirectories,
@@ -5121,6 +5143,9 @@ export default function App() {
   const currentFolderDisabledReason = isFileOperationBusy
     ? t.commandPalette.disabled.operationBusy
     : currentFolderIsReal ? undefined : t.commandPalette.disabled.realFolderRequired;
+  /* Copy path works on the selection when there is one and falls back to the folder, so it is
+     only dead in a virtual location with nothing selected. */
+  const copyPathEnabled = selectedCount > 0 || currentFolderIsReal;
 
   const handleShowCurrentFolderInExplorer = () => {
     void openFolderInWindowsExplorer(currentTab.currentPath)
@@ -5156,6 +5181,7 @@ export default function App() {
     { id: 'copy-opposite', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.copyToOther, shortcut: 'F5', disabled: Boolean(copyMoveDisabledReason), disabledReason: copyMoveDisabledReason, keywords: 'duplicate copy files', onSelect: handleCopySelected },
     { id: 'move-opposite', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.moveToOther, shortcut: 'F6', disabled: Boolean(copyMoveDisabledReason), disabledReason: copyMoveDisabledReason, keywords: 'move files transfer', onSelect: handleMoveSelected },
     { id: 'rename-selection', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.rename, shortcut: 'F2', disabled: Boolean(selectionDisabledReason), disabledReason: selectionDisabledReason, keywords: 'change name', onSelect: handleRenameSelected },
+    { id: 'copy-path', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.copyPath, shortcut: 'Ctrl+Shift+C', disabled: !copyPathEnabled, disabledReason: copyPathEnabled ? undefined : t.commandPalette.disabled.realFolderRequired, keywords: 'clipboard path location', onSelect: handleCopyPath },
     { id: 'batch-rename', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.batchRename, shortcut: 'Ctrl+R', disabled: Boolean(selectionDisabledReason), disabledReason: selectionDisabledReason, keywords: 'multiple names', onSelect: () => setIsBatchRenameOpen(true) },
     { id: 'delete-selection', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.delete, shortcut: 'Delete', disabled: Boolean(selectionDisabledReason) || !isTauriDesktop(), disabledReason: !isTauriDesktop() ? t.core.desktopFileOperationsOnly : selectionDisabledReason, keywords: 'remove recycle bin', onSelect: () => handleDeleteSelected(selectedItemsForDelete) },
     { id: 'show-preview', group: t.commandPalette.groups.actions, label: previewOpen ? t.commandPalette.commands.hidePreview : t.commandPalette.commands.showPreview, shortcut: 'F3 / Space', keywords: 'properties preview pane', onSelect: () => setPreviewOpen(value => !value) },
@@ -5366,6 +5392,9 @@ export default function App() {
         onTogglePropertiesPanel={() => setPreviewOpen(value => !value)}
         onNewFolder={() => handleNewFolder()}
         onDeleteSelected={() => handleDeleteSelected(selectedItemsForDelete)}
+        onRenameSelected={handleRenameSelected}
+        onCopyPath={handleCopyPath}
+        copyPathEnabled={copyPathEnabled}
         undoHistory={undoHistory}
         onUndoAction={handleUndoAction}
         undoBusy={undoBusy || isFileOperationBusy || transferOperations.some(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status))}
