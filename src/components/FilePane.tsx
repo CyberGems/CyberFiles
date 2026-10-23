@@ -790,7 +790,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [firstVisibleBreadcrumb, setFirstVisibleBreadcrumb] = useState(0);
   const [pathInput, setPathInput] = useState(tab.currentPath);
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [editingItemName, setEditingItemName] = useState('');
+  /* The rename draft lives in a ref, not in state. The details row is a memoized component, so
+     a re-render of this pane does not reach it: a state-driven draft left the row's submit
+     closure holding the name the edit started with, which made every rename a no-op. The input
+     is therefore uncontrolled and the live text is read back from this ref on commit. */
+  const renameDraftRef = useRef('');
   const renameCommitItemRef = useRef<string | null>(null);
   const [collapsedSystemHomeSections, setCollapsedSystemHomeSections] = useState(() => readCollapsedSystemHomeSections(paneId));
   const [selectedSystemHomeShortcutId, setSelectedSystemHomeShortcutId] = useState<string | null>(null);
@@ -1814,20 +1818,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
     onRenameRequestHandled(renameRequest.requestId);
     if (!item || item.recycleBinId) return;
     renameCommitItemRef.current = item.id;
-    setEditingItemName(item.name);
+    renameDraftRef.current = item.name;
     setEditingItemId(item.id);
   }, [files, onRenameRequestHandled, paneId, renameRequest]);
 
   useEffect(() => {
-    if (editingItemId && renameInputRef.current) {
-      renameInputRef.current.focus();
-      // Select base name without extension
-      const dotIndex = editingItemName.lastIndexOf('.');
-      if (dotIndex > 0) {
-        renameInputRef.current.setSelectionRange(0, dotIndex);
-      } else {
-        renameInputRef.current.select();
-      }
+    const input = renameInputRef.current;
+    if (!editingItemId || !input) return;
+    input.focus();
+    // Select base name without extension
+    const dotIndex = input.value.lastIndexOf('.');
+    if (dotIndex > 0) {
+      input.setSelectionRange(0, dotIndex);
+    } else {
+      input.select();
     }
   }, [editingItemId]);
 
@@ -1858,7 +1862,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const handleRenameSubmit = (itemId: string, originalName: string) => {
     if (renameCommitItemRef.current !== itemId) return;
     renameCommitItemRef.current = null;
-    const nextName = editingItemName.trim();
+    const nextName = renameDraftRef.current.trim();
     if (nextName && nextName !== originalName) {
       onInlineRename(itemId, nextName, paneId);
     }
@@ -1876,15 +1880,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
         ref={renameInputRef}
         type="text"
         aria-label={t.toolbar.rename}
-        value={editingItemName}
-        onChange={event => setEditingItemName(event.target.value)}
+        defaultValue={item.name}
+        /* onInput rather than onChange: it is the raw DOM event, so the draft is captured even
+           when React decides the controlled value did not change. */
+        onInput={event => { renameDraftRef.current = event.currentTarget.value; }}
         onBlur={() => handleRenameSubmit(item.id, item.name)}
         onKeyDown={event => {
           if (event.key === 'Escape') {
             event.preventDefault();
             event.stopPropagation();
             renameCommitItemRef.current = null;
-            setEditingItemName(item.name);
+            renameDraftRef.current = item.name;
             setEditingItemId(null);
           }
         }}

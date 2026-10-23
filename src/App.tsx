@@ -976,18 +976,25 @@ export default function App() {
 
   // Notifications / Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  /* Second, quieter line: the path that was just copied. Long paths are truncated from the
+     start so the leaf stays visible. */
+  const [toastDetail, setToastDetail] = useState<string | null>(null);
   const [toastSequence, setToastSequence] = useState(0);
   const toastSequenceRef = useRef(0);
   const toastTimerRef = useRef<number | null>(null);
 
-  const showToast = useCallback((msg: string) => {
+  const showToast = useCallback((msg: string, detail?: string) => {
     if (!notificationBannersEnabled) return;
     const sequence = ++toastSequenceRef.current;
     setToastMessage(msg);
+    setToastDetail(detail ?? null);
     setToastSequence(sequence);
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => {
-      if (toastSequenceRef.current === sequence) setToastMessage(null);
+      if (toastSequenceRef.current === sequence) {
+        setToastMessage(null);
+        setToastDetail(null);
+      }
       toastTimerRef.current = null;
     }, TOAST_DURATION_MS);
   }, [notificationBannersEnabled]);
@@ -995,6 +1002,7 @@ export default function App() {
   useEffect(() => {
     if (notificationBannersEnabled) return;
     setToastMessage(null);
+    setToastDetail(null);
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = null;
   }, [notificationBannersEnabled]);
@@ -3955,7 +3963,10 @@ export default function App() {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
       await navigator.clipboard.writeText(items.map(item => item.path).join('\n'));
-      showToast(items.length === 1 ? t.sidebar.copyPathSuccess : t.sidebar.copyPathsSuccess);
+      showToast(
+        items.length === 1 ? t.sidebar.copyPathSuccess : t.sidebar.copyPathsSuccess,
+        items.length === 1 ? items[0].path : undefined,
+      );
     } catch {
       showToast(items.length === 1 ? t.sidebar.copyPathFailure : t.sidebar.copyPathsFailure);
     }
@@ -3965,7 +3976,7 @@ export default function App() {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
       await navigator.clipboard.writeText(path);
-      showToast(t.sidebar.copyPathSuccess);
+      showToast(t.sidebar.copyPathSuccess, path);
     } catch {
       showToast(t.sidebar.copyPathFailure);
     }
@@ -5861,7 +5872,12 @@ export default function App() {
       {toastMessage && (
         <div key={toastSequence} role="status" aria-live="polite" className="fixed bottom-10 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-start gap-2 overflow-hidden rounded-lg border border-cyan-500/50 bg-neutral-900/95 px-4 py-2 pb-2.5 text-xs font-medium text-cyan-200 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-150">
           <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-cyan-400 animate-pulse" />
-          <span className="max-w-[42rem] break-words">{toastMessage}</span>
+          <div className="min-w-0 max-w-[42rem]">
+            <span className="block break-words">{toastMessage}</span>
+            {toastDetail && (
+              <span className="truncate-start mt-0.5 font-mono text-[10.5px] font-normal text-cyan-300/70">{toastDetail}</span>
+            )}
+          </div>
           <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[2px] bg-cyan-950/70">
             <div className="cyberfiles-toast-progress h-full w-full origin-left bg-gradient-to-r from-cyan-600 via-cyan-300 to-white shadow-[0_0_8px_rgba(34,211,238,0.8)]" style={{ animationDuration: `${TOAST_DURATION_MS}ms` }} />
           </div>
@@ -5959,6 +5975,7 @@ export default function App() {
         <CreateItemModal
           key={`${pendingCreateItem.kind}:${pendingCreateItem.parentPath}`}
           kind={pendingCreateItem.kind}
+          parentPath={pendingCreateItem.parentPath}
           defaultName={pendingCreateItem.suggestedName ?? (
             pendingCreateItem.kind === 'folder'
               ? t.contextMenu.defaultFolderName

@@ -1259,6 +1259,23 @@ html[data-theme='light'] #root .collapse-toggle:hover:not(:disabled) {
 .cyberfiles-toast-progress { animation-name: cyberfiles-toast-countdown; animation-timing-function: linear; animation-fill-mode: forwards; }
 .cyberfiles-folder-hover-progress { animation-name: cyberfiles-folder-hover-fill; animation-timing-function: linear; animation-fill-mode: forwards; }
 
+/* A long path is only useful by its tail: the drive and the first folders repeat every time,
+   the leaf is what identifies it. `direction: rtl` moves the overflow to the left edge so the
+   ellipsis eats the beginning instead of the end. `width: fit-content` keeps the element as
+   wide as its text when it fits, so the right alignment that RTL needs is invisible then and
+   only the overflowing case is aligned differently. */
+.truncate-start {
+  display: block;
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: right;
+}
+
 @keyframes cyberfiles-toast-countdown {
   from { transform: scaleX(1); }
   to { transform: scaleX(0); }

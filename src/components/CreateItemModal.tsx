@@ -9,13 +9,15 @@ export type NewItemKind = 'folder' | 'text-file' | 'shortcut';
 interface CreateItemModalProps {
   kind: NewItemKind;
   defaultName: string;
+  /** Folder the item will be created in; shown so the destination is never a guess. */
+  parentPath?: string;
   isBusy: boolean;
   onClose: () => void;
   onSubmit: (values: { name: string; targetPath: string }) => void;
   onChooseTarget: (kind: 'file' | 'folder') => Promise<string | null>;
 }
 
-export function CreateItemModal({ kind, defaultName, isBusy, onClose, onSubmit, onChooseTarget }: CreateItemModalProps) {
+export function CreateItemModal({ kind, defaultName, parentPath, isBusy, onClose, onSubmit, onChooseTarget }: CreateItemModalProps) {
   const { t } = useLanguage();
   const nameRef = useRef<HTMLInputElement>(null);
   const initialName = typeof defaultName === 'string' ? defaultName : '';
@@ -104,6 +106,16 @@ export function CreateItemModal({ kind, defaultName, isBusy, onClose, onSubmit, 
             </label>
           )}
         </div>
+
+        {parentPath && (
+          <div className="mx-4 mb-3 flex items-start gap-2 rounded-md border border-neutral-800 bg-neutral-950/60 px-2.5 py-2">
+            <FolderOpen aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-neutral-500" />
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.contextMenu.createInFolder}</div>
+              <div className="truncate-start mt-0.5 font-mono text-[11px] text-neutral-300">{parentPath}</div>
+            </div>
+          </div>
+        )}
 
         <footer className="flex justify-end gap-2 border-t border-neutral-800 bg-neutral-950/40 px-4 py-3">
           <Tooltip label={t.core.cancel} placement="top"><DialogButton size="compact" disabled={isBusy} onClick={onClose}>{t.core.cancel}</DialogButton></Tooltip>
