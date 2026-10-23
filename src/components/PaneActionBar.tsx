@@ -12,17 +12,20 @@ import {
   FolderOpen,
   History,
   Info,
+  LayoutGrid,
+  List,
   MoreHorizontal,
   Palette,
   Pencil,
   RefreshCw,
   RotateCcw,
+  Rows3,
   Search,
   Square,
   Trash2,
   X,
 } from 'lucide-react';
-import { ArchiveExtractionMode, FileItem } from '../types';
+import { ArchiveExtractionMode, FileItem, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 
@@ -70,6 +73,9 @@ interface PaneActionBarProps {
   onRefresh?: () => void;
   isRecentLocation?: boolean;
   onClearRecentHistory?: () => void;
+  /* The lister modes live in this menu too: they belong to the pane that shows the list. */
+  viewMode: ViewMode;
+  onChangeViewMode: (mode: ViewMode) => void;
   actions: PaneSelectionActions;
 }
 
@@ -82,6 +88,8 @@ interface ActionEntry {
   shortcut?: string;
   danger?: boolean;
   disabled?: boolean;
+  /* Menu-only: marks the current choice (the active view mode) instead of disabling it. */
+  checked?: boolean;
   onSelect: () => void;
 }
 
@@ -102,6 +110,8 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
   onRefresh,
   isRecentLocation,
   onClearRecentHistory,
+  viewMode,
+  onChangeViewMode,
   actions,
 }) => {
   const { t } = useLanguage();
@@ -234,6 +244,37 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
     }
   }
 
+  /* The three lister modes, kept next to the other pane-level actions so switching view never
+     needs a trip to the command bar. The current one is ticked, not disabled: it stays a
+     harmless no-op that tells you where you are. Declared before both menus because the folder
+     menu is a literal. */
+  const viewMenuGroup: ActionEntry[] = [
+    {
+      key: 'view-details',
+      label: t.toolbar.viewDetails,
+      icon: <List className="h-3.5 w-3.5 text-cyan-300" />,
+      shortcut: 'Ctrl+1',
+      checked: viewMode === 'details',
+      onSelect: () => onChangeViewMode('details'),
+    },
+    {
+      key: 'view-compact',
+      label: t.toolbar.viewCompact,
+      icon: <Rows3 className="h-3.5 w-3.5 text-cyan-300" />,
+      shortcut: 'Ctrl+2',
+      checked: viewMode === 'compact',
+      onSelect: () => onChangeViewMode('compact'),
+    },
+    {
+      key: 'view-icons',
+      label: t.toolbar.viewIcons,
+      icon: <LayoutGrid className="h-3.5 w-3.5 text-cyan-300" />,
+      shortcut: 'Ctrl+3',
+      checked: viewMode === 'icons',
+      onSelect: () => onChangeViewMode('icons'),
+    },
+  ];
+
   const selectionMenuGroups: ActionEntry[][] = [];
   if (hasSelection) {
     const primary: ActionEntry[] = [];
@@ -295,6 +336,8 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
       },
     ]);
 
+    selectionMenuGroups.push(viewMenuGroup);
+
     selectionMenuGroups.push([
       {
         key: 'clear-selection',
@@ -331,6 +374,7 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
         onSelect: actions.onCustomizeCurrentFolderIcon,
       },
     ],
+    viewMenuGroup,
     [
       {
         key: 'refresh',
@@ -468,7 +512,9 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
       <div className="pane-action-count shrink-0 whitespace-nowrap font-sans text-[10px] text-neutral-400">{itemCountLabel}</div>
 
       <div ref={menuRootRef} className="relative shrink-0">
-        <Tooltip label={t.toolbar.moreActions} placement="bottom">
+        {/* Disabled while the menu is open: the pointer is still on the button, and a card
+            floating over the menu it just opened is pure noise. */}
+        <Tooltip label={t.toolbar.moreActions} placement="bottom" disabled={menuOpen}>
           <button
             type="button"
             aria-label={t.toolbar.moreActions}
@@ -495,7 +541,9 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
                     className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${entry.danger ? 'text-rose-300 hover:bg-rose-950/40' : 'text-neutral-200 hover:bg-neutral-800'}`}
                   >
                     <span className="flex min-w-0 items-center gap-2">{entry.icon}<span className="truncate">{entry.label}</span></span>
-                    {entry.shortcut && <kbd className="keyboard-hint shrink-0">{entry.shortcut}</kbd>}
+                    {entry.checked
+                      ? <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-cyan-300" />
+                      : entry.shortcut && <kbd className="keyboard-hint shrink-0">{entry.shortcut}</kbd>}
                   </button>
                 ))}
               </React.Fragment>

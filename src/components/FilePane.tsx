@@ -114,6 +114,8 @@ interface FilePaneProps {
   onFilterChange: (query: string) => void;
   onSelectItems: (ids: string[], isAdditive?: boolean, isRange?: boolean, replaceExactly?: boolean, focusedId?: string) => void;
   onSortChange: (field: SortField) => void;
+  /* Used by the pane's `⋯` menu, so the mode applies to this pane and not to the active one. */
+  onViewModeChange?: (mode: ViewMode) => void;
   onItemDoubleClick: (item: FileItem) => void;
   onItemContextMenu: (e: React.MouseEvent, item: FileItem) => void;
   onBackgroundContextMenu: (e: React.MouseEvent, pane: 'left' | 'right') => void;
@@ -636,7 +638,7 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
         }
         if (column === 'name') {
           return (
-            <div key={column} className="cyberfiles-file-cell flex min-w-0 overflow-hidden items-center gap-2">
+            <div key={column} className={`cyberfiles-file-cell flex min-w-0 items-center gap-2 ${isEditing ? 'overflow-visible' : 'overflow-hidden'}`}>
               <span className="flex-shrink-0">{fileIcon}</span>
               {item.colorLabel && (
                 <span data-file-name-decoration="color-label" className={`w-2 h-2 rounded-full flex-shrink-0 ${
@@ -752,6 +754,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onFilterChange,
   onSelectItems,
   onSortChange,
+  onViewModeChange,
   onItemDoubleClick,
   onItemContextMenu,
   onBackgroundContextMenu,
@@ -1881,7 +1884,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       onSubmit={event => { event.preventDefault(); handleRenameSubmit(item.id, item.name); }}
       onClick={event => event.stopPropagation()}
       onDoubleClick={event => event.stopPropagation()}
-      className={formClassName}
+      className={`${formClassName} flex items-center`}
     >
       <input
         ref={renameInputRef}
@@ -1901,7 +1904,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
             setEditingItemId(null);
           }
         }}
-        className={`w-full min-w-0 select-text rounded border border-cyan-400 bg-neutral-950 px-1 py-0.5 text-xs text-neutral-100 outline-none ${inputAlignment}`}
+        /* As tall as the row: the field is the row while it is open, not a small box inside it.
+           `py-0` plus `leading-none` keeps the text from pushing the box past the row. */
+        className={`h-[26px] w-full min-w-0 select-text rounded border border-cyan-400 bg-neutral-950 px-1.5 py-0 text-[12.5px] leading-none text-neutral-100 outline-none ${inputAlignment}`}
       />
     </form>
   );
@@ -3525,6 +3530,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
         onRefresh={onRefresh}
         isRecentLocation={isRecentLocation}
         onClearRecentHistory={onClearRecentHistory}
+        viewMode={tab.viewMode}
+        onChangeViewMode={mode => onViewModeChange?.(mode)}
         actions={paneActions}
       />
 
