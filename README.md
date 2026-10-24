@@ -25,7 +25,7 @@
 
 ## What is CyberFiles?
 
-CyberFiles is a **dual-pane file manager for Windows** built for people who move files all day and want the keyboard to do most of the work. It combines two independent panes, each with its own tabs and history, with details, list and icon views, saved layouts and sessions, queued copy and move operations with undo, ZIP and RAR tools, and a properties panel that previews text, images, PDFs and archive contents. Windows drive discovery, native file icons, the Recycle Bin and the Windows properties dialog are wired through the Windows Shell rather than emulated. Built with **Tauri 2**, **Rust**, **React** and **TypeScript**.
+CyberFiles is a **dual-pane file manager for Windows** built for people who move files all day and want the keyboard to do most of the work. It combines two independent panes, each with its own tabs and history, with details, list and icon views, saved layouts and sessions, queued copy and move operations with undo, a Recents location that lists what you opened, ZIP and RAR tools, and a properties panel that previews text, images, PDFs and archive contents. Windows drive discovery, native file icons, the Recycle Bin and the Windows properties dialog are wired through the Windows Shell rather than emulated. Built with **Tauri 2**, **Rust**, **React** and **TypeScript**.
 
 *Free and open source (GPLv3): no ads, no tracking, no telemetry, no account. Everything runs on your PC.*
 
@@ -39,6 +39,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 |---|---|
 | Work in two folders at once | Dual vertical, dual horizontal or single-pane layouts, each pane with its own tabs |
 | Keep a workflow across restarts | Saved layouts, tab sessions and workspaces, restored at startup if you want |
+| Get back to the file you just previewed | A Recents location fed by CyberFiles' own access log, with a last-opened column |
 | Move a lot of files safely | Queued operations with progress, pause, cancel, per-item errors and undo history |
 | See inside a file without opening it | Properties panel with text, code, Markdown, HTML, image, PDF and archive previews |
 | Handle archives in place | Preview and extract ZIP and RAR, including password-protected archives, and create ZIP files |
@@ -63,12 +64,14 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **This PC view**: drives, common Windows folders, network locations and advanced Windows folders in one place
 - **Address bar**: the current folder path with clickable segments; click a parent to jump back, click the current segment to refresh the listing, and open recent folders from the chevron at the right edge
 - **Sidebar**: locations only, so the tree never leaves the screen: quick access with a lazy-loaded folder tree, drives with capacity bars, advanced Windows folders and Recycle Bin status
+- **Collapsible locations panel**: hide the sidebar with Ctrl+L, the button beside the properties toggle or the command palette, and both panes take the full width; the choice is part of saved layouts
+- **Recents**: a virtual location listing the files you opened or previewed in CyberFiles, sorted by last opened, with a last-opened column, per-item removal and a clear action
 - **Quick Access**: pin up to 100 folders, rename or remove shortcuts, and sort them A–Z, Z–A or manually by dragging (Alt+Up and Alt+Down also work)
 - **Views**: Details, List and Large Icons, with resizable columns, add or hide columns, sortable headers, and grouping by date or size
 - **Relative graphs**: optional bars behind sizes and dates that make the shape of a folder visible at a glance
 - **Progressive loading**: large folders load as you scroll while the status bar keeps accurate file, folder and item totals
 - **Flat view**: recursively list every subfolder in one list, with a confirmation when the tree is large
-- **Filter**: narrow the current list as you type, without running a full search
+- **Filter**: narrow the current list as you type, without running a full search; typing fills the filter instead of jumping to a matching name, the query becomes a chip above the list while a selection is active, and Esc always leaves it
 - **Mouse gestures**: hold the right button and drag left or right to go back or forward, or up or down to jump to the start or end of the list; a normal right-click still opens the context menu
 - **Folder style Lock**: keep view, sorting and column widths while navigating, or let each folder use its own saved style
 - **Custom folder icons**: pick an icon, color and status badge for a folder, stored by CyberFiles and never written to Windows
@@ -77,16 +80,17 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Two-pane transfers**: copy with F5 or move with F6, or drag items between panes with the intended action shown before you drop
 - **Clipboard**: cut, copy and paste with Windows keyboard shortcuts
 - **Operations center**: copy, move, extraction and ZIP creation run through a queue with progress, pause, resume, cancel and per-item errors
-- **Undo history**: the last ten supported actions can be reversed from the toolbar, with clear reasons when an action cannot be undone
-- **Create and rename**: new folder, new text document, new shortcut, single rename and a batch rename studio with search and replace, prefix, suffix, sequential numbering and case changes
-- **Delete safely**: confirmed deletions go to the Windows Recycle Bin through the Shell, and the sidebar shows Recycle Bin contents with restore and empty actions
+- **Undo history**: the last ten supported actions can be reversed from the toolbar or from the pane context menu, with clear reasons when an action cannot be undone
+- **Create and rename**: new folder, new text document, new shortcut, single rename and a batch rename studio with search and replace, prefix, suffix, sequential numbering and case changes; rename and copy path sit in the pane action bar, the name field fills the row, and clicking the name of a selected item starts an inline rename
+- **Copy path**: Ctrl+Shift+C copies the path of the selection, or of the current folder when nothing is selected, from the action bar, the context menu or the command palette
+- **Delete with your rules**: deletions go to the Windows Recycle Bin through the Shell, and Shift+Del opens the dialog with permanent deletion already ticked; the dialog can remember the chosen mode so later deletions skip it, and Settings › Deletion restores the confirmation or makes permanent deletion the default. The sidebar shows Recycle Bin contents with restore and empty actions
 - **No silent overwrites**: name conflicts receive a distinct name instead of replacing an existing item
 
 ### 🗜️ Archives & Preview
 - **Archive preview**: list the contents of ZIP and RAR files, with a password prompt for protected archives
 - **Extract**: extract here or into a folder named after the archive, with unsafe paths rejected
 - **Create ZIP**: compress the selection or the current folder into a new archive
-- **Properties panel**: text, code, Markdown, HTML, image and PDF previews, plus encoding, line count and full metadata
+- **Properties panel**: text, code, Markdown, HTML, image and PDF previews, plus encoding, line count and full metadata; selecting a folder adds a contents block with its files, folders, content type and total size
 - **Image previews**: PNG, JPEG, GIF, WebP, BMP, TIFF, ICO and SVG, with the same thumbnail in the file tooltip and in icon view
 - **Quick actions**: copy file content, copy the full path, or open the original Windows properties dialog
 
@@ -96,7 +100,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Content search**: search text that CyberFiles has already previewed, with an explicit note about what is searched
 - **Search history**: reuse or clear recent queries
 - **Shortcut cheat sheet (F1)**: the full key map, available from the toolbar and the status bar
-- **Folder sizes**: hold the pointer over a folder to calculate its total, or request it from the column
+- **Folder sizes**: hold the pointer over a folder to calculate its total, or request it from the column; the status-bar counters open the selection shortcuts and explain the folder total
 
 ### 🖥️ Windows Integration
 - **Native icons and properties**: file type icons come from their Windows-associated applications, and the properties button opens the real Windows dialog
@@ -112,7 +116,10 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Bilingual UI**: complete English and Spanish interface
 - **Date formats**: application style, system locale or ISO
 - **Display options**: recent-item highlighting and hidden-item styling with your own colors, image thumbnails in tooltips, optional notification banners and tooltips
+- **Toolbar labels**: show the name of each action beside its icon on the right, left, top or bottom, or keep icons only; keyboard shortcuts stay in the button tooltips
+- **Typing behavior**: choose whether the first letter typed in a pane fills the filter or jumps to the first matching name
 - **Settings search**: filter settings across every tab from a single field
+- **Factory reset**: Settings › General returns every preference, folder style, quick access entry and history to its initial value, without touching your files
 - **Welcome screen**: first-run setup for language, theme, folder style and startup behavior
 
 ---
@@ -125,7 +132,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 2. Run the NSIS installer, or extract the portable ZIP and start `CyberFiles.exe`
 3. Follow the welcome screen to choose language, theme, folder style and startup behavior
 
-The installer offers a per-user or a system-wide installation; the system-wide option may ask for administrator approval. When the Microsoft Edge WebView2 Evergreen Runtime is missing, setup downloads its bootstrapper, so an internet connection is needed during installation.
+The installer offers a per-user or a system-wide installation; the system-wide option may ask for administrator approval. Setup is branded with the CyberFiles artwork and follows the system language, English or Spanish. When the Microsoft Edge WebView2 Evergreen Runtime is missing, setup downloads its bootstrapper, so an internet connection is needed during installation.
 
 The release assets include `SHA256SUMS.txt` with checksums for both packages, so you can verify a download before running it.
 
@@ -266,11 +273,11 @@ Pushing an annotated `v*` tag that matches the versions in `package.json` and `s
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy, cut and paste files |
 | `Backspace` | Go to the parent folder |
 | `Enter` | Open a folder or file |
-| `Delete` | Ask for deletion confirmation |
-| `Esc` | Close dialogs |
+| `Delete` | Send the selection to the Recycle Bin, or delete permanently with `Shift+Delete` |
+| `Esc` | Close dialogs and leave the filter |
 | `Alt+Shift+F` | Show or hide CyberFiles (global, configurable) |
 
-With the file list focused, typing letters jumps to a matching name and repeating the letter cycles through matches. In Manual Quick Access ordering, Alt+Up and Alt+Down move the focused shortcut.
+With the file list focused, typing letters fills the filter by default, or jumps to a matching name when that option is turned off in Settings › Navigation; in the jump mode, repeating the letter cycles through matches. In Manual Quick Access ordering, Alt+Up and Alt+Down move the focused shortcut.
 
 ---
 

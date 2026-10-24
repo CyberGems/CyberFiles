@@ -25,7 +25,7 @@
 
 ## ¿Qué es CyberFiles?
 
-CyberFiles es un **gestor de archivos de doble panel para Windows** pensado para quienes mueven archivos todo el día y quieren que el teclado haga casi todo el trabajo. Combina dos paneles independientes, cada uno con sus propias pestañas e historial, con vistas de detalles, lista e iconos, diseños y sesiones guardados, operaciones de copia y movimiento en cola con deshacer, herramientas para ZIP y RAR y un panel de propiedades que previsualiza texto, imágenes, PDF y el contenido de archivos comprimidos. El descubrimiento de unidades, los iconos nativos, la Papelera de reciclaje y el diálogo de propiedades de Windows se resuelven a través del Shell de Windows, no con imitaciones. Creado con **Tauri 2**, **Rust**, **React** y **TypeScript**.
+CyberFiles es un **gestor de archivos de doble panel para Windows** pensado para quienes mueven archivos todo el día y quieren que el teclado haga casi todo el trabajo. Combina dos paneles independientes, cada uno con sus propias pestañas e historial, con vistas de detalles, lista e iconos, diseños y sesiones guardados, operaciones de copia y movimiento en cola con deshacer, una ubicación Recientes que lista lo que abriste, herramientas para ZIP y RAR y un panel de propiedades que previsualiza texto, imágenes, PDF y el contenido de archivos comprimidos. El descubrimiento de unidades, los iconos nativos, la Papelera de reciclaje y el diálogo de propiedades de Windows se resuelven a través del Shell de Windows, no con imitaciones. Creado con **Tauri 2**, **Rust**, **React** y **TypeScript**.
 
 *Gratuito y de código abierto (GPLv3): sin anuncios, sin rastreo, sin telemetría y sin cuenta. Todo se ejecuta en tu PC.*
 
@@ -39,6 +39,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 |---|---|
 | Trabajar en dos carpetas a la vez | Diseños doble vertical, doble horizontal o de panel único, cada panel con sus propias pestañas |
 | Conservar un flujo de trabajo entre sesiones | Diseños, sesiones de pestañas y espacios de trabajo guardados, restaurados al iniciar si quieres |
+| Volver al archivo que acabas de previsualizar | Una ubicación Recientes alimentada por el propio registro de aperturas de CyberFiles, con columna de última apertura |
 | Mover muchos archivos con seguridad | Operaciones en cola con progreso, pausa, cancelación, errores por elemento e historial de deshacer |
 | Ver dentro de un archivo sin abrirlo | Panel de propiedades con vistas previas de texto, código, Markdown, HTML, imágenes, PDF y archivos comprimidos |
 | Manejar archivos comprimidos sin salir | Previsualizar y extraer ZIP y RAR, incluidos los protegidos con contraseña, y crear archivos ZIP |
@@ -63,12 +64,14 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Vista Este equipo**: unidades, carpetas habituales de Windows, ubicaciones de red y carpetas avanzadas de Windows en un solo lugar
 - **Barra de direcciones**: la ruta de la carpeta actual con segmentos en los que puedes hacer clic; pulsa un nivel superior para volver, pulsa el segmento actual para actualizar la lista y abre carpetas recientes desde el chevron del borde derecho
 - **Barra lateral**: solo ubicaciones, para que el árbol no salga nunca de la pantalla: acceso rápido con árbol de carpetas de carga diferida, unidades con barras de capacidad, carpetas avanzadas de Windows y estado de la Papelera de reciclaje
+- **Panel de ubicaciones plegable**: oculta la barra lateral con Ctrl+L, con el botón junto al de propiedades o desde la paleta de comandos, y ambos paneles ocupan todo el ancho; la elección forma parte de los diseños guardados
+- **Recientes**: una ubicación virtual que lista los archivos abiertos o previsualizados en CyberFiles, ordenados por última apertura, con columna de última apertura, eliminación por elemento y una acción para vaciar el historial
 - **Acceso rápido**: fija hasta 100 carpetas, renombra o elimina accesos y ordénalos A–Z, Z–A o manualmente arrastrando (Alt+Arriba y Alt+Abajo también funcionan)
 - **Vistas**: Detalles, Lista e Iconos grandes, con columnas redimensionables, columnas que se añaden u ocultan, encabezados ordenables y agrupación por fecha o tamaño
 - **Gráficos relativos**: barras opcionales detrás de tamaños y fechas que muestran de un vistazo la forma de una carpeta
 - **Carga progresiva**: las carpetas grandes cargan mientras te desplazas y la barra de estado mantiene totales exactos de archivos, carpetas y elementos
 - **Vista plana**: lista de forma recursiva todas las subcarpetas en una sola lista, con confirmación cuando el árbol es grande
-- **Filtro**: reduce la lista actual mientras escribes, sin lanzar una búsqueda completa
+- **Filtro**: reduce la lista actual mientras escribes, sin lanzar una búsqueda completa; escribir rellena el filtro en lugar de saltar a un nombre, la consulta pasa a ser una ficha sobre la lista cuando hay selección y Esc siempre sale de él
 - **Gestos de mouse**: mantén el botón derecho y arrastra a izquierda o derecha para retroceder o avanzar, o arriba y abajo para ir al inicio o al final de la lista; un clic derecho normal sigue abriendo el menú contextual
 - **Bloqueo de estilo de carpeta**: mantén la vista, el orden y el ancho de columnas al navegar, o deja que cada carpeta use su estilo guardado
 - **Iconos de carpeta personalizados**: elige icono, color e insignia de estado para una carpeta; CyberFiles lo guarda y nunca modifica Windows
@@ -77,16 +80,17 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Transferencias entre paneles**: copia con F5 o mueve con F6, o arrastra elementos entre paneles con la acción prevista visible antes de soltar
 - **Portapapeles**: cortar, copiar y pegar con los atajos de Windows
 - **Centro de operaciones**: copia, movimiento, extracción y creación de ZIP pasan por una cola con progreso, pausa, reanudación, cancelación y errores por elemento
-- **Historial de deshacer**: las últimas diez acciones compatibles se revierten desde la barra de herramientas, con el motivo indicado cuando una acción no se puede deshacer
-- **Crear y renombrar**: carpeta nueva, documento de texto nuevo, acceso directo nuevo, renombrado individual y un estudio de renombrado múltiple con buscar y reemplazar, prefijo, sufijo, numeración secuencial y cambios de mayúsculas
-- **Borrado seguro**: las eliminaciones confirmadas van a la Papelera de reciclaje mediante el Shell, y la barra lateral muestra su contenido con acciones de restaurar y vaciar
+- **Historial de deshacer**: las últimas diez acciones compatibles se revierten desde la barra de herramientas o desde el menú contextual del panel, con el motivo indicado cuando una acción no se puede deshacer
+- **Crear y renombrar**: carpeta nueva, documento de texto nuevo, acceso directo nuevo, renombrado individual y un estudio de renombrado múltiple con buscar y reemplazar, prefijo, sufijo, numeración secuencial y cambios de mayúsculas; renombrar y copiar ruta están en la barra de acciones del panel, el campo de nombre ocupa la fila y un clic en el nombre de un elemento seleccionado inicia el renombrado en línea
+- **Copiar ruta**: Ctrl+Shift+C copia la ruta de la selección, o la de la carpeta actual si no hay selección, desde la barra de acciones, el menú contextual o la paleta de comandos
+- **Borrado a tu manera**: las eliminaciones van a la Papelera de reciclaje mediante el Shell, y Shift+Supr abre el diálogo con el borrado permanente ya marcado; el diálogo puede recordar el modo elegido para que las siguientes eliminaciones lo omitan, y Configuración › Eliminación restaura la confirmación o hace que el borrado permanente sea el predeterminado. La barra lateral muestra el contenido de la Papelera con acciones de restaurar y vaciar
 - **Sin sobrescrituras silenciosas**: los conflictos de nombre reciben un nombre distinto en lugar de reemplazar un elemento existente
 
 ### 🗜️ Archivos comprimidos y vista previa
 - **Vista previa de comprimidos**: lista el contenido de archivos ZIP y RAR, con petición de contraseña en los protegidos
 - **Extracción**: extrae aquí o en una carpeta con el nombre del archivo, rechazando rutas no seguras
 - **Crear ZIP**: comprime la selección o la carpeta actual en un archivo nuevo
-- **Panel de propiedades**: vistas previas de texto, código, Markdown, HTML, imágenes y PDF, además de codificación, número de líneas y metadatos completos
+- **Panel de propiedades**: vistas previas de texto, código, Markdown, HTML, imágenes y PDF, además de codificación, número de líneas y metadatos completos; al seleccionar una carpeta se añade un bloque de contenido con sus archivos, carpetas, tipo de contenido y tamaño total
 - **Vistas previas de imagen**: PNG, JPEG, GIF, WebP, BMP, TIFF, ICO y SVG, con la misma miniatura en el tooltip del archivo y en la vista de iconos
 - **Acciones rápidas**: copiar el contenido del archivo, copiar la ruta completa o abrir el diálogo de propiedades original de Windows
 
@@ -96,7 +100,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Búsqueda en contenido**: busca texto que CyberFiles ya haya previsualizado, con una nota explícita sobre qué se busca
 - **Historial de búsquedas**: reutiliza o borra consultas recientes
 - **Chuleta de atajos (F1)**: el mapa de teclas completo, disponible desde la barra de herramientas y la barra de estado
-- **Tamaño de carpetas**: mantén el puntero sobre una carpeta para calcular su total, o pídelo desde la columna
+- **Tamaño de carpetas**: mantén el puntero sobre una carpeta para calcular su total, o pídelo desde la columna; los contadores de la barra de estado abren los atajos de selección y explican el total de la carpeta
 
 ### 🖥️ Integración con Windows
 - **Iconos y propiedades nativos**: los iconos provienen de las aplicaciones asociadas en Windows y el botón de propiedades abre el diálogo real del sistema
@@ -112,7 +116,10 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Interfaz bilingüe**: interfaz completa en inglés y español
 - **Formatos de fecha**: estilo de la aplicación, configuración regional del sistema o ISO
 - **Opciones de visualización**: resaltado de elementos recientes y estilo de elementos ocultos con tus propios colores, miniaturas de imágenes en tooltips, avisos y tooltips opcionales
+- **Etiquetas de la barra**: muestra el nombre de cada acción junto a su icono a la derecha, izquierda, arriba o abajo, o deja solo los iconos; los atajos de teclado siguen en el tooltip de cada botón
+- **Comportamiento al escribir**: elige si la primera letra escrita en un panel rellena el filtro o salta al primer nombre que coincide
 - **Búsqueda en la configuración**: filtra los ajustes de todas las pestañas desde un solo campo
+- **Restablecimiento de fábrica**: Configuración › General devuelve cada preferencia, estilo de carpeta, acceso rápido e historial a su valor inicial, sin tocar tus archivos
 - **Pantalla de bienvenida**: configuración inicial de idioma, tema, estilo de carpetas y comportamiento al iniciar
 
 ---
@@ -125,7 +132,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 2. Ejecuta el instalador NSIS, o extrae el ZIP portable y abre `CyberFiles.exe`
 3. Sigue la pantalla de bienvenida para elegir idioma, tema, estilo de carpetas y comportamiento al iniciar
 
-El instalador ofrece una instalación por usuario o para todo el sistema; la opción para todo el sistema puede pedir aprobación de administrador. Si falta el entorno Microsoft Edge WebView2 Evergreen Runtime, el instalador descarga su bootstrapper, por lo que necesitas conexión a internet durante la instalación.
+El instalador ofrece una instalación por usuario o para todo el sistema; la opción para todo el sistema puede pedir aprobación de administrador. El instalador usa la ilustración de CyberFiles y sigue el idioma del sistema, inglés o español. Si falta el entorno Microsoft Edge WebView2 Evergreen Runtime, el instalador descarga su bootstrapper, por lo que necesitas conexión a internet durante la instalación.
 
 Los archivos de la versión incluyen `SHA256SUMS.txt` con las sumas de comprobación de ambos paquetes, para que puedas verificar una descarga antes de ejecutarla.
 
@@ -266,11 +273,11 @@ Publicar una etiqueta anotada `v*` que coincida con las versiones de `package.js
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copiar, cortar y pegar archivos |
 | `Backspace` | Subir a la carpeta superior |
 | `Enter` | Abrir una carpeta o un archivo |
-| `Supr` | Solicitar confirmación para eliminar |
-| `Esc` | Cerrar diálogos |
+| `Supr` | Enviar la selección a la Papelera de reciclaje, o borrar permanentemente con `Shift+Supr` |
+| `Esc` | Cerrar diálogos y salir del filtro |
 | `Alt+Shift+F` | Mostrar u ocultar CyberFiles (global, configurable) |
 
-Con la lista de archivos enfocada, escribir letras salta a un nombre coincidente y repetir la letra recorre las coincidencias. Con el orden manual del Acceso rápido, Alt+Arriba y Alt+Abajo mueven el acceso enfocado.
+Con la lista de archivos enfocada, escribir letras rellena el filtro de forma predeterminada, o salta a un nombre coincidente si desactivas esa opción en Configuración › Navegación; en el modo de salto, repetir la letra recorre las coincidencias. Con el orden manual del Acceso rápido, Alt+Arriba y Alt+Abajo mueven el acceso enfocado.
 
 ---
 

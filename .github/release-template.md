@@ -15,6 +15,7 @@
 - **Large-folder browsing:** additional directory items load automatically as you scroll, while full folder counts remain available.
 
 - **Flexible navigation:** dual vertical, dual horizontal, and single-pane layouts with independent tabs and history.
+- **Recent work:** a Recents location lists the files you opened or previewed, sorted by last opened.
 - **File management:** copy, move, rename, create folders, and send selected items to the Windows Recycle Bin. Queued operations show progress and can be paused or canceled.
 - **Archive tools:** preview ZIP and RAR contents, extract password-protected archives, and create ZIP files.
 - **Undo history:** reverse recent supported file operations from a ten-action history.
