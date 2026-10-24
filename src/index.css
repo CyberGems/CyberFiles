@@ -1258,6 +1258,9 @@ html[data-theme='light'] #root .collapse-toggle:hover:not(:disabled) {
 
 .cyberfiles-toast-progress { animation-name: cyberfiles-toast-countdown; animation-timing-function: linear; animation-fill-mode: forwards; }
 .cyberfiles-folder-hover-progress { animation-name: cyberfiles-folder-hover-fill; animation-timing-function: linear; animation-fill-mode: forwards; }
+/* Deliberately no fill mode: the panel must end up with no transform, or it would stay a
+   containing block for anything fixed inside it. */
+.cyberfiles-transfer-panel { animation: cyberfiles-transfer-panel-in 150ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 
 /* A long path is only useful by its tail: the drive and the first folders repeat every time,
    the leaf is what identifies it. `direction: rtl` moves the overflow to the left edge so the
@@ -1284,6 +1287,11 @@ html[data-theme='light'] #root .collapse-toggle:hover:not(:disabled) {
 @keyframes cyberfiles-folder-hover-fill {
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
+}
+
+@keyframes cyberfiles-transfer-panel-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes workspace-manager-backdrop-in {
@@ -1327,7 +1335,8 @@ html[data-theme='light'] #root .collapse-toggle:hover:not(:disabled) {
   .workspace-manager-backdrop,
   .workspace-manager-dialog,
   .workspace-manager-content,
-  .workspace-manager-create-form {
+  .workspace-manager-create-form,
+  .cyberfiles-transfer-panel {
     animation: none;
   }
 

@@ -36,6 +36,13 @@ interface FileOperationModalProps {
   onClearHistory: () => void;
 }
 
+/* A transfer that finishes in a few milliseconds used to open the panel on the same frame it
+   closed it, which reads as a glitch rather than as feedback. Waiting before opening means a
+   quick copy never opens it at all (the toast already reports the result), and holding it after
+   the last operation finishes keeps a short-but-visible operation readable instead of a blink. */
+const PANEL_OPEN_DELAY_MS = 450;
+const PANEL_HOLD_AFTER_FINISH_MS = 1400;
+
 function elapsedLabel(seconds: number, language: 'en' | 'es'): string {
   const wholeSeconds = Math.max(0, Math.floor(seconds));
   const hours = Math.floor(wholeSeconds / 3600);
@@ -108,6 +115,10 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
   const latestRecentOperation = recentOperations[0];
   const firstPasswordOperation = passwordOperations[0];
   const previousPendingCount = useRef(pendingCount);
+  const isExpandedRef = useRef(isExpanded);
+  isExpandedRef.current = isExpanded;
+  const openDelayTimer = useRef<number | null>(null);
+  const closeDelayTimer = useRef<number | null>(null);
   const title = isSpanish ? 'Operaciones de archivos' : 'File operations';
   const openActivityLabel = isSpanish ? 'Abrir centro de operaciones' : 'Open activity center';
 
@@ -123,10 +134,46 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
   }, [firstPasswordOperation?.jobId, firstPasswordOperation?.error, isExpanded]);
 
   useEffect(() => {
-    if (previousPendingCount.current === 0 && pendingCount > 0) setIsExpanded(true);
-    if (previousPendingCount.current > 0 && pendingCount === 0 && !isPinned) setIsExpanded(false);
+    const wasIdle = previousPendingCount.current === 0;
     previousPendingCount.current = pendingCount;
+
+    if (pendingCount > 0) {
+      if (closeDelayTimer.current !== null) {
+        window.clearTimeout(closeDelayTimer.current);
+        closeDelayTimer.current = null;
+      }
+      if (wasIdle && openDelayTimer.current === null) {
+        openDelayTimer.current = window.setTimeout(() => {
+          openDelayTimer.current = null;
+          setIsExpanded(true);
+        }, PANEL_OPEN_DELAY_MS);
+      }
+      return;
+    }
+
+    if (openDelayTimer.current !== null) {
+      window.clearTimeout(openDelayTimer.current);
+      openDelayTimer.current = null;
+    }
+    if (isPinned) {
+      if (closeDelayTimer.current !== null) {
+        window.clearTimeout(closeDelayTimer.current);
+        closeDelayTimer.current = null;
+      }
+      return;
+    }
+    if (!isExpandedRef.current || closeDelayTimer.current !== null) return;
+    // The finished state is what the panel is for: hold it long enough to be read.
+    closeDelayTimer.current = window.setTimeout(() => {
+      closeDelayTimer.current = null;
+      setIsExpanded(false);
+    }, PANEL_HOLD_AFTER_FINISH_MS);
   }, [pendingCount, isPinned]);
+
+  useEffect(() => () => {
+    if (openDelayTimer.current !== null) window.clearTimeout(openDelayTimer.current);
+    if (closeDelayTimer.current !== null) window.clearTimeout(closeDelayTimer.current);
+  }, []);
 
   useEffect(() => {
     if (!activeOperation) return;
@@ -201,7 +248,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
   const remainingLabel = remaining === null ? '—' : elapsedLabel(remaining, language);
   return createPortal(
     <aside ref={panelRef} className="pointer-events-none fixed bottom-4 right-4 z-[120] flex max-h-[min(80vh,800px)] w-[min(760px,calc(100vw-2rem))] flex-col items-end" aria-label={title}>
-      <section className="pointer-events-auto flex max-h-[80vh] w-full flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 text-neutral-100 shadow-2xl shadow-black/50">
+      <section className="cyberfiles-transfer-panel pointer-events-auto flex max-h-[80vh] w-full flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 text-neutral-100 shadow-2xl shadow-black/50">
         <header className="flex items-center gap-3 border-b border-neutral-700 px-4 py-3">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-cyan-950/70 text-cyan-300"><ListChecks className="h-5 w-5" /></span>
           <div className="min-w-0 flex-1">
