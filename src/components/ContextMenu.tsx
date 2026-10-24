@@ -32,6 +32,7 @@ import {
   Square,
   Palette,
   History,
+  Undo2,
 } from 'lucide-react';
 import { ArchiveExtractionMode, ContextMenuPosition, FileItem, GroupByField, SortField, SortOrder, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
@@ -85,6 +86,10 @@ interface ContextMenuProps {
   hasSelectableItems?: boolean;
   hasFoldersInFolder?: boolean;
   onCopyPath?: () => void;
+  /* Mirrors the toolbar's undo so the last operation can be reversed from where the user is
+     looking. Stays in the menu, disabled, when the history has nothing reversible. */
+  onUndo?: () => void;
+  undoAvailable?: boolean;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -135,6 +140,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   hasSelectableItems = true,
   hasFoldersInFolder = false,
   onCopyPath,
+  onUndo,
+  undoAvailable = false,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
@@ -173,9 +180,26 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const menuWidth = 264;
   const archiveItem = Boolean(item && !item.isFolder && ["zip", "rar"].includes(item.extension.toLowerCase()));
   const canRemoveFromRecent = Boolean(item && !item.isFolder && isRecentLocation && onRemoveFromRecent);
-  const menuHeight = (isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? (supportsArchiveCreation ? 410 : 370) : item ? (archiveItem && supportsArchiveExtraction ? (supportsArchiveCreation ? 450 : 410) : supportsArchiveCreation ? 360 : 330) : sortMenuOpen ? 600 : groupMenuOpen ? 580 : newMenuOpen ? 460 : 388) + (canRemoveFromRecent ? 26 : 0) + (!item && canModifyFolder ? (hasSavedFolderStyle ? 50 : 26) : 0) + (!item && onSelectAll ? (selectMenuOpen ? 160 : 30) : 0) + (item && !isSystemLocation && !item.recycleBinId && onCopyPath ? 26 : 0);
+  const menuHeight = (isSystemLocation || item?.recycleBinId ? 96 : item?.isFolder ? (supportsArchiveCreation ? 410 : 370) : item ? (archiveItem && supportsArchiveExtraction ? (supportsArchiveCreation ? 450 : 410) : supportsArchiveCreation ? 360 : 330) : sortMenuOpen ? 600 : groupMenuOpen ? 580 : newMenuOpen ? 460 : 388) + (canRemoveFromRecent ? 26 : 0) + (!item && canModifyFolder ? (hasSavedFolderStyle ? 50 : 26) : 0) + (!item && onSelectAll ? (selectMenuOpen ? 160 : 30) : 0) + (item && !isSystemLocation && !item.recycleBinId && onCopyPath ? 26 : 0) + (onUndo && (item ? !isSystemLocation && !item.recycleBinId : true) ? 32 : 0);
   const adjustedX = Math.max(8, Math.min(position.x, window.innerWidth - menuWidth - 8));
   const adjustedY = Math.max(8, Math.min(position.y, window.innerHeight - menuHeight - 8));
+
+  /* Last group in both menus: it acts on the operation history, not on what was clicked, so it
+     must not sit among the actions for the clicked item — and it must not move between states. */
+  const undoGroup = onUndo ? (
+    <>
+      <MenuDivider />
+      <div className="py-0.5">
+        <MenuButton
+          icon={<Undo2 className={`h-3.5 w-3.5 ${undoAvailable ? 'text-cyan-300' : 'text-neutral-500'}`} />}
+          label={undoAvailable ? t.contextMenu.undoLast : t.contextMenu.undoNothing}
+          shortcut="Ctrl+Z"
+          disabled={!undoAvailable}
+          onClick={() => { onUndo(); onClose(); }}
+        />
+      </div>
+    </>
+  ) : null;
 
   return (
     <div
@@ -244,6 +268,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           <div className="py-0.5">
             <MenuButton icon={<Trash2 className="h-3.5 w-3.5 text-rose-400" />} label={t.contextMenu.delete} shortcut="Del" danger onClick={() => { onDelete(item); onClose(); }} />
           </div>
+          {undoGroup}
         </>
         )
       ) : (
@@ -343,6 +368,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               {hasSavedFolderStyle && <MenuButton icon={<BookmarkX className="h-3.5 w-3.5 text-amber-300" />} label={t.contextMenu.removeFolderStyle} onClick={() => { onRemoveFolderStyle(); onClose(); }} />}
             </div>
           </>}
+          {undoGroup}
         </>
       )}
     </div>

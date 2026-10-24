@@ -103,6 +103,8 @@ export interface RecycleBinStatus {
 
 export interface RecycleBinDeleteResult {
   recycledPaths: string[];
+  /* Windows reports where each item landed as it moves it, so undo never has to search the bin. */
+  recycled: Array<{ path: string; id: string }>;
   failures: Array<{ path: string; error: string }>;
 }
 

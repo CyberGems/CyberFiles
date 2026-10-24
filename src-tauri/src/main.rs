@@ -4383,10 +4383,20 @@ struct RecycleBinFailure {
     error: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecycleBinRecycled {
+    path: String,
+    id: String,
+}
+
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct RecycleBinDeleteResult {
     recycled_paths: Vec<String>,
+    /* Where each item landed, reported by Windows itself. The undo entry needs these
+       identifiers, and looking them up afterwards is not an option: see RecycleProgressSink. */
+    recycled: Vec<RecycleBinRecycled>,
     failures: Vec<RecycleBinFailure>,
 }
 
@@ -4552,15 +4562,14 @@ fn list_windows_recycle_bin(_offset: usize) -> Result<LoadedRecycleBin, String> 
 
 #[cfg(target_os = "windows")]
 fn restore_windows_recycle_bin_item(id: &str) -> Result<(), String> {
-    use windows::core::{w, Interface, PCSTR};
+    use windows::core::{w, PCSTR, PCWSTR};
     use windows::Win32::Foundation::HWND;
     use windows::Win32::System::Com::{
         CoInitializeEx, CoTaskMemFree, CoUninitialize, IBindCtx, COINIT_APARTMENTTHREADED,
     };
     use windows::Win32::UI::Shell::{
-        BHID_EnumItems, Common::ITEMIDLIST, IContextMenu, IEnumShellItems, IShellFolder,
-        IShellItem, IShellItem2, SHBindToParent, SHCreateItemFromParsingName,
-        SHGetIDListFromObject, CMF_NORMAL, CMINVOKECOMMANDINFO, SIGDN_DESKTOPABSOLUTEPARSING,
+        Common::ITEMIDLIST, IContextMenu, IShellFolder, IShellItem, IShellItem2, BHID_SFObject,
+        CMF_NORMAL, CMINVOKECOMMANDINFO, SHCreateItemFromParsingName, SHCreateItemWithParent,
     };
     use windows::Win32::UI::WindowsAndMessaging::{CreatePopupMenu, DestroyMenu};
 
@@ -4586,35 +4595,40 @@ fn restore_windows_recycle_bin_item(id: &str) -> Result<(), String> {
     let recycle_bin: IShellItem =
         unsafe { SHCreateItemFromParsingName(w!("shell:RecycleBinFolder"), None::<&IBindCtx>) }
             .map_err(|error| format!("Could not open the Windows Recycle Bin: {error}"))?;
-    let enumeration: IEnumShellItems = unsafe {
-        recycle_bin.BindToHandler::<_, IEnumShellItems>(None::<&IBindCtx>, &BHID_EnumItems)
+    /* The identifier *is* the desktop parsing name of the item, so the bin folder can resolve it
+       directly. Walking the enumeration instead meant reading every entry until the match turned
+       up: minutes on a bin with tens of thousands of items, which made undo look frozen. */
+    let bin_folder: IShellFolder = unsafe {
+        recycle_bin.BindToHandler::<_, IShellFolder>(None::<&IBindCtx>, &BHID_SFObject)
     }
-    .map_err(|error| format!("Could not enumerate Windows Recycle Bin items: {error}"))?;
-    let mut source: Option<IShellItem> = None;
-    loop {
-        let mut fetched = 0_u32;
-        let mut next_item: [Option<IShellItem>; 1] = [None];
-        unsafe { enumeration.Next(&mut next_item, Some(&mut fetched)) }
-            .map_err(|error| format!("Could not read Recycle Bin entries: {error}"))?;
-        if fetched == 0 {
-            break;
-        }
-        let candidate = next_item[0]
-            .take()
-            .ok_or_else(|| "Windows returned an empty Recycle Bin entry.".to_string())?;
-        let candidate_id = unsafe { candidate.GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING) }
-            .map_err(|error| format!("Could not identify a Recycle Bin item: {error}"))?;
-        let candidate_id = unsafe { take_shell_string(candidate_id) }?;
-        if candidate_id.eq_ignore_ascii_case(id) {
-            source = Some(candidate);
-            break;
+    .map_err(|error| format!("Could not open the Windows Recycle Bin folder: {error}"))?;
+    let wide_id: Vec<u16> = id.encode_utf16().chain(Some(0)).collect();
+    let mut eaten = 0_u32;
+    let mut resolved_pidl: *mut ITEMIDLIST = std::ptr::null_mut();
+    unsafe {
+        bin_folder.ParseDisplayName(
+            HWND::default(),
+            None::<&IBindCtx>,
+            PCWSTR(wide_id.as_ptr()),
+            Some(&mut eaten),
+            &mut resolved_pidl,
+            std::ptr::null_mut(),
+        )
+    }
+    .map_err(|_| "The Recycle Bin item is no longer available.".to_string())?;
+    struct OwnedItemIdList(*mut ITEMIDLIST);
+    impl Drop for OwnedItemIdList {
+        fn drop(&mut self) {
+            unsafe { CoTaskMemFree(Some(self.0.cast())) };
         }
     }
-    let source =
-        source.ok_or_else(|| "The Recycle Bin item is no longer available.".to_string())?;
-    let source_metadata: IShellItem2 = source
-        .cast()
-        .map_err(|error| format!("Could not inspect the Recycle Bin item: {error}"))?;
+    let child_pidl = OwnedItemIdList(resolved_pidl);
+    if child_pidl.0.is_null() {
+        return Err("Windows returned an empty Recycle Bin item identifier.".to_string());
+    }
+    let source_metadata: IShellItem2 =
+        unsafe { SHCreateItemWithParent(None, &bin_folder, child_pidl.0.cast_const()) }
+            .map_err(|error| format!("Could not inspect the Recycle Bin item: {error}"))?;
     let original_location_key = recycle_bin_property_key("System.Recycle.DeletedFrom")?;
     let name_key = recycle_bin_property_key("System.ItemNameDisplay")?;
     let original_location = unsafe { source_metadata.GetString(&original_location_key) }
@@ -4631,29 +4645,10 @@ fn restore_windows_recycle_bin_item(id: &str) -> Result<(), String> {
     if !destination.parent().is_some_and(|path| path.is_dir()) {
         return Err("The original folder is no longer available.".to_string());
     }
-    let absolute_pidl = unsafe { SHGetIDListFromObject(&source) }.map_err(|error| {
-        format!("Could not identify the Recycle Bin item for restoration: {error}")
-    })?;
-    if absolute_pidl.is_null() {
-        return Err("Windows returned an empty Recycle Bin item identifier.".to_string());
+    let context_menu: IContextMenu = unsafe {
+        bin_folder.GetUIObjectOf(HWND::default(), &[child_pidl.0.cast_const()], None)
     }
-    struct OwnedItemIdList(*mut ITEMIDLIST);
-    impl Drop for OwnedItemIdList {
-        fn drop(&mut self) {
-            unsafe { CoTaskMemFree(Some(self.0.cast())) };
-        }
-    }
-    let absolute_pidl = OwnedItemIdList(absolute_pidl);
-    let mut child_pidl: *mut ITEMIDLIST = std::ptr::null_mut();
-    let parent_folder: IShellFolder =
-        unsafe { SHBindToParent(absolute_pidl.0.cast_const(), Some(&mut child_pidl)) }
-            .map_err(|error| format!("Could not locate the Recycle Bin item parent: {error}"))?;
-    if child_pidl.is_null() {
-        return Err("Windows returned an empty Recycle Bin child identifier.".to_string());
-    }
-    let context_menu: IContextMenu =
-        unsafe { parent_folder.GetUIObjectOf(HWND::default(), &[child_pidl.cast_const()], None) }
-            .map_err(|error| format!("Could not access the Windows restore command: {error}"))?;
+    .map_err(|error| format!("Could not access the Windows restore command: {error}"))?;
     let menu = unsafe { CreatePopupMenu() }
         .map_err(|error| format!("Could not prepare the Windows restore command: {error}"))?;
     let invoke_result = unsafe {
@@ -4790,8 +4785,202 @@ async fn restore_recycle_bin_items(
     .map_err(|error| format!("Recycle Bin restore worker failed: {error}"))?
 }
 
+/* Windows tells the caller where each deleted item landed through the IFileOperation progress
+   sink, and that is the only affordable way to learn a recycled item's Recycle Bin identifier.
+   Reading it back afterwards means enumerating the bin, which walks a Shell page of 400 entries
+   reading four properties each — seconds on a bin with tens of thousands of items — and a fresh
+   entry lands wherever the enumeration happens to put it, so the lookup usually found nothing
+   at all and the undo entry never became usable. */
 #[cfg(target_os = "windows")]
-fn recycle_path(path: &str) -> Result<(), String> {
+#[windows::core::implement(windows::Win32::UI::Shell::IFileOperationProgressSink)]
+#[derive(Clone)]
+struct RecycleProgressSink {
+    /* Shared, because handing the interface to `DeleteItem` consumes the wrapper: the caller
+       keeps its own copy to read the results once the operation finishes. */
+    recycled: std::sync::Arc<std::sync::Mutex<Vec<(String, String)>>>,
+}
+
+#[cfg(target_os = "windows")]
+impl RecycleProgressSink {
+    fn new() -> Self {
+        Self {
+            recycled: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+        }
+    }
+
+    /* Source path paired with the Recycle Bin identifier, in the order Windows reports them. */
+    fn take(&self) -> Vec<(String, String)> {
+        self.recycled
+            .lock()
+            .map(|entries| entries.clone())
+            .unwrap_or_default()
+    }
+
+    fn record(
+        &self,
+        source: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        created: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+    ) {
+        use windows::Win32::UI::Shell::{IShellItem, SIGDN_DESKTOPABSOLUTEPARSING};
+
+        fn parsing_name(item: &IShellItem) -> Option<String> {
+            unsafe { item.GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING) }
+                .ok()
+                .and_then(|value| unsafe { take_shell_string(value) }.ok())
+        }
+
+        let (Some(source), Some(created)) = (source.as_ref(), created.as_ref()) else {
+            return;
+        };
+        let (Some(source_name), Some(recycled_id)) = (parsing_name(source), parsing_name(created))
+        else {
+            return;
+        };
+        if let Ok(mut entries) = self.recycled.lock() {
+            entries.push((source_name, recycled_id));
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl windows::Win32::UI::Shell::IFileOperationProgressSink_Impl for RecycleProgressSink_Impl {
+    fn StartOperations(&self) -> windows::core::Result<()> {
+        Ok(())
+    }
+
+    fn FinishOperations(&self, _hrresult: windows::core::HRESULT) -> windows::core::Result<()> {
+        Ok(())
+    }
+
+    fn PreRenameItem(
+        &self,
+        _dwflags: u32,
+        _psiitem: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _psznewname: &windows::core::PCWSTR,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+
+    fn PostRenameItem(
+        &self,
+        _dwflags: u32,
+        _psiitem: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _psznewname: &windows::core::PCWSTR,
+        _hrrename: windows::core::HRESULT,
+        _psinewlycreated: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+
+    fn PreMoveItem(
+        &self,
+        _dwflags: u32,
+        _psiitem: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _psidestinationfolder: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _psznewname: &windows::core::PCWSTR,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+
+    fn PostMoveItem(
+        &self,
+        _dwflags: u32,
+        _psiitem: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _psidestinationfolder: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _psznewname: &windows::core::PCWSTR,
+        _hrmove: windows::core::HRESULT,
+        _psinewlycreated: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+
+    fn PreCopyItem(
+        &self,
+        _dwflags: u32,
+        _psiitem: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _psidestinationfolder: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _psznewname: &windows::core::PCWSTR,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+
+    fn PostCopyItem(
+        &self,
+        _dwflags: u32,
+        _psiitem: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _psidestinationfolder: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _psznewname: &windows::core::PCWSTR,
+        _hrcopy: windows::core::HRESULT,
+        _psinewlycreated: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+
+    fn PreDeleteItem(
+        &self,
+        _dwflags: u32,
+        _psiitem: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+
+    fn PostDeleteItem(
+        &self,
+        _dwflags: u32,
+        psiitem: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _hrdelete: windows::core::HRESULT,
+        psinewlycreated: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+    ) -> windows::core::Result<()> {
+        self.record(psiitem, psinewlycreated);
+        Ok(())
+    }
+
+    fn PreNewItem(
+        &self,
+        _dwflags: u32,
+        _psidestinationfolder: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _psznewname: &windows::core::PCWSTR,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+
+    fn PostNewItem(
+        &self,
+        _dwflags: u32,
+        _psidestinationfolder: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+        _psznewname: &windows::core::PCWSTR,
+        _psztemplatename: &windows::core::PCWSTR,
+        _dwfileattributes: u32,
+        _hrnew: windows::core::HRESULT,
+        _psinewitem: windows::core::Ref<'_, windows::Win32::UI::Shell::IShellItem>,
+    ) -> windows::core::Result<()> {
+        Ok(())
+    }
+
+    fn UpdateProgress(&self, _iworktotal: u32, _iworksofar: u32) -> windows::core::Result<()> {
+        Ok(())
+    }
+
+    fn ResetTimer(&self) -> windows::core::Result<()> {
+        Ok(())
+    }
+
+    fn PauseTimer(&self) -> windows::core::Result<()> {
+        Ok(())
+    }
+
+    fn ResumeTimer(&self) -> windows::core::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn same_shell_path(left: &str, right: &str) -> bool {
+    left.replace('/', "\\").eq_ignore_ascii_case(&right.replace('/', "\\"))
+}
+
+#[cfg(target_os = "windows")]
+fn recycle_path(path: &str) -> Result<Option<String>, String> {
     use std::os::windows::ffi::OsStrExt;
     use windows::core::{IUnknown, PCWSTR};
     use windows::Win32::System::Com::{
@@ -4861,12 +5050,14 @@ fn recycle_path(path: &str) -> Result<(), String> {
         )
     }
     .map_err(|error| format!("Could not start the Windows file operation: {error}"))?;
+    let sink = RecycleProgressSink::new();
+    let sink_interface: IFileOperationProgressSink = sink.clone().into();
     unsafe {
         operation
             .SetOperationFlags(FOF_NO_UI | FOFX_RECYCLEONDELETE)
             .map_err(|error| format!("Could not configure Recycle Bin deletion: {error}"))?;
         operation
-            .DeleteItem(&shell_item, None::<&IFileOperationProgressSink>)
+            .DeleteItem(&shell_item, &sink_interface)
             .map_err(|error| format!("Could not queue Recycle Bin deletion: {error}"))?;
         operation.PerformOperations().map_err(|error| {
             format!("Windows could not move the item to the Recycle Bin: {error}")
@@ -4882,12 +5073,35 @@ fn recycle_path(path: &str) -> Result<(), String> {
     if resolved.exists() {
         return Err("Windows reported success but the selected item still exists.".to_string());
     }
-    Ok(())
+    Ok(sink
+        .take()
+        .into_iter()
+        .find(|(source, _)| same_shell_path(source, &shell_path))
+        .map(|(_, id)| id))
 }
 
 #[cfg(not(target_os = "windows"))]
-fn recycle_path(_path: &str) -> Result<(), String> {
+fn recycle_path(_path: &str) -> Result<Option<String>, String> {
     Err("The Windows Recycle Bin is available only in the Windows desktop app.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn push_recycled(
+    result: &mut RecycleBinDeleteResult,
+    path: String,
+    shell_path: &str,
+    reported: &[(String, String)],
+) {
+    result.recycled_paths.push(path.clone());
+    if let Some((_, id)) = reported
+        .iter()
+        .find(|(source, _)| same_shell_path(source, shell_path))
+    {
+        result.recycled.push(RecycleBinRecycled {
+            path,
+            id: id.clone(),
+        });
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -4906,12 +5120,20 @@ fn recycle_paths(paths: Vec<String>) -> RecycleBinDeleteResult {
     if paths.len() == 1 {
         let path = &paths[0];
         return match recycle_path(path) {
-            Ok(()) => RecycleBinDeleteResult {
+            Ok(recycled_id) => RecycleBinDeleteResult {
                 recycled_paths: vec![path.clone()],
+                recycled: recycled_id
+                    .map(|id| RecycleBinRecycled {
+                        path: path.clone(),
+                        id,
+                    })
+                    .into_iter()
+                    .collect(),
                 failures: Vec::new(),
             },
             Err(error) => RecycleBinDeleteResult {
                 recycled_paths: Vec::new(),
+                recycled: Vec::new(),
                 failures: vec![RecycleBinFailure {
                     path: path.clone(),
                     error,
@@ -5028,6 +5250,8 @@ fn recycle_paths(paths: Vec<String>) -> RecycleBinDeleteResult {
     }
 
     let mut queued = Vec::new();
+    let sink = RecycleProgressSink::new();
+    let sink_interface: IFileOperationProgressSink = sink.clone().into();
     for (path, resolved, shell_path) in candidates {
         let wide_path: Vec<u16> = std::ffi::OsStr::new(&shell_path)
             .encode_wide()
@@ -5045,8 +5269,8 @@ fn recycle_paths(paths: Vec<String>) -> RecycleBinDeleteResult {
                 continue;
             }
         };
-        match unsafe { operation.DeleteItem(&shell_item, None::<&IFileOperationProgressSink>) } {
-            Ok(()) => queued.push((path, resolved)),
+        match unsafe { operation.DeleteItem(&shell_item, &sink_interface) } {
+            Ok(()) => queued.push((path, resolved, shell_path)),
             Err(error) => result.failures.push(RecycleBinFailure {
                 path,
                 error: format!("Could not queue Recycle Bin deletion: {error}"),
@@ -5060,26 +5284,29 @@ fn recycle_paths(paths: Vec<String>) -> RecycleBinDeleteResult {
     let operation_error = unsafe { operation.PerformOperations() }
         .err()
         .map(|error| format!("Windows could not move the item to the Recycle Bin: {error}"));
+    /* Windows has already reported every item it created by now, whether or not the operation
+       as a whole returned an error. */
+    let reported = sink.take();
     let aborted = match unsafe { operation.GetAnyOperationsAborted() } {
         Ok(value) => value.as_bool(),
         Err(error) => {
             let message = format!("Could not verify the Recycle Bin operation: {error}");
-            for (path, resolved) in queued {
+            for (path, resolved, shell_path) in queued {
                 if resolved.exists() {
                     result.failures.push(RecycleBinFailure {
                         path,
                         error: message.clone(),
                     });
                 } else {
-                    result.recycled_paths.push(path);
+                    push_recycled(&mut result, path, &shell_path, &reported);
                 }
             }
             return result;
         }
     };
-    for (path, resolved) in queued {
+    for (path, resolved, shell_path) in queued {
         if !resolved.exists() {
-            result.recycled_paths.push(path);
+            push_recycled(&mut result, path, &shell_path, &reported);
         } else {
             let error = operation_error.clone().unwrap_or_else(|| {
                 if aborted {
@@ -5098,6 +5325,7 @@ fn recycle_paths(paths: Vec<String>) -> RecycleBinDeleteResult {
 fn recycle_paths(paths: Vec<String>) -> RecycleBinDeleteResult {
     RecycleBinDeleteResult {
         recycled_paths: Vec::new(),
+        recycled: Vec::new(),
         failures: paths
             .into_iter()
             .map(|path| RecycleBinFailure {

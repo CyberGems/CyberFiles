@@ -678,25 +678,6 @@ const MAX_TAB_HISTORY_ENTRIES = 200;
 const getPathKey = (path: string) => normalizeWindowsPath(path).replace(/[\\/]+$/, '').toLowerCase();
 const createOperationId = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-/* Resolves the Recycle Bin entry a just-deleted path turned into, which is what the undo
-   entry needs. It reads the first Shell page only (the listing walks up to 400 entries) and
-   keeps the newest match per path, so it never needs a snapshot of the bin taken before the
-   move: a path deleted twice keeps both entries, and the newest one is the one this delete
-   produced. */
-async function findRecentRecycleBinItems(paths: string[], startedAtMs: number): Promise<FileItem[]> {
-  const wanted = new Set(paths.map(getPathKey));
-  const newestByPath = new Map<string, FileItem>();
-  const page = await listNativeRecycleBin(0);
-  for (const item of page.entries) {
-    const originalPath = item.originalPath ?? item.path;
-    const key = getPathKey(originalPath);
-    if (!item.recycleBinId || !wanted.has(key) || (item.modifiedAtMs ?? 0) < startedAtMs - 2_000) continue;
-    const previous = newestByPath.get(key);
-    if (!previous || (item.modifiedAtMs ?? 0) > (previous.modifiedAtMs ?? 0)) newestByPath.set(key, item);
-  }
-  return [...newestByPath.values()];
-}
-
 const createEmptyTab = (
   id: string,
   viewMode: ViewMode = 'details',
@@ -4329,15 +4310,16 @@ export default function App() {
     setIsFileOperationBusy(true);
     try {
       const paths = roots.map(item => item.path);
-      const operationStartedAt = Date.now();
-      const { removedPaths, failures } = permanentlyDelete
+      const { removedPaths, failures, recycledIds } = permanentlyDelete
         ? await permanentlyDeleteNativeItems(paths).then(result => ({
           removedPaths: result.completedPaths,
           failures: result.failures,
+          recycledIds: new Map<string, string>(),
         }))
         : await moveNativeItemsToRecycleBin(paths).then(result => ({
           removedPaths: result.recycledPaths,
           failures: result.failures,
+          recycledIds: new Map(result.recycled.map(entry => [getPathKey(entry.path), entry.id])),
         }));
       const removedIds = new Set(
         allFiles
@@ -4368,36 +4350,23 @@ export default function App() {
             undo: null,
           });
         } else {
-          /* The undo entry needs the Recycle Bin ids, and only the Shell knows them. Looking
-             them up used to hold the dialog open for seconds — the listing walks a Shell page
-             of up to 400 entries, and this machine's bin holds tens of thousands. Push the
-             record now as "preparing" and upgrade it when the lookup lands. */
-          const undoId = createOperationId('undo');
+          /* Windows hands back the Recycle Bin identifier as it moves each item, so the undo
+             entry is usable the moment the list updates. Reading the identifiers back from the
+             bin instead meant enumerating a Shell page of 400 entries (four property reads
+             each) — seconds, and the fresh item usually was not even in the first page, so the
+             entry sat at "preparing" forever. */
+          const restoreItems = removedPaths.flatMap(path => {
+            const id = recycledIds.get(getPathKey(path));
+            return id ? [{ id, originalPath: path }] : [];
+          });
           pushUndoAction({
-            id: undoId,
             kind: 'recycle',
             name: '',
-            count: removedPaths.length,
-            canUndo: false,
-            blockedReason: t.toolbar.undoRecyclePending,
-            undo: null,
+            count: restoreItems.length > 0 ? restoreItems.length : removedPaths.length,
+            canUndo: restoreItems.length > 0,
+            blockedReason: restoreItems.length > 0 ? undefined : t.toolbar.undoRecycleUnavailable,
+            undo: restoreItems.length > 0 ? { type: 'restore', items: restoreItems } : null,
           });
-          void findRecentRecycleBinItems(removedPaths, operationStartedAt)
-            .then(recycledItems => {
-              if (recycledItems.length !== removedPaths.length) return;
-              updateUndoAction(undoId, current => ({
-                ...current,
-                canUndo: true,
-                blockedReason: undefined,
-                undo: {
-                  type: 'restore',
-                  items: recycledItems.map(item => ({ id: item.recycleBinId!, originalPath: item.originalPath ?? item.path })),
-                },
-              }));
-            })
-            .catch(() => {
-              /* The record keeps its "unavailable" state, which is the honest outcome. */
-            });
         }
       }
 
@@ -4430,7 +4399,7 @@ export default function App() {
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [allFiles, invalidateFlatDirectories, isFileOperationBusy, leftTabs, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, removeRecentPaths, rightTabs, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecyclePending, t.toolbar.undoUnavailable, updateUndoAction]);
+  }, [allFiles, invalidateFlatDirectories, isFileOperationBusy, leftTabs, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, removeRecentPaths, rightTabs, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecycleUnavailable, t.toolbar.undoUnavailable]);
 
   const handleDeleteSelected = useCallback((itemsToDelete?: FileItem[], options: { permanently?: boolean } = {}) => {
     if (!isTauriDesktop()) {
@@ -6025,6 +5994,11 @@ export default function App() {
         hasFoldersInFolder={activeDisplayFiles.some(item => item.isFolder)}
         onCopyPath={() => handleCopySelectedPaths(selectedItemsForDelete)}
         onCustomizeFolderIcon={item => handleOpenFolderIconModal({ path: item.path, name: item.name })}
+        onUndo={() => {
+          const latest = undoHistory[0];
+          if (latest?.canUndo) void handleUndoAction(latest.id);
+        }}
+        undoAvailable={Boolean(undoHistory[0]?.canUndo) && !undoBusy && !isFileOperationBusy}
       />
       {pendingCreateItem && (
         <CreateItemModal
