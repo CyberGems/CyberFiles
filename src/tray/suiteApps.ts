@@ -10,7 +10,7 @@ export interface SuiteApp {
   site: string;
 }
 
-export const SUITE_UPDATED = '2026-09-18';
+export const SUITE_UPDATED = '2026-10-24';
 
 export const SUITE_APPS: SuiteApp[] = [
   {
