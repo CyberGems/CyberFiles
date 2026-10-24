@@ -111,6 +111,7 @@ import {
 import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { recentFileActions, recordRecentEntry, removeRecentEntry, renameRecentEntries, toRecentFileItem, type RecentEntry } from './utils/recentFiles';
+import { AUTO_CHECK_INTERVAL_MS, fetchLatestRelease, getAutoCheckUpdates, getNotifiedVersion, isNewerVersion, setNotifiedVersion } from './utils/updates';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
 const FindFilesModal = lazy(() => import('./components/FindFilesModal').then(module => ({ default: module.FindFilesModal })));
@@ -3357,6 +3358,36 @@ export default function App() {
     };
   }, [language, showToast, t.core.operationFailedWithReason]);
 
+  /* Background half of the "automatic update checks" preference the About modal owns: on start
+     and every six hours, as the hint there promises. The check itself is quiet; only a release
+     newer than the running one announces itself, and only once per version. Failures are
+     silent on purpose, since the About modal reports them when the user asks. */
+  const updateToastRef = useRef({ message: t.updates.availableToast, detail: t.updates.availableToastDetail });
+  updateToastRef.current = { message: t.updates.availableToast, detail: t.updates.availableToastDetail };
+  useEffect(() => {
+    if (!getAutoCheckUpdates()) return;
+    let cancelled = false;
+    const runCheck = async () => {
+      try {
+        const release = await fetchLatestRelease();
+        if (cancelled) return;
+        if (!isNewerVersion(release.version, __APP_VERSION__)) return;
+        if (getNotifiedVersion() === release.version) return;
+        setNotifiedVersion(release.version);
+        const copy = updateToastRef.current;
+        showToast(copy.message.replace('{version}', release.version), copy.detail);
+      } catch {
+        // Offline or rate limited: nothing to announce.
+      }
+    };
+    void runCheck();
+    const timer = window.setInterval(() => { void runCheck(); }, AUTO_CHECK_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [showToast]);
+
   // The tray menu runs in its own window and asks the main window to open these.
   useEffect(() => {
     if (!isTauriDesktop()) return;
@@ -6276,7 +6307,7 @@ export default function App() {
 
       {shouldMountAboutModal && (
         <Suspense fallback={null}>
-          <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} />
+          <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} onNotify={message => showToast(message)} />
         </Suspense>
       )}
 
