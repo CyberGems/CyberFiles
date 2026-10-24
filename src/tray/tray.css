@@ -290,9 +290,11 @@
   width: 100%;
 }
 
+/* The deck swaps views instantly. An entrance animation here ran every time the menu was
+   shown (the webview paints its first frame on show), which made the card fade and slide in
+   instead of appearing in place like a native menu. */
 .tray-deck[data-view="main"] #view-main {
   display: block;
-  animation: tray-view-fade 0.16s ease;
 }
 
 .tray-deck[data-view="main"] #view-help,
@@ -307,29 +309,6 @@
 .tray-deck[data-view="help"] #view-help,
 .tray-deck[data-view="suite"] #view-suite {
   display: block;
-  animation: tray-view-slide 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes tray-view-slide {
-  from {
-    opacity: 0;
-    transform: translateX(22px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes tray-view-fade {
-  from {
-    opacity: 0;
-    transform: translateX(-16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
 }
 
 /* Nav rows that open a sub-view */
