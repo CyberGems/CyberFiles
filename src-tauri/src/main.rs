@@ -439,6 +439,55 @@ fn set_global_shortcut_settings(
     global_shortcut_status(&state)
 }
 
+/* The factory reset for the preferences that live outside the webview: the global shortcut and
+   the instance behaviour are JSON files in the app config directory, so clearing localStorage
+   would leave them at whatever they were. Each file is rewritten with its default and the live
+   state follows, which is what makes the reset hold after the window reloads. */
+#[tauri::command]
+fn reset_app_preferences(app: tauri::AppHandle) -> Result<(), String> {
+    let shortcut_state = app.state::<GlobalShortcutState>();
+    let shortcut_defaults = GlobalShortcutPreferences::default();
+    let mut shortcut_preferences = shortcut_state
+        .preferences
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let mut registered = shortcut_state.registered.lock().map_err(|error| error.to_string())?;
+    let shortcut_manager = app.global_shortcut();
+    let target = shortcut_defaults.shortcut.clone();
+
+    /* Register the default before dropping the old one, so a refused registration (another app
+       holding the key) leaves the current shortcut working instead of losing both. */
+    if shortcut_defaults.enabled && registered.as_deref() != Some(target.as_str()) {
+        shortcut_manager
+            .register(target.as_str())
+            .map_err(|error| error.to_string())?;
+    }
+    if let Some(previous) = registered.as_deref() {
+        if Some(previous) != (shortcut_defaults.enabled.then_some(target.as_str())) {
+            let _ = shortcut_manager.unregister(previous);
+        }
+    }
+    save_global_shortcut_preferences(&shortcut_state.config_path, &shortcut_defaults)?;
+    *shortcut_preferences = shortcut_defaults.clone();
+    *registered = shortcut_defaults.enabled.then_some(target);
+    drop(registered);
+    drop(shortcut_preferences);
+    update_tray_hotkey_hint(
+        &app,
+        shortcut_defaults.enabled.then_some(shortcut_defaults.shortcut.as_str()),
+    )?;
+
+    let instance_state = app.state::<InstancePreferencesState>();
+    let mut instance_preferences = instance_state
+        .preferences
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let instance_defaults = InstancePreferences::default();
+    save_instance_preferences(&instance_state.config_path, &instance_defaults)?;
+    *instance_preferences = instance_defaults;
+    Ok(())
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct NativeFolderEntry {
@@ -6048,6 +6097,7 @@ fn main() {
             set_global_shortcut_settings,
             get_instance_preferences,
             set_instance_preferences,
+            reset_app_preferences,
         ])
         .run(tauri::generate_context!())
         .expect("CyberFiles desktop shell failed to start");

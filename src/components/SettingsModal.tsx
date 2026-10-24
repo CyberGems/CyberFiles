@@ -11,6 +11,8 @@ import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
 import { isTauriDesktop } from '../utils/nativeFileSystem';
 import type { DeleteConfirmationPreference } from '../utils/deletePreferences';
+import { resetLocalPreferences } from '../utils/factoryReset';
+import { ConfirmActionModal } from './ConfirmActionModal';
 import { ColorValueEditor } from './ColorValueEditor';
 import { TOOLBAR_LABEL_POSITIONS, type ToolbarLabelPosition } from './CommandBarControl';
 
@@ -223,6 +225,9 @@ export function SettingsModal({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [settingsSearch, setSettingsSearch] = useState('');
   const [searchResultCount, setSearchResultCount] = useState(0);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState(false);
   const searchActive = settingsSearch.trim().length > 0;
   const settingsTabLabels: Record<SettingsTab, string> = {
     general: t.settings.generalTab,
@@ -435,6 +440,24 @@ export function SettingsModal({
 
   const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
   const [shortcutCaptureError, setShortcutCaptureError] = useState<string | null>(null);
+
+  /* The reset clears storage and then reloads, because every preference is read once on mount:
+     a reload is what makes the defaults reach the panes, the theme and the tab strip at the
+     same time. The backend goes first — it owns the two preferences stored as JSON — so a
+     failure there aborts before anything is cleared, and the user is not left half reset. */
+  const handleResetPreferences = async () => {
+    setResetBusy(true);
+    setResetError(false);
+    try {
+      if (isTauriDesktop()) await invoke('reset_app_preferences');
+    } catch {
+      setResetBusy(false);
+      setResetError(true);
+      return;
+    }
+    resetLocalPreferences();
+    window.location.reload();
+  };
 
   useEffect(() => {
     if (!isOpen || !isRecordingShortcut) return;
@@ -1545,8 +1568,21 @@ export function SettingsModal({
           </section>
           </div>
           <div data-settings-tab-content="general" hidden={!searchActive && tab !== 'general'} className="space-y-3">
-          <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
-            {t.settings.persistenceNote}
+          {/* The old card here was a paragraph listing every preference; it said nothing a user
+              could act on. The space now holds the action the list was standing in for. */}
+          <div data-settings-search-unit className="border-t border-neutral-800 pt-4">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.resetSection}</div>
+            <div data-settings-search-unit className="flex items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+              <p className="min-w-0">{t.settings.resetDescription}</p>
+              <button
+                type="button"
+                onClick={() => setResetDialogOpen(true)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-rose-900/70 px-2.5 py-1.5 text-[11px] text-rose-300 transition-colors hover:bg-rose-950/40"
+              >
+                <RotateCcw className="h-3 w-3" />
+                {t.settings.resetAction}
+              </button>
+            </div>
           </div>
           </div>
           </div>
@@ -1571,6 +1607,23 @@ export function SettingsModal({
           </DialogButton>
         </div>
       </section>
+      {/* Inside the panel's wrapper so the dialog paints above the panel (the wrapper is the
+          stacking context), and its own backdrop must not close the settings underneath. */}
+      {resetDialogOpen && (
+        <div onMouseDown={event => event.stopPropagation()}>
+          <ConfirmActionModal
+            items={[]}
+            title={t.settings.resetConfirmTitle}
+            description={t.settings.resetConfirmDescription}
+            errorMessage={resetError ? t.settings.resetFailed : undefined}
+            confirmLabel={t.settings.resetConfirmAction}
+            confirmVariant="danger"
+            isBusy={resetBusy}
+            onCancel={() => { if (!resetBusy) { setResetDialogOpen(false); setResetError(false); } }}
+            onConfirm={() => { void handleResetPreferences(); }}
+          />
+        </div>
+      )}
     </div>
   );
 }

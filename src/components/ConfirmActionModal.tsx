@@ -21,6 +21,9 @@ interface ConfirmActionModalProps {
   /* Only the delete confirmation can be suppressed: the other dialogs guard operations that
      have no remembered answer. */
   showRememberOption?: boolean;
+  /* A failure that belongs to the confirmation itself (the reset could not be written), shown
+     under the description instead of closing the dialog and losing the reason. */
+  errorMessage?: string;
 }
 
 export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
@@ -36,6 +39,7 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
   confirmVariant = 'danger',
   initialPermanentlyDelete = false,
   showRememberOption = false,
+  errorMessage,
 }) => {
   const { t, language } = useLanguage();
   const [permanentlyDelete, setPermanentlyDelete] = useState(initialPermanentlyDelete);
@@ -88,6 +92,7 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
           {/* Two lines are reserved: the sentence swaps for a shorter one when the permanent
               check is ticked, and a dialog that resizes under the pointer looks like it jumped. */}
           <p className={`min-h-10 ${permanentlyDelete ? 'text-rose-200' : 'text-neutral-300'}`}>{resolvedDescription}</p>
+          {errorMessage && <p className="text-xs text-rose-300">{errorMessage}</p>}
           {allowPermanentDelete && (
             <Tooltip label={t.core.permanentDeleteCheckboxTooltip} placement="top">
               <label className={`flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${permanentlyDelete ? 'border-rose-800/70 bg-rose-950/30 text-rose-200' : 'border-neutral-800 bg-neutral-950/40 text-neutral-300 hover:border-neutral-700'}`}>
