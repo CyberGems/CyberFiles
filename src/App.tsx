@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { homeDir } from '@tauri-apps/api/path';
@@ -29,6 +29,7 @@ import {
   type FileDropOperation,
   type TabSizePreferences,
 } from './types';
+import { lazyWithRetry, MODULE_LOAD_FAILED_EVENT } from './components/LazyModule';
 import {
   getChildItems, 
   getParentPath, 
@@ -113,17 +114,17 @@ import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { recentFileActions, recordRecentEntry, removeRecentEntry, renameRecentEntries, toRecentFileItem, type RecentEntry } from './utils/recentFiles';
 import { AUTO_CHECK_INTERVAL_MS, checkForUpdate, getAutoCheckUpdates, getNotifiedVersion, isSkippedVersion, setNotifiedVersion, setSkippedVersion, type AvailableUpdate } from './utils/updates';
 
-const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
-const UpdateModal = lazy(() => import('./components/UpdateModal').then(module => ({ default: module.UpdateModal })));
-const FindFilesModal = lazy(() => import('./components/FindFilesModal').then(module => ({ default: module.FindFilesModal })));
-const BatchRenameModal = lazy(() => import('./components/BatchRenameModal').then(module => ({ default: module.BatchRenameModal })));
-const KeyboardShortcutsModal = lazy(() => import('./components/KeyboardShortcutsModal').then(module => ({ default: module.KeyboardShortcutsModal })));
-const CommandPalette = lazy(() => import('./components/CommandPalette').then(module => ({ default: module.CommandPalette })));
-const ConfirmActionModal = lazy(() => import('./components/ConfirmActionModal').then(module => ({ default: module.ConfirmActionModal })));
-const CloseWindowModal = lazy(() => import('./components/CloseWindowModal').then(module => ({ default: module.CloseWindowModal })));
-const SettingsModal = lazy(() => import('./components/SettingsModal').then(module => ({ default: module.SettingsModal })));
-const OnboardingWelcome = lazy(() => import('./components/OnboardingWelcome').then(module => ({ default: module.OnboardingWelcome })));
-const FilePane = lazy(() => import('./components/FilePane').then(module => ({ default: module.FilePane })));
+const AboutModal = lazyWithRetry(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
+const UpdateModal = lazyWithRetry(() => import('./components/UpdateModal').then(module => ({ default: module.UpdateModal })));
+const FindFilesModal = lazyWithRetry(() => import('./components/FindFilesModal').then(module => ({ default: module.FindFilesModal })));
+const BatchRenameModal = lazyWithRetry(() => import('./components/BatchRenameModal').then(module => ({ default: module.BatchRenameModal })));
+const KeyboardShortcutsModal = lazyWithRetry(() => import('./components/KeyboardShortcutsModal').then(module => ({ default: module.KeyboardShortcutsModal })));
+const CommandPalette = lazyWithRetry(() => import('./components/CommandPalette').then(module => ({ default: module.CommandPalette })));
+const ConfirmActionModal = lazyWithRetry(() => import('./components/ConfirmActionModal').then(module => ({ default: module.ConfirmActionModal })));
+const CloseWindowModal = lazyWithRetry(() => import('./components/CloseWindowModal').then(module => ({ default: module.CloseWindowModal })));
+const SettingsModal = lazyWithRetry(() => import('./components/SettingsModal').then(module => ({ default: module.SettingsModal })));
+const OnboardingWelcome = lazyWithRetry(() => import('./components/OnboardingWelcome').then(module => ({ default: module.OnboardingWelcome })));
+const FilePane = lazyWithRetry(() => import('./components/FilePane').then(module => ({ default: module.FilePane })));
 const ONBOARDING_STORAGE_KEY = 'cyberfiles_onboarding_complete';
 const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
 // Flat view reads every subfolder recursively, so ask for confirmation once a
@@ -996,6 +997,33 @@ export default function App() {
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = null;
   }, [notificationBannersEnabled]);
+
+  /* A lazily loaded window that never arrives would otherwise do nothing at all: the click opens
+     nothing and the reason stays in the console. */
+  useEffect(() => {
+    const reportFailure = () => showToast(t.loadFailure.moduleToast);
+    window.addEventListener(MODULE_LOAD_FAILED_EVENT, reportFailure);
+    return () => window.removeEventListener(MODULE_LOAD_FAILED_EVENT, reportFailure);
+  }, [showToast, t.loadFailure.moduleToast]);
+
+  /* The lister is most of the window: when its module cannot be fetched, the pane keeps the grid
+     and offers the retry instead of leaving it empty. */
+  const paneLoadingFallback = (
+    <div className="flex min-h-0 min-w-0 items-center justify-center text-xs text-neutral-500">{t.pane.loadingFolder}</div>
+  );
+
+  const paneLoadFailure = (retry: () => void) => (
+    <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <p className="text-xs text-neutral-400">{t.loadFailure.paneMessage}</p>
+      <button
+        type="button"
+        onClick={retry}
+        className="rounded-md border border-neutral-700 px-2.5 py-1 text-xs text-neutral-200 transition-colors hover:border-cyan-500/60 hover:text-cyan-200"
+      >
+        {t.loadFailure.retry}
+      </button>
+    </div>
+  );
 
   useEffect(() => () => {
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
@@ -5610,6 +5638,8 @@ export default function App() {
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
                   customFolderIcons={customFolderIcons}
+                  renderError={paneLoadFailure}
+                  loadingFallback={paneLoadingFallback}
                 />
               </div>
 
@@ -5686,6 +5716,8 @@ export default function App() {
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
                   customFolderIcons={customFolderIcons}
+                  renderError={paneLoadFailure}
+                  loadingFallback={paneLoadingFallback}
                 />
               </div>
             </div>
@@ -5763,6 +5795,8 @@ export default function App() {
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
                   customFolderIcons={customFolderIcons}
+                  renderError={paneLoadFailure}
+                  loadingFallback={paneLoadingFallback}
                 />
               </div>
               <PaneSplitter orientation="horizontal" value={horizontalSplitPercent} onChange={setHorizontalSplitPercent} label={t.header.resizePanels} />
@@ -5835,6 +5869,8 @@ export default function App() {
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
                   customFolderIcons={customFolderIcons}
+                  renderError={paneLoadFailure}
+                  loadingFallback={paneLoadingFallback}
                 />
               </div>
             </div>
@@ -5912,6 +5948,8 @@ export default function App() {
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
                   customFolderIcons={customFolderIcons}
+                  renderError={paneLoadFailure}
+                  loadingFallback={paneLoadingFallback}
               />
             </div>
           )}

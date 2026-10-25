@@ -193,6 +193,18 @@ export const translations = {
       retry: 'Reintentar',
     },
 
+    loadFailure: {
+      title: 'CyberFiles dejó de responder',
+      description: 'Algo falló mientras se dibujaba la ventana. Ningún archivo del disco se ha tocado.',
+      chunkDescription: 'No se pudo cargar una parte de la aplicación, así que la vista quedó en blanco. Suele pasar cuando el servidor de desarrollo se detiene o cuando una actualización se interrumpe.',
+      retry: 'Reintentar',
+      reload: 'Recargar la ventana',
+      detailsLabel: 'Detalle técnico',
+      devHint: 'Modo desarrollo: la ventana se sirve desde 127.0.0.1:1421. Comprueba que «npm run dev» sigue en ejecución y vuelve a intentarlo.',
+      moduleToast: 'No se pudo abrir esta ventana. Inténtalo de nuevo en unos segundos.',
+      paneMessage: 'No se pudo cargar la vista de archivos.',
+    },
+
     core: {
       cancel: 'Cancelar',
       delete: 'Enviar a la Papelera',
@@ -1363,6 +1375,17 @@ export const translations = {
       failedHint: 'Check your connection and try again, or download the installer from GitHub.',
       openReleasePage: 'Release page',
       retry: 'Retry',
+    },
+    loadFailure: {
+      title: 'CyberFiles stopped rendering',
+      description: 'Something failed while the window was being drawn. Nothing on disk was touched.',
+      chunkDescription: 'Part of the application could not be loaded, so the view went blank. This usually means the development server stopped or an update was interrupted.',
+      retry: 'Retry',
+      reload: 'Reload window',
+      detailsLabel: 'Technical detail',
+      devHint: 'Development mode: the window is served from 127.0.0.1:1421. Check that npm run dev is still running, then retry.',
+      moduleToast: 'This window could not be opened. Try again in a few seconds.',
+      paneMessage: 'The file view could not be loaded.',
     },
     core: {
       cancel: 'Cancel',
