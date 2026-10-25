@@ -1,0 +1,15 @@
+{
+  "version": "0.6.0",
+  "notes": "CyberFiles 0.6.0 is the current release.",
+  "pub_date": "2026-10-24T10:04:09Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSmNmOTFONDVjZ3JkVVh2RDRGcHBpOUtJOUdPU2UxZkYzM0RWYmx3R1NGYkVySE9YWU1HRzRxSG5CMHZraTdYZHMzcDFlSjd4aGxyaURGSHYxdDhFb3daYzBZTnlwTFFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODkzMTg4CWZpbGU6Q3liZXJGaWxlc18wLjYuMF94NjQtc2V0dXAuZXhlCjlYL1Rjb1VLOW1FdCsvRDJtOEFicGJ6OThZZWJLZU9BLzMydUZMUVRoendvTk9IMEZ1a2hweXR1eW5STHlFVUx3ZEVnRlhGc3ZHc21rZnhvbndvMkNRPT0K",
+      "url": "https://github.com/CyberGems/CyberFiles/releases/download/v0.6.0/CyberFiles_0.6.0_x64-setup.exe"
+    },
+    "windows-x86_64-nsis": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSmNmOTFONDVjZ3JkVVh2RDRGcHBpOUtJOUdPU2UxZkYzM0RWYmx3R1NGYkVySE9YWU1HRzRxSG5CMHZraTdYZHMzcDFlSjd4aGxyaURGSHYxdDhFb3daYzBZTnlwTFFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODkzMTg4CWZpbGU6Q3liZXJGaWxlc18wLjYuMF94NjQtc2V0dXAuZXhlCjlYL1Rjb1VLOW1FdCsvRDJtOEFicGJ6OThZZWJLZU9BLzMydUZMUVRoendvTk9IMEZ1a2hweXR1eW5STHlFVUx3ZEVnRlhGc3ZHc21rZnhvbndvMkNRPT0K",
+      "url": "https://github.com/CyberGems/CyberFiles/releases/download/v0.6.0/CyberFiles_0.6.0_x64-setup.exe"
+    }
+  }
+}
