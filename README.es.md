@@ -108,6 +108,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Bandeja del sistema**: un menú con estilo propio muestra el estado de la ventana, el atajo global, enlaces de ayuda, otras apps de CyberGems y la configuración
 - **Atajo global**: muestra u oculta CyberFiles desde cualquier lugar con una combinación configurable (Alt+Shift+F por defecto)
 - **Control de instancias**: instancia única por defecto, con opción de permitir ventanas separadas en cada inicio
+- **Actualizaciones integradas**: la app consulta el manifiesto firmado de versiones al iniciar y cada seis horas, muestra las novedades e instala la versión nueva sobre la actual con la firma verificada; una versión que omitas no se vuelve a ofrecer
 - **Memoria de ventana**: se restauran tamaño, posición y estado maximizado, y al cerrar puedes minimizar a la bandeja o salir con la decisión recordada
 - **Detalle en la barra de estado**: recuentos de carpetas, tamaño de la selección, capacidad de la unidad, longitud de la ruta, fecha, hora y zona horaria
 
@@ -247,6 +248,12 @@ npm run build:portable
 El ejecutable de depuración se genera en `src-tauri/target/debug/cyberfiles.exe`. La compilación del instalador crea un paquete NSIS en `src-tauri/target/release/bundle/nsis`, y la portable crea un ZIP en `src-tauri/target/release/bundle/portable`. La primera compilación nativa tarda varios minutos mientras se compilan las dependencias de Rust.
 
 Publicar una etiqueta anotada `v*` que coincida con las versiones de `package.json` y `src-tauri/tauri.conf.json` compila y publica una versión; el mensaje de la etiqueta se convierte en el resumen de la versión.
+
+#### Firma de las versiones
+
+Las copias instaladas verifican cada actualización con una clave minisign. La clave pública vive en `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`); la privada es el secreto `TAURI_SIGNING_PRIVATE_KEY` del repositorio, junto con `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` si la clave tiene contraseña. Sin ese secreto el flujo de publicación se detiene antes de compilar, porque un instalador sin firma se instalaría y luego nunca se actualizaría.
+
+Cada versión escribe además `latest.json` (versión, notas, URL del instalador y firma) y lo publica en la rama `updater`. La app lee esa rama en lugar de `releases/latest/download/latest.json`, porque todas las versiones 0.x se marcan como pre-release y el endpoint `latest` de GitHub las ignora.
 
 ---
 

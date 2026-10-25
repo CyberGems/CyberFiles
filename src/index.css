@@ -1263,6 +1263,7 @@ html[data-theme='light'] #root .collapse-toggle:hover:not(:disabled) {
 .cyberfiles-transfer-panel { animation: cyberfiles-transfer-panel-in 150ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 /* Same entrance as the workspace manager dialog, so every modal in the window behaves alike. */
 .cyberfiles-about-panel { animation: cyberfiles-about-panel-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.cyberfiles-update-panel { animation: cyberfiles-about-panel-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 
 /* About: the automatic update check switch. Suite pattern (CyberNotes / CyberClock): grey track,
    dark thumb, accent track with glow and a white check when on. The accent comes from the
@@ -1402,7 +1403,8 @@ html[data-theme='light'] #root .collapse-toggle:hover:not(:disabled) {
   .workspace-manager-content,
   .workspace-manager-create-form,
   .cyberfiles-transfer-panel,
-  .cyberfiles-about-panel {
+  .cyberfiles-about-panel,
+  .cyberfiles-update-panel {
     animation: none;
   }
 

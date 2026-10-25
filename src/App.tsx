@@ -111,9 +111,10 @@ import {
 import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { recentFileActions, recordRecentEntry, removeRecentEntry, renameRecentEntries, toRecentFileItem, type RecentEntry } from './utils/recentFiles';
-import { AUTO_CHECK_INTERVAL_MS, fetchLatestRelease, getAutoCheckUpdates, getNotifiedVersion, isNewerVersion, setNotifiedVersion } from './utils/updates';
+import { AUTO_CHECK_INTERVAL_MS, checkForUpdate, getAutoCheckUpdates, getNotifiedVersion, isSkippedVersion, setNotifiedVersion, setSkippedVersion, type AvailableUpdate } from './utils/updates';
 
 const AboutModal = lazy(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
+const UpdateModal = lazy(() => import('./components/UpdateModal').then(module => ({ default: module.UpdateModal })));
 const FindFilesModal = lazy(() => import('./components/FindFilesModal').then(module => ({ default: module.FindFilesModal })));
 const BatchRenameModal = lazy(() => import('./components/BatchRenameModal').then(module => ({ default: module.BatchRenameModal })));
 const KeyboardShortcutsModal = lazy(() => import('./components/KeyboardShortcutsModal').then(module => ({ default: module.KeyboardShortcutsModal })));
@@ -1210,6 +1211,10 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [focusTabSettingsRequest, setFocusTabSettingsRequest] = useState(0);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  /* The release the updater found. It is kept here rather than inside the window so the
+     automatic check, the About window and the toast all describe the same release. */
+  const [pendingUpdate, setPendingUpdate] = useState<AvailableUpdate | null>(null);
+  const [isUpdateOpen, setIsUpdateOpen] = useState(false);
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
   const [rememberCloseChoice, setRememberCloseChoice] = useState(false);
   const [isCloseActionBusy, setIsCloseActionBusy] = useState(false);
@@ -1250,6 +1255,7 @@ export default function App() {
   const shouldMountSearchModal = useKeepModalMountedAfterFirstOpen(isSearchOpen);
   const shouldMountSettingsModal = useKeepModalMountedAfterFirstOpen(isSettingsOpen);
   const shouldMountAboutModal = useKeepModalMountedAfterFirstOpen(isAboutOpen);
+  const shouldMountUpdateModal = useKeepModalMountedAfterFirstOpen(isUpdateOpen);
   const shouldMountCloseWindowModal = useKeepModalMountedAfterFirstOpen(isCloseDialogOpen);
   const shouldMountOnboardingModal = useKeepModalMountedAfterFirstOpen(isOnboardingOpen);
   const shouldMountConfirmActionModal = useKeepModalMountedAfterFirstOpen(
@@ -3358,35 +3364,58 @@ export default function App() {
     };
   }, [language, showToast, t.core.operationFailedWithReason]);
 
-  /* Background half of the "automatic update checks" preference the About modal owns: on start
-     and every six hours, as the hint there promises. The check itself is quiet; only a release
-     newer than the running one announces itself, and only once per version. Failures are
-     silent on purpose, since the About modal reports them when the user asks. */
+  /* Background half of the "automatic update checks" preference the About window owns: on start
+     and every six hours, as the hint there promises. The start-up check opens the update window
+     once, so the user sees what changed before deciding; the six-hour ones only raise a toast,
+     because a window that takes the pointer while a transfer runs is worse than a quiet line.
+     A version the user skipped is never offered again. Failures stay silent on purpose: the
+     About window reports the reason when the user asks for a check. */
   const updateToastRef = useRef({ message: t.updates.availableToast, detail: t.updates.availableToastDetail });
   updateToastRef.current = { message: t.updates.availableToast, detail: t.updates.availableToastDetail };
   useEffect(() => {
     if (!getAutoCheckUpdates()) return;
     let cancelled = false;
-    const runCheck = async () => {
+    const runCheck = async (announce: 'window' | 'toast') => {
       try {
-        const release = await fetchLatestRelease();
-        if (cancelled) return;
-        if (!isNewerVersion(release.version, __APP_VERSION__)) return;
-        if (getNotifiedVersion() === release.version) return;
-        setNotifiedVersion(release.version);
+        const update = await checkForUpdate();
+        if (cancelled || !update) return;
+        if (isSkippedVersion(update.version)) return;
+        setPendingUpdate(update);
+        if (announce === 'window') {
+          setIsUpdateOpen(true);
+          return;
+        }
+        if (getNotifiedVersion() === update.version) return;
+        setNotifiedVersion(update.version);
         const copy = updateToastRef.current;
-        showToast(copy.message.replace('{version}', release.version), copy.detail);
+        showToast(copy.message.replace('{version}', update.version), copy.detail);
       } catch {
-        // Offline or rate limited: nothing to announce.
+        // Offline, rate limited or no manifest yet: nothing to announce.
       }
     };
-    void runCheck();
-    const timer = window.setInterval(() => { void runCheck(); }, AUTO_CHECK_INTERVAL_MS);
+    // A beat after the window is up, so the first paint and the folder listing win the race.
+    const startTimer = window.setTimeout(() => { void runCheck('window'); }, 2500);
+    const timer = window.setInterval(() => { void runCheck('toast'); }, AUTO_CHECK_INTERVAL_MS);
     return () => {
       cancelled = true;
+      window.clearTimeout(startTimer);
       window.clearInterval(timer);
     };
   }, [showToast]);
+
+  /* Shared by the start-up check and the About window, so both open the same release. The
+     About window steps aside: two stacked dialogs would both answer Escape. */
+  const handleInstallUpdate = useCallback((update: AvailableUpdate) => {
+    setPendingUpdate(update);
+    setIsAboutOpen(false);
+    setIsUpdateOpen(true);
+  }, []);
+
+  const handleSkipUpdateVersion = useCallback((version: string) => {
+    setSkippedVersion(version);
+    setIsUpdateOpen(false);
+    setPendingUpdate(null);
+  }, []);
 
   // The tray menu runs in its own window and asks the main window to open these.
   useEffect(() => {
@@ -6307,7 +6336,25 @@ export default function App() {
 
       {shouldMountAboutModal && (
         <Suspense fallback={null}>
-          <AboutModal isOpen={isAboutOpen} onClose={() => setIsAboutOpen(false)} onNotify={message => showToast(message)} />
+          <AboutModal
+            isOpen={isAboutOpen}
+            onClose={() => setIsAboutOpen(false)}
+            onNotify={message => showToast(message)}
+            onInstallUpdate={handleInstallUpdate}
+          />
+        </Suspense>
+      )}
+
+      {shouldMountUpdateModal && (
+        <Suspense fallback={null}>
+          <UpdateModal
+            isOpen={isUpdateOpen}
+            update={pendingUpdate}
+            currentVersion={__APP_VERSION__}
+            onClose={() => setIsUpdateOpen(false)}
+            onSkipVersion={handleSkipUpdateVersion}
+            onNotify={message => showToast(message)}
+          />
         </Suspense>
       )}
 

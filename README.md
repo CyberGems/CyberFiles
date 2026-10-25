@@ -108,6 +108,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **System tray**: a styled tray menu shows the window state, the global shortcut, help links, other CyberGems apps, and settings
 - **Global shortcut**: show or hide CyberFiles from anywhere with a configurable combination (Alt+Shift+F by default)
 - **Instance control**: single instance by default, with an option to allow separate windows on each launch
+- **Built-in updates**: the app checks the signed release manifest on start and every six hours, shows the release notes, and installs the new version in place with a verified signature; a version you skip is not offered again
 - **Window memory**: size, position and maximized state are restored, and closing can minimize to tray or exit with a remembered choice
 - **Status bar detail**: folder counts, selection size, drive capacity, path length, date and time, and time zone
 
@@ -247,6 +248,12 @@ npm run build:portable
 The debug executable is written to `src-tauri/target/debug/cyberfiles.exe`. The installer build creates an NSIS package under `src-tauri/target/release/bundle/nsis`, and the portable build creates a ZIP under `src-tauri/target/release/bundle/portable`. The first native build takes several minutes while Rust dependencies compile.
 
 Pushing an annotated `v*` tag that matches the versions in `package.json` and `src-tauri/tauri.conf.json` builds and publishes a release; the tag message becomes the release summary.
+
+#### Release signing
+
+Installed builds verify every update against a minisign key. The public key lives in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`); the private key is the `TAURI_SIGNING_PRIVATE_KEY` repository secret, with `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` when the key has a password. Without the secret the release job stops before building, because an unsigned installer would install and then never update.
+
+Each release also writes `latest.json` (version, notes, installer URL and signature) and publishes it to the `updater` branch. The app reads that branch instead of `releases/latest/download/latest.json`, because every 0.x release is marked as a pre-release and GitHub's `latest` endpoint skips those.
 
 ---
 

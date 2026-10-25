@@ -142,6 +142,14 @@ fn runtime_info() -> RuntimeInfo {
     }
 }
 
+/// The portable edition is a folder beside its executable, not an installation:
+/// running the NSIS updater there would install a second copy instead of
+/// updating this one, so the updater stays off and the UI offers the download.
+#[tauri::command]
+fn is_portable_build() -> bool {
+    portable_data_directory_from_executable().is_some()
+}
+
 #[tauri::command]
 fn show_main_window(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
     let state_path = window_state_path(&app)?;
@@ -5922,6 +5930,8 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -6039,6 +6049,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             runtime_info,
+            is_portable_build,
             show_main_window,
             hide_main_window,
             quit_app,

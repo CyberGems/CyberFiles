@@ -53,6 +53,7 @@
     "targets": [
       "nsis"
     ],
+    "createUpdaterArtifacts": true,
     "publisher": "CyberGems",
     "icon": [
       "icons/32x32.png",
@@ -76,6 +77,17 @@
       "webviewInstallMode": {
         "type": "downloadBootstrapper",
         "silent": true
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://raw.githubusercontent.com/CyberGems/CyberFiles/updater/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgyNUM4RTM3NzVGRjcxQzkKUldUSmNmOTFONDVjZ3MvMU1RaU5nZ0s0VEhpcldlK1BpQy9xQzlHNHFwMllGZFdMUitKUVdCRTkK",
+      "windows": {
+        "installMode": "passive"
       }
     }
   }

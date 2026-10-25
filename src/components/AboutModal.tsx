@@ -1,13 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { BookOpen, Bug, Check, ClipboardCopy, Gem, Github, Heart, RefreshCw, Tag, X } from 'lucide-react';
+import { BookOpen, Bug, Check, ClipboardCopy, Download, Gem, Github, Heart, RefreshCw, Tag, X } from 'lucide-react';
 import { getTauriVersion } from '@tauri-apps/api/app';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useLanguage } from '../locales/LanguageContext';
 import { isTauriDesktop } from '../utils/nativeFileSystem';
 import { CYBERGEMS_APPS, CYBERGEMS_SITE, SUITE_APPS } from '../tray/suiteApps';
 import { Tooltip } from './Tooltip';
-import { RELEASES_PAGE_URL, fetchLatestRelease, getAutoCheckUpdates, isNewerVersion, setAutoCheckUpdates } from '../utils/updates';
+import {
+  RELEASES_PAGE_URL,
+  checkForUpdate,
+  formatUpdaterError,
+  getAutoCheckUpdates,
+  getUpdateSupport,
+  releasePageUrl,
+  setAutoCheckUpdates,
+  type AvailableUpdate,
+  type UpdateSupport,
+} from '../utils/updates';
 
 const REPOSITORY_URL = 'https://github.com/CyberGems/CyberFiles';
 const WIKI_URL = `${REPOSITORY_URL}/wiki`;
@@ -19,7 +29,7 @@ type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking' }
   | { state: 'latest' }
-  | { state: 'available'; version: string; url: string }
+  | { state: 'available'; version: string; url: string; update: AvailableUpdate }
   | { state: 'error'; message: string };
 
 interface AboutModalProps {
@@ -27,6 +37,8 @@ interface AboutModalProps {
   onClose: () => void;
   /** Toast channel of the main window, so a failure is reported instead of silently ignored. */
   onNotify?: (message: string) => void;
+  /** Hands the found release to the update window, which owns the download and install. */
+  onInstallUpdate?: (update: AvailableUpdate) => void;
 }
 
 /** Four of the other apps, drawn once per opening, like the CyberNotes About. */
@@ -55,14 +67,24 @@ function collectDiagnostics(language: 'es' | 'en'): Promise<string> {
     });
 }
 
-export function AboutModal({ isOpen, onClose, onNotify }: AboutModalProps) {
+export function AboutModal({ isOpen, onClose, onNotify, onInstallUpdate }: AboutModalProps) {
   const { language, t } = useLanguage();
   const [status, setStatus] = useState<UpdateStatus>({ state: 'idle' });
+  const [support, setSupport] = useState<UpdateSupport | null>(null);
   const [autoUpdate, setAutoUpdate] = useState(() => getAutoCheckUpdates());
   const [showDetails, setShowDetails] = useState(false);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<number | null>(null);
   const [suiteApps] = useState(pickSuiteApps);
+
+  // Portable and browser builds cannot install anything, so the window asks before drawing a
+  // "check" button that would only ever fail.
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    void getUpdateSupport().then(value => { if (!cancelled) setSupport(value); });
+    return () => { cancelled = true; };
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -96,16 +118,20 @@ export function AboutModal({ isOpen, onClose, onNotify }: AboutModalProps) {
     window.open(url, '_blank', 'noopener,noreferrer');
   }, [onNotify, t.about.linkFailed]);
 
+  // A host that does not mount the update window (a preview harness) still gets a way to act:
+  // the release page, where the installer lives.
+  const installUpdate = onInstallUpdate ?? ((update: AvailableUpdate) => openExternal(releasePageUrl(update.version)));
+
   const handleCheck = useCallback(async () => {
     setStatus({ state: 'checking' });
     setShowDetails(false);
     try {
-      const release = await fetchLatestRelease();
-      setStatus(isNewerVersion(release.version, __APP_VERSION__)
-        ? { state: 'available', version: release.version, url: release.url }
+      const update = await checkForUpdate();
+      setStatus(update
+        ? { state: 'available', version: update.version, url: releasePageUrl(update.version), update }
         : { state: 'latest' });
     } catch (error) {
-      setStatus({ state: 'error', message: String((error as Error)?.message || error) });
+      setStatus({ state: 'error', message: formatUpdaterError(error) });
     }
   }, []);
 
@@ -183,47 +209,77 @@ export function AboutModal({ isOpen, onClose, onNotify }: AboutModalProps) {
             <SectionTitle label={t.about.systemAndUpdates} />
 
             <div className="mb-1 flex flex-col gap-2.5 rounded-xl border border-neutral-800 bg-neutral-950/50 p-3">
-              {status.state !== 'idle' && (
-                <div data-about-update-status>
-                  <UpdateStatusLine status={status} showDetails={showDetails} onToggleDetails={() => setShowDetails(value => !value)} />
+              {support === 'supported' ? (
+                <>
+                  {status.state !== 'idle' && (
+                    <div data-about-update-status>
+                      <UpdateStatusLine status={status} showDetails={showDetails} onToggleDetails={() => setShowDetails(value => !value)} />
+                    </div>
+                  )}
+
+                  {status.state === 'available' ? (
+                    <div className="flex flex-col gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => installUpdate(status.update)}
+                        className="inline-flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-lg bg-cyan-600 px-2.5 text-xs font-medium text-white transition hover:bg-cyan-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        <span>{t.about.installUpdate}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openExternal(status.url)}
+                        className="mx-auto inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-neutral-500 transition hover:bg-neutral-800 hover:text-neutral-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+                      >
+                        <Tag className="h-3 w-3" />
+                        <span>{t.about.viewRelease}</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void handleCheck()}
+                      disabled={checking}
+                      className="inline-flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-neutral-300 transition hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-45 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${checking ? 'animate-spin' : ''}`} />
+                      <span>{checking ? t.about.checkingForUpdates : t.about.checkUpdates}</span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={autoUpdate}
+                    aria-label={t.about.autoUpdates}
+                    onClick={handleToggleAutoUpdate}
+                    className="mx-auto flex cursor-pointer items-center gap-2 border-0 bg-transparent p-0 pt-0.5 text-cyan-400 focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-cyan-400"
+                    style={{ font: 'inherit' }}
+                  >
+                    <span aria-hidden="true" className={`cyberfiles-about-switch ${autoUpdate ? 'is-on' : ''}`} />
+                    <span className="text-xs text-neutral-400">{t.about.autoUpdates}</span>
+                  </button>
+
+                  <p className="px-1 text-center text-[10px] leading-[1.4] text-neutral-500">{t.about.autoUpdatesHint}</p>
+                </>
+              ) : support ? (
+                // Portable and browser builds install nothing: the honest answer is where the
+                // new version lives, not a check that cannot do anything with it.
+                <div data-about-update-status className="flex flex-col gap-2">
+                  <p className="text-center text-xs leading-[1.45] text-neutral-400">
+                    {support === 'portable' ? t.about.statusPortable : t.about.statusBrowser}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => openExternal(RELEASES_PAGE_URL)}
+                    className="inline-flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-neutral-300 transition hover:bg-neutral-800 hover:text-neutral-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+                  >
+                    <Tag className="h-3.5 w-3.5" />
+                    <span>{t.about.viewRelease}</span>
+                  </button>
                 </div>
-              )}
-
-              {status.state === 'available' ? (
-                <button
-                  type="button"
-                  onClick={() => openExternal(status.url)}
-                  className="inline-flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-lg bg-cyan-600 px-2.5 text-xs font-medium text-white transition hover:bg-cyan-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400"
-                >
-                  <Tag className="h-3.5 w-3.5" />
-                  <span>{t.about.viewRelease}</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void handleCheck()}
-                  disabled={checking}
-                  className="inline-flex min-h-[38px] w-full items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-neutral-300 transition hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-45 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${checking ? 'animate-spin' : ''}`} />
-                  <span>{checking ? t.about.checkingForUpdates : t.about.checkUpdates}</span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                role="switch"
-                aria-checked={autoUpdate}
-                aria-label={t.about.autoUpdates}
-                onClick={handleToggleAutoUpdate}
-                className="mx-auto flex cursor-pointer items-center gap-2 border-0 bg-transparent p-0 pt-0.5 text-cyan-400 focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-cyan-400"
-                style={{ font: 'inherit' }}
-              >
-                <span aria-hidden="true" className={`cyberfiles-about-switch ${autoUpdate ? 'is-on' : ''}`} />
-                <span className="text-xs text-neutral-400">{t.about.autoUpdates}</span>
-              </button>
-
-              <p className="px-1 text-center text-[10px] leading-[1.4] text-neutral-500">{t.about.autoUpdatesHint}</p>
+              ) : null}
             </div>
           </div>
 
