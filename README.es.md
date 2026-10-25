@@ -154,7 +154,7 @@ Para continuar:
 
 Windows muestra este aviso con cualquier instalador sin un certificado de firma de código de pago; no significa que el archivo sea inseguro. <strong>No</strong> pulses "No ejecutar":
 
-1. Ejecuta el instalador. Windows puede mostrar el diálogo azul "Windows protegió tu PC".
+1. Ejecuta el instalador `CyberFiles-Setup.exe`. Windows puede mostrar el diálogo azul "Windows protegió tu PC".
 
 ![Aviso de Windows SmartScreen](https://cybergems.org/branding/smartscreen-warning.svg)
 
