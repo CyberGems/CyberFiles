@@ -338,7 +338,10 @@ fn focus_existing_main_window() {
         FindWindowW, SetForegroundWindow, ShowWindow, SW_RESTORE,
     };
 
-    let title: Vec<u16> = "CyberFiles Dev".encode_utf16().chain(Some(0)).collect();
+    // The second instance exits before Tauri builds a window registry, so the
+    // running window is found through Win32 by title; it must match the main
+    // window's "title" in tauri.conf.json.
+    let title: Vec<u16> = "CyberFiles".encode_utf16().chain(Some(0)).collect();
     let window = unsafe { FindWindowW(std::ptr::null(), title.as_ptr()) };
     if !window.is_null() {
         unsafe {
