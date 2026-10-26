@@ -21,6 +21,12 @@
     DeleteRegValue HKCU "${MANUPRODUCTKEY}" ""
     DeleteRegKey /ifempty HKLM "${MANUPRODUCTKEY}"
     DeleteRegKey /ifempty HKCU "${MANUPRODUCTKEY}"
+    ; The Explorer menu entry is an app registration, not user data, so a
+    ; plain uninstall always removes it (the autostart Run entry is already
+    ; cleared by the template above). Updates keep everything, matching the
+    ; template's own app-data guard.
+    DeleteRegKey HKCU "Software\Classes\Directory\shell\OpenInCyberFiles"
+    DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\OpenInCyberFiles"
   ${EndIf}
 !macroend
 

@@ -11,6 +11,7 @@ import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
 import { isTauriDesktop } from '../utils/nativeFileSystem';
 import type { DeleteConfirmationPreference } from '../utils/deletePreferences';
+import { fetchAutostartStatus, fetchExplorerIntegrationStatus, readStartMinimizedOnStartup, setAutostart as persistAutostart, setExplorerIntegration as persistExplorerIntegration, writeStartMinimizedOnStartup } from '../utils/systemIntegration';
 import { resetLocalPreferences } from '../utils/factoryReset';
 import { ConfirmActionModal } from './ConfirmActionModal';
 import { ColorValueEditor } from './ColorValueEditor';
@@ -361,6 +362,16 @@ export function SettingsModal({
   const [internalInstancePreferencesSupported, setInternalInstancePreferencesSupported] = useState(false);
   const [internalInstancePreferencesError, setInternalInstancePreferencesError] = useState<string | null>(null);
 
+  /* Windows integration toggles read the registry back, so they always show
+     what Windows will actually do rather than what the UI last wrote. */
+  const [internalAutostartEnabled, setInternalAutostartEnabled] = useState(false);
+  const [internalAutostartLoaded, setInternalAutostartLoaded] = useState(false);
+  const [internalAutostartError, setInternalAutostartError] = useState<string | null>(null);
+  const [internalExplorerEnabled, setInternalExplorerEnabled] = useState(false);
+  const [internalExplorerLoaded, setInternalExplorerLoaded] = useState(false);
+  const [internalExplorerError, setInternalExplorerError] = useState<string | null>(null);
+  const [startMinimizedOnStartup, setStartMinimizedOnStartup] = useState(true);
+
   useEffect(() => {
     if (!isOpen) return;
     if (propGlobalShortcut === undefined) {
@@ -436,6 +447,52 @@ export function SettingsModal({
       setInternalInstancePreferencesError(t.settings.instancePreferencesSaveError);
       throw new Error(t.settings.instancePreferencesSaveError);
     }
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setStartMinimizedOnStartup(readStartMinimizedOnStartup());
+    if (!isTauriDesktop()) {
+      setInternalAutostartLoaded(true);
+      setInternalExplorerLoaded(true);
+      setInternalAutostartError(t.settings.systemIntegrationDesktopOnly);
+      return;
+    }
+    void fetchAutostartStatus()
+      .then(enabled => setInternalAutostartEnabled(enabled))
+      .catch(() => setInternalAutostartError(t.settings.systemIntegrationUnavailable))
+      .finally(() => setInternalAutostartLoaded(true));
+    void fetchExplorerIntegrationStatus()
+      .then(enabled => setInternalExplorerEnabled(enabled))
+      .catch(() => setInternalExplorerError(t.settings.systemIntegrationUnavailable))
+      .finally(() => setInternalExplorerLoaded(true));
+  }, [isOpen, t.settings.systemIntegrationDesktopOnly, t.settings.systemIntegrationUnavailable]);
+
+  const handleAutostartChange = async (enabled: boolean) => {
+    setInternalAutostartError(null);
+    try {
+      const applied = await persistAutostart(enabled);
+      setInternalAutostartEnabled(applied);
+    } catch {
+      setInternalAutostartError(t.settings.systemIntegrationSaveError);
+      throw new Error(t.settings.systemIntegrationSaveError);
+    }
+  };
+
+  const handleExplorerIntegrationChange = async (enabled: boolean) => {
+    setInternalExplorerError(null);
+    try {
+      const applied = await persistExplorerIntegration(enabled);
+      setInternalExplorerEnabled(applied);
+    } catch {
+      setInternalExplorerError(t.settings.systemIntegrationSaveError);
+      throw new Error(t.settings.systemIntegrationSaveError);
+    }
+  };
+
+  const handleStartMinimizedOnStartupChange = (enabled: boolean) => {
+    setStartMinimizedOnStartup(enabled);
+    writeStartMinimizedOnStartup(enabled);
   };
 
   const [isRecordingShortcut, setIsRecordingShortcut] = useState(false);
@@ -963,6 +1020,63 @@ export function SettingsModal({
               {instancePreferencesSupported && !instancePreferencesLoaded && (
                 <p className="mt-1 pl-6">{t.settings.instancePreferencesUnavailable}</p>
               )}
+            </div>
+          </div>
+
+          <div data-settings-search-unit className="border-t border-neutral-800 pt-4">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-300">{t.settings.windowsIntegrationSection}</div>
+            <div className="space-y-2">
+              <div data-settings-search-unit className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                <label className="flex cursor-pointer items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={internalAutostartEnabled}
+                    disabled={!internalAutostartLoaded}
+                    onChange={event => void handleAutostartChange(event.target.checked).catch(() => {})}
+                    className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                  />
+                  <span>
+                    <span className="block font-medium text-neutral-200">{t.settings.startWithWindows}</span>
+                    <span className="mt-1 block">{t.settings.startWithWindowsDescription}</span>
+                  </span>
+                </label>
+                {!internalAutostartLoaded && <p className="mt-1 pl-6">{t.settings.systemIntegrationUnavailable}</p>}
+                {internalAutostartError && <p className="mt-1 pl-6 text-rose-300">{internalAutostartError}</p>}
+              </div>
+              {/* Only meaningful for a boot launch: manual launches always show the window. */}
+              {internalAutostartEnabled && (
+                <div data-settings-search-unit className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                  <label className="flex cursor-pointer items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={startMinimizedOnStartup}
+                      onChange={event => handleStartMinimizedOnStartupChange(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                    />
+                    <span>
+                      <span className="block font-medium text-neutral-200">{t.settings.startMinimized}</span>
+                      <span className="mt-1 block">{t.settings.startMinimizedDescription}</span>
+                    </span>
+                  </label>
+                </div>
+              )}
+              <div data-settings-search-unit className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                <label className="flex cursor-pointer items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={internalExplorerEnabled}
+                    disabled={!internalExplorerLoaded}
+                    onChange={event => void handleExplorerIntegrationChange(event.target.checked).catch(() => {})}
+                    className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                  />
+                  <span>
+                    <span className="block font-medium text-neutral-200">{t.settings.explorerIntegration}</span>
+                    <span className="mt-1 block">{t.settings.explorerIntegrationDescription}</span>
+                  </span>
+                </label>
+                {!internalExplorerLoaded && <p className="mt-1 pl-6">{t.settings.systemIntegrationUnavailable}</p>}
+                {internalExplorerError && <p className="mt-1 pl-6 text-rose-300">{internalExplorerError}</p>}
+              </div>
             </div>
           </div>
 

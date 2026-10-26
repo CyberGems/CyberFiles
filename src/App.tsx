@@ -111,6 +111,7 @@ import {
 } from './utils/workspaceProfiles';
 import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
+import { fetchLaunchContext } from './utils/systemIntegration';
 import { recentFileActions, recordRecentEntry, removeRecentEntry, renameRecentEntries, toRecentFileItem, type RecentEntry } from './utils/recentFiles';
 import { AUTO_CHECK_INTERVAL_MS, checkForUpdate, getAutoCheckUpdates, getNotifiedVersion, isSkippedVersion, setNotifiedVersion, setSkippedVersion, type AvailableUpdate } from './utils/updates';
 
@@ -2635,6 +2636,20 @@ export default function App() {
 
   const handleNavigateRef = useRef(handleNavigate);
   handleNavigateRef.current = handleNavigate;
+
+  /* The Explorer "Open in CyberFiles" menu entry launches the app with the
+     chosen folder as an argument. Opened in a new tab so the startup session
+     (last folder, saved session) survives next to it; StrictMode's double
+     mount would otherwise navigate twice. */
+  const launchPathHandledRef = useRef(false);
+  useEffect(() => {
+    if (launchPathHandledRef.current) return;
+    launchPathHandledRef.current = true;
+    void fetchLaunchContext().then(context => {
+      if (!context?.targetPath) return;
+      handleNavigateRef.current(context.targetPath, activePane, true, true);
+    });
+  }, [activePane]);
 
 
   useEffect(() => {

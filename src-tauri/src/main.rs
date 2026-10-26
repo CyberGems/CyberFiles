@@ -5907,7 +5907,164 @@ async fn edit_hosts_file() -> Result<(), String> {
         .map_err(|error| format!("Hosts file worker failed: {error}"))?
 }
 
+// ─── Windows integration: launch context, autostart and Explorer menu ──────
+//
+// The remembered values live in the registry, which is also the source of
+// truth the Settings toggles read back, so a reinstall or a manual registry
+// edit can never leave the UI disagreeing with what Windows will actually do.
+
+/// How this process was launched. `--startup` is only ever present in the
+/// Windows Run entry, so the session can tell a boot launch apart from a
+/// manual one; a trailing directory argument comes from the Explorer
+/// "Open in CyberFiles" menu entry.
+#[derive(Serialize, Clone)]
+struct LaunchContext {
+    startup: bool,
+    target_path: Option<String>,
+}
+
+static LAUNCH_CONTEXT: OnceLock<LaunchContext> = OnceLock::new();
+
+const AUTOSTART_RUN_KEY: &str = "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
+const AUTOSTART_RUN_VALUE: &str = "CyberFiles";
+const EXPLORER_MENU_DIRECTORY_KEY: &str =
+    "HKCU\\Software\\Classes\\Directory\\shell\\OpenInCyberFiles";
+const EXPLORER_MENU_BACKGROUND_KEY: &str =
+    "HKCU\\Software\\Classes\\Directory\\Background\\shell\\OpenInCyberFiles";
+const EXPLORER_MENU_LABEL: &str = "Open in CyberFiles";
+
+fn parse_launch_context() -> LaunchContext {
+    let mut startup = false;
+    let mut target_path: Option<String> = None;
+    for argument in std::env::args_os().skip(1) {
+        let argument = argument.to_string_lossy().to_string();
+        if argument == "--startup" {
+            startup = true;
+            continue;
+        }
+        if argument.starts_with('-') || target_path.is_some() {
+            continue;
+        }
+        if Path::new(&argument).is_dir() {
+            target_path = Some(argument);
+        }
+    }
+    LaunchContext { startup, target_path }
+}
+
+#[cfg(target_os = "windows")]
+fn run_reg_command(arguments: &[&str]) -> Result<(), String> {
+    use std::process::Command;
+    let output = Command::new("reg")
+        .args(arguments)
+        .output()
+        .map_err(|error| format!("reg.exe failed: {error}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn run_reg_command(arguments: &[&str]) -> Result<(), String> {
+    let _ = arguments;
+    Err("Registry integration is only available on Windows.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn query_reg_value(key: &str, value_name: Option<&str>) -> bool {
+    use std::process::Command;
+    let mut arguments = vec!["query", key];
+    match value_name {
+        Some(name) => arguments.extend(["/v", name]),
+        None => arguments.push("/ve"),
+    }
+    Command::new("reg")
+        .args(&arguments)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn query_reg_value(key: &str, value_name: Option<&str>) -> bool {
+    let _ = (key, value_name);
+    false
+}
+
+fn explorer_menu_keys() -> [&'static str; 2] {
+    [EXPLORER_MENU_DIRECTORY_KEY, EXPLORER_MENU_BACKGROUND_KEY]
+}
+
+fn autostart_command_value() -> Result<String, String> {
+    let exe = std::env::current_exe()
+        .map(|path| path.to_string_lossy().to_string())
+        .map_err(|error| format!("Could not resolve the CyberFiles executable: {error}"))?;
+    Ok(format!("\"{exe}\" --startup"))
+}
+
+fn explorer_menu_command_value() -> Result<String, String> {
+    let exe = std::env::current_exe()
+        .map(|path| path.to_string_lossy().to_string())
+        .map_err(|error| format!("Could not resolve the CyberFiles executable: {error}"))?;
+    Ok(format!("\"{exe}\" \"%V\""))
+}
+
+#[tauri::command]
+fn get_launch_context() -> LaunchContext {
+    LAUNCH_CONTEXT
+        .get()
+        .cloned()
+        .unwrap_or(LaunchContext { startup: false, target_path: None })
+}
+
+#[tauri::command]
+fn get_autostart_status() -> bool {
+    query_reg_value(AUTOSTART_RUN_KEY, Some(AUTOSTART_RUN_VALUE))
+}
+
+#[tauri::command]
+fn set_autostart(enabled: bool) -> Result<bool, String> {
+    if enabled {
+        let value = autostart_command_value()?;
+        run_reg_command(&[
+            "add", AUTOSTART_RUN_KEY, "/v", AUTOSTART_RUN_VALUE, "/d", &value, "/f",
+        ])?;
+    } else {
+        run_reg_command(&["delete", AUTOSTART_RUN_KEY, "/v", AUTOSTART_RUN_VALUE, "/f"])?;
+    }
+    Ok(query_reg_value(AUTOSTART_RUN_KEY, Some(AUTOSTART_RUN_VALUE)))
+}
+
+#[tauri::command]
+fn get_explorer_integration_status() -> bool {
+    query_reg_value(EXPLORER_MENU_DIRECTORY_KEY, None)
+}
+
+#[tauri::command]
+fn set_explorer_integration(enabled: bool) -> Result<bool, String> {
+    if enabled {
+        let command = explorer_menu_command_value()?;
+        let exe = std::env::current_exe()
+            .map(|path| path.to_string_lossy().to_string())
+            .map_err(|error| format!("Could not resolve the CyberFiles executable: {error}"))?;
+        for key in explorer_menu_keys() {
+            let command_key = format!("{key}\\command");
+            run_reg_command(&["add", key, "/ve", "/d", EXPLORER_MENU_LABEL, "/f"])?;
+            run_reg_command(&["add", key, "/v", "Icon", "/d", &exe, "/f"])?;
+            run_reg_command(&["add", &command_key, "/ve", "/d", &command, "/f"])?;
+        }
+    } else {
+        for key in explorer_menu_keys() {
+            run_reg_command(&["delete", key, "/f"])?;
+        }
+    }
+    Ok(query_reg_value(EXPLORER_MENU_DIRECTORY_KEY, None))
+}
+
 fn main() {
+    let _ = LAUNCH_CONTEXT.set(parse_launch_context());
     #[cfg(target_os = "windows")]
     configure_portable_webview_data_directory();
     #[cfg(target_os = "windows")]
@@ -6108,6 +6265,11 @@ fn main() {
             set_global_shortcut_settings,
             get_instance_preferences,
             set_instance_preferences,
+            get_launch_context,
+            get_autostart_status,
+            set_autostart,
+            get_explorer_integration_status,
+            set_explorer_integration,
             reset_app_preferences,
         ])
         .run(tauri::generate_context!())
