@@ -158,7 +158,7 @@ Windows muestra este aviso con cualquier instalador sin un certificado de firma 
 
 ![Aviso de Windows SmartScreen](https://cybergems.org/branding/smartscreen-warning.svg)
 
-2. Pulsa el enlace pequeño **Más información**.
+2. Pulsa el enlace pequeño **Más información**. El diálogo expandido muestra tu instalador: \CyberFiles-Setup.exe\.
 
 ![Diálogo de SmartScreen tras Más información](https://cybergems.org/branding/smartscreen-runanyway.svg)
 
