@@ -65,6 +65,7 @@
     "windows": {
       "nsis": {
         "installMode": "both",
+        "installerHooks": "installer.nsh",
         "displayLanguageSelector": false,
         "sidebarImage": "icons/installerSidebar.bmp",
         "installerIcon": "icons/icon.ico",
