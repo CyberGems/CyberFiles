@@ -108,6 +108,8 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **System tray**: a styled tray menu shows the window state, the global shortcut, help links, other CyberGems apps, and settings
 - **Global shortcut**: show or hide CyberFiles from anywhere with a configurable combination (Alt+Shift+F by default)
 - **Instance control**: single instance by default, with an option to allow separate windows on each launch
+- **Explorer context menu**: an optional "Open in CyberFiles" entry in folder right-click menus opens the folder in a new tab; registered for your user only, and removed when you turn it off or uninstall the app
+- **Start with Windows**: launch CyberFiles automatically at sign-in, with an optional start-minimized mode that keeps sign-in launches in the tray while launches you make yourself always show the window
 - **Built-in updates**: the app checks the signed release manifest on start and every six hours, shows the release notes, and installs the new version in place with a verified signature; a version you skip is not offered again
 - **Window memory**: size, position and maximized state are restored, and closing can minimize to tray or exit with a remembered choice
 - **Status bar detail**: folder counts, selection size, drive capacity, path length, date and time, and time zone
@@ -133,7 +135,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 2. Run the NSIS installer, or extract the portable ZIP and start `CyberFiles.exe`
 3. Follow the welcome screen to choose language, theme, folder style and startup behavior
 
-The installer offers a per-user or a system-wide installation; the system-wide option may ask for administrator approval. Setup is branded with the CyberFiles artwork and follows the system language, English or Spanish. When the Microsoft Edge WebView2 Evergreen Runtime is missing, setup downloads its bootstrapper, so an internet connection is needed during installation.
+The installer offers a per-user or a system-wide installation; the system-wide option may ask for administrator approval. Setup is branded with the CyberFiles artwork and follows the system language, English or Spanish, and the final setup page offers to run CyberFiles as soon as setup finishes. When the Microsoft Edge WebView2 Evergreen Runtime is missing, setup downloads its bootstrapper, so an internet connection is needed during installation.
 
 The release assets include `SHA256SUMS.txt` with checksums for both packages, so you can verify a download before running it.
 
