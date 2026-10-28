@@ -84,11 +84,32 @@ fn portable_data_directory_from_executable() -> Option<PathBuf> {
         .then(|| executable_directory.join(PORTABLE_DATA_DIRECTORY))
 }
 
-fn app_config_directory<R: tauri::Runtime, M: Manager<R>>(app: &M) -> Result<PathBuf, String> {
+fn resolve_app_config_directory() -> Result<PathBuf, String> {
     if let Some(data_directory) = portable_data_directory_from_executable() {
         let config_directory = data_directory.join("config");
         fs::create_dir_all(&config_directory).map_err(|error| error.to_string())?;
         return Ok(config_directory);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .map(|directory| directory.join(APP_IDENTIFIER))
+            .ok_or_else(|| "The Windows roaming application-data directory is unavailable".to_string())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|directory| directory.join(".config").join(APP_IDENTIFIER))
+            .ok_or_else(|| "The home directory is unavailable".to_string())
+    }
+}
+
+fn app_config_directory<R: tauri::Runtime, M: Manager<R>>(app: &M) -> Result<PathBuf, String> {
+    if let Ok(directory) = resolve_app_config_directory() {
+        return Ok(directory);
     }
 
     app.path()
@@ -188,12 +209,6 @@ fn quit_app(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<(), S
     Ok(())
 }
 
-fn global_shortcut_config_path<R: tauri::Runtime, M: Manager<R>>(
-    app: &M,
-) -> Result<PathBuf, String> {
-    app_config_directory(app)
-        .map(|directory| directory.join("cyberfiles-global-shortcut.json"))
-}
 
 fn load_global_shortcut_preferences(path: &Path) -> GlobalShortcutPreferences {
     let Ok(contents) = fs::read(path) else {
@@ -241,15 +256,16 @@ fn global_shortcut_status(state: &GlobalShortcutState) -> Result<GlobalShortcutS
 
 #[tauri::command]
 fn get_global_shortcut_settings(app: tauri::AppHandle) -> Result<GlobalShortcutStatus, String> {
-    global_shortcut_status(&app.state::<GlobalShortcutState>())
+    let state = app
+        .try_state::<GlobalShortcutState>()
+        .ok_or_else(|| "CyberFiles global shortcut state is not ready".to_string())?;
+    global_shortcut_status(&state)
 }
 
-fn instance_preferences_config_path<R: tauri::Runtime, M: Manager<R>>(
-    app: &M,
-) -> Result<PathBuf, String> {
-    app_config_directory(app)
-        .map(|directory| directory.join(INSTANCE_PREFERENCES_FILE))
+fn startup_global_shortcut_config_path() -> Result<PathBuf, String> {
+    resolve_app_config_directory().map(|dir| dir.join("cyberfiles-global-shortcut.json"))
 }
+
 
 fn load_instance_preferences(path: &Path) -> InstancePreferences {
     fs::read(path)
@@ -276,7 +292,9 @@ fn instance_preferences_status(preferences: &InstancePreferences) -> InstancePre
 
 #[tauri::command]
 fn get_instance_preferences(app: tauri::AppHandle) -> Result<InstancePreferencesStatus, String> {
-    let state = app.state::<InstancePreferencesState>();
+    let state = app
+        .try_state::<InstancePreferencesState>()
+        .ok_or_else(|| "CyberFiles instance preferences state is not ready".to_string())?;
     state
         .preferences
         .lock()
@@ -289,7 +307,9 @@ fn set_instance_preferences(
     allow_multiple_instances: bool,
     app: tauri::AppHandle,
 ) -> Result<InstancePreferencesStatus, String> {
-    let state = app.state::<InstancePreferencesState>();
+    let state = app
+        .try_state::<InstancePreferencesState>()
+        .ok_or_else(|| "CyberFiles instance preferences state is not ready".to_string())?;
     let next_preferences = InstancePreferences {
         allow_multiple_instances,
     };
@@ -314,22 +334,8 @@ impl Drop for SingleInstanceGuard {
     }
 }
 
-#[cfg(target_os = "windows")]
 fn startup_instance_preferences_path() -> Result<PathBuf, String> {
-    if let Some(data_directory) = portable_data_directory_from_executable() {
-        return Ok(data_directory
-            .join("config")
-            .join(INSTANCE_PREFERENCES_FILE));
-    }
-
-    std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .map(|directory| {
-            directory
-                .join(APP_IDENTIFIER)
-                .join(INSTANCE_PREFERENCES_FILE)
-        })
-        .ok_or("The Windows roaming application-data directory is unavailable".to_string())
+    resolve_app_config_directory().map(|directory| directory.join(INSTANCE_PREFERENCES_FILE))
 }
 
 #[cfg(target_os = "windows")]
@@ -398,7 +404,9 @@ fn set_global_shortcut_settings(
         .parse::<tauri_plugin_global_shortcut::Shortcut>()
         .map_err(|error| error.to_string())?;
 
-    let state = app.state::<GlobalShortcutState>();
+    let state = app
+        .try_state::<GlobalShortcutState>()
+        .ok_or_else(|| "CyberFiles global shortcut state is not ready".to_string())?;
     let mut preferences = state
         .preferences
         .lock()
@@ -456,7 +464,9 @@ fn set_global_shortcut_settings(
    state follows, which is what makes the reset hold after the window reloads. */
 #[tauri::command]
 fn reset_app_preferences(app: tauri::AppHandle) -> Result<(), String> {
-    let shortcut_state = app.state::<GlobalShortcutState>();
+    let shortcut_state = app
+        .try_state::<GlobalShortcutState>()
+        .ok_or_else(|| "CyberFiles global shortcut state is not ready".to_string())?;
     let shortcut_defaults = GlobalShortcutPreferences::default();
     let mut shortcut_preferences = shortcut_state
         .preferences
@@ -488,7 +498,9 @@ fn reset_app_preferences(app: tauri::AppHandle) -> Result<(), String> {
         shortcut_defaults.enabled.then_some(shortcut_defaults.shortcut.as_str()),
     )?;
 
-    let instance_state = app.state::<InstancePreferencesState>();
+    let instance_state = app
+        .try_state::<InstancePreferencesState>()
+        .ok_or_else(|| "CyberFiles instance preferences state is not ready".to_string())?;
     let mut instance_preferences = instance_state
         .preferences
         .lock()
@@ -4009,7 +4021,9 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
 }
 
 fn update_tray_hotkey_hint(app: &tauri::AppHandle, shortcut: Option<&str>) -> Result<(), String> {
-    let state = app.state::<TrayMenuState>();
+    let Some(state) = app.try_state::<TrayMenuState>() else {
+        return Ok(());
+    };
     *state
         .shortcut_hint
         .lock()
@@ -4049,8 +4063,9 @@ fn toggle_main_window(app: &tauri::AppHandle) {
 #[tauri::command]
 fn set_tray_language(language: String, app: tauri::AppHandle) -> Result<(), String> {
     let english = language == "en";
-    let state = app.state::<TrayMenuState>();
-    *state.english.lock().map_err(|error| error.to_string())? = english;
+    if let Some(state) = app.try_state::<TrayMenuState>() {
+        *state.english.lock().map_err(|error| error.to_string())? = english;
+    }
     Ok(())
 }
 
@@ -4146,11 +4161,8 @@ fn apply_tray_menu_geometry(app: &tauri::AppHandle, width: f64, height: f64) {
         return;
     };
     let anchor = app
-        .state::<TrayMenuAnchor>()
-        .0
-        .lock()
-        .ok()
-        .and_then(|value| *value);
+        .try_state::<TrayMenuAnchor>()
+        .and_then(|state| state.0.lock().ok().and_then(|value| *value));
     let Some((anchor_x, anchor_y)) = anchor else {
         return;
     };
@@ -4177,18 +4189,23 @@ fn show_tray_menu_at(app: tauri::AppHandle, anchor_x: i32, anchor_y: i32) {
         hide_tray_menu_window(&app);
         return;
     }
-    if let Ok(mut anchor) = app.state::<TrayMenuAnchor>().0.lock() {
-        *anchor = Some((anchor_x, anchor_y));
+    if let Some(anchor_state) = app.try_state::<TrayMenuAnchor>() {
+        if let Ok(mut anchor) = anchor_state.0.lock() {
+            *anchor = Some((anchor_x, anchor_y));
+        }
     }
     // The deck is always back on the main view while hidden, so the size it
     // reported last time is the one to open with. It was measured while the
     // window was invisible, which makes the very first opening exact too.
     let (width, height) = app
-        .state::<TrayMenuSizes>()
-        .0
-        .lock()
-        .ok()
-        .and_then(|sizes| sizes.get("main").copied())
+        .try_state::<TrayMenuSizes>()
+        .and_then(|sizes_state| {
+            sizes_state
+                .0
+                .lock()
+                .ok()
+                .and_then(|sizes| sizes.get("main").copied())
+        })
         .unwrap_or((TRAY_MENU_EST_WIDTH, TRAY_MENU_EST_HEIGHT));
     apply_tray_menu_geometry(&app, width, height);
     let _ = window.show();
@@ -4206,8 +4223,10 @@ fn reveal_main_window(app: &tauri::AppHandle) {
 
 #[tauri::command]
 fn tray_menu_ready(app: tauri::AppHandle, width: f64, height: f64, view: String) {
-    if let Ok(mut sizes) = app.state::<TrayMenuSizes>().0.lock() {
-        sizes.insert(view, (width, height));
+    if let Some(sizes_state) = app.try_state::<TrayMenuSizes>() {
+        if let Ok(mut sizes) = sizes_state.0.lock() {
+            sizes.insert(view, (width, height));
+        }
     }
     apply_tray_menu_geometry(&app, width, height);
 }
@@ -4229,13 +4248,17 @@ struct TrayMenuSnapshot {
 
 #[tauri::command]
 fn get_tray_menu_state(app: tauri::AppHandle) -> TrayMenuSnapshot {
-    let state = app.state::<TrayMenuState>();
-    let english = state.english.lock().map(|value| *value).unwrap_or(false);
-    let hotkey = state
-        .shortcut_hint
-        .lock()
-        .ok()
-        .and_then(|value| value.clone());
+    let (english, hotkey) = if let Some(state) = app.try_state::<TrayMenuState>() {
+        let english = state.english.lock().map(|value| *value).unwrap_or(false);
+        let hotkey = state
+            .shortcut_hint
+            .lock()
+            .ok()
+            .and_then(|value| value.clone());
+        (english, hotkey)
+    } else {
+        (false, None)
+    };
     let window_state = match app.get_webview_window("main") {
         Some(window) if window.is_minimized().unwrap_or(false) => "minimized",
         Some(window) if window.is_visible().unwrap_or(true) => "visible",
@@ -6070,12 +6093,14 @@ fn main() {
     let _ = LAUNCH_CONTEXT.set(parse_launch_context());
     #[cfg(target_os = "windows")]
     configure_portable_webview_data_directory();
+
+    let instance_config_path = startup_instance_preferences_path()
+        .expect("Could not locate CyberFiles instance preferences");
+    let instance_preferences = load_instance_preferences(&instance_config_path);
+
     #[cfg(target_os = "windows")]
     let _single_instance_guard = {
-        let preferences_path = startup_instance_preferences_path()
-            .expect("Could not locate CyberFiles instance preferences");
-        let preferences = load_instance_preferences(&preferences_path);
-        if preferences.allow_multiple_instances {
+        if instance_preferences.allow_multiple_instances {
             None
         } else {
             let guard = acquire_single_instance_guard(portable_data_directory_from_executable().is_some())
@@ -6087,7 +6112,28 @@ fn main() {
         }
     };
 
+    let shortcut_config_path = startup_global_shortcut_config_path()
+        .expect("Could not locate CyberFiles global shortcut configuration");
+    let shortcut_preferences = load_global_shortcut_preferences(&shortcut_config_path);
+    let shortcut_preferences_for_setup = shortcut_preferences.clone();
+
     tauri::Builder::default()
+        .manage(InstancePreferencesState {
+            preferences: Mutex::new(instance_preferences),
+            config_path: instance_config_path,
+        })
+        .manage(GlobalShortcutState {
+            preferences: Mutex::new(shortcut_preferences),
+            registered: Mutex::new(None),
+            config_path: shortcut_config_path,
+        })
+        .manage(TrayMenuState {
+            english: Mutex::new(false),
+            shortcut_hint: Mutex::new(None),
+            tray: Mutex::new(None),
+        })
+        .manage(TrayMenuAnchor(Mutex::new(None)))
+        .manage(TrayMenuSizes(Mutex::new(HashMap::new())))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -6101,30 +6147,7 @@ fn main() {
                 })
                 .build(),
         )
-        .setup(|app| {
-            let instance_config_path = instance_preferences_config_path(app)?;
-            let instance_preferences = load_instance_preferences(&instance_config_path);
-            app.manage(InstancePreferencesState {
-                preferences: Mutex::new(instance_preferences),
-                config_path: instance_config_path,
-            });
-
-            let shortcut_config_path = global_shortcut_config_path(app)?;
-            let shortcut_preferences = load_global_shortcut_preferences(&shortcut_config_path);
-            app.manage(GlobalShortcutState {
-                preferences: Mutex::new(shortcut_preferences.clone()),
-                registered: Mutex::new(None),
-                config_path: shortcut_config_path,
-            });
-
-            app.manage(TrayMenuState {
-                english: Mutex::new(false),
-                shortcut_hint: Mutex::new(None),
-                tray: Mutex::new(None),
-            });
-            app.manage(TrayMenuAnchor(Mutex::new(None)));
-            app.manage(TrayMenuSizes(Mutex::new(HashMap::new())));
-
+        .setup(move |app| {
             let tray_icon = TrayIconBuilder::with_id("cyberfiles-tray")
                 .icon(
                     app.default_window_icon()
@@ -6152,24 +6175,26 @@ fn main() {
                     _ => {}
                 })
                 .build(app)?;
-            if let Ok(mut tray) = app.state::<TrayMenuState>().tray.lock() {
-                *tray = Some(tray_icon);
+            if let Some(tray_state) = app.try_state::<TrayMenuState>() {
+                if let Ok(mut tray) = tray_state.tray.lock() {
+                    *tray = Some(tray_icon);
+                }
             }
 
-            if shortcut_preferences.enabled {
+            if shortcut_preferences_for_setup.enabled {
                 match app
                     .global_shortcut()
-                    .register(shortcut_preferences.shortcut.as_str())
+                    .register(shortcut_preferences_for_setup.shortcut.as_str())
                 {
                     Ok(()) => {
-                        if let Ok(mut registered) =
-                            app.state::<GlobalShortcutState>().registered.lock()
-                        {
-                            *registered = Some(shortcut_preferences.shortcut.clone());
+                        if let Some(shortcut_state) = app.try_state::<GlobalShortcutState>() {
+                            if let Ok(mut registered) = shortcut_state.registered.lock() {
+                                *registered = Some(shortcut_preferences_for_setup.shortcut.clone());
+                            }
                         }
                         update_tray_hotkey_hint(
                             app.handle(),
-                            Some(shortcut_preferences.shortcut.as_str()),
+                            Some(shortcut_preferences_for_setup.shortcut.as_str()),
                         )?;
                     }
                     Err(error) => {
