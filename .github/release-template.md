@@ -2,16 +2,18 @@
   <img src="https://raw.githubusercontent.com/CyberGems/CyberFiles/main/public/icon.png" width="120" alt="CyberFiles">
 </p>
 
-## CyberFiles {{VERSION}}: Release Notes
+## 📁 CyberFiles {{VERSION}}: Release Notes
 
-### What is new in this release
+### 🚀 What's new in this release
 
 <!-- IMPORTANT FOR AGENTS & MAINTAINERS: Always rewrite this entire section and highlights with the ACTUAL release notes for this specific new version before tagging. NEVER leave or copy previous version notes! Use 25-45 words for the summary, lead with user-facing changes, and do not repeat the app name or version. -->
 {{RELEASE_SUMMARY}}
 
 > CyberFiles is a Windows-first file manager by CyberGems.
 
-### Key features
+---
+
+### ✨ Key Features & Highlights
 
 - **Startup reliability:** resolves an immediate race-condition crash on launch in installed releases by ensuring backend application state is initialized before webview windows start navigation.
 - **Windows shell integration:** open folders directly in CyberFiles from the Windows Explorer context menu on directories and background areas, and configure optional startup minimized to the tray.
@@ -30,7 +32,10 @@
 - **Informative status bar:** graphical drive usage and clearer details for local storage, selection, paths, and date and time.
 - **System integration:** Windows-associated file icons, tray controls, Explorer context menu, and a configurable global shortcut.
 
-### Características destacadas
+<details>
+<summary><b>🌐 Ver notas de la versión en Español</b></summary>
+
+### 🚀 Novedades de esta versión
 
 - **Estabilidad de inicio:** soluciona el cierre inesperado al abrir la versión instalada garantizando que el estado del backend esté listo antes de que las ventanas carguen la interfaz.
 - **Integración con el Shell de Windows:** abre carpetas directamente en CyberFiles desde el menú contextual del Explorador de Windows y configura el inicio minimizado en la bandeja del sistema.
@@ -40,24 +45,37 @@
 - **Ubicación Recientes:** lista los archivos abiertos o previsualizados ordenados por fecha de apertura.
 - **Gestión de archivos:** operaciones en cola con pausa, cancelación, soporte de Papelera de reciclaje y 10 niveles de deshacer.
 
-### Windows download
-
-| File | Description | Platform |
-| :--- | :--- | :--- |
-| **[CyberFiles_{{VERSION_NUM}}_x64-setup.exe](https://github.com/CyberGems/CyberFiles/releases/download/{{VERSION}}/CyberFiles_{{VERSION_NUM}}_x64-setup.exe)** | Recommended NSIS installer. WebView2 is downloaded during setup if needed. | Windows 10 / 11 (x64) |
-| **[CyberFiles_{{VERSION_NUM}}_x64-portable.zip](https://github.com/CyberGems/CyberFiles/releases/download/{{VERSION}}/CyberFiles_{{VERSION_NUM}}_x64-portable.zip)** | Extract and run without installation. Settings stay beside the app. Requires the WebView2 Evergreen Runtime. | Windows 10 / 11 (x64) |
-
-### SHA-256 checksum
-
-- **CyberFiles_{{VERSION_NUM}}_x64-setup.exe**: **{{SETUP_SHA256}}**
-- **CyberFiles_{{VERSION_NUM}}_x64-portable.zip**: **{{PORTABLE_SHA256}}**
-- The SHA-256 checksums are also included in the downloadable SHA256SUMS.txt file.
-
-### VirusTotal
-
-- **Automated scan:** {{VT_SCAN_STATUS}}
-- **Security report:** [View report](https://www.virustotal.com/gui/file/{{SETUP_SHA256}})
+</details>
 
 ---
 
-*Made by [CyberGems](https://cybergems.org)*
+### 📦 Downloads & Packages
+
+> ⬇️ **Direct download:** click a file name to download it now. Same files as in **Assets** at the bottom of this page.
+
+| File | Description | Platform |
+| :--- | :--- | :--- |
+| **[`CyberFiles_{{VERSION_NUM}}_x64-setup.exe`](https://github.com/CyberGems/CyberFiles/releases/download/{{VERSION}}/CyberFiles_{{VERSION_NUM}}_x64-setup.exe)** | 🚀 **Recommended Installer** (NSIS setup with Start Menu, Desktop & Startup options) | Windows 10 / 11 (x64) |
+| **[`CyberFiles_{{VERSION_NUM}}_x64-portable.zip`](https://github.com/CyberGems/CyberFiles/releases/download/{{VERSION}}/CyberFiles_{{VERSION_NUM}}_x64-portable.zip)** | 💼 **Portable Archive** (Extract and run without installation. Settings stay beside the app.) | Windows 10 / 11 (x64) |
+
+---
+
+### VirusTotal and SHA256
+
+**Installer**: [View VirusTotal report](https://www.virustotal.com/gui/file/{{INSTALLER_HASH}})
+
+```text
+{{INSTALLER_HASH}}
+```
+
+**Portable archive**: [View VirusTotal report](https://www.virustotal.com/gui/file/{{PORTABLE_HASH}})
+
+```text
+{{PORTABLE_HASH}}
+```
+
+The SHA-256 checksums are also included in the downloadable SHA256SUMS.txt file.
+
+---
+
+*Crafted with precision by [CyberGems](https://cybergems.org)*

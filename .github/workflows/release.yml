@@ -153,7 +153,9 @@ jobs:
             Replace('{{RELEASE_SUMMARY}}', $releaseSummary).
             Replace('{{VERSION_NUM}}', $versionNumber).
             Replace('{{SETUP_SHA256}}', $installerHash).
-            Replace('{{PORTABLE_SHA256}}', $portableHash)
+            Replace('{{PORTABLE_SHA256}}', $portableHash).
+            Replace('{{INSTALLER_HASH}}', $installerHash).
+            Replace('{{PORTABLE_HASH}}', $portableHash)
           [System.IO.File]::WriteAllText('release_notes.md', $notes, [System.Text.UTF8Encoding]::new($false))
           Write-Host "Installer: $($installer.Name)"
           Write-Host "Installer SHA-256: $installerHash"
