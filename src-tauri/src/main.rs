@@ -5980,9 +5980,13 @@ fn parse_launch_context() -> LaunchContext {
 
 #[cfg(target_os = "windows")]
 fn run_reg_command(arguments: &[&str]) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
     use std::process::Command;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
     let output = Command::new("reg")
         .args(arguments)
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map_err(|error| format!("reg.exe failed: {error}"))?;
     if output.status.success() {
@@ -6000,7 +6004,10 @@ fn run_reg_command(arguments: &[&str]) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 fn query_reg_value(key: &str, value_name: Option<&str>) -> bool {
+    use std::os::windows::process::CommandExt;
     use std::process::Command;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
     let mut arguments = vec!["query", key];
     match value_name {
         Some(name) => arguments.extend(["/v", name]),
@@ -6008,6 +6015,7 @@ fn query_reg_value(key: &str, value_name: Option<&str>) -> bool {
     }
     Command::new("reg")
         .args(&arguments)
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false)
