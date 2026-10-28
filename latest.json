@@ -1,15 +1,15 @@
 {
-  "version": "0.6.0",
-  "notes": "CyberFiles 0.6.0 is the current release.",
-  "pub_date": "2026-10-24T10:04:09Z",
+  "version": "0.6.1",
+  "notes": "Fixes an immediate launch crash in installed releases by ensuring application state is managed prior to window initialization. Adds Explorer context menu integration, startup preferences, and reliable second-instance window activation.",
+  "pub_date": "2026-10-28T15:43:16Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSmNmOTFONDVjZ3JkVVh2RDRGcHBpOUtJOUdPU2UxZkYzM0RWYmx3R1NGYkVySE9YWU1HRzRxSG5CMHZraTdYZHMzcDFlSjd4aGxyaURGSHYxdDhFb3daYzBZTnlwTFFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODkzMTg4CWZpbGU6Q3liZXJGaWxlc18wLjYuMF94NjQtc2V0dXAuZXhlCjlYL1Rjb1VLOW1FdCsvRDJtOEFicGJ6OThZZWJLZU9BLzMydUZMUVRoendvTk9IMEZ1a2hweXR1eW5STHlFVUx3ZEVnRlhGc3ZHc21rZnhvbndvMkNRPT0K",
-      "url": "https://github.com/CyberGems/CyberFiles/releases/download/v0.6.0/CyberFiles_0.6.0_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSmNmOTFONDVjZ2lxQ2hxeFBwUy8xbU9sYndkOEtKR1hUTGRFM1g5VThtK25YaWVYTW8zc3R1ci9OK1Z4MkVpdEVjRVBxVFduTVdIWFkrYlhzM0kyVnI5NkhXNnEyUmc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjAyMTg5CWZpbGU6Q3liZXJGaWxlc18wLjYuMV94NjQtc2V0dXAuZXhlCXZlcnNpb246MC42LjEKTnBMQ2c5S0ZQOUQ2bFRYN3NrUlVsb3RGMkE3N01TNENCYS9SaGw4SEVmYmdmOFdjZ2hOYVNrY2plV0IzN3ZSL09xVTE1RnF1WlRvS2d5NFZ0TS9LQ1E9PQo=",
+      "url": "https://github.com/CyberGems/CyberFiles/releases/download/v0.6.1/CyberFiles_0.6.1_x64-setup.exe"
     },
     "windows-x86_64-nsis": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSmNmOTFONDVjZ3JkVVh2RDRGcHBpOUtJOUdPU2UxZkYzM0RWYmx3R1NGYkVySE9YWU1HRzRxSG5CMHZraTdYZHMzcDFlSjd4aGxyaURGSHYxdDhFb3daYzBZTnlwTFFZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkyODkzMTg4CWZpbGU6Q3liZXJGaWxlc18wLjYuMF94NjQtc2V0dXAuZXhlCjlYL1Rjb1VLOW1FdCsvRDJtOEFicGJ6OThZZWJLZU9BLzMydUZMUVRoendvTk9IMEZ1a2hweXR1eW5STHlFVUx3ZEVnRlhGc3ZHc21rZnhvbndvMkNRPT0K",
-      "url": "https://github.com/CyberGems/CyberFiles/releases/download/v0.6.0/CyberFiles_0.6.0_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSmNmOTFONDVjZ2lxQ2hxeFBwUy8xbU9sYndkOEtKR1hUTGRFM1g5VThtK25YaWVYTW8zc3R1ci9OK1Z4MkVpdEVjRVBxVFduTVdIWFkrYlhzM0kyVnI5NkhXNnEyUmc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjAyMTg5CWZpbGU6Q3liZXJGaWxlc18wLjYuMV94NjQtc2V0dXAuZXhlCXZlcnNpb246MC42LjEKTnBMQ2c5S0ZQOUQ2bFRYN3NrUlVsb3RGMkE3N01TNENCYS9SaGw4SEVmYmdmOFdjZ2hOYVNrY2plV0IzN3ZSL09xVTE1RnF1WlRvS2d5NFZ0TS9LQ1E9PQo=",
+      "url": "https://github.com/CyberGems/CyberFiles/releases/download/v0.6.1/CyberFiles_0.6.1_x64-setup.exe"
     }
   }
 }
