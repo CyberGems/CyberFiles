@@ -384,11 +384,109 @@ fn acquire_single_instance_guard(portable: bool) -> Result<Option<SingleInstance
         unsafe {
             CloseHandle(handle);
         }
-        focus_existing_main_window();
         Ok(None)
     } else {
         Ok(Some(SingleInstanceGuard(handle)))
     }
+}
+
+#[cfg(target_os = "windows")]
+fn single_instance_pipe_name(portable: bool) -> String {
+    if portable {
+        r"\\.\pipe\com.cybergems.cyberfiles.portable.pipe".to_string()
+    } else {
+        r"\\.\pipe\com.cybergems.cyberfiles.pipe".to_string()
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn send_message_to_existing_instance(portable: bool, message: &str) -> bool {
+    let pipe_name = single_instance_pipe_name(portable);
+    for _ in 0..6 {
+        if let Ok(mut file) = std::fs::OpenOptions::new().write(true).open(&pipe_name) {
+            let _ = writeln!(file, "{}", message);
+            let _ = file.flush();
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    false
+}
+
+#[cfg(target_os = "windows")]
+fn start_single_instance_listener(app: tauri::AppHandle, portable: bool) {
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, GetLastError, ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE},
+        Storage::FileSystem::ReadFile,
+        System::Pipes::{ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe},
+    };
+
+    const PIPE_ACCESS_INBOUND: u32 = 0x00000001;
+    const PIPE_TYPE_BYTE: u32 = 0x00000000;
+    const PIPE_READMODE_BYTE: u32 = 0x00000000;
+    const PIPE_WAIT: u32 = 0x00000000;
+
+    let pipe_name = single_instance_pipe_name(portable);
+    let name_utf16: Vec<u16> = pipe_name.encode_utf16().chain(Some(0)).collect();
+
+    std::thread::spawn(move || {
+        loop {
+            let pipe = unsafe {
+                CreateNamedPipeW(
+                    name_utf16.as_ptr(),
+                    PIPE_ACCESS_INBOUND,
+                    PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+                    1,
+                    4096,
+                    4096,
+                    0,
+                    std::ptr::null(),
+                )
+            };
+
+            if pipe == INVALID_HANDLE_VALUE {
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                continue;
+            }
+
+            let connected = unsafe { ConnectNamedPipe(pipe, std::ptr::null_mut()) };
+            let is_connected = connected != 0 || unsafe { GetLastError() } == ERROR_PIPE_CONNECTED;
+
+            if is_connected {
+                let mut buffer = [0u8; 4096];
+                let mut bytes_read = 0u32;
+                let read_success = unsafe {
+                    ReadFile(
+                        pipe,
+                        buffer.as_mut_ptr(),
+                        buffer.len() as u32,
+                        &mut bytes_read,
+                        std::ptr::null_mut(),
+                    )
+                };
+
+                if read_success != 0 && bytes_read > 0 {
+                    if let Ok(text) = std::str::from_utf8(&buffer[..bytes_read as usize]) {
+                        let message = text.trim();
+                        if let Some(main_window) = app.get_webview_window("main") {
+                            let _ = main_window.unminimize();
+                            let _ = main_window.show();
+                            let _ = main_window.set_focus();
+                        }
+                        focus_existing_main_window();
+                        if !message.is_empty() && message != "__FOCUS__" {
+                            let _ = app.emit("open-path", message.to_string());
+                        }
+                    }
+                }
+            }
+
+            unsafe {
+                DisconnectNamedPipe(pipe);
+                CloseHandle(pipe);
+            }
+        }
+    });
 }
 
 #[tauri::command]
@@ -5944,6 +6042,7 @@ async fn edit_hosts_file() -> Result<(), String> {
 /// manual one; a trailing directory argument comes from the Explorer
 /// "Open in CyberFiles" menu entry.
 #[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct LaunchContext {
     startup: bool,
     target_path: Option<String>,
@@ -5959,6 +6058,31 @@ const EXPLORER_MENU_BACKGROUND_KEY: &str =
     "HKCU\\Software\\Classes\\Directory\\Background\\shell\\OpenInCyberFiles";
 const EXPLORER_MENU_LABEL: &str = "Open in CyberFiles";
 
+fn clean_path_argument(raw: &str) -> Option<String> {
+    let trimmed = raw.trim().trim_matches('"');
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path = Path::new(trimmed);
+    if path.is_dir() {
+        return Some(trimmed.to_string());
+    }
+    let stripped = trimmed.trim_end_matches(['"', '\\', '/']);
+    if !stripped.is_empty() {
+        let p = Path::new(stripped);
+        if p.is_dir() {
+            return Some(p.to_string_lossy().to_string());
+        }
+    }
+    if stripped.len() == 2 && stripped.ends_with(':') {
+        let with_slash = format!("{}\\", stripped);
+        if Path::new(&with_slash).is_dir() {
+            return Some(with_slash);
+        }
+    }
+    None
+}
+
 fn parse_launch_context() -> LaunchContext {
     let mut startup = false;
     let mut target_path: Option<String> = None;
@@ -5971,8 +6095,8 @@ fn parse_launch_context() -> LaunchContext {
         if argument.starts_with('-') || target_path.is_some() {
             continue;
         }
-        if Path::new(&argument).is_dir() {
-            target_path = Some(argument);
+        if let Some(valid_path) = clean_path_argument(&argument) {
+            target_path = Some(valid_path);
         }
     }
     LaunchContext { startup, target_path }
@@ -6111,9 +6235,15 @@ fn main() {
         if instance_preferences.allow_multiple_instances {
             None
         } else {
-            let guard = acquire_single_instance_guard(portable_data_directory_from_executable().is_some())
+            let portable = portable_data_directory_from_executable().is_some();
+            let guard = acquire_single_instance_guard(portable)
                 .expect("Could not enforce CyberFiles single-instance mode");
             if guard.is_none() {
+                let launch_ctx = LAUNCH_CONTEXT.get().cloned();
+                let target = launch_ctx.as_ref().and_then(|c| c.target_path.as_deref());
+                let message = target.unwrap_or("__FOCUS__");
+                send_message_to_existing_instance(portable, message);
+                focus_existing_main_window();
                 return;
             }
             guard
@@ -6156,6 +6286,12 @@ fn main() {
                 .build(),
         )
         .setup(move |app| {
+            #[cfg(target_os = "windows")]
+            {
+                let portable = portable_data_directory_from_executable().is_some();
+                start_single_instance_listener(app.handle().clone(), portable);
+            }
+
             let tray_icon = TrayIconBuilder::with_id("cyberfiles-tray")
                 .icon(
                     app.default_window_icon()
@@ -6391,5 +6527,17 @@ mod tests {
                 .SetOperationFlags(FOF_NO_UI | FOFX_RECYCLEONDELETE)
                 .expect("Windows should accept recycle-on-delete flags");
         }
+    }
+
+    #[test]
+    fn cleans_and_resolves_launch_directory_paths() {
+        let temp_dir = std::env::temp_dir();
+        let path_str = temp_dir.to_str().expect("valid utf8 temp dir");
+        assert!(super::clean_path_argument(path_str).is_some());
+        let quoted = format!("\"{path_str}\"");
+        assert!(super::clean_path_argument(&quoted).is_some());
+        let escaped_quote = format!("{path_str}\"");
+        assert!(super::clean_path_argument(&escaped_quote).is_some());
+        assert!(super::clean_path_argument(r"C:\non_existent_folder_xyz_12345").is_none());
     }
 }

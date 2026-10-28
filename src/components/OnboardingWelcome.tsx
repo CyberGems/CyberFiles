@@ -1,7 +1,15 @@
-import { Check, FolderSync, Monitor, Palette, X } from 'lucide-react';
+import { AppWindow, Check, FolderSync, Monitor, Palette, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLanguage } from '../locales/LanguageContext';
 import { type AppTheme, useTheme } from '../themes/ThemeContext';
+import {
+  fetchAutostartStatus,
+  fetchExplorerIntegrationStatus,
+  readStartMinimizedOnStartup,
+  setAutostart,
+  setExplorerIntegration,
+  writeStartMinimizedOnStartup,
+} from '../utils/systemIntegration';
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile } from '../utils/workspaceProfiles';
 
 
@@ -18,7 +26,7 @@ interface OnboardingWelcomeProps {
   sessions: TabSessionProfile[];
 }
 
-type OnboardingStep = 0 | 1 | 2;
+type OnboardingStep = 0 | 1 | 2 | 3;
 
 const themes: AppTheme[] = ['cyberfiles', 'gray', 'light'];
 
@@ -38,6 +46,11 @@ export function OnboardingWelcome({
   const { theme, setTheme } = useTheme();
   const [step, setStep] = useState<OnboardingStep>(0);
   const stepRef = useRef<OnboardingStep>(0);
+  const [autostartEnabled, setAutostartEnabled] = useState(false);
+  const [explorerIntegrationEnabled, setExplorerIntegrationEnabled] = useState(false);
+  const [startMinimized, setStartMinimized] = useState(true);
+  const [saving, setSaving] = useState(false);
+
   const savedSessions = sessions.filter(session => session.id !== DEFAULT_SESSION_PROFILE_ID);
   const selectedSession = savedSessions.find(session => session.id === startupSessionId);
 
@@ -51,12 +64,37 @@ export function OnboardingWelcome({
     if (isOpen) {
       stepRef.current = 0;
       setStep(0);
+      setSaving(false);
+      void fetchAutostartStatus().then(status => setAutostartEnabled(status)).catch(() => {});
+      void fetchExplorerIntegrationStatus().then(status => setExplorerIntegrationEnabled(status)).catch(() => {});
+      setStartMinimized(readStartMinimizedOnStartup());
     }
   }, [isOpen]);
 
   useEffect(() => {
     stepRef.current = step;
   }, [step]);
+
+  const handleAutostartToggle = (checked: boolean) => {
+    setAutostartEnabled(checked);
+    if (checked) {
+      setStartMinimized(true);
+    }
+  };
+
+  const handleFinish = async () => {
+    setSaving(true);
+    try {
+      await setAutostart(autostartEnabled);
+      writeStartMinimizedOnStartup(startMinimized);
+      await setExplorerIntegration(explorerIntegrationEnabled);
+    } catch {
+      // Integration failure shouldn't block finishing the onboarding flow
+    } finally {
+      setSaving(false);
+      onContinue();
+    }
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -65,7 +103,7 @@ export function OnboardingWelcome({
         event.preventDefault();
         onSkip();
       }
-      if (event.target === document.body && event.key === 'ArrowRight' && stepRef.current < 2) {
+      if (event.target === document.body && event.key === 'ArrowRight' && stepRef.current < 3) {
         event.preventDefault();
         setStep(current => (current + 1) as OnboardingStep);
       }
@@ -75,8 +113,8 @@ export function OnboardingWelcome({
       }
       if (event.key === 'Enter' && event.target === document.body) {
         event.preventDefault();
-        if (stepRef.current < 2) setStep(current => (current + 1) as OnboardingStep);
-        else onContinue();
+        if (stepRef.current < 3) setStep(current => (current + 1) as OnboardingStep);
+        else void handleFinish();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -109,10 +147,11 @@ export function OnboardingWelcome({
   const stepItems = [
     { number: '1', title: t.onboarding.stepAppearance, description: t.onboarding.stepAppearanceDescription, icon: Palette },
     { number: '2', title: t.onboarding.stepNavigation, description: t.onboarding.stepNavigationDescription, icon: FolderSync },
-    { number: '3', title: t.onboarding.stepReady, description: t.onboarding.stepReadyDescription, icon: Check },
+    { number: '3', title: t.onboarding.stepIntegration, description: t.onboarding.stepIntegrationDescription, icon: AppWindow },
+    { number: '4', title: t.onboarding.stepReady, description: t.onboarding.stepReadyDescription, icon: Check },
   ];
 
-  const goNext = () => setStep(current => current < 2 ? (current + 1) as OnboardingStep : current);
+  const goNext = () => setStep(current => current < 3 ? (current + 1) as OnboardingStep : current);
   const goBack = () => setStep(current => current > 0 ? (current - 1) as OnboardingStep : current);
   const selectedStartupLabel = startupBehavior === 'session' && selectedSession
     ? `${startupLabels.session}: ${selectedSession.name}`
@@ -249,6 +288,55 @@ export function OnboardingWelcome({
 
             {step === 2 && (
               <div>
+                <div className="flex items-center gap-2 text-cyan-300">
+                  <AppWindow className="h-5 w-5" />
+                  <span className="text-xs font-semibold uppercase tracking-wider">{t.onboarding.stepIntegration}</span>
+                </div>
+                <h1 id="welcome-title" className="mt-3 text-2xl font-semibold tracking-tight text-neutral-100">
+                  {t.onboarding.integrationTitle}
+                </h1>
+                <p className="mt-2 max-w-xl text-sm leading-relaxed text-neutral-400">
+                  {t.onboarding.integrationDescription}
+                </p>
+
+                <div className="mt-6 space-y-3">
+                  <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors ${autostartEnabled ? 'border-cyan-700/70 bg-cyan-950/25' : 'border-neutral-700 bg-neutral-950/60 hover:border-neutral-600'}`}>
+                    <input
+                      type="checkbox"
+                      checked={autostartEnabled}
+                      onChange={event => handleAutostartToggle(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-neutral-100">{t.onboarding.autostart}</span>
+                      <span className="mt-1 block text-xs leading-relaxed text-neutral-400">{t.onboarding.autostartDescription}</span>
+                      {autostartEnabled && (
+                        <span className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-cyan-800/60 bg-cyan-950/40 px-2 py-0.5 text-[11px] text-cyan-200">
+                          <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                          {t.onboarding.autostartMinimizedHint}
+                        </span>
+                      )}
+                    </span>
+                  </label>
+
+                  <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors ${explorerIntegrationEnabled ? 'border-cyan-700/70 bg-cyan-950/25' : 'border-neutral-700 bg-neutral-950/60 hover:border-neutral-600'}`}>
+                    <input
+                      type="checkbox"
+                      checked={explorerIntegrationEnabled}
+                      onChange={event => setExplorerIntegrationEnabled(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-neutral-100">{t.onboarding.explorerIntegration}</span>
+                      <span className="mt-1 block text-xs leading-relaxed text-neutral-400">{t.onboarding.explorerIntegrationDescription}</span>
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div>
                 <div className="flex items-center gap-2 text-cyan-300"><Check className="h-5 w-5" /><span className="text-xs font-semibold uppercase tracking-wider">{t.onboarding.stepReady}</span></div>
                 <h1 id="welcome-title" className="mt-3 text-2xl font-semibold tracking-tight text-neutral-100">{t.onboarding.readyTitle}</h1>
                 <p className="mt-2 max-w-xl text-sm leading-relaxed text-neutral-400">{t.onboarding.readyDescription}</p>
@@ -263,6 +351,16 @@ export function OnboardingWelcome({
                     <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.onboarding.summaryStartup}</div>
                     <div className="mt-2 text-sm font-semibold text-neutral-100">{selectedStartupLabel}</div>
                     <div className="mt-1 text-xs leading-relaxed text-neutral-400">{t.onboarding.startupTitle}</div>
+                  </div>
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.onboarding.summaryAutostart}</div>
+                    <div className="mt-2 text-sm font-semibold text-neutral-100">{autostartEnabled ? t.onboarding.enabled : t.onboarding.disabled}</div>
+                    <div className="mt-1 text-xs leading-relaxed text-neutral-400">{t.onboarding.autostart}</div>
+                  </div>
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.onboarding.summaryExplorerIntegration}</div>
+                    <div className="mt-2 text-sm font-semibold text-neutral-100">{explorerIntegrationEnabled ? t.onboarding.enabled : t.onboarding.disabled}</div>
+                    <div className="mt-1 text-xs leading-relaxed text-neutral-400">{t.onboarding.summaryExplorerIntegration}</div>
                   </div>
                 </div>
 
@@ -283,13 +381,13 @@ export function OnboardingWelcome({
                   <kbd className="keyboard-hint">←</kbd>
                 </button>
               )}
-              {step < 2 ? (
+              {step < 3 ? (
                 <button autoFocus type="button" onClick={goNext} className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-neutral-950 shadow-lg shadow-cyan-900/20 transition-colors hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-neutral-900">
                   {t.onboarding.next}
                   <kbd className="keyboard-hint keyboard-hint-primary">→</kbd>
                 </button>
               ) : (
-                <button autoFocus type="button" onClick={onContinue} className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-neutral-950 shadow-lg shadow-cyan-900/20 transition-colors hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-neutral-900">
+                <button autoFocus type="button" disabled={saving} onClick={handleFinish} className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-neutral-950 shadow-lg shadow-cyan-900/20 transition-colors hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-neutral-900 disabled:opacity-50">
                   {t.onboarding.finish}
                   <kbd className="keyboard-hint keyboard-hint-primary">Enter</kbd>
                   <Check className="h-4 w-4" />

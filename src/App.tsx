@@ -111,7 +111,7 @@ import {
 } from './utils/workspaceProfiles';
 import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
-import { fetchLaunchContext } from './utils/systemIntegration';
+import { fetchLaunchContext, getLaunchTargetPath } from './utils/systemIntegration';
 import { recentFileActions, recordRecentEntry, removeRecentEntry, renameRecentEntries, toRecentFileItem, type RecentEntry } from './utils/recentFiles';
 import { AUTO_CHECK_INTERVAL_MS, checkForUpdate, getAutoCheckUpdates, getNotifiedVersion, isSkippedVersion, setNotifiedVersion, setSkippedVersion, type AvailableUpdate } from './utils/updates';
 
@@ -2641,15 +2641,41 @@ export default function App() {
      chosen folder as an argument. Opened in a new tab so the startup session
      (last folder, saved session) survives next to it; StrictMode's double
      mount would otherwise navigate twice. */
+  const activePaneRef = useRef(activePane);
+  activePaneRef.current = activePane;
+
   const launchPathHandledRef = useRef(false);
   useEffect(() => {
     if (launchPathHandledRef.current) return;
     launchPathHandledRef.current = true;
     void fetchLaunchContext().then(context => {
-      if (!context?.targetPath) return;
-      handleNavigateRef.current(context.targetPath, activePane, true, true);
+      const target = getLaunchTargetPath(context);
+      if (!target) return;
+      handleNavigateRef.current(target, activePaneRef.current, true, true);
     });
-  }, [activePane]);
+  }, []);
+
+  /* When CyberFiles is already running, subsequent launches via the Explorer
+     context menu send the target path through a named pipe, which emits an
+     'open-path' event. */
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    let unlisten: (() => void) | undefined;
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      void listen<string>('open-path', event => {
+        if (event.payload) {
+          handleNavigateRef.current(event.payload, activePaneRef.current, true, true);
+        }
+      }).then(fn => {
+        unlisten = fn;
+      });
+    }).catch(() => {
+      // Event listener unavailable outside Tauri
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
 
 
   useEffect(() => {

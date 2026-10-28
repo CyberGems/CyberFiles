@@ -5,7 +5,13 @@ export const START_MINIMIZED_ON_STARTUP_STORAGE_KEY = 'cyberfiles_start_minimize
 
 export interface LaunchContext {
   startup: boolean;
-  targetPath: string | null;
+  targetPath?: string | null;
+  target_path?: string | null;
+}
+
+export function getLaunchTargetPath(context: LaunchContext | null | undefined): string | null {
+  if (!context) return null;
+  return context.targetPath || context.target_path || null;
 }
 
 function isTauriDesktop() {
