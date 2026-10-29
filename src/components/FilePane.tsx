@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useContext } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { 
   Folder, 
   FileText, 
@@ -1853,6 +1853,46 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }
   };
 
+  const handleAddressBarContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isRecycleBin || isRecentLocation) return;
+    if ((e.target as HTMLElement).closest('button')) return;
+    if ((e.target as HTMLElement).closest('input, textarea')) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (isEditingPath) {
+      const input = pathInputRef.current;
+      if (input) {
+        input.focus();
+        input.dispatchEvent(new MouseEvent('contextmenu', {
+          bubbles: true,
+          cancelable: true,
+          clientX: e.clientX,
+          clientY: e.clientY,
+        }));
+      }
+      return;
+    }
+
+    flushSync(() => {
+      setPathInput(isSystemHome ? '' : tab.currentPath);
+      setIsEditingPath(true);
+    });
+
+    const input = pathInputRef.current;
+    if (input) {
+      input.focus();
+      input.select();
+      input.dispatchEvent(new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: e.clientX,
+        clientY: e.clientY,
+      }));
+    }
+  };
+
   const toggleRecentFoldersMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     setBreadcrumbMenuPosition(null);
@@ -3289,11 +3329,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
         {/* Breadcrumb Path Box */}
         <div 
-          onClick={() => {
+          onClick={(e) => {
             if (isRecycleBin || isRecentLocation) return;
-            setPathInput(isSystemHome ? '' : tab.currentPath);
-            setIsEditingPath(true);
+            if ((e.target as HTMLElement).closest('button, input, textarea')) return;
+            if (!isEditingPath) {
+              setPathInput(isSystemHome ? '' : tab.currentPath);
+              setIsEditingPath(true);
+            } else {
+              pathInputRef.current?.focus();
+            }
           }}
+          onContextMenu={handleAddressBarContextMenu}
           className={`cyberfiles-address-bar flex-1 min-w-0 flex h-9 min-h-9 items-center bg-neutral-950 px-2 rounded-full border border-neutral-800 overflow-hidden ${!isRecycleBin && !isRecentLocation ? 'cursor-text hover:border-neutral-700' : 'cursor-default'}`}
         >
           {isEditingPath ? (
@@ -3305,6 +3351,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 value={pathInput}
                 placeholder={t.pane.addressPathPlaceholder}
                 onChange={(e) => setPathInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setIsEditingPath(false);
+                    setPathInput(tab.currentPath);
+                  }
+                }}
                 onBlur={() => setIsEditingPath(false)}
                 className="w-full bg-transparent text-neutral-100 text-xs outline-none font-sans"
               />
