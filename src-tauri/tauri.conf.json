@@ -21,6 +21,9 @@
         "minWidth": 500,
         "minHeight": 480,
         "resizable": true,
+        "minimizable": true,
+        "maximizable": true,
+        "skipTaskbar": false,
         "visible": false,
         "theme": "Dark"
       },

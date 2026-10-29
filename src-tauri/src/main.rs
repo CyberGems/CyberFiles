@@ -171,8 +171,93 @@ fn is_portable_build() -> bool {
     portable_data_directory_from_executable().is_some()
 }
 
+#[cfg(target_os = "windows")]
+fn ensure_main_window_styles(window: &tauri::WebviewWindow) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos,
+        GWL_STYLE, GWL_EXSTYLE,
+        WS_SYSMENU, WS_MINIMIZEBOX, WS_MAXIMIZEBOX, WS_EX_APPWINDOW,
+        SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_NOACTIVATE,
+    };
+
+    if let Ok(hwnd) = window.hwnd() {
+        let hwnd_raw = hwnd.0 as _;
+        unsafe {
+            let style = GetWindowLongPtrW(hwnd_raw, GWL_STYLE);
+            let new_style = style | (WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX) as isize;
+            if new_style != style {
+                SetWindowLongPtrW(hwnd_raw, GWL_STYLE, new_style);
+            }
+
+            let ex_style = GetWindowLongPtrW(hwnd_raw, GWL_EXSTYLE);
+            let new_ex_style = ex_style | WS_EX_APPWINDOW as isize;
+            if new_ex_style != ex_style {
+                SetWindowLongPtrW(hwnd_raw, GWL_EXSTYLE, new_ex_style);
+            }
+
+            SetWindowPos(
+                hwnd_raw,
+                std::ptr::null_mut(),
+                0,
+                0,
+                0,
+                0,
+                SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+            );
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn ensure_main_window_styles(_window: &tauri::WebviewWindow) {}
+
+#[tauri::command]
+fn minimize_main_window(window: tauri::WebviewWindow) -> Result<(), String> {
+    ensure_main_window_styles(&window);
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            PostMessageW, SC_MINIMIZE, WM_SYSCOMMAND,
+        };
+        if let Ok(hwnd) = window.hwnd() {
+            unsafe {
+                PostMessageW(hwnd.0 as _, WM_SYSCOMMAND, SC_MINIMIZE as usize, 0);
+            }
+            return Ok(());
+        }
+    }
+    window.minimize().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn toggle_maximize_main_window(window: tauri::WebviewWindow) -> Result<bool, String> {
+    ensure_main_window_styles(&window);
+    let is_maximized = window.is_maximized().unwrap_or(false);
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            PostMessageW, SC_MAXIMIZE, SC_RESTORE, WM_SYSCOMMAND,
+        };
+        if let Ok(hwnd) = window.hwnd() {
+            unsafe {
+                let command = if is_maximized { SC_RESTORE } else { SC_MAXIMIZE };
+                PostMessageW(hwnd.0 as _, WM_SYSCOMMAND, command as usize, 0);
+            }
+            return Ok(!is_maximized);
+        }
+    }
+    if is_maximized {
+        window.unmaximize().map_err(|error| error.to_string())?;
+        Ok(false)
+    } else {
+        window.maximize().map_err(|error| error.to_string())?;
+        Ok(true)
+    }
+}
+
 #[tauri::command]
 fn show_main_window(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+    ensure_main_window_styles(&window);
     let _ = ensure_tray_icon_registered(&app);
     let state_path = window_state_path(&app)?;
     let restore_maximized = fs::read(&state_path)
@@ -6447,6 +6532,7 @@ fn main() {
             let main_window = app
                 .get_webview_window("main")
                 .ok_or("CyberFiles main window is missing")?;
+            ensure_main_window_styles(&main_window);
             main_window
                 .set_theme(Some(tauri::Theme::Dark))
                 .map_err(|error| error.to_string())?;
@@ -6486,6 +6572,8 @@ fn main() {
             is_portable_build,
             show_main_window,
             hide_main_window,
+            minimize_main_window,
+            toggle_maximize_main_window,
             quit_app,
             list_directory,
             list_flat_directory,

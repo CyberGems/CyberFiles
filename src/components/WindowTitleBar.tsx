@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Globe, Info, Keyboard, Minus, MoreHorizontal, Search, Settings, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
@@ -166,16 +167,31 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
   const isInteractiveTitlebarTarget = (target: EventTarget | null) =>
     target instanceof Element && Boolean(target.closest('button, [data-titlebar-no-drag]'));
 
+  const handleMinimize = () => {
+    if (!appWindow) return;
+    dismissAllTooltips();
+    runWindowCommand('minimize', async () => {
+      try {
+        await invoke('minimize_main_window');
+      } catch {
+        await appWindow.minimize();
+      }
+    });
+  };
+
   const toggleMaximize = () => {
     if (!appWindow) return;
     dismissAllTooltips();
-    void appWindow.toggleMaximize()
-      .then(() => appWindow.isMaximized())
-      .then(setIsMaximized)
-      .catch(error => {
-        console.error('CyberFiles window command failed:', 'toggle maximize', error);
-        onWindowControlError();
-      });
+    runWindowCommand('toggle maximize', async () => {
+      try {
+        const nextMaximized = await invoke<boolean>('toggle_maximize_main_window');
+        setIsMaximized(nextMaximized);
+      } catch {
+        await appWindow.toggleMaximize();
+        const maximized = await appWindow.isMaximized();
+        setIsMaximized(maximized);
+      }
+    });
   };
 
   const handleTitlebarPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
@@ -327,7 +343,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
               <button
                 type="button"
                 aria-label={tTitlebar('Minimizar', 'Minimize')}
-                onClick={() => { dismissAllTooltips(); runWindowCommand('minimize', () => appWindow.minimize()); }}
+                onClick={handleMinimize}
                 className="flex h-9 w-10 items-center justify-center text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
               >
                 <Minus className="h-4 w-4" />
