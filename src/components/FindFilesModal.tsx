@@ -434,7 +434,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
       onClick={handleRequestClose}
     >
       <div 
-        className="relative w-full max-w-4xl max-h-[85vh] bg-neutral-900 border border-neutral-700/80 rounded-xl shadow-2xl flex flex-col overflow-hidden text-neutral-200"
+        className="relative w-full max-w-4xl h-[640px] max-h-[85vh] bg-neutral-900 border border-neutral-700/80 rounded-xl shadow-2xl flex flex-col overflow-hidden text-neutral-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Bar */}
@@ -701,9 +701,9 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
         </div>
 
         {/* Results List */}
-        <div className="flex-1 overflow-y-auto min-h-[300px] max-h-[50vh] divide-y divide-neutral-800/60 bg-neutral-950/60 font-sans">
+        <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-neutral-800/60 bg-neutral-950/60 font-sans">
           {searchResults.matches.length === 0 ? (
-            <div className="h-64 flex flex-col items-center justify-center text-center p-6 text-neutral-500">
+            <div className="h-full min-h-[240px] flex flex-col items-center justify-center text-center p-6 text-neutral-500">
               <Search className="w-10 h-10 text-neutral-700 mb-2 stroke-[1.5]" />
               <p className="text-sm font-medium text-neutral-400">{!query.trim() && sizeFilter === 'all' && typeFilter === 'all' && !extensionFilter.trim() ? t.findFiles.enterQueryTitle : t.findFiles.noResults}</p>
               <p className="text-xs text-neutral-500 mt-1 max-w-sm">
