@@ -145,29 +145,34 @@ export function searchFileSystem(
     // 6. Match by Content (Full-Text Search)
     if (searchContent && !file.isFolder && file.contentPreview) {
       const content = file.contentPreview;
-      let matchedLine: string | undefined;
-      let lineNum: number | undefined;
+      const testContent = caseSensitive ? content : content.toLowerCase();
+      const contentMatches = regex ? regex.test(content) : testContent.includes(normalizedQuery);
 
-      const lines = content.split('\n');
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const testLine = caseSensitive ? line : line.toLowerCase();
-        const isMatch = regex ? regex.test(line) : testLine.includes(normalizedQuery);
+      if (contentMatches) {
+        let matchedLine: string | undefined;
+        let lineNum: number | undefined;
 
-        if (isMatch) {
-          matchedLine = line.trim();
-          lineNum = i + 1;
-          break;
+        const lines = content.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const testLine = caseSensitive ? line : line.toLowerCase();
+          const isMatch = regex ? regex.test(line) : testLine.includes(normalizedQuery);
+
+          if (isMatch) {
+            matchedLine = line.trim();
+            lineNum = i + 1;
+            break;
+          }
         }
-      }
 
-      if (matchedLine) {
-        matches.push({
-          file,
-          matchType: 'content',
-          contentSnippet: matchedLine,
-          matchedLineNumber: lineNum,
-        });
+        if (matchedLine) {
+          matches.push({
+            file,
+            matchType: 'content',
+            contentSnippet: matchedLine,
+            matchedLineNumber: lineNum,
+          });
+        }
       }
     }
   }

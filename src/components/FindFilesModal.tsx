@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useDeferredValue } from 'react';
 import { 
   Search, 
   X, 
@@ -114,6 +114,8 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
   const { t, language } = useLanguage();
   const isSpanish = language === 'es';
   const [query, setQuery] = useState('');
+  const deferredQuery = useDeferredValue(query);
+  const [visibleCount, setVisibleCount] = useState(75);
   const [searchContent, setSearchContent] = useState(true);
   const [useRegex, setUseRegex] = useState(false);
   const [caseSensitive, setCaseSensitive] = useState(false);
@@ -299,10 +301,10 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
     return [...diskFiles, ...remaining];
   }, [allFiles, diskFiles, scope]);
 
-  // Execute search
+  // Execute search using deferredQuery so keystrokes remain instantaneous
   const searchResults = useMemo(() => {
     const options: SearchOptions = {
-      query,
+      query: deferredQuery,
       searchContent,
       scopePath: scope === 'current' ? currentPath : null,
       sizeFilter,
@@ -312,14 +314,26 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
       extensionFilter,
     };
     const hasFilters = sizeFilter !== 'all' || typeFilter !== 'all' || extensionFilter.trim().length > 0;
-    if (!query.trim() && !hasFilters) return { matches: [], totalScanned: 0, durationMs: 0 };
+    if (!deferredQuery.trim() && !hasFilters) return { matches: [], totalScanned: 0, durationMs: 0 };
     return searchFileSystem(combinedFiles, options);
-  }, [combinedFiles, query, searchContent, scope, currentPath, sizeFilter, typeFilter, caseSensitive, useRegex, extensionFilter]);
+  }, [combinedFiles, deferredQuery, searchContent, scope, currentPath, sizeFilter, typeFilter, caseSensitive, useRegex, extensionFilter]);
 
-  // Reset selected index when query or filters change
+  // Reset selected index and visible count when query or filters change
   useEffect(() => {
     setSelectedIndex(0);
-  }, [query, sizeFilter, typeFilter, scope]);
+    setVisibleCount(75);
+  }, [deferredQuery, sizeFilter, typeFilter, scope]);
+
+  const visibleMatches = useMemo(() => {
+    return searchResults.matches.slice(0, visibleCount);
+  }, [searchResults.matches, visibleCount]);
+
+  const handleScrollResults = (e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    if (target.scrollTop + target.clientHeight >= target.scrollHeight - 160) {
+      setVisibleCount((prev) => Math.min(prev + 50, searchResults.matches.length));
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -347,7 +361,13 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
       handleRequestClose();
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex((prev) => Math.min(prev + 1, Math.max(0, searchResults.matches.length - 1)));
+      setSelectedIndex((prev) => {
+        const next = Math.min(prev + 1, Math.max(0, searchResults.matches.length - 1));
+        if (next >= visibleCount - 5) {
+          setVisibleCount((v) => Math.min(v + 50, searchResults.matches.length));
+        }
+        return next;
+      });
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setSelectedIndex((prev) => Math.max(prev - 1, 0));
@@ -402,22 +422,35 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
     }
   };
 
-  // Highlight search term
-  const renderHighlightedText = (text: string, term: string) => {
-    if (!term.trim()) return <span>{text}</span>;
+  const highlightRegex = useMemo(() => {
+    const term = deferredQuery.trim();
+    if (!term) return null;
     try {
-      const parts = text.split(new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
+      return new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, caseSensitive ? 'g' : 'gi');
+    } catch {
+      return null;
+    }
+  }, [deferredQuery, caseSensitive]);
+
+  // Highlight search term with pre-compiled regex
+  const renderHighlightedText = (text: string) => {
+    if (!highlightRegex || !text) return <span>{text}</span>;
+    try {
+      const parts = text.split(highlightRegex);
+      if (parts.length <= 1) return <span>{text}</span>;
+      const compareTerm = caseSensitive ? deferredQuery.trim() : deferredQuery.trim().toLowerCase();
       return (
         <span>
-          {parts.map((part, i) =>
-            part.toLowerCase() === term.toLowerCase() ? (
+          {parts.map((part, i) => {
+            const matches = caseSensitive ? part === compareTerm : part.toLowerCase() === compareTerm;
+            return matches ? (
               <mark key={i} className="bg-amber-400/30 text-amber-200 font-bold px-0.5 rounded">
                 {part}
               </mark>
             ) : (
               <span key={i}>{part}</span>
-            )
-          )}
+            );
+          })}
         </span>
       );
     } catch {
@@ -425,7 +458,9 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
     }
   };
 
-  const totalSize = searchResults.matches.reduce((acc, m) => acc + (m.file.isFolder ? 0 : m.file.size), 0);
+  const totalSize = useMemo(() => {
+    return searchResults.matches.reduce((acc, m) => acc + (m.file.isFolder ? 0 : m.file.size), 0);
+  }, [searchResults.matches]);
 
   return (
     <div 
@@ -701,124 +736,136 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
         </div>
 
         {/* Results List */}
-        <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-neutral-800/60 bg-neutral-950/60 font-sans">
+        <div 
+          onScroll={handleScrollResults}
+          className="flex-1 min-h-0 overflow-y-auto divide-y divide-neutral-800/60 bg-neutral-950/60 font-sans"
+        >
           {searchResults.matches.length === 0 ? (
             <div className="h-full min-h-[240px] flex flex-col items-center justify-center text-center p-6 text-neutral-500">
               <Search className="w-10 h-10 text-neutral-700 mb-2 stroke-[1.5]" />
-              <p className="text-sm font-medium text-neutral-400">{!query.trim() && sizeFilter === 'all' && typeFilter === 'all' && !extensionFilter.trim() ? t.findFiles.enterQueryTitle : t.findFiles.noResults}</p>
+              <p className="text-sm font-medium text-neutral-400">{!deferredQuery.trim() && sizeFilter === 'all' && typeFilter === 'all' && !extensionFilter.trim() ? t.findFiles.enterQueryTitle : t.findFiles.noResults}</p>
               <p className="text-xs text-neutral-500 mt-1 max-w-sm">
-                {!query.trim() && sizeFilter === 'all' && typeFilter === 'all' && !extensionFilter.trim() ? t.findFiles.enterQueryDescription : t.findFiles.noResultsDesc}
+                {!deferredQuery.trim() && sizeFilter === 'all' && typeFilter === 'all' && !extensionFilter.trim() ? t.findFiles.enterQueryDescription : t.findFiles.noResultsDesc}
               </p>
             </div>
           ) : (
-            searchResults.matches.map((match, idx) => {
-              const file = match.file;
-              const isSelected = idx === selectedIndex;
-              const ext = getFileExtension(file.name);
+            <>
+              {visibleMatches.map((match, idx) => {
+                const file = match.file;
+                const isSelected = idx === selectedIndex;
+                const ext = getFileExtension(file.name);
 
-              return (
-                <div
-                  key={file.id}
-                  onClick={() => {
-                    setSelectedIndex(idx);
-                    handleNavigateToResult(file);
-                  }}
-                  className={`px-4 py-2 flex items-center justify-between text-xs cursor-pointer transition-colors ${
-                    isSelected 
-                      ? 'bg-cyan-950/70 border-l-2 border-cyan-400 text-neutral-100' 
-                      : idx % 2 === 0 ? 'bg-neutral-900/30 hover:bg-neutral-800/50' : 'bg-neutral-900/10 hover:bg-neutral-800/50'
-                  }`}
-                >
-                  <div className="flex items-start gap-2.5 min-w-0 flex-1 pr-3">
-                    <div className="mt-0.5">{getFileIcon(file)}</div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-neutral-100 truncate">
-                          {renderHighlightedText(file.name, query)}
-                        </span>
-                        {ext && (
-                          <span className="text-[9px] font-sans px-1 py-0.2 bg-neutral-800 text-neutral-400 rounded uppercase">
-                            {ext}
+                return (
+                  <div
+                    key={file.id}
+                    onClick={() => {
+                      setSelectedIndex(idx);
+                      handleNavigateToResult(file);
+                    }}
+                    className={`px-4 py-2 flex items-center justify-between text-xs cursor-pointer transition-colors ${
+                      isSelected 
+                        ? 'bg-cyan-950/70 border-l-2 border-cyan-400 text-neutral-100' 
+                        : idx % 2 === 0 ? 'bg-neutral-900/30 hover:bg-neutral-800/50' : 'bg-neutral-900/10 hover:bg-neutral-800/50'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1 pr-3">
+                      <div className="mt-0.5">{getFileIcon(file)}</div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-neutral-100 truncate">
+                            {renderHighlightedText(file.name)}
                           </span>
+                          {ext && (
+                            <span className="text-[9px] font-sans px-1 py-0.2 bg-neutral-800 text-neutral-400 rounded uppercase">
+                              {ext}
+                            </span>
+                          )}
+                          {match.matchType === 'content' && (
+                            <span className="text-[10px] font-sans px-1.5 py-0.2 rounded bg-amber-950/70 text-amber-300 border border-amber-800/60 flex items-center gap-1">
+                              <Sparkles className="w-2.5 h-2.5" />
+                              <span>Encontrado en contenido (línea {match.matchedLineNumber || 1})</span>
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Content match snippet preview */}
+                        {match.matchType === 'content' && match.contentSnippet && (
+                          <div className="mt-1 px-2 py-1 rounded bg-black/60 border border-neutral-800 font-sans text-[11px] text-neutral-300 overflow-hidden text-ellipsis whitespace-nowrap max-w-xl">
+                            <span className="text-neutral-500 mr-2">Línea {match.matchedLineNumber}:</span>
+                            {renderHighlightedText(match.contentSnippet)}
+                          </div>
                         )}
-                        {match.matchType === 'content' && (
-                          <span className="text-[10px] font-sans px-1.5 py-0.2 rounded bg-amber-950/70 text-amber-300 border border-amber-800/60 flex items-center gap-1">
-                            <Sparkles className="w-2.5 h-2.5" />
-                            <span>Encontrado en contenido (línea {match.matchedLineNumber || 1})</span>
-                          </span>
-                        )}
+
+                        {/* Directory Breadcrumb */}
+                        <p className="text-[11px] text-neutral-500 font-sans truncate mt-0.5">
+                          {renderHighlightedText(file.path)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Metadata & Actions */}
+                    <div className="flex items-center gap-3 flex-shrink-0 text-right">
+                      <div className="font-sans text-[11px] text-neutral-400 min-w-[70px]">
+                        {file.isFolder ? '<DIR>' : formatFileSize(file.size)}
+                      </div>
+                      <div className="font-sans text-[10px] text-neutral-500 hidden md:block min-w-[110px]">
+                        {formatDateTimeForDisplay(file.modifiedAtMs, file.modifiedDate, dateFormat, language)}
                       </div>
 
-                      {/* Content match snippet preview */}
-                      {match.matchType === 'content' && match.contentSnippet && (
-                        <div className="mt-1 px-2 py-1 rounded bg-black/60 border border-neutral-800 font-sans text-[11px] text-neutral-300 overflow-hidden text-ellipsis whitespace-nowrap max-w-xl">
-                          <span className="text-neutral-500 mr-2">Línea {match.matchedLineNumber}:</span>
-                          {renderHighlightedText(match.contentSnippet, query)}
-                        </div>
-                      )}
-
-                      {/* Directory Breadcrumb */}
-                      <p className="text-[11px] text-neutral-500 font-sans truncate mt-0.5">
-                        {renderHighlightedText(file.path, query)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Metadata & Actions */}
-                  <div className="flex items-center gap-3 flex-shrink-0 text-right">
-                    <div className="font-sans text-[11px] text-neutral-400 min-w-[70px]">
-                      {file.isFolder ? '<DIR>' : formatFileSize(file.size)}
-                    </div>
-                    <div className="font-sans text-[10px] text-neutral-500 hidden md:block min-w-[110px]">
-                      {formatDateTimeForDisplay(file.modifiedAtMs, file.modifiedDate, dateFormat, language)}
-                    </div>
-
-                    {/* Action buttons */}
-                    <div className="flex items-center gap-1 opacity-80 hover:opacity-100">
-                      <Tooltip label={t.findFiles.copyPath} placement="top">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCopyPath(file);
-                          }}
-                          className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 cursor-pointer"
-                        >
-                          {copiedId === file.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                        </button>
-                      </Tooltip>
-
-                      {onPreviewFile && !file.isFolder && (
-                        <Tooltip label={`${t.findFiles.previewFile} (F3)`} placement="top">
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-1 opacity-80 hover:opacity-100">
+                        <Tooltip label={t.findFiles.copyPath} placement="top">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              rememberCurrentSearch();
-                              onPreviewFile(file);
+                              handleCopyPath(file);
                             }}
-                            className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-cyan-300 cursor-pointer"
+                            className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 cursor-pointer"
                           >
-                            <Eye className="w-3.5 h-3.5" />
+                            {copiedId === file.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                           </button>
                         </Tooltip>
-                      )}
 
-                      <Tooltip label={t.findFiles.locateInPanel} placement="top">
+                        {onPreviewFile && !file.isFolder && (
+                          <Tooltip label={`${t.findFiles.previewFile} (F3)`} placement="top">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                rememberCurrentSearch();
+                                onPreviewFile(file);
+                              }}
+                              className="p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-cyan-300 cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </Tooltip>
+                        )}
+
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleNavigateToResult(file);
                           }}
+                          aria-label={t.findFiles.locateInPanel}
                           className="flex items-center gap-1 px-2 py-1 rounded bg-cyan-950 hover:bg-cyan-950/70 border border-cyan-800/80 text-cyan-300 font-medium text-[11px] cursor-pointer"
                         >
                           <span>{t.findFiles.navigateToFile}</span>
                           <ArrowRight className="w-3 h-3" />
                         </button>
-                      </Tooltip>
+                      </div>
                     </div>
                   </div>
+                );
+              })}
+              {searchResults.matches.length > visibleMatches.length && (
+                <div className="py-2.5 text-center text-[11px] text-neutral-500">
+                  {isSpanish 
+                    ? `Mostrando ${visibleMatches.length} de ${searchResults.matches.length} resultados (desplázate para ver más)`
+                    : `Showing ${visibleMatches.length} of ${searchResults.matches.length} results (scroll down to load more)`}
                 </div>
-              );
-            })
+              )}
+            </>
           )}
         </div>
 
