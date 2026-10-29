@@ -86,6 +86,7 @@ export const translations = {
       },
       commands: {
         searchFiles: 'Buscar archivos',
+        operationsCenter: 'Centro de operaciones',
         shortcuts: 'Atajos de teclado',
         settings: 'Configuración',
         workspaces: 'Diseños y sesiones',
@@ -1062,6 +1063,11 @@ export const translations = {
       timeZone: 'Zona horaria',
       openShortcutsDescription: 'Abre la guía completa de atajos de teclado.',
       quickShortcuts: 'Atajos F1',
+      operationsCenter: 'Centro de operaciones',
+      operationsCenterDescription: 'Cola de transferencias, progreso de operaciones y actividad reciente.',
+      operationsRunning: '{percent}% en curso',
+      operationsQueued: '{count} en cola',
+      operationsIdle: 'Centro de operaciones',
     },
     contextMenu: {
       workspace: 'Acciones del panel',
@@ -1291,6 +1297,7 @@ export const translations = {
       },
       commands: {
         searchFiles: 'Search files',
+        operationsCenter: 'Operations center',
         shortcuts: 'Keyboard shortcuts',
         settings: 'Settings',
         workspaces: 'Layouts and sessions',
@@ -2265,6 +2272,11 @@ export const translations = {
       timeZone: 'Time zone',
       openShortcutsDescription: 'Open the complete keyboard shortcuts guide.',
       quickShortcuts: 'Shortcuts F1',
+      operationsCenter: 'Operations center',
+      operationsCenterDescription: 'Transfer queue, operation progress, and recent file activity.',
+      operationsRunning: '{percent}% in progress',
+      operationsQueued: '{count} queued',
+      operationsIdle: 'Operations center',
     },
     contextMenu: {
       workspace: 'Pane actions',

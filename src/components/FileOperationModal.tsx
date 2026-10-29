@@ -1,6 +1,24 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Archive, Check, ChevronDown, Copy, Gauge, ListChecks, Maximize2, Minimize2, MoveRight, Pause, Pin, Play, Trash2, X } from 'lucide-react';
+import {
+  AlertCircle,
+  Archive,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  FolderOpen,
+  Gauge,
+  ListChecks,
+  MoveRight,
+  Pause,
+  Pin,
+  Play,
+  RotateCcw,
+  Trash2,
+  X,
+  XCircle,
+} from 'lucide-react';
 import { formatFileSize } from '../utils/fileSystem';
 import { Tooltip } from './Tooltip';
 import type { NativeTransferProgress } from '../utils/nativeFileSystem';
@@ -15,6 +33,7 @@ export interface TransferOperationView extends NativeTransferProgress {
   targetPath: string;
   status: TransferStatus;
   startedAt: number | null;
+  finishedAt?: number | null;
   sourcePane?: 'left' | 'right';
   selectionPane?: 'left' | 'right';
   clipboardSequence?: number;
@@ -24,24 +43,28 @@ export interface TransferOperationView extends NativeTransferProgress {
   preserveNames?: boolean;
   resultPath?: string;
   error?: string;
+  completedPaths?: string[];
+  failures?: Array<{ path: string; error: string }>;
 }
 
-interface FileOperationModalProps {
+export interface FileOperationModalProps {
   operations: TransferOperationView[];
   hidden?: boolean;
+  isOpen?: boolean;
   language: 'en' | 'es';
+  onClose?: () => void;
+  onOpen?: () => void;
   onTogglePause: (jobId: string) => void;
   onCancel: (jobId: string) => void;
+  onCancelAll?: () => void;
+  onRetry?: (operation: TransferOperationView) => void;
+  onNavigateTo?: (path: string) => void;
   onSubmitPassword: (jobId: string, password: string) => void;
   onClearHistory: () => void;
 }
 
-/* A transfer that finishes in a few milliseconds used to open the panel on the same frame it
-   closed it, which reads as a glitch rather than as feedback. Waiting before opening means a
-   quick copy never opens it at all (the toast already reports the result), and holding it after
-   the last operation finishes keeps a short-but-visible operation readable instead of a blink. */
 const PANEL_OPEN_DELAY_MS = 450;
-const PANEL_HOLD_AFTER_FINISH_MS = 1400;
+const PANEL_HOLD_AFTER_FINISH_MS = 3200;
 
 function elapsedLabel(seconds: number, language: 'en' | 'es'): string {
   const wholeSeconds = Math.max(0, Math.floor(seconds));
@@ -53,11 +76,11 @@ function elapsedLabel(seconds: number, language: 'en' | 'es'): string {
     : minutes + ':' + String(secs).padStart(2, '0');
 }
 
-function displayPath(path: string): string {
+export function displayPath(path: string): string {
   return path.replace(/^\\\\\?\\UNC\\/i, '\\\\').replace(/^\\\\\?\\/, '');
 }
 
-function statusLabel(operation: TransferOperationView, language: 'en' | 'es'): string {
+export function statusLabel(operation: TransferOperationView, language: 'en' | 'es'): string {
   const spanish = language === 'es';
   switch (operation.status) {
     case 'queued': return spanish ? 'En cola' : 'Queued';
@@ -71,7 +94,7 @@ function statusLabel(operation: TransferOperationView, language: 'en' | 'es'): s
   }
 }
 
-function operationActionLabel(operation: TransferOperationView, language: 'en' | 'es'): string {
+export function operationActionLabel(operation: TransferOperationView, language: 'en' | 'es'): string {
   const spanish = language === 'es';
   const count = operation.sourcePaths.length;
   if (operation.kind === 'extract') return spanish ? 'Extrayendo archivo' : 'Extracting archive';
@@ -84,7 +107,7 @@ function operationActionLabel(operation: TransferOperationView, language: 'en' |
     : `Moving ${count} ${count === 1 ? 'item' : 'items'}`;
 }
 
-function sourceLabel(operation: TransferOperationView, language: 'en' | 'es'): string {
+export function sourceLabel(operation: TransferOperationView, language: 'en' | 'es'): string {
   if (operation.kind === 'extract') {
     return operation.sourcePaths[0]?.split(/[\\/]/).pop() || (language === 'es' ? 'Archivo comprimido' : 'Archive');
   }
@@ -94,44 +117,85 @@ function sourceLabel(operation: TransferOperationView, language: 'en' | 'es'): s
     : (language === 'es' ? `${operation.sourcePaths.length} elementos seleccionados` : `${operation.sourcePaths.length} selected items`);
 }
 
-export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operations, hidden = false, language, onTogglePause, onCancel, onSubmitPassword, onClearHistory }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
+function formatRelativeTime(timestamp: number | null | undefined, language: 'en' | 'es'): string {
+  if (!timestamp) return '';
+  const now = Date.now();
+  const diffSec = Math.max(0, Math.floor((now - timestamp) / 1000));
+  const isSpanish = language === 'es';
+  if (diffSec < 45) return isSpanish ? 'Hace un momento' : 'Just now';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return isSpanish ? `Hace ${diffMin} min` : `${diffMin}m ago`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return isSpanish ? `Hace ${diffHours} h` : `${diffHours}h ago`;
+  const date = new Date(timestamp);
+  return date.toLocaleTimeString(isSpanish ? 'es-CR' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDuration(startedAt: number | null | undefined, finishedAt: number | null | undefined, language: 'en' | 'es'): string {
+  if (!startedAt || !finishedAt || finishedAt <= startedAt) return '';
+  const seconds = (finishedAt - startedAt) / 1000;
+  if (seconds < 1) return '< 1s';
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const mins = Math.floor(seconds / 60);
+  const remSecs = Math.round(seconds % 60);
+  return `${mins}m ${remSecs}s`;
+}
+
+export const FileOperationModal: React.FC<FileOperationModalProps> = ({
+  operations,
+  hidden = false,
+  isOpen = false,
+  language,
+  onClose = () => {},
+  onOpen,
+  onTogglePause,
+  onCancel,
+  onCancelAll,
+  onRetry,
+  onNavigateTo,
+  onSubmitPassword,
+  onClearHistory,
+}) => {
   const [isPinned, setIsPinned] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [speed, setSpeed] = useState(0);
   const [speedHistory, setSpeedHistory] = useState<number[]>([]);
   const [passwordValues, setPasswordValues] = useState<Record<string, string>>({});
+  const [copiedErrorJobId, setCopiedErrorJobId] = useState<string | null>(null);
+  const [expandedFailuresJobId, setExpandedFailuresJobId] = useState<string | null>(null);
+
   const panelRef = useRef<HTMLElement>(null);
   const lastSample = useRef<{ time: number; bytes: number } | null>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
+  const wasAutoOpenedRef = useRef(false);
+
   const activeOperation = operations.find(operation => ['running', 'paused', 'cancelling'].includes(operation.status));
   const activeRef = useRef(activeOperation);
   activeRef.current = activeOperation;
+
   const isSpanish = language === 'es';
   const pendingCount = operations.filter(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status)).length;
   const queuedOperations = operations.filter(operation => operation.status === 'queued');
   const passwordOperations = operations.filter(operation => operation.status === 'awaiting-password');
-  const recentOperations = operations.filter(operation => ['completed', 'failed', 'cancelled'].includes(operation.status)).slice(-5).reverse();
-  const latestRecentOperation = recentOperations[0];
+  const recentOperations = operations.filter(operation => ['completed', 'failed', 'cancelled'].includes(operation.status)).slice(-15).reverse();
   const firstPasswordOperation = passwordOperations[0];
+
   const previousPendingCount = useRef(pendingCount);
-  const isExpandedRef = useRef(isExpanded);
-  isExpandedRef.current = isExpanded;
   const openDelayTimer = useRef<number | null>(null);
   const closeDelayTimer = useRef<number | null>(null);
-  const title = isSpanish ? 'Operaciones de archivos' : 'File operations';
-  const openActivityLabel = isSpanish ? 'Abrir centro de operaciones' : 'Open activity center';
+  const title = isSpanish ? 'Centro de operaciones' : 'Operations center';
 
   useEffect(() => {
     if (!firstPasswordOperation) return;
-    setIsExpanded(true);
-  }, [firstPasswordOperation?.jobId]);
+    wasAutoOpenedRef.current = true;
+    onOpen?.();
+  }, [firstPasswordOperation?.jobId, onOpen]);
 
   useEffect(() => {
-    if (!firstPasswordOperation || !isExpanded) return;
+    if (!firstPasswordOperation || !isOpen) return;
     const frame = window.requestAnimationFrame(() => passwordInputRef.current?.focus({ preventScroll: true }));
     return () => window.cancelAnimationFrame(frame);
-  }, [firstPasswordOperation?.jobId, firstPasswordOperation?.error, isExpanded]);
+  }, [firstPasswordOperation?.jobId, firstPasswordOperation?.error, isOpen]);
 
   useEffect(() => {
     const wasIdle = previousPendingCount.current === 0;
@@ -145,7 +209,8 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
       if (wasIdle && openDelayTimer.current === null) {
         openDelayTimer.current = window.setTimeout(() => {
           openDelayTimer.current = null;
-          setIsExpanded(true);
+          wasAutoOpenedRef.current = true;
+          onOpen?.();
         }, PANEL_OPEN_DELAY_MS);
       }
       return;
@@ -162,13 +227,13 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
       }
       return;
     }
-    if (!isExpandedRef.current || closeDelayTimer.current !== null) return;
-    // The finished state is what the panel is for: hold it long enough to be read.
+    if (!isOpen || !wasAutoOpenedRef.current || closeDelayTimer.current !== null) return;
     closeDelayTimer.current = window.setTimeout(() => {
       closeDelayTimer.current = null;
-      setIsExpanded(false);
+      wasAutoOpenedRef.current = false;
+      onClose();
     }, PANEL_HOLD_AFTER_FINISH_MS);
-  }, [pendingCount, isPinned]);
+  }, [pendingCount, isPinned, isOpen, onClose, onOpen]);
 
   useEffect(() => () => {
     if (openDelayTimer.current !== null) window.clearTimeout(openDelayTimer.current);
@@ -204,33 +269,51 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
   }, [activeOperation?.status, activeOperation?.bytesCopied]);
 
   useEffect(() => {
-    if (hidden && isExpanded) setIsExpanded(false);
-  }, [hidden, isExpanded]);
+    if (!isOpen || hidden) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, hidden, onClose]);
 
   useEffect(() => {
-    if (!isExpanded || hidden) return;
+    if (!isOpen || hidden) return;
     const closeOnOutsideClick = (event: PointerEvent) => {
-      if (!panelRef.current?.contains(event.target as Node)) setIsExpanded(false);
+      const statusTrigger = document.getElementById('operations-center-status-trigger');
+      if (statusTrigger?.contains(event.target as Node)) return;
+      if (!panelRef.current?.contains(event.target as Node)) {
+        if (!isPinned) onClose();
+      }
     };
     document.addEventListener('pointerdown', closeOnOutsideClick, true);
     return () => document.removeEventListener('pointerdown', closeOnOutsideClick, true);
-  }, [isExpanded, hidden]);
+  }, [isOpen, hidden, isPinned, onClose]);
 
-  if (hidden) return null;
+  const copyErrorDetails = async (operation: TransferOperationView) => {
+    const errorText = [
+      `Operation: ${operation.kind} (${operation.status})`,
+      `From: ${operation.sourcePaths.join(', ')}`,
+      `To: ${operation.targetPath}`,
+      operation.error ? `Error: ${operation.error}` : '',
+      operation.failures && operation.failures.length > 0
+        ? `Failures:\n${operation.failures.map(f => `  - ${f.path}: ${f.error}`).join('\n')}`
+        : '',
+    ].filter(Boolean).join('\n');
 
-  if (!isExpanded) {
-    return createPortal(
-      <aside className="pointer-events-none fixed bottom-4 right-4 z-[120]" aria-label={title}>
-        <Tooltip label={openActivityLabel} placement="left">
-          <button type="button" onClick={() => setIsExpanded(true)} aria-label={pendingCount > 0 ? `${openActivityLabel}, ${pendingCount} ${isSpanish ? (pendingCount === 1 ? 'pendiente' : 'pendientes') : 'pending'}` : openActivityLabel} className="pointer-events-auto relative grid h-11 w-11 place-items-center rounded-xl border border-neutral-700 bg-neutral-900 text-cyan-300 shadow-xl shadow-black/40 transition hover:border-cyan-700 hover:bg-neutral-800">
-            <ListChecks className="h-5 w-5" />
-            {pendingCount > 0 && <span aria-hidden="true" className="absolute -right-1 -top-1 grid min-h-4 min-w-4 place-items-center rounded-full border border-neutral-950 bg-cyan-500 px-0.5 text-[9px] font-semibold text-neutral-950">{pendingCount > 9 ? '9+' : pendingCount}</span>}
-          </button>
-        </Tooltip>
-      </aside>,
-      document.body,
-    );
-  }
+    try {
+      await navigator.clipboard.writeText(errorText);
+      setCopiedErrorJobId(operation.jobId);
+      window.setTimeout(() => setCopiedErrorJobId(null), 2000);
+    } catch {
+      // Ignore clipboard write failures
+    }
+  };
+
+  if (hidden || !isOpen) return null;
 
   const progress = activeOperation?.totalBytes
     ? Math.min(1, activeOperation.bytesCopied / activeOperation.totalBytes)
@@ -246,138 +329,526 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({ operatio
   }).join(' ');
   const currentItemLabel = activeOperation?.currentItem || activeOperation?.sourcePaths[0] || (isSpanish ? 'Preparando…' : 'Preparing…');
   const remainingLabel = remaining === null ? '—' : elapsedLabel(remaining, language);
+
   return createPortal(
-    <aside ref={panelRef} className="pointer-events-none fixed bottom-4 right-4 z-[120] flex max-h-[min(80vh,800px)] w-[min(760px,calc(100vw-2rem))] flex-col items-end" aria-label={title}>
-      <section className="cyberfiles-transfer-panel pointer-events-auto flex max-h-[80vh] w-full flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 text-neutral-100 shadow-2xl shadow-black/50">
-        <header className="flex items-center gap-3 border-b border-neutral-700 px-4 py-3">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-cyan-950/70 text-cyan-300"><ListChecks className="h-5 w-5" /></span>
+    <aside
+      ref={panelRef}
+      className="pointer-events-none fixed bottom-9 right-3 z-[120] flex max-h-[min(82vh,780px)] w-[min(720px,calc(100vw-1.5rem))] flex-col items-end"
+      aria-label={title}
+    >
+      <section className="cyberfiles-transfer-panel pointer-events-auto flex max-h-[min(82vh,780px)] w-full flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900/98 text-neutral-100 shadow-2xl shadow-black/80 backdrop-blur-md">
+        <header className="flex items-center gap-3 border-b border-neutral-700/80 bg-neutral-900/90 px-4 py-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-cyan-800/40 bg-cyan-950/70 text-cyan-300">
+            <ListChecks className="h-5 w-5" />
+          </span>
           <div className="min-w-0 flex-1">
-            <h2 className="font-semibold">{title}</h2>
-            <p className="text-xs text-neutral-400">{pendingCount > 0 ? (isSpanish ? `${pendingCount} pendiente${pendingCount === 1 ? '' : 's'}` : `${pendingCount} pending`) : (isSpanish ? 'Sin operaciones pendientes' : 'No pending operations')}</p>
+            <h2 className="flex items-center gap-2 font-semibold text-neutral-100">
+              {title}
+              {activeOperation && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-cyan-700/50 bg-cyan-950/80 px-2 py-0.5 font-mono text-[11px] font-medium text-cyan-300">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
+                  {percent}%
+                </span>
+              )}
+            </h2>
+            <p className="text-xs text-neutral-400">
+              {pendingCount > 0
+                ? (isSpanish ? `${pendingCount} pendiente${pendingCount === 1 ? '' : 's'}` : `${pendingCount} pending`)
+                : (isSpanish ? 'Sin operaciones pendientes' : 'No pending operations')}
+            </p>
           </div>
-          {activeOperation && <span className="rounded-md border border-neutral-700 px-2 py-1 font-mono text-xs text-cyan-200">{percent}%</span>}
-          <Tooltip label={isPinned ? (isSpanish ? 'Dejar de mantener abierto al finalizar' : 'Stop keeping open after completion') : (isSpanish ? 'Mantener abierto al finalizar' : 'Keep open after completion')} placement="top">
-            <button type="button" aria-label={isPinned ? (isSpanish ? 'Dejar de mantener abierto al finalizar' : 'Stop keeping open after completion') : (isSpanish ? 'Mantener abierto al finalizar' : 'Keep open after completion')} aria-pressed={isPinned} onClick={() => { setIsPinned(value => !value); if (!isPinned) setIsExpanded(true); }} className={`grid h-8 w-8 place-items-center rounded-md transition ${isPinned ? 'bg-cyan-950/70 text-cyan-300' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100'}`}><Pin className="h-4 w-4" /></button>
+
+          <Tooltip label={isPinned ? (isSpanish ? 'Desanclar (permitir auto-cierre)' : 'Unpin (allow auto-close)') : (isSpanish ? 'Mantener abierto' : 'Keep open')} placement="top">
+            <button
+              type="button"
+              aria-label={isPinned ? (isSpanish ? 'Desanclar' : 'Unpin') : (isSpanish ? 'Fijar panel' : 'Pin panel')}
+              aria-pressed={isPinned}
+              onClick={() => setIsPinned(value => !value)}
+              className={`grid h-8 w-8 place-items-center rounded-md transition ${isPinned ? 'border border-cyan-700/50 bg-cyan-950/80 text-cyan-300' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100'}`}
+            >
+              <Pin className="h-4 w-4" />
+            </button>
           </Tooltip>
-          {recentOperations.length > 0 && <Tooltip label={isSpanish ? 'Limpiar historial' : 'Clear history'} placement="top"><button type="button" aria-label={isSpanish ? 'Limpiar historial' : 'Clear history'} onClick={onClearHistory} className="grid h-8 w-8 place-items-center rounded-md text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-100"><Trash2 className="h-4 w-4" /></button></Tooltip>}
-          <Tooltip label={isExpanded ? (isSpanish ? 'Minimizar' : 'Minimize') : (isSpanish ? 'Expandir' : 'Expand')} placement="top">
-            <button type="button" aria-label={isExpanded ? (isSpanish ? 'Minimizar' : 'Minimize') : (isSpanish ? 'Expandir' : 'Expand')} onClick={() => setIsExpanded(value => !value)} className="grid h-8 w-8 place-items-center rounded-md text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-100">
-              {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+
+          {recentOperations.length > 0 && (
+            <Tooltip label={isSpanish ? 'Limpiar historial de operaciones' : 'Clear operation history'} placement="top">
+              <button
+                type="button"
+                aria-label={isSpanish ? 'Limpiar historial' : 'Clear history'}
+                onClick={onClearHistory}
+                className="grid h-8 w-8 place-items-center rounded-md text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-100"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </Tooltip>
+          )}
+
+          <Tooltip label={isSpanish ? 'Cerrar (Esc)' : 'Close (Esc)'} placement="top">
+            <button
+              type="button"
+              aria-label={isSpanish ? 'Cerrar' : 'Close'}
+              onClick={onClose}
+              className="grid h-8 w-8 place-items-center rounded-md text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-100"
+            >
+              <X className="h-4 w-4" />
             </button>
           </Tooltip>
         </header>
 
-        {isExpanded && <div className="min-h-0 space-y-3 overflow-y-auto p-4">
-          {activeOperation && <>
-            <div className="flex min-w-0 items-center gap-3 rounded-lg border border-cyan-900/50 bg-cyan-950/20 px-3 py-2.5">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-cyan-950/70 text-cyan-300">{activeOperation.kind === 'extract' || activeOperation.kind === 'compress' ? <Archive className="h-4 w-4" /> : activeOperation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" />}</span>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-neutral-100">{operationActionLabel(activeOperation, language)}</div>
-                <div className="truncate text-xs text-neutral-300">{sourceLabel(activeOperation, language)}</div>
+        <div className="min-h-0 space-y-3 overflow-y-auto p-4">
+          {activeOperation && (
+            <div className="space-y-3 rounded-lg border border-cyan-800/40 bg-neutral-950/60 p-3.5">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-cyan-800/40 bg-cyan-950/80 text-cyan-300">
+                  {activeOperation.kind === 'extract' || activeOperation.kind === 'compress' ? (
+                    <Archive className="h-4 w-4" />
+                  ) : activeOperation.kind === 'copy' ? (
+                    <Copy className="h-4 w-4" />
+                  ) : (
+                    <MoveRight className="h-4 w-4" />
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-neutral-100">{operationActionLabel(activeOperation, language)}</div>
+                  <div className="truncate text-xs text-neutral-300">{sourceLabel(activeOperation, language)}</div>
+                </div>
+                <span className="shrink-0 rounded border border-neutral-700 bg-neutral-800 px-2 py-0.5 text-xs font-medium text-neutral-300">
+                  {statusLabel(activeOperation, language)}
+                </span>
               </div>
-              <span className="shrink-0 text-xs text-neutral-400">{statusLabel(activeOperation, language)}</span>
+
+              <div className="grid gap-2.5 sm:grid-cols-2">
+                <div className="min-w-0 rounded-lg border border-neutral-800 bg-neutral-900/60 p-2.5">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                      {isSpanish ? 'Desde' : 'From'}
+                    </span>
+                    {onNavigateTo && activeOperation.sourcePaths[0] && (
+                      <Tooltip label={isSpanish ? 'Abrir carpeta de origen' : 'Open source folder'} placement="top">
+                        <button
+                          type="button"
+                          onClick={() => onNavigateTo(activeOperation.sourcePaths[0])}
+                          className="inline-flex items-center gap-1 text-[11px] text-cyan-400 transition-colors hover:text-cyan-300"
+                        >
+                          <FolderOpen className="h-3 w-3" />
+                          <span className="text-[10px]">{isSpanish ? 'Abrir' : 'Open'}</span>
+                        </button>
+                      </Tooltip>
+                    )}
+                  </div>
+                  <Tooltip label={activeOperation.sourcePaths.map(displayPath).join('\n')} placement="top">
+                    <div className="truncate font-mono text-xs text-neutral-300">
+                      {activeOperation.sourcePaths.length > 1
+                        ? displayPath(activeOperation.sourcePaths[0]) + ` (+${activeOperation.sourcePaths.length - 1})`
+                        : displayPath(activeOperation.sourcePaths[0])}
+                    </div>
+                  </Tooltip>
+                </div>
+
+                <div className="min-w-0 rounded-lg border border-neutral-800 bg-neutral-900/60 p-2.5">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
+                      {isSpanish ? 'Hacia' : 'To'}
+                    </span>
+                    {onNavigateTo && activeOperation.targetPath && (
+                      <Tooltip label={isSpanish ? 'Abrir carpeta de destino' : 'Open destination folder'} placement="top">
+                        <button
+                          type="button"
+                          onClick={() => onNavigateTo(activeOperation.targetPath)}
+                          className="inline-flex items-center gap-1 text-[11px] text-cyan-400 transition-colors hover:text-cyan-300"
+                        >
+                          <FolderOpen className="h-3 w-3" />
+                          <span className="text-[10px]">{isSpanish ? 'Abrir' : 'Open'}</span>
+                        </button>
+                      </Tooltip>
+                    )}
+                  </div>
+                  <Tooltip label={displayPath(activeOperation.targetPath)} placement="top">
+                    <div className="truncate font-mono text-xs text-neutral-300">
+                      {displayPath(activeOperation.targetPath)}
+                    </div>
+                  </Tooltip>
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                  <span className="truncate text-neutral-300">
+                    <span className="mr-2 text-neutral-500">
+                      {activeOperation.phase === 'scanning'
+                        ? (isSpanish ? 'Analizando:' : 'Scanning:')
+                        : (isSpanish ? 'Elemento actual:' : 'Current item:')}
+                    </span>
+                    {currentItemLabel}
+                  </span>
+                  <span className="shrink-0 font-mono text-neutral-400">
+                    {activeOperation.phase === 'scanning'
+                      ? activeOperation.totalItems.toLocaleString() + (isSpanish ? ' elementos detectados' : ' items found')
+                      : activeOperation.totalItems
+                        ? `${activeOperation.itemsCompleted.toLocaleString()} / ${activeOperation.totalItems.toLocaleString()}`
+                        : '…'}
+                  </span>
+                </div>
+
+                {activeOperation.currentFileTotal > 0 && (
+                  <div className="mb-2">
+                    <div className="mb-1 flex justify-between font-mono text-[10px] text-neutral-400">
+                      <span>{isSpanish ? 'Archivo actual' : 'Current file'}</span>
+                      <span>{formatFileSize(activeOperation.currentFileBytes)} / {formatFileSize(activeOperation.currentFileTotal)}</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-neutral-800">
+                      <div
+                        className="h-full bg-sky-400 transition-[width] duration-150"
+                        style={{ width: `${Math.min(100, (activeOperation.currentFileBytes / activeOperation.currentFileTotal) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="h-2.5 overflow-hidden rounded-full border border-neutral-700/50 bg-neutral-800">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-cyan-500 via-sky-400 to-cyan-300 transition-[width] duration-200"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+                <div className="mt-1 flex justify-between font-mono text-[11px] text-neutral-400">
+                  <span>{percent}%</span>
+                  <span>
+                    {activeOperation.phase === 'scanning'
+                      ? (isSpanish ? 'Detectado: ' : 'Found: ') + formatFileSize(activeOperation.totalBytes)
+                      : `${formatFileSize(activeOperation.bytesCopied)} / ${formatFileSize(activeOperation.totalBytes)}`}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="rounded-md border border-neutral-800 bg-neutral-900/60 p-2.5">
+                  <div className="text-[11px] text-neutral-500">{isSpanish ? 'Tiempo' : 'Time'}</div>
+                  <div className="mt-1 font-mono text-neutral-200">{elapsedLabel(elapsed, language)}</div>
+                </div>
+                <div className="rounded-md border border-neutral-800 bg-neutral-900/60 p-2.5">
+                  <div className="text-[11px] text-neutral-500">{isSpanish ? 'Velocidad' : 'Speed'}</div>
+                  <div className="mt-1 flex items-center gap-1.5 font-mono text-neutral-200">
+                    <Gauge className="h-3.5 w-3.5 text-cyan-400" />
+                    {formatFileSize(speed)}/s
+                  </div>
+                </div>
+                <div className="rounded-md border border-neutral-800 bg-neutral-900/60 p-2.5">
+                  <div className="text-[11px] text-neutral-500">{isSpanish ? 'Restante aprox.' : 'Approx. remaining'}</div>
+                  <div className="mt-1 font-mono text-neutral-200">{remainingLabel}</div>
+                </div>
+              </div>
+
+              <div className="relative h-14 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950/80 px-2">
+                <div className="absolute inset-x-2 top-1/2 border-t border-neutral-800/60" />
+                <div className="absolute bottom-1 left-2 font-mono text-[9px] text-neutral-500">
+                  {isSpanish ? 'Rendimiento en tiempo real' : 'Real-time throughput'}
+                </div>
+                <svg viewBox="0 0 100 46" preserveAspectRatio="none" className="h-full w-full">
+                  {graphPoints && (
+                    <polyline points={graphPoints} fill="none" stroke="rgb(34 211 238)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                  )}
+                </svg>
+              </div>
+
+              <footer className="flex items-center justify-between border-t border-neutral-800 pt-2.5">
+                <span className="text-xs font-medium text-neutral-400">
+                  {statusLabel(activeOperation, language)}
+                </span>
+                <div className="flex gap-2">
+                  <Tooltip label={activeOperation.status === 'paused' ? (isSpanish ? 'Continuar la transferencia' : 'Resume transfer') : (isSpanish ? 'Pausar la transferencia' : 'Pause transfer')} placement="top">
+                    <button
+                      type="button"
+                      disabled={activeOperation.status === 'cancelling'}
+                      onClick={() => onTogglePause(activeOperation.jobId)}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-800 px-3 text-xs font-medium text-neutral-200 transition hover:bg-neutral-700 disabled:opacity-50"
+                    >
+                      {activeOperation.status === 'paused' ? <Play className="h-3.5 w-3.5" /> : <Pause className="h-3.5 w-3.5" />}
+                      {activeOperation.status === 'paused' ? (isSpanish ? 'Continuar' : 'Resume') : (isSpanish ? 'Pausar' : 'Pause')}
+                    </button>
+                  </Tooltip>
+                  <Tooltip label={isSpanish ? 'Cancelar la operación actual' : 'Cancel current operation'} placement="top">
+                    <button
+                      type="button"
+                      disabled={activeOperation.status === 'cancelling'}
+                      onClick={() => onCancel(activeOperation.jobId)}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-rose-800/80 bg-rose-950/50 px-3 text-xs font-medium text-rose-200 transition hover:bg-rose-950/80 disabled:opacity-50"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      {isSpanish ? 'Cancelar' : 'Cancel'}
+                    </button>
+                  </Tooltip>
+                </div>
+              </footer>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="min-w-0 rounded-lg border border-neutral-800 bg-neutral-950/50 p-3">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">{isSpanish ? 'Desde' : 'From'}</div>
-                <Tooltip label={activeOperation.sourcePaths.map(displayPath).join(String.fromCharCode(10))} placement="top"><div className="truncate text-xs text-neutral-300">{activeOperation.sourcePaths.length > 1 ? displayPath(activeOperation.sourcePaths[0]) + ` (+${activeOperation.sourcePaths.length - 1})` : displayPath(activeOperation.sourcePaths[0])}</div></Tooltip>
+          )}
+
+          {passwordOperations.map((operation, index) => (
+            <section key={operation.jobId} className="space-y-2 rounded-lg border border-amber-800/70 bg-amber-950/20 p-3" aria-label={isSpanish ? 'Contraseña requerida' : 'Password required'}>
+              <div className="text-sm font-medium text-neutral-100">{isSpanish ? 'Introduce la contraseña del archivo' : 'Enter the archive password'}</div>
+              <div className="truncate font-mono text-xs text-neutral-400">{displayPath(operation.sourcePaths[0] ?? '')}</div>
+              <p className="text-xs text-amber-200">{operation.error ?? (isSpanish ? 'El archivo está protegido con contraseña.' : 'This archive is password protected.')}</p>
+              <form
+                className="flex gap-2"
+                onSubmit={event => {
+                  event.preventDefault();
+                  const password = passwordValues[operation.jobId] ?? '';
+                  if (!password) return;
+                  onSubmitPassword(operation.jobId, password);
+                  setPasswordValues(previous => ({ ...previous, [operation.jobId]: '' }));
+                }}
+              >
+                <input
+                  ref={index === 0 ? passwordInputRef : undefined}
+                  type="password"
+                  autoComplete="new-password"
+                  value={passwordValues[operation.jobId] ?? ''}
+                  onChange={event => setPasswordValues(previous => ({ ...previous, [operation.jobId]: event.target.value }))}
+                  placeholder={isSpanish ? 'Contraseña' : 'Password'}
+                  aria-label={isSpanish ? 'Contraseña del archivo' : 'Archive password'}
+                  className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-cyan-500"
+                />
+                <button
+                  type="submit"
+                  disabled={!(passwordValues[operation.jobId] ?? '')}
+                  className="rounded-md bg-cyan-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isSpanish ? 'Reintentar' : 'Retry'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPasswordValues(previous => ({ ...previous, [operation.jobId]: '' }));
+                    onCancel(operation.jobId);
+                  }}
+                  className="rounded-md border border-neutral-700 px-3 py-2 text-xs text-neutral-300 transition hover:bg-neutral-800"
+                >
+                  {isSpanish ? 'Cancelar' : 'Cancel'}
+                </button>
+              </form>
+            </section>
+          ))}
+
+          {queuedOperations.length > 0 && (
+            <section className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-950/40 p-3" aria-label={isSpanish ? 'Operaciones en cola' : 'Queued operations'}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                  {isSpanish ? 'En cola' : 'Queue'} ({queuedOperations.length})
+                </h3>
+                {onCancelAll && queuedOperations.length > 0 && (
+                  <Tooltip label={isSpanish ? 'Cancelar todas las operaciones en cola' : 'Cancel all queued operations'} placement="top">
+                    <button
+                      type="button"
+                      onClick={onCancelAll}
+                      className="inline-flex items-center gap-1 text-[11px] text-rose-400 transition-colors hover:text-rose-300"
+                    >
+                      <XCircle className="h-3 w-3" />
+                      {isSpanish ? 'Cancelar todas' : 'Cancel all'}
+                    </button>
+                  </Tooltip>
+                )}
               </div>
-              <div className="min-w-0 rounded-lg border border-neutral-800 bg-neutral-950/50 p-3">
-                <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">{isSpanish ? 'Hacia' : 'To'}</div>
-                <Tooltip label={displayPath(activeOperation.targetPath)} placement="top"><div className="truncate text-xs text-neutral-300">{displayPath(activeOperation.targetPath)}</div></Tooltip>
+              <div className="space-y-1.5">
+                {queuedOperations.map(operation => (
+                  <div key={operation.jobId} className="flex items-center gap-2.5 rounded-lg border border-neutral-800/90 bg-neutral-900/60 px-3 py-2">
+                    <span className="text-cyan-400">
+                      {operation.kind === 'extract' || operation.kind === 'compress' ? (
+                        <Archive className="h-4 w-4" />
+                      ) : operation.kind === 'copy' ? (
+                        <Copy className="h-4 w-4" />
+                      ) : (
+                        <MoveRight className="h-4 w-4" />
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-medium text-neutral-200">
+                        {operation.kind === 'compress'
+                          ? sourceLabel(operation, language)
+                          : operation.sourcePaths.length > 1
+                            ? `${operation.sourcePaths.length} ${isSpanish ? 'elementos' : 'items'}`
+                            : displayPath(operation.sourcePaths[0])}
+                      </div>
+                      <div className="truncate font-mono text-[11px] text-neutral-500">
+                        {(isSpanish ? 'Hacia ' : 'To ') + displayPath(operation.targetPath)}
+                      </div>
+                    </div>
+                    {onNavigateTo && (
+                      <Tooltip label={isSpanish ? 'Abrir carpeta de destino' : 'Open destination folder'} placement="top">
+                        <button
+                          type="button"
+                          onClick={() => onNavigateTo(operation.targetPath)}
+                          className="grid h-7 w-7 place-items-center rounded text-neutral-400 transition hover:bg-neutral-800 hover:text-cyan-300"
+                        >
+                          <FolderOpen className="h-3.5 w-3.5" />
+                        </button>
+                      </Tooltip>
+                    )}
+                    <Tooltip label={isSpanish ? 'Quitar de la cola' : 'Remove from queue'} placement="top">
+                      <button
+                        type="button"
+                        aria-label={isSpanish ? 'Quitar de la cola' : 'Remove from queue'}
+                        onClick={() => onCancel(operation.jobId)}
+                        className="grid h-7 w-7 place-items-center rounded text-neutral-400 transition hover:bg-neutral-800 hover:text-rose-300"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </Tooltip>
+                  </div>
+                ))}
               </div>
+            </section>
+          )}
+
+          {recentOperations.length > 0 && (
+            <section className="space-y-2 rounded-lg border border-neutral-800 bg-neutral-950/40 p-3" aria-label={isSpanish ? 'Operaciones recientes' : 'Recent operations'}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                  {isSpanish ? 'Historial de actividad' : 'Activity history'} ({recentOperations.length})
+                </h3>
+              </div>
+              <div className="space-y-1.5">
+                {recentOperations.map(operation => {
+                  const isCompleted = operation.status === 'completed';
+                  const isFailed = operation.status === 'failed';
+                  const isCancelled = operation.status === 'cancelled';
+                  const targetToNavigate = operation.kind === 'compress' ? (operation.resultPath || operation.targetPath) : operation.targetPath;
+                  const relativeTime = formatRelativeTime(operation.finishedAt, language);
+                  const duration = formatDuration(operation.startedAt, operation.finishedAt, language);
+                  const isExpandedFailures = expandedFailuresJobId === operation.jobId;
+
+                  return (
+                    <div
+                      key={operation.jobId}
+                      className={`rounded-lg border px-3 py-2 transition ${
+                        isFailed
+                          ? 'border-rose-900/50 bg-rose-950/15'
+                          : 'border-neutral-800/80 bg-neutral-900/50 hover:bg-neutral-900/80'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className={`shrink-0 ${isCompleted ? 'text-emerald-400' : isFailed ? 'text-rose-400' : 'text-neutral-500'}`}>
+                          {isCompleted ? (
+                            <Check className="h-4 w-4" />
+                          ) : isFailed ? (
+                            <AlertCircle className="h-4 w-4" />
+                          ) : (
+                            <XCircle className="h-4 w-4" />
+                          )}
+                        </span>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-xs font-medium text-neutral-200">
+                              {operation.kind === 'compress'
+                                ? operation.resultPath ?? sourceLabel(operation, language)
+                                : operation.sourcePaths.length > 1
+                                  ? `${operation.sourcePaths.length} ${isSpanish ? 'elementos' : 'items'}`
+                                  : displayPath(operation.sourcePaths[0])}
+                            </span>
+                            {operation.totalBytes > 0 && (
+                              <span className="shrink-0 font-mono text-[10px] text-neutral-400">
+                                ({formatFileSize(operation.totalBytes)})
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-neutral-400">
+                            <span className={isFailed ? 'font-medium text-rose-300' : ''}>
+                              {statusLabel(operation, language)}
+                            </span>
+                            {relativeTime && <span>· {relativeTime}</span>}
+                            {duration && <span>· {isSpanish ? `Duración: ${duration}` : `Duration: ${duration}`}</span>}
+                            {operation.error && (
+                              <span className="max-w-[280px] truncate font-mono text-[10px] text-rose-300/90">
+                                : {operation.error}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-1">
+                          {onNavigateTo && targetToNavigate && (
+                            <Tooltip label={isSpanish ? 'Abrir destino en el panel activo' : 'Open destination in active pane'} placement="top">
+                              <button
+                                type="button"
+                                onClick={() => onNavigateTo(targetToNavigate)}
+                                className="grid h-7 w-7 place-items-center rounded text-neutral-400 transition hover:bg-neutral-800 hover:text-cyan-300"
+                              >
+                                <FolderOpen className="h-3.5 w-3.5" />
+                              </button>
+                            </Tooltip>
+                          )}
+
+                          {(isFailed || isCancelled) && onRetry && (
+                            <Tooltip label={isSpanish ? 'Reintentar esta operación' : 'Retry this operation'} placement="top">
+                              <button
+                                type="button"
+                                onClick={() => onRetry(operation)}
+                                className="grid h-7 w-7 place-items-center rounded text-neutral-400 transition hover:bg-neutral-800 hover:text-amber-300"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5" />
+                              </button>
+                            </Tooltip>
+                          )}
+
+                          {operation.error && (
+                            <Tooltip label={copiedErrorJobId === operation.jobId ? (isSpanish ? '¡Copiado!' : 'Copied!') : (isSpanish ? 'Copiar detalle del error' : 'Copy error details')} placement="top">
+                              <button
+                                type="button"
+                                onClick={() => void copyErrorDetails(operation)}
+                                className="grid h-7 w-7 place-items-center rounded text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-200"
+                              >
+                                {copiedErrorJobId === operation.jobId ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                              </button>
+                            </Tooltip>
+                          )}
+
+                          {operation.failures && operation.failures.length > 0 && (
+                            <Tooltip label={isExpandedFailures ? (isSpanish ? 'Ocultar fallos' : 'Hide failures') : (isSpanish ? 'Ver fallos detallados' : 'View detailed failures')} placement="top">
+                              <button
+                                type="button"
+                                onClick={() => setExpandedFailuresJobId(prev => prev === operation.jobId ? null : operation.jobId)}
+                                className="grid h-7 w-7 place-items-center rounded text-neutral-400 transition hover:bg-neutral-800 hover:text-rose-300"
+                              >
+                                {isExpandedFailures ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                              </button>
+                            </Tooltip>
+                          )}
+                        </div>
+                      </div>
+
+                      {isExpandedFailures && operation.failures && operation.failures.length > 0 && (
+                        <div className="mt-2.5 space-y-1 border-t border-rose-900/40 pl-6 pt-2 font-mono text-[11px]">
+                          <div className="font-sans text-[10px] font-semibold uppercase tracking-wider text-rose-400">
+                            {isSpanish ? 'Elementos con error:' : 'Failed items:'}
+                          </div>
+                          <div className="max-h-32 space-y-1 overflow-y-auto">
+                            {operation.failures.map((failure, idx) => (
+                              <div key={idx} className="flex items-start justify-between gap-2 text-neutral-300">
+                                <span className="truncate">{displayPath(failure.path)}</span>
+                                <span className="shrink-0 font-sans text-[10px] text-rose-400">{failure.error}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {!activeOperation && passwordOperations.length === 0 && queuedOperations.length === 0 && recentOperations.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-8 text-center text-neutral-500">
+              <ListChecks className="mb-2 h-8 w-8 text-neutral-700" />
+              <p className="text-sm">{isSpanish ? 'El historial de operaciones está vacío.' : 'Operation history is empty.'}</p>
+              <p className="mt-1 text-xs text-neutral-600">
+                {isSpanish ? 'Las operaciones de copia, movimiento y compresión aparecerán aquí.' : 'Copy, move, and archive operations will appear here.'}
+              </p>
             </div>
-
-            <div>
-              <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-                <span className="truncate text-neutral-300"><span className="mr-2 text-neutral-500">{activeOperation.phase === 'scanning' ? (isSpanish ? 'Analizando' : 'Scanning') : (isSpanish ? 'Elemento actual' : 'Current item')}</span>{currentItemLabel}</span>
-                <span className="shrink-0 font-mono text-neutral-400">{activeOperation.phase === 'scanning' ? (activeOperation.totalItems.toLocaleString() + (isSpanish ? ' elementos detectados' : ' items found')) : activeOperation.totalItems ? activeOperation.itemsCompleted.toLocaleString() + ' / ' + activeOperation.totalItems.toLocaleString() : '…'}</span>
-              </div>
-              {activeOperation.currentFileTotal > 0 && <div className="mb-2">
-                <div className="mb-1 flex justify-between font-mono text-[10px] text-neutral-500"><span>{isSpanish ? 'Archivo actual' : 'Current file'}</span><span>{formatFileSize(activeOperation.currentFileBytes)} / {formatFileSize(activeOperation.currentFileTotal)}</span></div>
-                <div className="h-1 overflow-hidden rounded-full bg-neutral-800"><div className="h-full bg-sky-400 transition-[width] duration-150" style={{ width: Math.min(100, activeOperation.currentFileBytes / activeOperation.currentFileTotal * 100) + '%' }} /></div>
-              </div>}
-              <div className="h-2.5 overflow-hidden rounded-full bg-neutral-800"><div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-sky-300 transition-[width] duration-200" style={{ width: percent + '%' }} /></div>
-              <div className="mt-1 flex justify-end font-mono text-[11px] text-neutral-400">{activeOperation.phase === 'scanning' ? (isSpanish ? 'Tamaño detectado: ' : 'Size found: ') + formatFileSize(activeOperation.totalBytes) : (activeOperation.kind === 'compress' ? (isSpanish ? 'Datos procesados: ' : 'Data processed: ') : '') + formatFileSize(activeOperation.bytesCopied) + ' / ' + formatFileSize(activeOperation.totalBytes)}</div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 text-xs">
-              <div className="rounded-md border border-neutral-800 bg-neutral-950/50 p-2.5"><div className="text-neutral-500">{isSpanish ? 'Tiempo' : 'Time'}</div><div className="mt-1 font-mono text-neutral-200">{elapsedLabel(elapsed, language)}{isSpanish ? ' transcurridos' : ' elapsed'}</div></div>
-              <div className="rounded-md border border-neutral-800 bg-neutral-950/50 p-2.5"><div className="text-neutral-500">{isSpanish ? 'Velocidad' : 'Speed'}</div><div className="mt-1 flex items-center gap-1.5 font-mono text-neutral-200"><Gauge className="h-3.5 w-3.5 text-cyan-300" />{formatFileSize(speed)}/s</div></div>
-              <div className="rounded-md border border-neutral-800 bg-neutral-950/50 p-2.5"><div className="text-neutral-500">{isSpanish ? 'Restante aprox.' : 'Approx. remaining'}</div><div className="mt-1 font-mono text-neutral-200">{remainingLabel}</div></div>
-            </div>
-
-            <div className="relative h-16 overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950/80 px-2">
-              <div className="absolute inset-x-2 top-1/2 border-t border-neutral-800" />
-              <div className="absolute bottom-1.5 left-3 text-[10px] text-neutral-500">{isSpanish ? 'Ritmo de operación' : 'Operation throughput'}</div>
-              <svg viewBox="0 0 100 46" preserveAspectRatio="none" className="h-full w-full">{graphPoints && <polyline points={graphPoints} fill="none" stroke="rgb(34 197 94)" strokeWidth="1.2" vectorEffect="non-scaling-stroke" />}</svg>
-            </div>
-            <footer className="flex items-center justify-between border-t border-neutral-800 pt-3">
-              <span className="text-xs text-neutral-500">{statusLabel(activeOperation, language)}</span>
-              <div className="flex gap-2">
-                <Tooltip label={activeOperation.status === 'paused' ? (isSpanish ? 'Reanudar' : 'Resume') : (isSpanish ? 'Pausar' : 'Pause')} placement="top">
-                  <button type="button" disabled={activeOperation.status === 'cancelling'} onClick={() => onTogglePause(activeOperation.jobId)} className="inline-flex h-9 items-center gap-2 rounded-md border border-neutral-700 px-3 text-sm text-neutral-200 transition hover:bg-neutral-800 disabled:opacity-50">
-                    {activeOperation.status === 'paused' ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}{activeOperation.status === 'paused' ? (isSpanish ? 'Continuar' : 'Resume') : (isSpanish ? 'Pausar' : 'Pause')}
-                  </button>
-                </Tooltip>
-                <Tooltip label={isSpanish ? 'Cancelar operación y limpiar el elemento parcial' : 'Cancel operation and remove the partial item'} placement="top">
-                  <button type="button" disabled={activeOperation.status === 'cancelling'} onClick={() => onCancel(activeOperation.jobId)} className="inline-flex h-9 items-center gap-2 rounded-md border border-rose-800/80 bg-rose-950/50 px-3 text-sm text-rose-200 transition hover:bg-rose-950/70 disabled:opacity-50">
-                    <X className="h-4 w-4" />{isSpanish ? 'Cancelar' : 'Cancel'}
-                  </button>
-                </Tooltip>
-              </div>
-            </footer>
-          </>}
-
-          {passwordOperations.map((operation, index) => <section key={operation.jobId} className="space-y-2 rounded-lg border border-amber-800/70 bg-amber-950/20 p-3" aria-label={isSpanish ? 'Contraseña requerida' : 'Password required'}>
-            <div className="text-sm font-medium text-neutral-100">{isSpanish ? 'Introduce la contraseña del archivo' : 'Enter the archive password'}</div>
-            <div className="truncate text-xs text-neutral-400">{displayPath(operation.sourcePaths[0] ?? '')}</div>
-            <p className="text-xs text-amber-200">{operation.error ?? (isSpanish ? 'El archivo está protegido con contraseña.' : 'This archive is password protected.')}</p>
-            <form className="flex gap-2" onSubmit={event => { event.preventDefault(); const password = passwordValues[operation.jobId] ?? ''; if (!password) return; onSubmitPassword(operation.jobId, password); setPasswordValues(previous => ({ ...previous, [operation.jobId]: '' })); }}>
-              <input ref={index === 0 ? passwordInputRef : undefined} type="password" autoComplete="new-password" value={passwordValues[operation.jobId] ?? ''} onChange={event => setPasswordValues(previous => ({ ...previous, [operation.jobId]: event.target.value }))} placeholder={isSpanish ? 'Contraseña' : 'Password'} aria-label={isSpanish ? 'Contraseña del archivo' : 'Archive password'} className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-cyan-500" />
-              <button type="submit" disabled={!(passwordValues[operation.jobId] ?? '')} className="rounded-md bg-cyan-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-cyan-600 disabled:cursor-not-allowed disabled:opacity-50">{isSpanish ? 'Reintentar' : 'Retry'}</button>
-              <button type="button" onClick={() => { setPasswordValues(previous => ({ ...previous, [operation.jobId]: '' })); onCancel(operation.jobId); }} className="rounded-md border border-neutral-700 px-3 py-2 text-xs text-neutral-300 transition hover:bg-neutral-800">{isSpanish ? 'Cancelar' : 'Cancel'}</button>
-            </form>
-          </section>)}
-
-          {queuedOperations.length > 0 && <section className="space-y-2" aria-label={isSpanish ? 'Operaciones en cola' : 'Queued operations'}>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{isSpanish ? 'En cola' : 'Queue'} ({queuedOperations.length})</h3>
-            {queuedOperations.map(operation => <div key={operation.jobId} className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950/40 px-3 py-2">
-              <span className="text-cyan-300">{operation.kind === 'extract' || operation.kind === 'compress' ? <Archive className="h-4 w-4" /> : operation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" />}</span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm text-neutral-200">{operation.kind === 'compress' ? sourceLabel(operation, language) : operation.sourcePaths.length > 1 ? `${operation.sourcePaths.length} ${isSpanish ? 'elementos' : 'items'}` : displayPath(operation.sourcePaths[0])}</div>
-                <div className="truncate text-xs text-neutral-500">{(isSpanish ? 'Hacia ' : 'To ') + displayPath(operation.targetPath)}</div>
-              </div>
-              <span className="shrink-0 text-xs text-neutral-500">{statusLabel(operation, language)}</span>
-              <Tooltip label={isSpanish ? 'Quitar de la cola' : 'Remove from queue'} placement="top"><button type="button" aria-label={isSpanish ? 'Quitar de la cola' : 'Remove from queue'} onClick={() => onCancel(operation.jobId)} className="grid h-7 w-7 place-items-center rounded text-neutral-500 transition hover:bg-neutral-800 hover:text-neutral-100"><X className="h-4 w-4" /></button></Tooltip>
-            </div>)}
-          </section>}
-
-          {recentOperations.length > 0 && <section className="space-y-2" aria-label={isSpanish ? 'Operaciones recientes' : 'Recent operations'}>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{isSpanish ? 'Recientes' : 'Recent'}</h3>
-            {recentOperations.map(operation => <div key={operation.jobId} className="flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950/30 px-3 py-2">
-              <span className={operation.status === 'completed' ? 'text-emerald-400' : operation.status === 'failed' ? 'text-rose-400' : 'text-neutral-500'}>{operation.status === 'completed' ? <Check className="h-4 w-4" /> : operation.kind === 'extract' || operation.kind === 'compress' ? <Archive className="h-4 w-4" /> : operation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" />}</span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm text-neutral-300">{operation.kind === 'compress' ? operation.resultPath ?? sourceLabel(operation, language) : operation.sourcePaths.length > 1 ? `${operation.sourcePaths.length} ${isSpanish ? 'elementos' : 'items'}` : displayPath(operation.sourcePaths[0])}</div>
-                <div className="truncate text-xs text-neutral-500">{statusLabel(operation, language)}{operation.error ? ': ' + operation.error : ''}</div>
-              </div>
-              <span className="shrink-0 font-mono text-xs text-neutral-500">{operation.totalBytes ? formatFileSize(operation.totalBytes) : ''}</span>
-            </div>)}
-          </section>}
-
-          {!activeOperation && passwordOperations.length === 0 && queuedOperations.length === 0 && recentOperations.length === 0 && <div className="py-3 text-center text-sm text-neutral-500">{isSpanish ? 'El historial de operaciones está vacío.' : 'Operation history is empty.'}</div>}
-        </div>}
-
-        {!isExpanded && <button type="button" onClick={() => setIsExpanded(true)} className="flex w-full items-center gap-3 border-t border-neutral-800 px-4 py-3 text-left text-sm text-neutral-300 transition hover:bg-neutral-800/70">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-cyan-950/60 text-cyan-300">{activeOperation ? activeOperation.kind === 'extract' || activeOperation.kind === 'compress' ? <Archive className="h-4 w-4" /> : activeOperation.kind === 'copy' ? <Copy className="h-4 w-4" /> : <MoveRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}</span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-medium">{activeOperation ? operationActionLabel(activeOperation, language) : passwordOperations.length ? (isSpanish ? 'Contraseña requerida' : 'Password required') : queuedOperations.length ? (isSpanish ? `${queuedOperations.length} en cola` : `${queuedOperations.length} queued`) : latestRecentOperation?.kind === 'compress' ? sourceLabel(latestRecentOperation, language) : (isSpanish ? 'Ver actividad reciente' : 'View recent activity')}</span>
-            {activeOperation && <span className="block truncate text-xs text-neutral-500">{sourceLabel(activeOperation, language)} · {displayPath(activeOperation.targetPath)}</span>}
-            {!activeOperation && latestRecentOperation?.kind === 'compress' && latestRecentOperation.resultPath && <span className="block truncate text-xs text-neutral-500">{displayPath(latestRecentOperation.resultPath)}</span>}
-          </span>
-          {activeOperation && <span className="shrink-0 font-mono text-xs text-cyan-200">{percent}%</span>}
-          <ChevronDown className="h-4 w-4 shrink-0" />
-        </button>}
+          )}
+        </div>
       </section>
     </aside>,
     document.body,

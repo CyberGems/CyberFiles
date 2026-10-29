@@ -1265,6 +1265,7 @@ export default function App() {
   const [isFileOperationBusy, setIsFileOperationBusy] = useState(false);
   const [transferOperations, setTransferOperations] = useState<TransferOperationView[]>([]);
   const transferOperationsRef = useRef<TransferOperationView[]>([]);
+  const [isOperationsCenterOpen, setIsOperationsCenterOpen] = useState(false);
   const [undoHistory, setUndoHistory] = useState<UndoRecord[]>([]);
   const undoHistoryRef = useRef<UndoRecord[]>([]);
   const undoPendingIdsRef = useRef(new Set<string>());
@@ -3377,7 +3378,15 @@ export default function App() {
                 actions.showToast(actions.t.core.moved.replace('{count}', String(result.completedPaths.length)).replace('{target}', operation.targetPath));
               }
             }
-            updateTransferOperation(operation.jobId, current => ({ ...current, status, error: failureReason, resultPath: operation.kind === 'compress' ? result.completedPaths[0] : current.resultPath }));
+            updateTransferOperation(operation.jobId, current => ({
+              ...current,
+              status,
+              error: failureReason,
+              resultPath: operation.kind === 'compress' ? result.completedPaths[0] : current.resultPath,
+              completedPaths: result.completedPaths,
+              failures: result.failures,
+              finishedAt: Date.now(),
+            }));
             if (activeTransferIdRef.current === operation.jobId) activeTransferIdRef.current = null;
           })();
         }),
@@ -3549,7 +3558,7 @@ export default function App() {
       .catch(error => {
         const reason = String(error);
         archivePasswordsRef.current.delete(nextOperation.jobId);
-        updateTransferOperation(nextOperation.jobId, operation => ({ ...operation, status: 'failed', error: reason }));
+        updateTransferOperation(nextOperation.jobId, operation => ({ ...operation, status: 'failed', error: reason, finishedAt: Date.now() }));
         if (activeTransferIdRef.current === nextOperation.jobId) activeTransferIdRef.current = null;
         if (nextOperation.undoActionId) {
           undoPendingIdsRef.current.delete(nextOperation.undoActionId);
@@ -3579,7 +3588,7 @@ export default function App() {
     if (!operation || ['cancelling', 'cancelled', 'completed', 'failed'].includes(operation.status)) return;
     if (operation.status === 'queued' || operation.status === 'awaiting-password') {
       archivePasswordsRef.current.delete(jobId);
-      updateTransferOperation(jobId, current => ({ ...current, status: 'cancelled', error: undefined }));
+      updateTransferOperation(jobId, current => ({ ...current, status: 'cancelled', error: undefined, finishedAt: Date.now() }));
       if (operation.undoActionId) {
         undoPendingIdsRef.current.delete(operation.undoActionId);
         setUndoBusy(undoPendingIdsRef.current.size > 0);
@@ -3600,6 +3609,51 @@ export default function App() {
     archivePasswordsRef.current.set(jobId, password);
     updateTransferOperation(jobId, operation => ({ ...operation, status: 'queued', error: undefined }));
   }, [updateTransferOperation]);
+
+  const cancelAllTransfers = useCallback(() => {
+    const toCancel = transferOperationsRef.current.filter(operation =>
+      ['queued', 'awaiting-password', 'running', 'paused'].includes(operation.status)
+    );
+    if (toCancel.length === 0) return;
+    for (const op of toCancel) {
+      void cancelTransfer(op.jobId);
+    }
+  }, [cancelTransfer]);
+
+  const retryTransfer = useCallback((operation: TransferOperationView) => {
+    queueNativeTransfer(
+      operation.kind,
+      operation.sourcePaths,
+      operation.targetPath,
+      {
+        sourcePane: operation.sourcePane,
+        selectionPane: operation.selectionPane,
+        extractionMode: operation.extractionMode,
+        archiveName: operation.archiveName,
+        preserveNames: operation.preserveNames,
+      }
+    );
+    const next = transferOperationsRef.current.filter(op => op.jobId !== operation.jobId);
+    transferOperationsRef.current = next;
+    setTransferOperations(next);
+  }, [queueNativeTransfer]);
+
+  const handleNavigateFromOperations = useCallback((targetPath: string) => {
+    if (!targetPath) return;
+    const isFile = /\.[a-z0-9]{1,8}$/i.test(targetPath.split(/[\\/]/).filter(Boolean).pop() ?? '');
+    const folderToOpen = isFile ? getParentPath(targetPath) : targetPath;
+    void handleNavigate(folderToOpen, activePane);
+    if (isFile) {
+      const fileId = `native-${encodeURIComponent(targetPath.toLowerCase())}`;
+      React.startTransition(() => {
+        updatePaneTab(activePane, tab => ({
+          ...tab,
+          selectedIds: [fileId],
+          focusedId: fileId,
+        }));
+      });
+    }
+  }, [activePane, handleNavigate, updatePaneTab]);
 
   const handleUndoAction = useCallback(async (id: string) => {
     const action = undoHistoryRef.current.find(entry => entry.id === id);
@@ -5328,6 +5382,7 @@ export default function App() {
 
   const paletteActions: CommandPaletteCommand[] = [
     { id: 'search-files', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.searchFiles, shortcut: 'Ctrl+F', keywords: 'find search files folders', onSelect: () => setIsSearchOpen(true) },
+    { id: 'operations-center', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.operationsCenter, keywords: 'operations transfers activity copy move compress queue centro operaciones', onSelect: () => setIsOperationsCenterOpen(value => !value) },
     { id: 'shortcuts', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.shortcuts, shortcut: 'F1', keywords: 'keyboard help keys', onSelect: () => setIsShortcutsOpen(true) },
     { id: 'settings', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.settings, keywords: 'preferences options', onSelect: () => setIsSettingsOpen(true) },
     { id: 'workspaces', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.workspaces, keywords: 'workspace profiles sessions layouts', onSelect: () => setIsWorkspaceManagerOpen(true) },
@@ -6029,6 +6084,9 @@ export default function App() {
         showHiddenFiles={showHiddenFiles}
         drives={drives}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
+        operations={transferOperations}
+        isOperationsOpen={isOperationsCenterOpen}
+        onToggleOperations={() => setIsOperationsCenterOpen(value => !value)}
       />
 
       {/* Floating Action Toast */}
@@ -6167,7 +6225,21 @@ export default function App() {
         />
       )}
       {pendingZipCreation && <CreateZipModal key={pendingZipCreation.targetPath + ':' + pendingZipCreation.sourcePaths.join('|')} defaultName={pendingZipCreation.defaultName} itemCount={pendingZipCreation.sourcePaths.length} targetPath={pendingZipCreation.targetPath} onClose={() => setPendingZipCreation(null)} onChooseTarget={async () => { try { return await chooseNativeFolder(t.contextMenu.chooseTargetFolder); } catch (error) { showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))); return null; } }} onSubmit={handleCreateZip} />}
-      <FileOperationModal hidden={isOnboardingOpen || isWorkspaceManagerOpen || isUnsavedWorkspaceChangesOpen || isSettingsOpen || isAboutOpen || isCloseDialogOpen} operations={transferOperations} language={language} onTogglePause={jobId => { void toggleTransferPause(jobId); }} onCancel={jobId => { void cancelTransfer(jobId); }} onSubmitPassword={submitArchivePassword} onClearHistory={clearTransferHistory} />
+      <FileOperationModal
+        hidden={isOnboardingOpen || isWorkspaceManagerOpen || isUnsavedWorkspaceChangesOpen || isSettingsOpen || isAboutOpen || isCloseDialogOpen}
+        isOpen={isOperationsCenterOpen}
+        operations={transferOperations}
+        language={language}
+        onClose={() => setIsOperationsCenterOpen(false)}
+        onOpen={() => setIsOperationsCenterOpen(true)}
+        onTogglePause={jobId => { void toggleTransferPause(jobId); }}
+        onCancel={jobId => { void cancelTransfer(jobId); }}
+        onCancelAll={cancelAllTransfers}
+        onRetry={retryTransfer}
+        onNavigateTo={handleNavigateFromOperations}
+        onSubmitPassword={submitArchivePassword}
+        onClearHistory={clearTransferHistory}
+      />
       <TextInputContextMenu />
 
       <WorkspaceManagerModal

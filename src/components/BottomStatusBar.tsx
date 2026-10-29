@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Eye, EyeOff, File, Folder, HardDrive, Keyboard, Link2, List, Network, PanelLeft, PanelRight } from 'lucide-react';
+import { Clock, Eye, EyeOff, File, Folder, HardDrive, Keyboard, Link2, List, ListChecks, Network, PanelLeft, PanelRight } from 'lucide-react';
 import { DriveInfo, FileItem, TabState, ViewLayout, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize } from '../utils/fileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
+import { TransferOperationView, operationActionLabel } from './FileOperationModal';
 
 interface BottomStatusBarProps {
   layout: ViewLayout;
@@ -18,6 +19,9 @@ interface BottomStatusBarProps {
   showHiddenFiles: boolean;
   drives: DriveInfo[];
   onOpenShortcuts: () => void;
+  operations?: TransferOperationView[];
+  isOperationsOpen?: boolean;
+  onToggleOperations?: () => void;
 }
 
 interface StatusTooltipRow {
@@ -117,6 +121,9 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
   showHiddenFiles,
   drives,
   onOpenShortcuts,
+  operations,
+  isOperationsOpen,
+  onToggleOperations,
 }) => {
   const { language, t } = useLanguage();
   // Live clock updating every second.
@@ -215,6 +222,104 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
   const displayFolderCount = loadedCount(folderItems.length, totalFolderCount);
   const displayTotalCount = loadedCount(activeFiles.length, totalFileCount === undefined || totalFolderCount === undefined ? undefined : totalFileCount + totalFolderCount);
   const selectedItemCount = selectedFileItems.length + selectedFolderItems.length;
+
+  // Operations center calculations
+  const activeOperation = operations?.find(op => ['running', 'paused', 'cancelling'].includes(op.status));
+  const pendingOperations = operations?.filter(op => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(op.status)) ?? [];
+  const pendingCount = pendingOperations.length;
+  const queuedCount = operations?.filter(op => op.status === 'queued').length ?? 0;
+  const recentCompleted = operations?.filter(op => op.status === 'completed') ?? [];
+  const recentFailed = operations?.filter(op => op.status === 'failed') ?? [];
+  const failedCount = recentFailed.length;
+  const activeProgress = activeOperation?.totalBytes
+    ? Math.min(1, activeOperation.bytesCopied / activeOperation.totalBytes)
+    : activeOperation?.totalItems
+      ? Math.min(1, activeOperation.itemsCompleted / activeOperation.totalItems)
+      : 0;
+  const activePercent = Math.round(activeProgress * 100);
+
+  const operationShortName = activeOperation
+    ? activeOperation.kind === 'extract'
+      ? (language === 'es' ? 'Extrayendo' : 'Extracting')
+      : activeOperation.kind === 'compress'
+        ? (language === 'es' ? 'Comprimiendo' : 'Compressing')
+        : activeOperation.kind === 'copy'
+          ? (language === 'es' ? 'Copiando' : 'Copying')
+          : (language === 'es' ? 'Moviendo' : 'Moving')
+    : '';
+
+  const operationsTooltip = (
+    <StatusTooltipCard
+      icon={<ListChecks className="h-4 w-4" />}
+      title={t.statusBar.operationsCenter}
+      primary={
+        activeOperation
+          ? `${activePercent}% · ${operationActionLabel(activeOperation, language)}`
+          : pendingCount > 0
+            ? t.statusBar.operationsQueued.replace('{count}', String(pendingCount))
+            : t.statusBar.operationsIdle
+      }
+      description={t.statusBar.operationsCenterDescription}
+      progress={activeOperation ? {
+        value: activePercent,
+        color: 'bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.5)]',
+        label: `${activePercent}%`,
+      } : undefined}
+      rows={[
+        ...(activeOperation ? [
+          { label: language === 'es' ? 'Elemento actual' : 'Current item', value: activeOperation.currentItem || activeOperation.sourcePaths[0] || '—' },
+          { label: language === 'es' ? 'Progreso' : 'Progress', value: activeOperation.totalItems ? `${activeOperation.itemsCompleted} / ${activeOperation.totalItems}` : `${activePercent}%`, tone: 'cyan' as const },
+        ] : []),
+        ...(queuedCount > 0 ? [
+          { label: language === 'es' ? 'En cola' : 'In queue', value: String(queuedCount), tone: 'amber' as const },
+        ] : []),
+        ...(recentCompleted.length > 0 ? [
+          { label: language === 'es' ? 'Completadas' : 'Completed', value: String(recentCompleted.length) },
+        ] : []),
+        ...(failedCount > 0 ? [
+          { label: language === 'es' ? 'Con errores' : 'With errors', value: String(failedCount), tone: 'rose' as const },
+        ] : []),
+      ]}
+    />
+  );
+
+  const operationsButton = onToggleOperations ? (
+    <Tooltip label={operationsTooltip} placement="top">
+      <button
+        id="operations-center-status-trigger"
+        type="button"
+        onClick={onToggleOperations}
+        aria-label={t.statusBar.operationsCenter}
+        aria-pressed={isOperationsOpen}
+        className={`flex select-none items-center gap-1.5 rounded border px-2 py-0.5 text-[10px] whitespace-nowrap transition-colors ${
+          activeOperation
+            ? 'border-cyan-500/80 bg-cyan-950/80 font-semibold text-cyan-200 shadow-[0_0_8px_rgba(34,211,238,0.25)]'
+            : failedCount > 0
+              ? 'border-rose-700/60 bg-rose-950/60 text-rose-300'
+              : pendingCount > 0
+                ? 'border-amber-700/60 bg-amber-950/60 text-amber-300'
+                : isOperationsOpen
+                  ? 'border-neutral-600 bg-neutral-800 text-neutral-100'
+                  : 'border-neutral-800 bg-neutral-950 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-900 hover:text-neutral-200'
+        }`}
+      >
+        <ListChecks className={`h-3.5 w-3.5 flex-shrink-0 ${activeOperation ? 'animate-pulse text-cyan-400' : 'text-neutral-400'}`} />
+        {activeOperation ? (
+          <span className="flex items-center gap-1">
+            <span className="font-bold text-cyan-300">{activePercent}%</span>
+            <span className="hidden max-w-[100px] truncate text-neutral-300 md:inline">{operationShortName}</span>
+          </span>
+        ) : pendingCount > 0 ? (
+          <span className="font-bold text-amber-300">{pendingCount} {language === 'es' ? 'en cola' : 'queued'}</span>
+        ) : failedCount > 0 ? (
+          <span className="font-bold text-rose-400">! {failedCount}</span>
+        ) : (
+          <span className="hidden sm:inline">{language === 'es' ? 'Operaciones' : 'Operations'}</span>
+        )}
+      </button>
+    </Tooltip>
+  ) : null;
+
   const shortcutsTooltip = (
     <StatusTooltipCard
       icon={<Keyboard className="h-4 w-4" />}
@@ -228,7 +333,10 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
     return (
       <footer id="app-bottom-status-bar" className="cyberfiles-global-status h-7 bg-black border-t border-neutral-800 px-2 text-[11px] font-sans text-neutral-400 flex items-center justify-between select-none z-30 flex-shrink-0">
         <span>{t.pane.noFolderOpen}</span>
-        <Tooltip label={shortcutsTooltip} placement="top"><button onClick={onOpenShortcuts} className="rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"><kbd className="keyboard-hint">F1</kbd></button></Tooltip>
+        <div className="flex items-center gap-2">
+          {operationsButton}
+          <Tooltip label={shortcutsTooltip} placement="top"><button onClick={onOpenShortcuts} className="rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"><kbd className="keyboard-hint">F1</kbd></button></Tooltip>
+        </div>
       </footer>
     );
   }
@@ -444,6 +552,9 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
 
       {/* Right section: Path length information, Clock & System indicators */}
       <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Operations Center trigger */}
+        {operationsButton}
+
         {/* Path length & MAX_PATH monitor (Windows NTFS 260 limit) */}
         {!isSystemHome && <Tooltip label={<StatusTooltipCard icon={<Link2 className="h-4 w-4" />} title={t.statusBar.pathLength} primary={`${formatCount(pathLength)} / ${formatCount(MAX_PATH_WINDOWS)}`} description={displayPath} rows={[{ label: t.statusBar.currentPath, value: t.statusBar.characters.replace('{count}', formatCount(pathLength)) }, { label: t.statusBar.standardLimit, value: t.statusBar.characters.replace('{count}', formatCount(MAX_PATH_WINDOWS)) }, { label: remainingPathCharacters >= 0 ? t.statusBar.charactersAvailable : t.statusBar.charactersOver, value: t.statusBar.characters.replace('{count}', formatCount(Math.abs(remainingPathCharacters))), tone: remainingPathCharacters < 0 ? 'rose' : remainingPathCharacters <= 60 ? 'amber' : 'cyan' }]} />} placement="top"><div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors text-[10px] ${
             isExceedingMaxPath
