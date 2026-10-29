@@ -168,7 +168,7 @@ export const CommandBarSplit: React.FC<CommandBarSplitProps> = ({
   caretDisabled,
   ariaLabel,
 }) => (
-  <div className="command-control command-split" data-label={labelPosition}>
+  <div className="command-control command-split" data-label={labelPosition} data-expanded={caretExpanded ? 'true' : undefined}>
     <Tooltip label={tooltip} shortcut={tooltipShortcut} placement="bottom">
       <button
         type="button"

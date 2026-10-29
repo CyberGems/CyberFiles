@@ -345,12 +345,12 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                 onCaretClick={() => setOpenToolbarMenu(openToolbarMenu === 'terminal' ? null : 'terminal')}
               />
               {openToolbarMenu === 'terminal' && (
-                <div role="menu" className="absolute right-0 top-full z-50 mt-2 min-w-56 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-2xl">
+                <div role="menu" className="absolute right-0 top-full z-50 mt-2 w-max min-w-56 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-2xl">
                   {(['cmd', 'cmd-admin', 'powershell', 'powershell-admin'] as WindowsTerminalOption[]).map(option => (
-                    <button key={option} type="button" role="menuitem" aria-label={terminalLabels[option]} onClick={() => { onLastTerminalOptionChange(option); onLaunchTerminal(option); setOpenToolbarMenu(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-800 hover:text-cyan-200">
-                      <Terminal className="h-3.5 w-3.5 text-neutral-400" />
+                    <button key={option} type="button" role="menuitem" aria-label={terminalLabels[option]} onClick={() => { onLastTerminalOptionChange(option); onLaunchTerminal(option); setOpenToolbarMenu(null); }} className="flex w-full items-center gap-2.5 whitespace-nowrap px-3 py-2 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-800 hover:text-cyan-200">
+                      <Terminal className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
                       <span>{terminalLabels[option]}</span>
-                      {lastTerminalOption === option && <span className="ml-auto text-cyan-300">✓</span>}
+                      {lastTerminalOption === option && <span className="ml-auto pl-2 text-cyan-300">✓</span>}
                     </button>
                   ))}
                 </div>

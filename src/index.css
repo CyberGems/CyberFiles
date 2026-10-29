@@ -235,7 +235,7 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
 }
 
-.command-control:hover:not(:disabled):not(.command-split) {
+.command-control:is(:hover, [aria-expanded='true']):not(:disabled):not(.command-split) {
   border-color: var(--color-neutral-700);
   background: var(--color-neutral-800);
   color: var(--color-neutral-100);
@@ -387,7 +387,8 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   transition: background-color 0.14s ease, color 0.14s ease;
 }
 
-.command-split > .command-split-caret:hover:not(:disabled) {
+.command-split[data-expanded='true'] { border-color: var(--color-neutral-700); }
+.command-split > .command-split-caret:is(:hover, [aria-expanded='true']):not(:disabled) {
   background: var(--color-neutral-800);
   color: var(--color-neutral-100);
 }
@@ -405,13 +406,22 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   color: #d7e6ef;
 }
 
-html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-control:hover:not(:disabled):not(.command-split) {
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-control:is(:hover, [aria-expanded='true']):not(:disabled):not(.command-split) {
   border-color: #36718f;
   background: linear-gradient(180deg, #174764 0%, #0d3047 100%);
 }
 
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split > .command-split-caret {
   border-left-color: #1f465e;
+}
+
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split[data-expanded='true'] {
+  border-color: #36718f;
+}
+
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split > .command-split-caret:is(:hover, [aria-expanded='true']):not(:disabled) {
+  background: linear-gradient(180deg, #174764 0%, #0d3047 100%);
+  color: #a5f3fc;
 }
 
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-pane {

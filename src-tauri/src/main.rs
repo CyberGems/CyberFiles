@@ -6021,15 +6021,25 @@ fn launch_terminal_in_folder(path: &str, terminal: &str) -> Result<(), String> {
     };
 
     if elevated {
+        let clean_folder = display_path(&folder);
+        let parameters = if terminal == "cmd-admin" {
+            let escaped = clean_folder.replace('"', "\"\"");
+            format!("/s /k \"cd /d \"{escaped}\"\"")
+        } else {
+            let escaped = clean_folder.replace('\'', "''");
+            format!("-NoExit -Command \"Set-Location -LiteralPath '{escaped}'\"")
+        };
         let verb: Vec<u16> = "runas".encode_utf16().chain(Some(0)).collect();
+        let parameters_wide: Vec<u16> = parameters.encode_utf16().chain(Some(0)).collect();
+        let folder_wide: Vec<u16> = std::ffi::OsStr::new(&clean_folder).encode_wide().chain(Some(0)).collect();
         let executable_wide: Vec<u16> = executable.encode_utf16().chain(Some(0)).collect();
-        let folder_wide: Vec<u16> = folder.as_os_str().encode_wide().chain(Some(0)).collect();
+
         let result = unsafe {
             ShellExecuteW(
                 None,
                 PCWSTR(verb.as_ptr()),
                 PCWSTR(executable_wide.as_ptr()),
-                PCWSTR::null(),
+                PCWSTR(parameters_wide.as_ptr()),
                 PCWSTR(folder_wide.as_ptr()),
                 SW_SHOWNORMAL,
             )
@@ -6045,7 +6055,7 @@ fn launch_terminal_in_folder(path: &str, terminal: &str) -> Result<(), String> {
 
     use std::os::windows::process::CommandExt;
     std::process::Command::new(executable)
-        .current_dir(folder)
+        .current_dir(display_path(&folder))
         .creation_flags(0x00000010)
         .spawn()
         .map(|_| ())
