@@ -15,28 +15,24 @@
 
 ### ✨ Key Features & Highlights
 
-- **Taskbar & window controls:** ensures the taskbar button remains visible when minimizing from the interface and prevents the window from hiding on maximize or restore in custom borderless mode.
-- **Theme-consistent sidebar:** aligns collapsible section header hover styling with theme tokens, matching the subtle palette of sidebar locations.
-- **System tray recovery:** keeps the notification area icon registered and automatically recovers from Windows startup delays or timeouts.
-- **Title bar navigation & drag:** fixes titlebar double-click maximize behavior and pointer drag handling across custom controls.
-- **Windows Explorer integration:** open folders directly from the Windows Explorer context menu and configure startup options cleanly without background console windows.
-- **Flexible navigation:** dual vertical, dual horizontal, and single-pane layouts with independent tabs and history.
-- **Large-folder browsing:** additional directory items load automatically as you scroll, while full folder counts remain available.
-- **File management & undo:** queued copy, move, rename, Recycle Bin support, and 10 levels of undo history.
+- **Instant search typing & batch rendering:** Eliminates keystroke and deletion latency in the search modal using deferred concurrent queries, progressive item rendering, and precompiled regexes.
+- **Search preservation & layout stability:** Prompts to keep or discard active searches when closing, prevents layout height jumps, and adds backdrop click-to-close.
+- **Operations Center in status bar:** Relocates the Operations Center to the far right of the status bar, tracking deletions, restores, item creation, renames, and undo operations with dedicated `Ctrl+J` shortcut.
+- **Modern lister context menu:** Integrates Windows 11 style quick-action header buttons (Cut, Copy, Rename, Delete) with viewport clamping and background selection clearing.
+- **Address bar convenience:** Right-clicking empty areas in the address bar directly focuses and displays the context menu.
+- **Elevated terminal navigation:** Preserves working directory context when launching elevated Administrator terminals.
 
 <details>
 <summary><b>🌐 Ver notas de la versión en Español</b></summary>
 
 ### 🚀 Novedades de esta versión
 
-- **Controles de ventana y barra de tareas:** garantiza que el icono de la barra de tareas permanezca visible al minimizar desde la interfaz y evita que la ventana se oculte al maximizar o restaurar en modo sin bordes.
-- **Barra lateral coherente con el tema:** alinea el color de hover en los encabezados colapsables con las variables de tema, igualando el estilo visual del resto de ubicaciones.
-- **Recuperación del icono de bandeja:** mantiene el icono en el área de notificación y se recupera automáticamente de retrasos o tiempos de espera al iniciar Windows.
-- **Arrastre y barra de título:** corrige la maximización por doble clic en la barra de título y el manejo del cursor al arrastrar la ventana.
-- **Integración con el Explorador de Windows:** abre carpetas desde el menú contextual del Explorador de Windows y oculta ventanas de consola durante la configuración del registro.
-- **Diseños flexibles:** doble vertical, doble horizontal y panel único con pestañas e historial independientes.
-- **Navegación en carpetas grandes:** carga progresiva automática al desplazarse manteniendo el conteo completo de elementos.
-- **Gestión de archivos y deshacer:** operaciones en cola con pausa, cancelación, soporte de Papelera de reciclaje y 10 niveles de deshacer.
+- **Búsqueda instantánea y renderizado progresivo:** Elimina la latencia al teclear o borrar en el modal de búsqueda mediante consultas concurrentes diferidas, carga por lotes y expresiones regulares precompiladas.
+- **Persistencia de búsqueda y estabilidad de diseño:** Pregunta si deseas conservar o descartar la búsqueda activa al cerrar, fija la altura para evitar saltos y permite cerrar al hacer clic en el fondo.
+- **Centro de Operaciones en barra de estado:** Integra el Centro de Operaciones en el extremo derecho de la barra de estado, registrando eliminaciones, restauraciones, creaciones, cambios de nombre y acciones de deshacer con el atajo `Ctrl+J`.
+- **Menú contextual moderno:** Incorpora botones de acción rápida estilo Windows 11 (Cortar, Copiar, Renombrar, Eliminar), con ajuste a los límites de pantalla y deselección al hacer clic en el fondo.
+- **Comodidad en la barra de direcciones:** Hacer clic derecho en áreas vacías de la barra de direcciones activa directamente el modo de edición y despliega el menú contextual.
+- **Terminal con permisos elevados:** Mantiene la ruta de la carpeta actual al abrir terminales como Administrador.
 
 </details>
 
