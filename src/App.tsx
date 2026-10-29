@@ -1272,6 +1272,7 @@ export default function App() {
   const [undoBusy, setUndoBusy] = useState(false);
   const archivePasswordsRef = useRef(new Map<string, string>());
   const activeTransferIdRef = useRef<string | null>(null);
+  const performDeleteRef = useRef<((roots: FileItem[], permanentlyDelete: boolean) => Promise<void>) | null>(null);
   const [transferEventsReady, setTransferEventsReady] = useState(!isTauriDesktop());
   const [renameRequest, setRenameRequest] = useState<{ requestId: number; itemId: string; paneId: 'left' | 'right' } | null>(null);
   const renameRequestSequence = useRef(0);
@@ -3621,6 +3622,26 @@ export default function App() {
   }, [cancelTransfer]);
 
   const retryTransfer = useCallback((operation: TransferOperationView) => {
+    if (operation.kind === 'delete' || operation.kind === 'recycle') {
+      const remainingPaths = operation.failures && operation.failures.length > 0
+        ? operation.failures.map(f => f.path)
+        : operation.sourcePaths;
+      const rootsToRetry = remainingPaths.map(p => ({
+        id: `retry-${p}`,
+        name: p.split(/[\\/]/).filter(Boolean).pop() ?? p,
+        path: p,
+        isDirectory: false,
+        size: 0,
+        modified: new Date(),
+        extension: '',
+        permissions: '',
+      } as unknown as FileItem));
+      const next = transferOperationsRef.current.filter(op => op.jobId !== operation.jobId);
+      transferOperationsRef.current = next;
+      setTransferOperations(next);
+      void performDeleteRef.current?.(rootsToRetry, operation.kind === 'delete');
+      return;
+    }
     queueNativeTransfer(
       operation.kind,
       operation.sourcePaths,
@@ -4491,8 +4512,30 @@ export default function App() {
   const performDelete = useCallback(async (roots: FileItem[], permanentlyDelete: boolean) => {
     if (isFileOperationBusy || roots.length === 0) return;
     setIsFileOperationBusy(true);
+    const paths = roots.map(item => item.path);
+    const kind: TransferKind = permanentlyDelete ? 'delete' : 'recycle';
+    const targetPath = permanentlyDelete ? '' : RECYCLE_BIN_PATH;
+    const jobId = createOperationId(kind);
+    const initialOp: TransferOperationView = {
+      jobId,
+      kind,
+      phase: 'copying',
+      currentItem: paths[0] ?? '',
+      bytesCopied: 0,
+      totalBytes: 0,
+      currentFileBytes: 0,
+      currentFileTotal: 0,
+      itemsCompleted: 0,
+      totalItems: paths.length,
+      sourcePaths: paths,
+      targetPath,
+      status: 'running',
+      startedAt: Date.now(),
+    };
+    transferOperationsRef.current = [...transferOperationsRef.current, initialOp];
+    setTransferOperations(transferOperationsRef.current);
+
     try {
-      const paths = roots.map(item => item.path);
       const { removedPaths, failures, recycledIds } = permanentlyDelete
         ? await permanentlyDeleteNativeItems(paths).then(result => ({
           removedPaths: result.completedPaths,
@@ -4504,6 +4547,16 @@ export default function App() {
           failures: result.failures,
           recycledIds: new Map(result.recycled.map(entry => [getPathKey(entry.path), entry.id])),
         }));
+      updateTransferOperation(jobId, op => ({
+        ...op,
+        status: failures.length > 0 && removedPaths.length === 0 ? 'failed' : 'completed',
+        itemsCompleted: removedPaths.length,
+        totalItems: paths.length,
+        completedPaths: removedPaths,
+        failures,
+        finishedAt: Date.now(),
+        error: failures.length > 0 ? failures.map(f => `${f.path}: ${f.error}`).join(', ') : undefined,
+      }));
       const removedIds = new Set(
         allFiles
           .filter(item => removedPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath)))
@@ -4577,12 +4630,19 @@ export default function App() {
           recycleBinLoaded.current = false;
         }
       }
-    } catch {
+    } catch (error) {
+      updateTransferOperation(jobId, op => ({
+        ...op,
+        status: 'failed',
+        finishedAt: Date.now(),
+        error: String(error),
+      }));
       showToast(permanentlyDelete ? t.core.permanentDeleteFailed : t.core.deleteFailed);
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [allFiles, invalidateFlatDirectories, isFileOperationBusy, leftTabs, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, removeRecentPaths, rightTabs, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecycleUnavailable, t.toolbar.undoUnavailable]);
+  }, [allFiles, invalidateFlatDirectories, isFileOperationBusy, leftTabs, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, removeRecentPaths, rightTabs, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecycleUnavailable, t.toolbar.undoUnavailable, updateTransferOperation]);
+  performDeleteRef.current = performDelete;
 
   const handleDeleteSelected = useCallback((itemsToDelete?: FileItem[], options: { permanently?: boolean } = {}) => {
     if (!isTauriDesktop()) {
@@ -4633,9 +4693,35 @@ export default function App() {
   const handleConfirmEmptyRecycleBin = useCallback(async () => {
     if (isRecycleBinBusy) return;
     setIsRecycleBinBusy(true);
+    const emptiedCount = recycleBinStatus?.itemCount ?? 0;
+    const jobId = createOperationId('delete');
+    const initialOp: TransferOperationView = {
+      jobId,
+      kind: 'delete',
+      phase: 'copying',
+      currentItem: t.sidebar.recycleBinTitle,
+      bytesCopied: 0,
+      totalBytes: 0,
+      currentFileBytes: 0,
+      currentFileTotal: 0,
+      itemsCompleted: 0,
+      totalItems: emptiedCount,
+      sourcePaths: [RECYCLE_BIN_PATH],
+      targetPath: '',
+      status: 'running',
+      startedAt: Date.now(),
+    };
+    transferOperationsRef.current = [...transferOperationsRef.current, initialOp];
+    setTransferOperations(transferOperationsRef.current);
+
     try {
-      const emptiedCount = recycleBinStatus?.itemCount ?? 0;
       await emptyNativeRecycleBin();
+      updateTransferOperation(jobId, op => ({
+        ...op,
+        status: 'completed',
+        itemsCompleted: emptiedCount,
+        finishedAt: Date.now(),
+      }));
       if (emptiedCount > 0) {
         pushUndoAction({
           kind: 'permanent-delete',
@@ -4650,14 +4736,20 @@ export default function App() {
       showToast(t.core.recycleBinEmptied);
       void refreshRecycleBinStatus();
       void refreshRecycleBinContents();
-    } catch {
+    } catch (error) {
+      updateTransferOperation(jobId, op => ({
+        ...op,
+        status: 'failed',
+        finishedAt: Date.now(),
+        error: String(error),
+      }));
       showToast(t.core.recycleBinEmptyFailed);
       void refreshRecycleBinStatus();
       void refreshRecycleBinContents();
     } finally {
       setIsRecycleBinBusy(false);
     }
-  }, [isRecycleBinBusy, pushUndoAction, recycleBinStatus?.itemCount, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.recycleBinEmptied, t.core.recycleBinEmptyFailed, t.toolbar.undoUnavailable]);
+  }, [isRecycleBinBusy, pushUndoAction, recycleBinStatus?.itemCount, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.recycleBinEmptied, t.core.recycleBinEmptyFailed, t.sidebar.recycleBinTitle, t.toolbar.undoUnavailable, updateTransferOperation]);
 
   const handleRestoreRecycleBinItems = useCallback(async (items: FileItem[]) => {
     if (recycleBinRestoreInFlight.current || recycleBinListingInFlight.current) return;
@@ -4671,10 +4763,42 @@ export default function App() {
     }
 
     recycleBinRestoreInFlight.current = true;
+    const sourcePaths = items.map(item => item.originalPath ?? item.name);
+    const targetFolder = items[0]?.originalPath ? getParentPath(items[0].originalPath) : '';
+    const jobId = createOperationId('restore');
+    const initialOp: TransferOperationView = {
+      jobId,
+      kind: 'restore',
+      phase: 'copying',
+      currentItem: sourcePaths[0] ?? '',
+      bytesCopied: 0,
+      totalBytes: 0,
+      currentFileBytes: 0,
+      currentFileTotal: 0,
+      itemsCompleted: 0,
+      totalItems: requests.length,
+      sourcePaths,
+      targetPath: targetFolder,
+      status: 'running',
+      startedAt: Date.now(),
+    };
+    transferOperationsRef.current = [...transferOperationsRef.current, initialOp];
+    setTransferOperations(transferOperationsRef.current);
+
     try {
       const result = await restoreNativeRecycleBinItems(requests);
       const restoredIds = new Set(result.restoredIds);
       const restoredItems = items.filter(item => item.recycleBinId && restoredIds.has(item.recycleBinId));
+      updateTransferOperation(jobId, op => ({
+        ...op,
+        status: result.restoredIds.length === 0 ? 'failed' : 'completed',
+        itemsCompleted: result.restoredIds.length,
+        totalItems: requests.length,
+        completedPaths: restoredItems.map(i => i.originalPath ?? i.path),
+        failures: result.failures,
+        finishedAt: Date.now(),
+        error: result.failures.length > 0 ? result.failures.map(f => `${f.path}: ${f.error}`).join(', ') : undefined,
+      }));
       if (restoredItems.length > 0) {
         pushUndoAction({
           kind: 'restore',
@@ -4725,14 +4849,20 @@ export default function App() {
       } else {
         showToast(t.core.recycleBinRestored.replace('{count}', String(result.restoredIds.length)));
       }
-    } catch {
+    } catch (error) {
+      updateTransferOperation(jobId, op => ({
+        ...op,
+        status: 'failed',
+        finishedAt: Date.now(),
+        error: String(error),
+      }));
       void refreshRecycleBinStatus();
       void refreshRecycleBinContents();
       showToast(t.core.recycleBinRestoreFailed);
     } finally {
       recycleBinRestoreInFlight.current = false;
     }
-  }, [activeLeftTabIndex, activePane, activeRightTabIndex, effectiveLayout, handleNavigate, leftTabs, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, rightTabs, showToast, t.core.recycleBinRestoreFailed, t.core.recycleBinRestorePartial, t.core.recycleBinRestored]);
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, effectiveLayout, handleNavigate, leftTabs, pushUndoAction, refreshRecycleBinContents, refreshRecycleBinStatus, rightTabs, showToast, t.core.recycleBinRestoreFailed, t.core.recycleBinRestorePartial, t.core.recycleBinRestored, updateTransferOperation]);
 
   const handleOpenRecycleBin = useCallback(async () => {
     await handleNavigate(RECYCLE_BIN_PATH, activePane);
@@ -5003,6 +5133,13 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
         e.preventDefault();
         setIsSearchOpen(true);
+        return;
+      }
+
+      // Ctrl + J or Ctrl + Shift + O: Toggle Operations Center
+      if ((e.ctrlKey || e.metaKey) && ((e.key === 'j' || e.key === 'J') || (e.shiftKey && (e.key === 'o' || e.key === 'O')))) {
+        e.preventDefault();
+        setIsOperationsCenterOpen(prev => !prev);
         return;
       }
 
@@ -5383,7 +5520,7 @@ export default function App() {
 
   const paletteActions: CommandPaletteCommand[] = [
     { id: 'search-files', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.searchFiles, shortcut: 'Ctrl+F', keywords: 'find search files folders', onSelect: () => setIsSearchOpen(true) },
-    { id: 'operations-center', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.operationsCenter, keywords: 'operations transfers activity copy move compress queue centro operaciones', onSelect: () => setIsOperationsCenterOpen(value => !value) },
+    { id: 'operations-center', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.operationsCenter, shortcut: 'Ctrl+J', keywords: 'operations transfers activity copy move compress queue centro operaciones', onSelect: () => setIsOperationsCenterOpen(value => !value) },
     { id: 'shortcuts', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.shortcuts, shortcut: 'F1', keywords: 'keyboard help keys', onSelect: () => setIsShortcutsOpen(true) },
     { id: 'settings', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.settings, keywords: 'preferences options', onSelect: () => setIsSettingsOpen(true) },
     { id: 'workspaces', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.workspaces, keywords: 'workspace profiles sessions layouts', onSelect: () => setIsWorkspaceManagerOpen(true) },

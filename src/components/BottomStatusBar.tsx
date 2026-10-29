@@ -248,15 +248,22 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
       ? (language === 'es' ? 'Extrayendo' : 'Extracting')
       : activeOperation.kind === 'compress'
         ? (language === 'es' ? 'Comprimiendo' : 'Compressing')
-        : activeOperation.kind === 'copy'
-          ? (language === 'es' ? 'Copiando' : 'Copying')
-          : (language === 'es' ? 'Moviendo' : 'Moving')
+        : activeOperation.kind === 'delete'
+          ? (language === 'es' ? 'Eliminando' : 'Deleting')
+          : activeOperation.kind === 'recycle'
+            ? (language === 'es' ? 'A papelera' : 'Recycling')
+            : activeOperation.kind === 'restore'
+              ? (language === 'es' ? 'Restaurando' : 'Restoring')
+              : activeOperation.kind === 'copy'
+                ? (language === 'es' ? 'Copiando' : 'Copying')
+                : (language === 'es' ? 'Moviendo' : 'Moving')
     : '';
 
   const operationsTooltip = (
     <StatusTooltipCard
       icon={<ListChecks className="h-4 w-4" />}
       title={t.statusBar.operationsCenter}
+      badge={<kbd className="keyboard-hint font-bold text-cyan-300">Ctrl + J</kbd>}
       primary={
         activeOperation
           ? `${activePercent}% · ${operationActionLabel(activeOperation, language)}`

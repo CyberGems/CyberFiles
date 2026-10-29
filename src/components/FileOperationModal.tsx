@@ -24,7 +24,7 @@ import { Tooltip } from './Tooltip';
 import type { NativeTransferProgress } from '../utils/nativeFileSystem';
 import type { ArchiveExtractionMode } from '../types';
 
-export type TransferKind = 'copy' | 'move' | 'extract' | 'compress';
+export type TransferKind = 'copy' | 'move' | 'extract' | 'compress' | 'delete' | 'recycle' | 'restore';
 export type TransferStatus = 'queued' | 'awaiting-password' | 'running' | 'paused' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 
 export interface TransferOperationView extends NativeTransferProgress {
@@ -76,7 +76,9 @@ function elapsedLabel(seconds: number, language: 'en' | 'es'): string {
     : minutes + ':' + String(secs).padStart(2, '0');
 }
 
-export function displayPath(path: string): string {
+export function displayPath(path: string, language: 'en' | 'es' = 'es'): string {
+  if (!path) return '';
+  if (path === '::recycle-bin::') return language === 'es' ? 'Papelera de reciclaje' : 'Recycle Bin';
   return path.replace(/^\\\\\?\\UNC\\/i, '\\\\').replace(/^\\\\\?\\/, '');
 }
 
@@ -99,6 +101,24 @@ export function operationActionLabel(operation: TransferOperationView, language:
   const count = operation.sourcePaths.length;
   if (operation.kind === 'extract') return spanish ? 'Extrayendo archivo' : 'Extracting archive';
   if (operation.kind === 'compress') return spanish ? 'Creando archivo ZIP' : 'Creating ZIP archive';
+  if (operation.kind === 'delete') {
+    if (count === 0 || operation.sourcePaths[0] === '::recycle-bin::') {
+      return spanish ? 'Vaciando papelera de reciclaje' : 'Emptying Recycle Bin';
+    }
+    return spanish
+      ? `Eliminando permanentemente ${count} ${count === 1 ? 'elemento' : 'elementos'}`
+      : `Permanently deleting ${count} ${count === 1 ? 'item' : 'items'}`;
+  }
+  if (operation.kind === 'recycle') {
+    return spanish
+      ? `Enviando a papelera ${count} ${count === 1 ? 'elemento' : 'elementos'}`
+      : `Moving ${count} ${count === 1 ? 'item' : 'items'} to Recycle Bin`;
+  }
+  if (operation.kind === 'restore') {
+    return spanish
+      ? `Restaurando ${count} ${count === 1 ? 'elemento' : 'elementos'}`
+      : `Restoring ${count} ${count === 1 ? 'item' : 'items'}`;
+  }
   if (operation.kind === 'copy') return spanish
     ? `Copiando ${count} ${count === 1 ? 'elemento' : 'elementos'}`
     : `Copying ${count} ${count === 1 ? 'item' : 'items'}`;
@@ -112,6 +132,9 @@ export function sourceLabel(operation: TransferOperationView, language: 'en' | '
     return operation.sourcePaths[0]?.split(/[\\/]/).pop() || (language === 'es' ? 'Archivo comprimido' : 'Archive');
   }
   if (operation.kind === 'compress') return operation.archiveName || (language === 'es' ? 'Archivo ZIP' : 'ZIP archive');
+  if (operation.sourcePaths[0] === '::recycle-bin::') {
+    return language === 'es' ? 'Papelera de reciclaje' : 'Recycle Bin';
+  }
   return operation.sourcePaths.length === 1
     ? operation.sourcePaths[0].split(/[\\/]/).pop() || operation.sourcePaths[0]
     : (language === 'es' ? `${operation.sourcePaths.length} elementos seleccionados` : `${operation.sourcePaths.length} selected items`);
@@ -402,6 +425,10 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-cyan-800/40 bg-cyan-950/80 text-cyan-300">
                   {activeOperation.kind === 'extract' || activeOperation.kind === 'compress' ? (
                     <Archive className="h-4 w-4" />
+                  ) : activeOperation.kind === 'delete' || activeOperation.kind === 'recycle' ? (
+                    <Trash2 className="h-4 w-4" />
+                  ) : activeOperation.kind === 'restore' ? (
+                    <RotateCcw className="h-4 w-4" />
                   ) : activeOperation.kind === 'copy' ? (
                     <Copy className="h-4 w-4" />
                   ) : (
@@ -436,11 +463,11 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                       </Tooltip>
                     )}
                   </div>
-                  <Tooltip label={activeOperation.sourcePaths.map(displayPath).join('\n')} placement="top">
+                  <Tooltip label={activeOperation.sourcePaths.map(p => displayPath(p, language)).join('\n')} placement="top">
                     <div className="truncate font-mono text-xs text-neutral-300">
                       {activeOperation.sourcePaths.length > 1
-                        ? displayPath(activeOperation.sourcePaths[0]) + ` (+${activeOperation.sourcePaths.length - 1})`
-                        : displayPath(activeOperation.sourcePaths[0])}
+                        ? displayPath(activeOperation.sourcePaths[0], language) + ` (+${activeOperation.sourcePaths.length - 1})`
+                        : displayPath(activeOperation.sourcePaths[0], language)}
                     </div>
                   </Tooltip>
                 </div>
@@ -448,7 +475,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                 <div className="min-w-0 rounded-lg border border-neutral-800 bg-neutral-900/60 p-2.5">
                   <div className="mb-1 flex items-center justify-between">
                     <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                      {isSpanish ? 'Hacia' : 'To'}
+                      {activeOperation.kind === 'delete' ? (isSpanish ? 'Destino' : 'Destination') : (isSpanish ? 'Hacia' : 'To')}
                     </span>
                     {onNavigateTo && activeOperation.targetPath && (
                       <Tooltip label={isSpanish ? 'Abrir carpeta de destino' : 'Open destination folder'} placement="top">
@@ -463,9 +490,9 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                       </Tooltip>
                     )}
                   </div>
-                  <Tooltip label={displayPath(activeOperation.targetPath)} placement="top">
+                  <Tooltip label={activeOperation.targetPath ? displayPath(activeOperation.targetPath, language) : (isSpanish ? 'Eliminación permanente' : 'Permanent removal')} placement="top">
                     <div className="truncate font-mono text-xs text-neutral-300">
-                      {displayPath(activeOperation.targetPath)}
+                      {activeOperation.targetPath ? displayPath(activeOperation.targetPath, language) : (isSpanish ? 'Eliminación permanente' : 'Permanent removal')}
                     </div>
                   </Tooltip>
                 </div>
@@ -654,6 +681,10 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                     <span className="text-cyan-400">
                       {operation.kind === 'extract' || operation.kind === 'compress' ? (
                         <Archive className="h-4 w-4" />
+                      ) : operation.kind === 'delete' || operation.kind === 'recycle' ? (
+                        <Trash2 className="h-4 w-4" />
+                      ) : operation.kind === 'restore' ? (
+                        <RotateCcw className="h-4 w-4" />
                       ) : operation.kind === 'copy' ? (
                         <Copy className="h-4 w-4" />
                       ) : (
@@ -669,10 +700,12 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                             : displayPath(operation.sourcePaths[0])}
                       </div>
                       <div className="truncate font-mono text-[11px] text-neutral-500">
-                        {(isSpanish ? 'Hacia ' : 'To ') + displayPath(operation.targetPath)}
+                        {operation.targetPath
+                          ? (isSpanish ? 'Hacia ' : 'To ') + displayPath(operation.targetPath, language)
+                          : (isSpanish ? 'Eliminación permanente' : 'Permanent removal')}
                       </div>
                     </div>
-                    {onNavigateTo && (
+                    {onNavigateTo && operation.targetPath && (
                       <Tooltip label={isSpanish ? 'Abrir carpeta de destino' : 'Open destination folder'} placement="top">
                         <button
                           type="button"
@@ -711,7 +744,11 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                   const isCompleted = operation.status === 'completed';
                   const isFailed = operation.status === 'failed';
                   const isCancelled = operation.status === 'cancelled';
-                  const targetToNavigate = operation.kind === 'compress' ? (operation.resultPath || operation.targetPath) : operation.targetPath;
+                  const targetToNavigate = operation.kind === 'recycle'
+                    ? '::recycle-bin::'
+                    : operation.kind === 'compress'
+                      ? (operation.resultPath || operation.targetPath)
+                      : operation.targetPath;
                   const relativeTime = formatRelativeTime(operation.finishedAt, language);
                   const duration = formatDuration(operation.startedAt, operation.finishedAt, language);
                   const isExpandedFailures = expandedFailuresJobId === operation.jobId;
@@ -741,9 +778,11 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                             <span className="truncate text-xs font-medium text-neutral-200">
                               {operation.kind === 'compress'
                                 ? operation.resultPath ?? sourceLabel(operation, language)
-                                : operation.sourcePaths.length > 1
-                                  ? `${operation.sourcePaths.length} ${isSpanish ? 'elementos' : 'items'}`
-                                  : displayPath(operation.sourcePaths[0])}
+                                : operation.kind === 'delete' || operation.kind === 'recycle' || operation.kind === 'restore'
+                                  ? `${operationActionLabel(operation, language)}${operation.sourcePaths.length === 1 && operation.sourcePaths[0] ? `: ${displayPath(operation.sourcePaths[0])}` : ''}`
+                                  : operation.sourcePaths.length > 1
+                                    ? `${operationActionLabel(operation, language)} (${operation.sourcePaths.length})`
+                                    : `${operationActionLabel(operation, language)}: ${displayPath(operation.sourcePaths[0])}`}
                             </span>
                             {operation.totalBytes > 0 && (
                               <span className="shrink-0 font-mono text-[10px] text-neutral-400">

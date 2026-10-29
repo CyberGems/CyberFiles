@@ -40,6 +40,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
     { key: 'Ctrl + R', desc: isSpanish ? 'Abrir el renombrado múltiple' : 'Open batch rename' },
     { key: 'Espacio / F3', desc: isSpanish ? 'Mostrar u ocultar el panel de propiedades' : 'Show or hide the properties panel' },
     { key: 'Ctrl + L', desc: isSpanish ? 'Mostrar u ocultar el panel de ubicaciones' : 'Show or hide the locations panel' },
+    { key: 'Ctrl + J', desc: isSpanish ? 'Mostrar u ocultar el centro de operaciones' : 'Show or hide the operations center' },
     { key: 'F7', desc: isSpanish ? 'Crear una carpeta en la ruta actual' : 'Create a folder in the current path' },
     { key: 'Ctrl + F', desc: isSpanish ? 'Buscar por nombre, ruta o contenido disponible' : 'Search by name, path, or available content' },
     { key: 'Ctrl + K', desc: isSpanish ? 'Abrir la paleta de comandos y ubicaciones' : 'Open the command and location palette' },
