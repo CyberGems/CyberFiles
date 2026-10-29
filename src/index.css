@@ -747,7 +747,7 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-pane-status 
 
 @container cyberfiles-pane (max-width: 560px) {
   .cyberfiles-pane-status {
-    column-gap: 0.375rem;
+    grid-template-columns: minmax(0, 1fr) auto auto; column-gap: 0.375rem;
   }
 
   .cyberfiles-pane-status-summary {

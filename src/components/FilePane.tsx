@@ -3958,7 +3958,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {tabStripPosition === 'bottom' && tabStrip}
 
       {/* 6. Footer Status Bar with Mini Storage Distribution Strip */}
-      <div className="cyberfiles-pane-status grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-t border-neutral-800 bg-neutral-950 px-2.5 py-1 font-sans text-[10px] text-neutral-400 select-none">
+      <div className="cyberfiles-pane-status grid h-8 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-t border-neutral-800 bg-neutral-950 px-2.5 font-sans text-[10px] whitespace-nowrap text-neutral-400 select-none">
         <div className="cyberfiles-pane-status-summary flex min-w-0 items-center gap-2.5 overflow-hidden">
           <Tooltip label={t.pane.statusCountHint} placement="top">
             <button
@@ -3970,7 +3970,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                  keyboard, so a focused button here would leave typing dead. */
               onMouseDown={event => event.preventDefault()}
               onClick={openStatusCountMenu}
-              className="flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 -mx-1 text-neutral-400 outline-none transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 focus-visible:text-cyan-200"
+              className="flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded px-1 py-0.5 -mx-1 text-neutral-400 outline-none transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 focus-visible:text-cyan-200"
             >
               {itemCountLabel}
               <ChevronUp className="h-3 w-3 opacity-60" />
@@ -3993,7 +3993,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   type="button"
                   onMouseDown={event => event.preventDefault()}
                   onClick={() => { onSelectItems([], false, false, true); viewportRef.current?.focus(); }}
-                  className="cyberfiles-selected-status-compact shrink-0 rounded px-1 py-0.5 font-semibold text-cyan-200 outline-none transition-colors hover:bg-neutral-800/70 hover:text-cyan-100 focus-visible:text-cyan-100"
+                  className="cyberfiles-selected-status-compact shrink-0 whitespace-nowrap rounded px-1 py-0.5 font-semibold text-cyan-200 outline-none transition-colors hover:bg-neutral-800/70 hover:text-cyan-100 focus-visible:text-cyan-100"
                 >
                   {t.pane.selectedCountCompact.replace('{count}', String(selectedFiles.length))}
                 </button>
@@ -4001,7 +4001,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             </>
           ) : (
             <Tooltip label={t.pane.folderBytesHint} placement="top">
-              <span className="cursor-help rounded px-1 py-0.5 text-neutral-500 hidden sm:inline">
+              <span className="shrink-0 cursor-help whitespace-nowrap rounded px-1 py-0.5 text-neutral-500 hidden sm:inline">
                 ({formatFileSize(folderBytes)})
               </span>
             </Tooltip>
