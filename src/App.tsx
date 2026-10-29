@@ -6459,6 +6459,19 @@ export default function App() {
         hasFilter={Boolean(contextPaneTab.filterQuery)}
         onClose={() => setContextMenuPos(null)}
         onOpenLocation={item => { void handleNavigate(item.path, contextPane); }}
+        onOpenItem={item => handleItemDoubleClick(item, contextPane)}
+        onOpenInNewTab={item => {
+          if (item.isFolder) void handleNavigate(item.path, contextPane, false, true);
+        }}
+        onOpenProperties={item => {
+          if (isTauriDesktop()) {
+            void handleOpenWindowsProperties(item);
+          } else {
+            touchFileAccessed(item.id);
+            recordRecentFile(item);
+            setPreviewOpen(true);
+          }
+        }}
         onAddToQuickAccess={handleAddFolderToQuickAccess}
         onClearFilter={() => updatePaneTab(contextPane, tab => ({ ...tab, filterQuery: '' }))}
         onViewModeChange={mode => updatePaneTab(contextPane, tab => setTabViewMode(tab, mode))}
@@ -6493,7 +6506,18 @@ export default function App() {
         onSelectOnlyFolders={() => handleSelectCurrentFolderItemsByType(true)}
         hasSelectableItems={activeDisplayFiles.length > 0}
         hasFoldersInFolder={activeDisplayFiles.some(item => item.isFolder)}
-        onCopyPath={() => handleCopySelectedPaths(selectedItemsForDelete)}
+        onCopyPath={() => {
+          if (contextMenuPos?.targetItem) {
+            const targets = selectedItemsForDelete.some(item => item.id === contextMenuPos.targetItem?.id)
+              ? selectedItemsForDelete
+              : [contextMenuPos.targetItem];
+            void handleCopySelectedPaths(targets);
+            return;
+          }
+          if (contextPaneTab.currentPath && !contextPaneTab.currentPath.startsWith('::')) {
+            void handleCopyFolderPath(contextPaneTab.currentPath);
+          }
+        }}
         onCustomizeFolderIcon={item => handleOpenFolderIconModal({ path: item.path, name: item.name })}
         onUndo={() => {
           const latest = undoHistory[0];
