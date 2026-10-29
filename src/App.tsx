@@ -5203,6 +5203,7 @@ export default function App() {
   const handleBackgroundContextMenu = (event: React.MouseEvent, pane: 'left' | 'right') => {
     event.preventDefault();
     setActivePane(pane);
+    handleSelectItems(pane, []);
     setContextMenuPos({ x: event.clientX, y: event.clientY, targetItem: null, paneId: pane });
   };
 

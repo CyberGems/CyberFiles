@@ -2600,6 +2600,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   const handleViewportContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest('[data-file-item], button, input, select, textarea, a')) return;
+    clearPendingDeselection();
+    selectionAnchorsRef.current.delete(selectionContext);
     onBackgroundContextMenu(event, paneId);
   };
 

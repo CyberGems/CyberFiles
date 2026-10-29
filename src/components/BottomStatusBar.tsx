@@ -33,6 +33,7 @@ interface StatusTooltipRow {
 interface StatusTooltipCardProps {
   icon: React.ReactNode;
   title: string;
+  badge?: React.ReactNode;
   primary?: string;
   description?: string;
   rows?: StatusTooltipRow[];
@@ -53,17 +54,21 @@ const tooltipToneClasses: Record<NonNullable<StatusTooltipRow['tone']>, string> 
 const StatusTooltipCard: React.FC<StatusTooltipCardProps> = ({
   icon,
   title,
+  badge,
   primary,
   description,
   rows = [],
   progress,
 }) => (
   <div className="min-w-[15rem] max-w-[20rem] p-1 text-left">
-    <div className="flex items-center gap-2 text-cyan-300">
-      <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-cyan-400/25 bg-cyan-400/10">
-        {icon}
-      </span>
-      <span className="text-[12px] font-bold uppercase tracking-[0.08em] text-neutral-200">{title}</span>
+    <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-2 text-cyan-300">
+        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border border-cyan-400/25 bg-cyan-400/10">
+          {icon}
+        </span>
+        <span className="text-[12px] font-bold uppercase tracking-[0.08em] text-neutral-200">{title}</span>
+      </div>
+      {badge && <div className="flex-shrink-0">{badge}</div>}
     </div>
 
     {primary && <div className="mt-2 text-[22px] font-bold leading-none text-neutral-50">{primary}</div>}
@@ -324,11 +329,8 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
     <StatusTooltipCard
       icon={<Keyboard className="h-4 w-4" />}
       title={t.statusBar.quickShortcuts}
-      primary="F1"
+      badge={<kbd className="keyboard-hint font-bold text-cyan-300">F1</kbd>}
       description={t.statusBar.openShortcutsDescription}
-      rows={[
-        { label: language === 'es' ? 'Atajo rápido' : 'Quick shortcut', value: 'F1', tone: 'cyan' },
-      ]}
     />
   );
 
