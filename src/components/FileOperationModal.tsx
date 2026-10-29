@@ -7,11 +7,14 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  FilePlus2,
   FolderOpen,
+  FolderPlus,
   Gauge,
   ListChecks,
   MoveRight,
   Pause,
+  Pencil,
   Pin,
   Play,
   RotateCcw,
@@ -24,7 +27,7 @@ import { Tooltip } from './Tooltip';
 import type { NativeTransferProgress } from '../utils/nativeFileSystem';
 import type { ArchiveExtractionMode } from '../types';
 
-export type TransferKind = 'copy' | 'move' | 'extract' | 'compress' | 'delete' | 'recycle' | 'restore';
+export type TransferKind = 'copy' | 'move' | 'extract' | 'compress' | 'delete' | 'recycle' | 'restore' | 'create' | 'rename';
 export type TransferStatus = 'queued' | 'awaiting-password' | 'running' | 'paused' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 
 export interface TransferOperationView extends NativeTransferProgress {
@@ -119,6 +122,23 @@ export function operationActionLabel(operation: TransferOperationView, language:
       ? `Restaurando ${count} ${count === 1 ? 'elemento' : 'elementos'}`
       : `Restoring ${count} ${count === 1 ? 'item' : 'items'}`;
   }
+  if (operation.kind === 'create') {
+    if (operation.archiveName === 'folder') {
+      return spanish ? 'Carpeta creada' : 'Created folder';
+    }
+    if (operation.archiveName === 'shortcut') {
+      return spanish ? 'Acceso directo creado' : 'Created shortcut';
+    }
+    if (operation.archiveName === 'image') {
+      return spanish ? 'Imagen pegada' : 'Pasted image';
+    }
+    return spanish ? 'Archivo creado' : 'Created file';
+  }
+  if (operation.kind === 'rename') {
+    return spanish
+      ? `Renombrando ${count} ${count === 1 ? 'elemento' : 'elementos'}`
+      : `Renaming ${count} ${count === 1 ? 'item' : 'items'}`;
+  }
   if (operation.kind === 'copy') return spanish
     ? `Copiando ${count} ${count === 1 ? 'elemento' : 'elementos'}`
     : `Copying ${count} ${count === 1 ? 'item' : 'items'}`;
@@ -155,7 +175,7 @@ function formatRelativeTime(timestamp: number | null | undefined, language: 'en'
 }
 
 function formatDuration(startedAt: number | null | undefined, finishedAt: number | null | undefined, language: 'en' | 'es'): string {
-  if (!startedAt || !finishedAt || finishedAt <= startedAt) return '';
+  if (!startedAt || !finishedAt || finishedAt < startedAt) return '';
   const seconds = (finishedAt - startedAt) / 1000;
   if (seconds < 1) return '< 1s';
   if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -200,7 +220,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
   const pendingCount = operations.filter(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status)).length;
   const queuedOperations = operations.filter(operation => operation.status === 'queued');
   const passwordOperations = operations.filter(operation => operation.status === 'awaiting-password');
-  const recentOperations = operations.filter(operation => ['completed', 'failed', 'cancelled'].includes(operation.status)).slice(-15).reverse();
+  const recentOperations = operations.filter(operation => ['completed', 'failed', 'cancelled'].includes(operation.status)).slice(-30).reverse();
   const firstPasswordOperation = passwordOperations[0];
 
   const previousPendingCount = useRef(pendingCount);
@@ -429,6 +449,10 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                     <Trash2 className="h-4 w-4" />
                   ) : activeOperation.kind === 'restore' ? (
                     <RotateCcw className="h-4 w-4" />
+                  ) : activeOperation.kind === 'create' ? (
+                    activeOperation.archiveName === 'folder' ? <FolderPlus className="h-4 w-4" /> : <FilePlus2 className="h-4 w-4" />
+                  ) : activeOperation.kind === 'rename' ? (
+                    <Pencil className="h-4 w-4" />
                   ) : activeOperation.kind === 'copy' ? (
                     <Copy className="h-4 w-4" />
                   ) : (
@@ -685,6 +709,10 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                         <Trash2 className="h-4 w-4" />
                       ) : operation.kind === 'restore' ? (
                         <RotateCcw className="h-4 w-4" />
+                      ) : operation.kind === 'create' ? (
+                        operation.archiveName === 'folder' ? <FolderPlus className="h-4 w-4" /> : <FilePlus2 className="h-4 w-4" />
+                      ) : operation.kind === 'rename' ? (
+                        <Pencil className="h-4 w-4" />
                       ) : operation.kind === 'copy' ? (
                         <Copy className="h-4 w-4" />
                       ) : (
@@ -697,7 +725,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                           ? sourceLabel(operation, language)
                           : operation.sourcePaths.length > 1
                             ? `${operation.sourcePaths.length} ${isSpanish ? 'elementos' : 'items'}`
-                            : displayPath(operation.sourcePaths[0])}
+                            : displayPath(operation.sourcePaths[0], language)}
                       </div>
                       <div className="truncate font-mono text-[11px] text-neutral-500">
                         {operation.targetPath
@@ -746,9 +774,11 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                   const isCancelled = operation.status === 'cancelled';
                   const targetToNavigate = operation.kind === 'recycle'
                     ? '::recycle-bin::'
-                    : operation.kind === 'compress'
+                    : operation.kind === 'compress' || operation.kind === 'create' || operation.kind === 'rename'
                       ? (operation.resultPath || operation.targetPath)
-                      : operation.targetPath;
+                      : operation.kind === 'restore'
+                        ? (operation.completedPaths?.[0] || operation.targetPath)
+                        : operation.targetPath;
                   const relativeTime = formatRelativeTime(operation.finishedAt, language);
                   const duration = formatDuration(operation.startedAt, operation.finishedAt, language);
                   const isExpandedFailures = expandedFailuresJobId === operation.jobId;
@@ -778,11 +808,13 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                             <span className="truncate text-xs font-medium text-neutral-200">
                               {operation.kind === 'compress'
                                 ? operation.resultPath ?? sourceLabel(operation, language)
-                                : operation.kind === 'delete' || operation.kind === 'recycle' || operation.kind === 'restore'
-                                  ? `${operationActionLabel(operation, language)}${operation.sourcePaths.length === 1 && operation.sourcePaths[0] ? `: ${displayPath(operation.sourcePaths[0])}` : ''}`
-                                  : operation.sourcePaths.length > 1
-                                    ? `${operationActionLabel(operation, language)} (${operation.sourcePaths.length})`
-                                    : `${operationActionLabel(operation, language)}: ${displayPath(operation.sourcePaths[0])}`}
+                                : operation.kind === 'rename' && operation.sourcePaths.length === 1 && operation.resultPath
+                                  ? `${isSpanish ? 'Renombrado' : 'Renamed'}: ${operation.sourcePaths[0].split(/[\\/]/).pop() ?? operation.sourcePaths[0]} → ${operation.resultPath.split(/[\\/]/).pop() ?? operation.resultPath}`
+                                  : operation.kind === 'delete' || operation.kind === 'recycle' || operation.kind === 'restore' || operation.kind === 'create' || operation.kind === 'rename'
+                                    ? `${operationActionLabel(operation, language)}${operation.sourcePaths.length === 1 && operation.sourcePaths[0] && operation.sourcePaths[0] !== '::recycle-bin::' ? `: ${displayPath(operation.sourcePaths[0], language)}` : ''}`
+                                    : operation.sourcePaths.length > 1
+                                      ? `${operationActionLabel(operation, language)} (${operation.sourcePaths.length})`
+                                      : `${operationActionLabel(operation, language)}: ${displayPath(operation.sourcePaths[0], language)}`}
                             </span>
                             {operation.totalBytes > 0 && (
                               <span className="shrink-0 font-mono text-[10px] text-neutral-400">

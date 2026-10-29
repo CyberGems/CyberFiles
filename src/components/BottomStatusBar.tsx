@@ -254,9 +254,13 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
             ? (language === 'es' ? 'A papelera' : 'Recycling')
             : activeOperation.kind === 'restore'
               ? (language === 'es' ? 'Restaurando' : 'Restoring')
-              : activeOperation.kind === 'copy'
-                ? (language === 'es' ? 'Copiando' : 'Copying')
-                : (language === 'es' ? 'Moviendo' : 'Moving')
+              : activeOperation.kind === 'create'
+                ? (language === 'es' ? 'Creando' : 'Creating')
+                : activeOperation.kind === 'rename'
+                  ? (language === 'es' ? 'Renombrando' : 'Renaming')
+                  : activeOperation.kind === 'copy'
+                    ? (language === 'es' ? 'Copiando' : 'Copying')
+                    : (language === 'es' ? 'Moviendo' : 'Moving')
     : '';
 
   const operationsTooltip = (
