@@ -1,15 +1,15 @@
 {
-  "version": "0.6.2",
-  "notes": "Fixes frameless window minimization and taskbar persistence, repairs window hiding on maximize or restore, aligns sidebar collapsible section header hover colors with theme tokens, and ensures reliable background system tray icon registration.",
-  "pub_date": "2026-10-29T10:55:25Z",
+  "version": "0.6.3",
+  "notes": "Accelerates file search with zero typing latency and windowed results, introduces persistent search preferences, integrates Operations Center into the status bar with Ctrl+J tracking, and modernizes context menus with Windows 11 quick-action header buttons.",
+  "pub_date": "2026-10-29T22:25:55Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSmNmOTFONDVjZ3I5OGZTMXByQ1RHNHNnTUpudHBWcDhHSjFBbzMzdGJoM0tTRS85clNJZzlEdTA4eE5CalA3NmtOR2RXN0FEbkl2aXhBQUJrRkwvV2ZVOE85NVZIZlFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjcxMzIxCWZpbGU6Q3liZXJGaWxlc18wLjYuMl94NjQtc2V0dXAuZXhlCXZlcnNpb246MC42LjIKQUxQNCtIZ0t3L0JhVzFsSVFYK1BwaTA4M2RQYzFsdityUkd3QXBZblJIZ2NNUDBjNlNVbk95a3dFR1FXMytPaHlnR2oyLy9jMmlJNkYxbjZHZTFqQ0E9PQo=",
-      "url": "https://github.com/CyberGems/CyberFiles/releases/download/v0.6.2/CyberFiles_0.6.2_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSmNmOTFONDVjZ3NIWWlqZTk2dHVVYzJRWU5WaG9aYlZhUllINnhuWVhKRWo0VzFmZ0NTa0RyZElDb1B2eDBLYnZYVitLUmFWSm5kMitrTVg1TEczT3dYY2JlS2ZHL2dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMzEyNzM2CWZpbGU6Q3liZXJGaWxlc18wLjYuM194NjQtc2V0dXAuZXhlCXZlcnNpb246MC42LjMKVGdKc2xnZTNBYk9HTG1raWwvQWtGbks0RitQYWprTkxKVTFxeEVmQ3JkdHBWTjJ1US9MS3pTdk51TWs3SXFVS2V6YktFQ3QwR3lvR3Q3Z2cwQXRmRFE9PQo=",
+      "url": "https://github.com/CyberGems/CyberFiles/releases/download/v0.6.3/CyberFiles_0.6.3_x64-setup.exe"
     },
     "windows-x86_64-nsis": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSmNmOTFONDVjZ3I5OGZTMXByQ1RHNHNnTUpudHBWcDhHSjFBbzMzdGJoM0tTRS85clNJZzlEdTA4eE5CalA3NmtOR2RXN0FEbkl2aXhBQUJrRkwvV2ZVOE85NVZIZlFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMjcxMzIxCWZpbGU6Q3liZXJGaWxlc18wLjYuMl94NjQtc2V0dXAuZXhlCXZlcnNpb246MC42LjIKQUxQNCtIZ0t3L0JhVzFsSVFYK1BwaTA4M2RQYzFsdityUkd3QXBZblJIZ2NNUDBjNlNVbk95a3dFR1FXMytPaHlnR2oyLy9jMmlJNkYxbjZHZTFqQ0E9PQo=",
-      "url": "https://github.com/CyberGems/CyberFiles/releases/download/v0.6.2/CyberFiles_0.6.2_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSmNmOTFONDVjZ3NIWWlqZTk2dHVVYzJRWU5WaG9aYlZhUllINnhuWVhKRWo0VzFmZ0NTa0RyZElDb1B2eDBLYnZYVitLUmFWSm5kMitrTVg1TEczT3dYY2JlS2ZHL2dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMzEyNzM2CWZpbGU6Q3liZXJGaWxlc18wLjYuM194NjQtc2V0dXAuZXhlCXZlcnNpb246MC42LjMKVGdKc2xnZTNBYk9HTG1raWwvQWtGbks0RitQYWprTkxKVTFxeEVmQ3JkdHBWTjJ1US9MS3pTdk51TWs3SXFVS2V6YktFQ3QwR3lvR3Q3Z2cwQXRmRFE9PQo=",
+      "url": "https://github.com/CyberGems/CyberFiles/releases/download/v0.6.3/CyberFiles_0.6.3_x64-setup.exe"
     }
   }
 }
