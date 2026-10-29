@@ -29,6 +29,28 @@ import { searchFileSystem, SearchOptions } from '../utils/searchIndex';
 import { isTauriDesktop, listNativeFlatDirectory } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
+import { DialogButton } from './DialogButton';
+
+export const PRESERVE_SEARCH_STORAGE_KEY = 'cyberfiles_preserve_search_preference';
+export type PreserveSearchPreference = 'ask' | 'keep' | 'discard';
+
+export function readPreserveSearchPreference(): PreserveSearchPreference {
+  try {
+    const val = localStorage.getItem(PRESERVE_SEARCH_STORAGE_KEY);
+    if (val === 'keep' || val === 'discard') return val;
+  } catch {}
+  return 'ask';
+}
+
+export function writePreserveSearchPreference(preference: PreserveSearchPreference): void {
+  try {
+    if (preference === 'ask') {
+      localStorage.removeItem(PRESERVE_SEARCH_STORAGE_KEY);
+    } else {
+      localStorage.setItem(PRESERVE_SEARCH_STORAGE_KEY, preference);
+    }
+  } catch {}
+}
 
 const SEARCH_HISTORY_STORAGE_KEY = 'cyberfiles_find_files_history_v1';
 const SEARCH_HISTORY_LIMIT = 20;
@@ -73,6 +95,7 @@ interface FindFilesModalProps {
   onClose: () => void;
   allFiles: FileItem[];
   currentPath: string;
+  currentFolderFiles?: FileItem[];
   dateFormat: DateFormatMode;
   onNavigateToFile: (file: FileItem) => void;
   onPreviewFile?: (file: FileItem) => void;
@@ -83,6 +106,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
   onClose,
   allFiles,
   currentPath,
+  currentFolderFiles,
   dateFormat,
   onNavigateToFile,
   onPreviewFile,
@@ -93,7 +117,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
   const [searchContent, setSearchContent] = useState(true);
   const [useRegex, setUseRegex] = useState(false);
   const [caseSensitive, setCaseSensitive] = useState(false);
-  const [scope, setScope] = useState<'all' | 'current'>('all');
+  const [scope, setScope] = useState<'all' | 'current'>('current');
   const [sizeFilter, setSizeFilter] = useState<'all' | 'tiny' | 'small' | 'medium' | 'large' | 'huge'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'code' | 'text' | 'image' | 'audio' | 'video' | 'executable' | 'folder' | 'document'>('all');
   const [extensionFilter, setExtensionFilter] = useState('');
@@ -103,31 +127,118 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
   const [isSearchHistoryOpen, setIsSearchHistoryOpen] = useState(false);
   const [diskFiles, setDiskFiles] = useState<FileItem[]>([]);
   const [isScanningDisk, setIsScanningDisk] = useState(false);
+  const [showPreservePrompt, setShowPreservePrompt] = useState(false);
+  const [rememberPreserveDecision, setRememberPreserveDecision] = useState(false);
   const scanGenerationRef = useRef(0);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  const isRealFolder = Boolean(
+    currentPath &&
+    !currentPath.startsWith('::') &&
+    currentPath !== 'system://home' &&
+    currentPath !== 'system://recycle-bin' &&
+    currentPath !== 'system://recent'
+  );
+
+  const currentFolderName = useMemo(() => {
+    if (!currentPath) return '';
+    const clean = currentPath.replace(/[\\/]+$/, '');
+    const parts = clean.split(/[\\/]/);
+    return parts[parts.length - 1] || currentPath;
+  }, [currentPath]);
+
+  const currentFolderCount = useMemo(() => {
+    if (diskFiles.length > 0) return diskFiles.length;
+    if (currentFolderFiles) return currentFolderFiles.length;
+    if (!currentPath) return 0;
+    const lowerCurrent = currentPath.toLowerCase().replace(/[\\/]+$/, '');
+    return allFiles.filter(f => {
+      const parent = f.path.replace(/[\\/][^\\/]+$/, '').toLowerCase();
+      return parent === lowerCurrent;
+    }).length;
+  }, [diskFiles.length, currentFolderFiles, allFiles, currentPath]);
+
+  const resetSearchState = () => {
+    setIsSearchHistoryOpen(false);
+    setQuery('');
+    setSearchContent(true);
+    setUseRegex(false);
+    setCaseSensitive(false);
+    setScope(isRealFolder ? 'current' : 'all');
+    setSizeFilter('all');
+    setTypeFilter('all');
+    setExtensionFilter('');
+    setSelectedIndex(0);
+    setCopiedId(null);
+    setDiskFiles([]);
+    setIsScanningDisk(false);
+    setShowPreservePrompt(false);
+    setRememberPreserveDecision(false);
+  };
+
+  const rememberCurrentSearch = () => {
+    const normalized = query.trim();
+    if (normalized) {
+      setSearchHistory((history) => addSearchHistoryEntry(history, normalized));
+    }
+  };
+
+  const handleRequestClose = () => {
+    if (showPreservePrompt) {
+      setShowPreservePrompt(false);
+      return;
+    }
+    if (isSearchHistoryOpen) {
+      setIsSearchHistoryOpen(false);
+      return;
+    }
+    const hasActiveSearch = query.trim().length > 0 || sizeFilter !== 'all' || typeFilter !== 'all' || extensionFilter.trim().length > 0;
+    if (!hasActiveSearch) {
+      resetSearchState();
+      onClose();
+      return;
+    }
+
+    const savedPreference = readPreserveSearchPreference();
+    if (savedPreference === 'keep') {
+      rememberCurrentSearch();
+      onClose();
+      return;
+    }
+    if (savedPreference === 'discard') {
+      rememberCurrentSearch();
+      resetSearchState();
+      onClose();
+      return;
+    }
+
+    setShowPreservePrompt(true);
+  };
+
+  const handlePreserveDecision = (choice: 'keep' | 'discard') => {
+    if (rememberPreserveDecision) {
+      writePreserveSearchPreference(choice);
+    }
+    setShowPreservePrompt(false);
+    rememberCurrentSearch();
+    if (choice === 'discard') {
+      resetSearchState();
+    }
+    onClose();
+  };
+
   useEffect(() => {
     if (isOpen) {
+      setShowPreservePrompt(false);
+      setRememberPreserveDecision(false);
+      if (!query.trim()) {
+        setScope(isRealFolder ? 'current' : 'all');
+      }
       setTimeout(() => {
         searchInputRef.current?.focus();
         searchInputRef.current?.select();
       }, 50);
-    } else {
-      setSearchHistory((history) => addSearchHistoryEntry(history, query));
-      setIsSearchHistoryOpen(false);
-      setQuery('');
-      setSearchContent(true);
-      setUseRegex(false);
-      setCaseSensitive(false);
-      setScope('all');
-      setSizeFilter('all');
-      setTypeFilter('all');
-      setExtensionFilter('');
-      setSelectedIndex(0);
-      setCopiedId(null);
-      setDiskFiles([]);
-      setIsScanningDisk(false);
     }
   }, [isOpen]);
 
@@ -214,6 +325,14 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
 
   // Keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (showPreservePrompt) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowPreservePrompt(false);
+      }
+      return;
+    }
+
     const target = e.target as HTMLElement;
     if (target.closest('[data-search-history]')) {
       if (e.key === 'Escape') {
@@ -224,8 +343,8 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
     }
 
     if (e.key === 'Escape') {
-      if (isSearchHistoryOpen) setIsSearchHistoryOpen(false);
-      else onClose();
+      e.preventDefault();
+      handleRequestClose();
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelectedIndex((prev) => Math.min(prev + 1, Math.max(0, searchResults.matches.length - 1)));
@@ -259,12 +378,12 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
     setSearchHistory((history) => history.filter((entry) => entry.toLowerCase() !== value.toLowerCase()));
   };
 
-  const rememberCurrentSearch = () => {
-    setSearchHistory((history) => addSearchHistoryEntry(history, query));
-  };
-
   const handleNavigateToResult = (file: FileItem) => {
     rememberCurrentSearch();
+    const savedPreference = readPreserveSearchPreference();
+    if (savedPreference === 'discard') {
+      resetSearchState();
+    }
     onNavigateToFile(file);
     onClose();
   };
@@ -312,9 +431,10 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
     <div 
       className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
       onKeyDown={handleKeyDown}
+      onClick={handleRequestClose}
     >
       <div 
-        className="w-full max-w-4xl max-h-[85vh] bg-neutral-900 border border-neutral-700/80 rounded-xl shadow-2xl flex flex-col overflow-hidden text-neutral-200"
+        className="relative w-full max-w-4xl max-h-[85vh] bg-neutral-900 border border-neutral-700/80 rounded-xl shadow-2xl flex flex-col overflow-hidden text-neutral-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Bar */}
@@ -337,8 +457,10 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
             </div>
           </div>
           <button 
-            onClick={onClose}
-            className="p-1 rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800 transition-colors"
+            type="button"
+            onClick={handleRequestClose}
+            className="p-1 rounded-md text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800 transition-colors cursor-pointer"
+            aria-label={t.core.cancel}
           >
             <X className="w-4 h-4" />
           </button>
@@ -465,28 +587,38 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
             {/* Scope Toggle */}
             <div className="flex items-center gap-1.5 bg-neutral-950 p-1 rounded-md border border-neutral-800">
-              <button
-                onClick={() => setScope('all')}
-                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1 ${
-                  scope === 'all' 
-                    ? 'bg-neutral-800 text-cyan-300 shadow-sm' 
-                    : 'text-neutral-400 hover:text-neutral-200'
-                }`}
-              >
-                <HardDrive className="w-3 h-3 text-cyan-400" />
-                <span>{t.findFiles.allLoadedItems.replace('{count}', String(allFiles.length))}</span>
-              </button>
-              <button
-                onClick={() => setScope('current')}
-                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1 ${
-                  scope === 'current' 
-                    ? 'bg-neutral-800 text-cyan-300 shadow-sm' 
-                    : 'text-neutral-400 hover:text-neutral-200'
-                }`}
-              >
-                <Folder className="w-3 h-3 text-amber-400" />
-                <span className="truncate max-w-[180px]">{t.findFiles.currentFolder.replace('{name}', currentPath.split('\\').pop() || currentPath)}</span>
-              </button>
+              <Tooltip label={t.findFiles.currentFolderTooltip} placement="top">
+                <button
+                  type="button"
+                  onClick={() => setScope('current')}
+                  className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
+                    scope === 'current' 
+                      ? 'bg-neutral-800 text-cyan-300 shadow-sm' 
+                      : 'text-neutral-400 hover:text-neutral-200'
+                  }`}
+                >
+                  <Folder className="w-3 h-3 text-amber-400 shrink-0" />
+                  <span className="truncate max-w-[200px]">
+                    {t.findFiles.currentFolder
+                      .replace('{name}', currentFolderName || currentPath)
+                      .replace('{count}', String(currentFolderCount))}
+                  </span>
+                </button>
+              </Tooltip>
+              <Tooltip label={t.findFiles.allTabsTooltip} placement="top">
+                <button
+                  type="button"
+                  onClick={() => setScope('all')}
+                  className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
+                    scope === 'all' 
+                      ? 'bg-neutral-800 text-cyan-300 shadow-sm' 
+                      : 'text-neutral-400 hover:text-neutral-200'
+                  }`}
+                >
+                  <Layers className="w-3 h-3 text-cyan-400 shrink-0" />
+                  <span>{t.findFiles.allTabs.replace('{count}', String(allFiles.length))}</span>
+                </button>
+              </Tooltip>
               {isScanningDisk && (
                 <span className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] text-cyan-400 font-medium">
                   <LoaderCircle className="w-3 h-3 animate-spin" />
@@ -707,6 +839,71 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
             {t.findFiles.clickResultToLocate}
           </div>
         </div>
+
+        {/* Confirmation overlay to preserve search on close */}
+        {showPreservePrompt && (
+          <div 
+            className="absolute inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div 
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="preserve-search-title"
+              className="w-full max-w-md bg-neutral-900 border border-neutral-700/90 rounded-xl shadow-2xl overflow-hidden p-5 space-y-4"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-cyan-950/80 border border-cyan-800/80 flex items-center justify-center text-cyan-400 shrink-0 mt-0.5">
+                  <Search className="w-4 h-4" />
+                </div>
+                <div className="space-y-1">
+                  <h3 id="preserve-search-title" className="text-sm font-semibold text-neutral-100">
+                    {t.findFiles.preserveSearchTitle}
+                  </h3>
+                  <p className="text-xs leading-relaxed text-neutral-400">
+                    {t.findFiles.preserveSearchDescription}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 p-3 text-xs">
+                <label className="flex items-center gap-2.5 cursor-pointer text-neutral-300 hover:text-neutral-100 select-none">
+                  <input
+                    type="checkbox"
+                    checked={rememberPreserveDecision}
+                    onChange={(e) => setRememberPreserveDecision(e.target.checked)}
+                    className="h-4 w-4 rounded border-neutral-700 bg-neutral-900 accent-cyan-400 focus:ring-cyan-400 cursor-pointer"
+                  />
+                  <span>{t.findFiles.rememberDecision}</span>
+                </label>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <DialogButton
+                  size="compact"
+                  variant="secondary"
+                  onClick={() => setShowPreservePrompt(false)}
+                >
+                  {t.core.cancel}
+                </DialogButton>
+                <DialogButton
+                  size="compact"
+                  variant="secondary"
+                  onClick={() => handlePreserveDecision('discard')}
+                >
+                  {t.findFiles.preserveSearchDiscard}
+                </DialogButton>
+                <DialogButton
+                  size="compact"
+                  variant="primary"
+                  onClick={() => handlePreserveDecision('keep')}
+                >
+                  {t.findFiles.preserveSearchKeep}
+                </DialogButton>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

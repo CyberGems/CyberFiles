@@ -6644,6 +6644,7 @@ export default function App() {
             onClose={() => setIsSearchOpen(false)}
             allFiles={allFiles}
             currentPath={currentTab.currentPath}
+            currentFolderFiles={activeDisplayFiles}
             dateFormat={dateFormat}
             onNavigateToFile={handleNavigateToFile}
             onPreviewFile={handlePreviewFileFromSearch}

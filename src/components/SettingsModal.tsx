@@ -16,6 +16,7 @@ import { resetLocalPreferences } from '../utils/factoryReset';
 import { ConfirmActionModal } from './ConfirmActionModal';
 import { ColorValueEditor } from './ColorValueEditor';
 import { TOOLBAR_LABEL_POSITIONS, type ToolbarLabelPosition } from './CommandBarControl';
+import { readPreserveSearchPreference, writePreserveSearchPreference, type PreserveSearchPreference } from './FindFilesModal';
 
 interface GlobalShortcutSettingsState {
   enabled: boolean;
@@ -229,6 +230,7 @@ export function SettingsModal({
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [resetError, setResetError] = useState(false);
+  const [preserveSearchPref, setPreserveSearchPref] = useState<PreserveSearchPreference>(readPreserveSearchPreference);
   const searchActive = settingsSearch.trim().length > 0;
   const settingsTabLabels: Record<SettingsTab, string> = {
     general: t.settings.generalTab,
@@ -237,6 +239,11 @@ export function SettingsModal({
     folders: t.settings.foldersTab,
     shortcuts: t.settings.shortcutsTab,
   };
+  useEffect(() => {
+    if (isOpen) {
+      setPreserveSearchPref(readPreserveSearchPreference());
+    }
+  }, [isOpen]);
   useEffect(() => {
     if (!isOpen || focusTabSettingsRequest <= lastFocusTabSettingsRequest.current) return;
     lastFocusTabSettingsRequest.current = focusTabSettingsRequest;
@@ -812,6 +819,40 @@ export function SettingsModal({
                     <span className="block truncate font-sans text-[10px] tabular-nums text-neutral-300">{formatDateTimeForDisplay(Date.now(), undefined, option.id, language)}</span>
                     <span className="mt-1 block truncate text-[9px] text-neutral-500">{t.settings.dateFormatOlderPreview}</span>
                     <span className="block truncate font-sans text-[10px] tabular-nums text-neutral-300">{formatDateTimeForDisplay(new Date(2021, 11, 31, 14, 30).getTime(), undefined, option.id, language)}</span>
+                  </button>
+                </Tooltip>
+              ))}
+            </div>
+          </div>
+
+          <div data-settings-search-unit className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-3">
+            <div className="mb-2">
+              <div className="text-xs font-medium text-neutral-200">{t.settings.preserveSearchOnClose}</div>
+              <p className="mt-1 text-[11px] leading-relaxed text-neutral-400">{t.settings.preserveSearchOnCloseDescription}</p>
+            </div>
+            <div role="radiogroup" aria-label={t.settings.preserveSearchOnClose} className="grid gap-2 sm:grid-cols-3">
+              {([
+                { id: 'ask', label: t.settings.preserveSearchAsk, description: t.settings.preserveSearchAskDescription },
+                { id: 'keep', label: t.settings.preserveSearchKeep, description: t.settings.preserveSearchKeepDescription },
+                { id: 'discard', label: t.settings.preserveSearchDiscard, description: t.settings.preserveSearchDiscardDescription },
+              ] as const).map(option => (
+                <Tooltip key={option.id} label={option.description} placement="top">
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={preserveSearchPref === option.id}
+                    onClick={() => {
+                      setPreserveSearchPref(option.id);
+                      writePreserveSearchPreference(option.id);
+                    }}
+                    className={`min-w-0 rounded-md border px-2.5 py-2 text-left transition-colors cursor-pointer ${
+                      preserveSearchPref === option.id
+                        ? 'border-cyan-500/70 bg-cyan-950/30 text-cyan-100'
+                        : 'border-neutral-700 bg-neutral-900/60 text-neutral-300 hover:border-neutral-600 hover:bg-neutral-800/70'
+                    }`}
+                  >
+                    <span className="block text-[11px] font-semibold">{option.label}</span>
+                    <span className="mt-1 block text-[10px] leading-relaxed text-neutral-400">{option.description}</span>
                   </button>
                 </Tooltip>
               ))}
