@@ -173,6 +173,7 @@ fn is_portable_build() -> bool {
 
 #[tauri::command]
 fn show_main_window(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+    let _ = ensure_tray_icon_registered(&app);
     let state_path = window_state_path(&app)?;
     let restore_maximized = fs::read(&state_path)
         .ok()
@@ -191,6 +192,7 @@ fn show_main_window(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Resu
 
 #[tauri::command]
 fn hide_main_window(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+    let _ = ensure_tray_icon_registered(&app);
     if let Ok(path) = window_state_path(&app) {
         let _ = save_window_state(&window, &path);
     }
@@ -468,6 +470,7 @@ fn start_single_instance_listener(app: tauri::AppHandle, portable: bool) {
                 if read_success != 0 && bytes_read > 0 {
                     if let Ok(text) = std::str::from_utf8(&buffer[..bytes_read as usize]) {
                         let message = text.trim();
+                        let _ = ensure_tray_icon_registered(&app);
                         if let Some(main_window) = app.get_webview_window("main") {
                             let _ = main_window.unminimize();
                             let _ = main_window.show();
@@ -4118,6 +4121,104 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
     Ok(())
 }
 
+fn format_tray_tooltip(shortcut: Option<&str>) -> String {
+    shortcut.map_or_else(
+        || "CyberFiles".to_string(),
+        |key| format!("CyberFiles · {key}"),
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn re_register_windows_tray_icon_window() {
+    use windows_sys::Win32::{
+        System::Threading::GetCurrentProcessId,
+        UI::WindowsAndMessaging::{
+            FindWindowExW, GetWindowThreadProcessId, RegisterWindowMessageW, SendMessageW,
+        },
+    };
+
+    let class_name: Vec<u16> = "tray_icon_app".encode_utf16().chain(Some(0)).collect();
+    let msg_name: Vec<u16> = "TaskbarCreated".encode_utf16().chain(Some(0)).collect();
+    let taskbar_created_msg = unsafe { RegisterWindowMessageW(msg_name.as_ptr()) };
+    if taskbar_created_msg == 0 {
+        return;
+    }
+
+    let current_pid = unsafe { GetCurrentProcessId() };
+    let mut hwnd = std::ptr::null_mut();
+    loop {
+        hwnd = unsafe {
+            FindWindowExW(
+                std::ptr::null_mut(),
+                hwnd,
+                class_name.as_ptr(),
+                std::ptr::null(),
+            )
+        };
+        if hwnd.is_null() {
+            break;
+        }
+        let mut window_pid = 0u32;
+        unsafe {
+            GetWindowThreadProcessId(hwnd, &mut window_pid);
+        }
+        if window_pid == current_pid {
+            unsafe {
+                SendMessageW(hwnd, taskbar_created_msg, 0, 0);
+            }
+        }
+    }
+}
+
+/// Verifies that the tray icon is registered with the OS notification area and
+/// visible. When Windows boots and launches CyberFiles via `--startup`, Explorer
+/// can time out `Shell_NotifyIconW(NIM_ADD)` after `TaskbarCreated` has already
+/// been broadcast; `tray-icon` ignores that initial failure and never retries on
+/// its own. Probing `set_tooltip` (`NIM_MODIFY`) detects an unregistered icon and
+/// triggers the tray window's `TaskbarCreated` handler to re-add it.
+fn ensure_tray_icon_registered(app: &tauri::AppHandle) -> bool {
+    let Some(state) = app.try_state::<TrayMenuState>() else {
+        return false;
+    };
+    let tooltip = state
+        .shortcut_hint
+        .lock()
+        .ok()
+        .map(|hint| format_tray_tooltip(hint.as_deref()))
+        .unwrap_or_else(|| "CyberFiles".to_string());
+    let Some(tray) = state.tray.lock().ok().and_then(|guard| guard.clone()) else {
+        return false;
+    };
+
+    let _ = tray.set_visible(true);
+    if tray.set_tooltip(Some(tooltip.clone())).is_ok() {
+        return true;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        re_register_windows_tray_icon_window();
+        let _ = tray.set_visible(true);
+        if tray.set_tooltip(Some(tooltip)).is_ok() {
+            return true;
+        }
+    }
+
+    false
+}
+
+#[cfg(target_os = "windows")]
+fn schedule_tray_icon_registration_retries(app: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        for delay_ms in [500u64, 1500, 3000, 6000, 12000, 25000] {
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+            if ensure_tray_icon_registered(&app) {
+                break;
+            }
+        }
+    });
+}
+
 fn update_tray_hotkey_hint(app: &tauri::AppHandle, shortcut: Option<&str>) -> Result<(), String> {
     let Some(state) = app.try_state::<TrayMenuState>() else {
         return Ok(());
@@ -4127,22 +4228,12 @@ fn update_tray_hotkey_hint(app: &tauri::AppHandle, shortcut: Option<&str>) -> Re
         .lock()
         .map_err(|error| error.to_string())? = shortcut.map(str::to_string);
 
-    if let Some(tray) = state
-        .tray
-        .lock()
-        .map_err(|error| error.to_string())?
-        .as_ref()
-    {
-        let tooltip = shortcut.map_or_else(
-            || "CyberFiles".to_string(),
-            |key| format!("CyberFiles · {key}"),
-        );
-        let _ = tray.set_tooltip(Some(tooltip));
-    }
+    let _ = ensure_tray_icon_registered(app);
     Ok(())
 }
 
 fn toggle_main_window(app: &tauri::AppHandle) {
+    let _ = ensure_tray_icon_registered(app);
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
@@ -6292,13 +6383,34 @@ fn main() {
                 start_single_instance_listener(app.handle().clone(), portable);
             }
 
+            let mut initial_shortcut_hint: Option<String> = None;
+            if shortcut_preferences_for_setup.enabled {
+                match app
+                    .global_shortcut()
+                    .register(shortcut_preferences_for_setup.shortcut.as_str())
+                {
+                    Ok(()) => {
+                        if let Some(shortcut_state) = app.try_state::<GlobalShortcutState>() {
+                            if let Ok(mut registered) = shortcut_state.registered.lock() {
+                                *registered = Some(shortcut_preferences_for_setup.shortcut.clone());
+                            }
+                        }
+                        initial_shortcut_hint = Some(shortcut_preferences_for_setup.shortcut.clone());
+                    }
+                    Err(error) => {
+                        eprintln!("Could not register the saved global shortcut: {error}");
+                    }
+                }
+            }
+
+            let initial_tooltip = format_tray_tooltip(initial_shortcut_hint.as_deref());
             let tray_icon = TrayIconBuilder::with_id("cyberfiles-tray")
                 .icon(
                     app.default_window_icon()
                         .ok_or("CyberFiles tray icon is missing")?
                         .clone(),
                 )
-                .tooltip("CyberFiles")
+                .tooltip(&initial_tooltip)
                 .show_menu_on_left_click(false)
                 .on_tray_icon_event(move |tray, event| match event {
                     TrayIconEvent::Click {
@@ -6320,32 +6432,17 @@ fn main() {
                 })
                 .build(app)?;
             if let Some(tray_state) = app.try_state::<TrayMenuState>() {
+                if let Ok(mut hint) = tray_state.shortcut_hint.lock() {
+                    *hint = initial_shortcut_hint;
+                }
                 if let Ok(mut tray) = tray_state.tray.lock() {
                     *tray = Some(tray_icon);
                 }
             }
 
-            if shortcut_preferences_for_setup.enabled {
-                match app
-                    .global_shortcut()
-                    .register(shortcut_preferences_for_setup.shortcut.as_str())
-                {
-                    Ok(()) => {
-                        if let Some(shortcut_state) = app.try_state::<GlobalShortcutState>() {
-                            if let Ok(mut registered) = shortcut_state.registered.lock() {
-                                *registered = Some(shortcut_preferences_for_setup.shortcut.clone());
-                            }
-                        }
-                        update_tray_hotkey_hint(
-                            app.handle(),
-                            Some(shortcut_preferences_for_setup.shortcut.as_str()),
-                        )?;
-                    }
-                    Err(error) => {
-                        eprintln!("Could not register the saved global shortcut: {error}");
-                    }
-                }
-            }
+            let _ = ensure_tray_icon_registered(app.handle());
+            #[cfg(target_os = "windows")]
+            schedule_tray_icon_registration_retries(app.handle().clone());
 
             let main_window = app
                 .get_webview_window("main")
@@ -6356,10 +6453,18 @@ fn main() {
             let state_path = window_state_path(app)?;
             restore_window_state(&main_window, &state_path)?;
             let window_for_close = main_window.clone();
-            main_window.on_window_event(move |event| {
-                if let tauri::WindowEvent::CloseRequested { .. } = event {
+            let app_for_window_event = app.handle().clone();
+            main_window.on_window_event(move |event| match event {
+                tauri::WindowEvent::CloseRequested { .. } => {
+                    let _ = ensure_tray_icon_registered(&app_for_window_event);
                     let _ = save_window_state(&window_for_close, &state_path);
                 }
+                tauri::WindowEvent::Resized(_) => {
+                    if window_for_close.is_minimized().unwrap_or(false) {
+                        let _ = ensure_tray_icon_registered(&app_for_window_event);
+                    }
+                }
+                _ => {}
             });
 
             // The custom tray menu closes as soon as it loses focus, the same
