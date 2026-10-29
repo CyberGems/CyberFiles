@@ -3665,7 +3665,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       <div 
         ref={viewportRef}
         data-cyberfiles-pane-viewport={paneId}
-        className={`cyberfiles-file-viewport relative min-h-0 w-full flex-1 py-0.5 select-none focus:outline-none ${effectiveViewMode === 'compact' ? 'overflow-x-auto overflow-y-hidden' : 'overflow-x-hidden overflow-y-auto'} ${marqueeBounds ? 'cursor-crosshair' : ''}`}
+        className={`cyberfiles-file-viewport relative min-h-0 w-full flex-1 py-0.5 select-none focus:outline-none ${effectiveViewMode === 'compact' ? 'overflow-x-auto overflow-y-hidden' : 'overflow-x-hidden overflow-y-auto'}`}
         tabIndex={0}
         onWheel={event => {
           if (effectiveViewMode !== 'compact' || event.deltaY === 0 || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
