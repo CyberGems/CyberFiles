@@ -245,7 +245,7 @@ npm run build:installer
 npm run build:portable
 ```
 
-El ejecutable de depuración se genera en `src-tauri/target/debug/cyberfiles.exe`. La compilación del instalador crea un paquete NSIS en `src-tauri/target/release/bundle/nsis`, y la portable crea un ZIP en `src-tauri/target/release/bundle/portable`. La primera compilación nativa tarda varios minutos mientras se compilan las dependencias de Rust.
+El ejecutable de depuración se genera en `src-tauri/target/debug/CyberFiles.exe`. La compilación del instalador crea un paquete NSIS en `src-tauri/target/release/bundle/nsis`, y la portable crea un ZIP en `src-tauri/target/release/bundle/portable`. La primera compilación nativa tarda varios minutos mientras se compilan las dependencias de Rust.
 
 Publicar una etiqueta anotada `v*` que coincida con las versiones de `package.json` y `src-tauri/tauri.conf.json` compila y publica una versión; el mensaje de la etiqueta se convierte en el resumen de la versión.
 

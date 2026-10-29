@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $version = (Get-Content -LiteralPath (Join-Path $projectRoot 'package.json') -Raw | ConvertFrom-Json).version
-$executable = Join-Path $projectRoot 'src-tauri/target/release/cyberfiles.exe'
+$executable = Join-Path $projectRoot 'src-tauri/target/release/CyberFiles.exe'
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
   throw "Release executable not found at $executable. Build CyberFiles before packaging the portable version."
 }

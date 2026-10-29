@@ -1,10 +1,15 @@
 [package]
 name = "cyberfiles"
 version = "0.6.1"
+default-run = "CyberFiles"
 description = "CyberFiles desktop development shell"
 authors = ["CyberGems"]
 license = "GPL-3.0-only"
 edition = "2021"
+
+[[bin]]
+name = "CyberFiles"
+path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

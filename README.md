@@ -247,7 +247,7 @@ npm run build:installer
 npm run build:portable
 ```
 
-The debug executable is written to `src-tauri/target/debug/cyberfiles.exe`. The installer build creates an NSIS package under `src-tauri/target/release/bundle/nsis`, and the portable build creates a ZIP under `src-tauri/target/release/bundle/portable`. The first native build takes several minutes while Rust dependencies compile.
+The debug executable is written to `src-tauri/target/debug/CyberFiles.exe`. The installer build creates an NSIS package under `src-tauri/target/release/bundle/nsis`, and the portable build creates a ZIP under `src-tauri/target/release/bundle/portable`. The first native build takes several minutes while Rust dependencies compile.
 
 Pushing an annotated `v*` tag that matches the versions in `package.json` and `src-tauri/tauri.conf.json` builds and publishes a release; the tag message becomes the release summary.
 
