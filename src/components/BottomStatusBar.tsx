@@ -326,6 +326,9 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
       title={t.statusBar.quickShortcuts}
       primary="F1"
       description={t.statusBar.openShortcutsDescription}
+      rows={[
+        { label: language === 'es' ? 'Atajo rápido' : 'Quick shortcut', value: 'F1', tone: 'cyan' },
+      ]}
     />
   );
 
@@ -334,8 +337,17 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
       <footer id="app-bottom-status-bar" className="cyberfiles-global-status h-7 bg-black border-t border-neutral-800 px-2 text-[11px] font-sans text-neutral-400 flex items-center justify-between select-none z-30 flex-shrink-0">
         <span>{t.pane.noFolderOpen}</span>
         <div className="flex items-center gap-2">
+          <Tooltip label={shortcutsTooltip} placement="top">
+            <button
+              type="button"
+              onClick={onOpenShortcuts}
+              aria-label={t.statusBar.quickShortcuts}
+              className="flex items-center justify-center rounded border border-neutral-800 bg-neutral-950 px-1.5 py-0.5 text-neutral-400 transition-colors hover:border-neutral-700 hover:bg-neutral-900 hover:text-neutral-200"
+            >
+              <Keyboard className="h-3.5 w-3.5 flex-shrink-0" />
+            </button>
+          </Tooltip>
           {operationsButton}
-          <Tooltip label={shortcutsTooltip} placement="top"><button onClick={onOpenShortcuts} className="rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"><kbd className="keyboard-hint">F1</kbd></button></Tooltip>
         </div>
       </footer>
     );
@@ -552,9 +564,6 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
 
       {/* Right section: Path length information, Clock & System indicators */}
       <div className="flex items-center gap-2 flex-shrink-0">
-        {/* Operations Center trigger */}
-        {operationsButton}
-
         {/* Path length & MAX_PATH monitor (Windows NTFS 260 limit) */}
         {!isSystemHome && <Tooltip label={<StatusTooltipCard icon={<Link2 className="h-4 w-4" />} title={t.statusBar.pathLength} primary={`${formatCount(pathLength)} / ${formatCount(MAX_PATH_WINDOWS)}`} description={displayPath} rows={[{ label: t.statusBar.currentPath, value: t.statusBar.characters.replace('{count}', formatCount(pathLength)) }, { label: t.statusBar.standardLimit, value: t.statusBar.characters.replace('{count}', formatCount(MAX_PATH_WINDOWS)) }, { label: remainingPathCharacters >= 0 ? t.statusBar.charactersAvailable : t.statusBar.charactersOver, value: t.statusBar.characters.replace('{count}', formatCount(Math.abs(remainingPathCharacters))), tone: remainingPathCharacters < 0 ? 'rose' : remainingPathCharacters <= 60 ? 'amber' : 'cyan' }]} />} placement="top"><div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors text-[10px] ${
             isExceedingMaxPath
@@ -579,7 +588,19 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
         </Tooltip>
 
         {/* Keyboard Shortcuts trigger */}
-        <Tooltip label={shortcutsTooltip} placement="top"><button onClick={onOpenShortcuts} className="rounded text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 transition-colors"><kbd className="keyboard-hint">F1</kbd></button></Tooltip>
+        <Tooltip label={shortcutsTooltip} placement="top">
+          <button
+            type="button"
+            onClick={onOpenShortcuts}
+            aria-label={t.statusBar.quickShortcuts}
+            className="flex items-center justify-center rounded border border-neutral-800 bg-neutral-950 px-1.5 py-0.5 text-neutral-400 transition-colors hover:border-neutral-700 hover:bg-neutral-900 hover:text-neutral-200"
+          >
+            <Keyboard className="h-3.5 w-3.5 flex-shrink-0" />
+          </button>
+        </Tooltip>
+
+        {/* Operations Center trigger (completely to the right) */}
+        {operationsButton}
       </div>
     </footer>
   );
