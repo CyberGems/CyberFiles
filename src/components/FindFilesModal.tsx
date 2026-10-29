@@ -335,8 +335,6 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
-
   // Keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (showPreservePrompt) {
@@ -461,6 +459,8 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
   const totalSize = useMemo(() => {
     return searchResults.matches.reduce((acc, m) => acc + (m.file.isFolder ? 0 : m.file.size), 0);
   }, [searchResults.matches]);
+
+  if (!isOpen) return null;
 
   return (
     <div 
