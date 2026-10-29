@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Archive,
   Check,
@@ -169,18 +170,29 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     setSortMenuOpen(false);
     setGroupMenuOpen(false);
     setSelectMenuOpen(false);
-    if (position) {
-      setScreenPos({ left: position.x, top: position.y });
-    }
   }, [position]);
 
   useLayoutEffect(() => {
     if (!position || !menuRef.current) return;
-    const rect = menuRef.current.getBoundingClientRect();
-    setScreenPos({
-      left: Math.max(8, Math.min(position.x, window.innerWidth - rect.width - 8)),
-      top: Math.max(8, Math.min(position.y, window.innerHeight - rect.height - 8)),
-    });
+    const menuEl = menuRef.current;
+    const updatePosition = () => {
+      const rect = menuEl.getBoundingClientRect();
+      const margin = 10;
+      const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin);
+      const maxTop = Math.max(margin, window.innerHeight - rect.height - margin);
+      setScreenPos({
+        left: Math.max(margin, Math.min(position.x, maxLeft)),
+        top: Math.max(margin, Math.min(position.y, maxTop)),
+      });
+    };
+    updatePosition();
+    const observer = new ResizeObserver(updatePosition);
+    observer.observe(menuEl);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updatePosition);
+    };
   }, [position, newMenuOpen, sortMenuOpen, groupMenuOpen, selectMenuOpen]);
 
   useEffect(() => {
@@ -222,18 +234,18 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     </>
   ) : null;
 
-  return (
+  return createPortal(
     <div
       ref={menuRef}
       role="menu"
       onContextMenu={event => event.preventDefault()}
       style={{ left: screenPos.left, top: screenPos.top }}
-      className="fixed z-50 w-[292px] max-h-[calc(100vh-16px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 pb-1.5 text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
+      className="fixed z-[100] min-w-[304px] w-max max-w-[420px] max-h-[calc(100vh-20px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 pb-1.5 text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
     >
       {item ? (
         item.recycleBinId ? (
           <>
-            <div className="flex items-center gap-2 border-b border-neutral-800/90 bg-neutral-950/50 px-3 py-1.5 font-sans text-[11px] font-medium text-neutral-300">
+            <div className="flex w-0 min-w-full items-center gap-2 border-b border-neutral-800/90 bg-neutral-950/50 px-3 py-1.5 font-sans text-[11px] font-medium text-neutral-300">
               {item.isFolder ? <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-300" /> : <FileText className="h-3.5 w-3.5 shrink-0 text-cyan-300" />}
               <span className="truncate">{item.name}</span>
             </div>
@@ -248,7 +260,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           </>
         ) : isSystemLocation ? (
           <>
-            <div className="flex items-center gap-2 border-b border-neutral-800/90 bg-neutral-950/50 px-3 py-1.5 font-sans text-[11px] font-medium text-neutral-300">
+            <div className="flex w-0 min-w-full items-center gap-2 border-b border-neutral-800/90 bg-neutral-950/50 px-3 py-1.5 font-sans text-[11px] font-medium text-neutral-300">
               <FolderOpen className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
               <span className="truncate">{item.name}</span>
             </div>
@@ -280,7 +292,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         ) : (
           <>
             {/* Compact item title line */}
-            <div className="flex items-center gap-2 border-b border-neutral-800/90 bg-neutral-950/50 px-3 py-1.5 font-sans text-[11px] font-medium text-neutral-300">
+            <div className="flex w-0 min-w-full items-center gap-2 border-b border-neutral-800/90 bg-neutral-950/50 px-3 py-1.5 font-sans text-[11px] font-medium text-neutral-300">
               {item.isFolder ? (
                 <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-300" />
               ) : archiveItem ? (
@@ -294,7 +306,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             {/* Win 11 Quick-Action Header Bar (Files / Folders): Cut | Copy | Rename | Delete */}
             <div
               role="group"
-              className="grid grid-cols-4 divide-x divide-neutral-800/80 border-b border-neutral-800 bg-neutral-900/60"
+              className="flex divide-x divide-neutral-800/80 border-b border-neutral-800 bg-neutral-900/60"
             >
               <HeaderActionButton
                 icon={<Scissors className="h-4 w-4 text-amber-400" />}
@@ -472,7 +484,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           {/* Win 11 Quick-Action Header Bar (Empty Lister Area): New Folder | Paste | Select All | Undo */}
           <div
             role="group"
-            className="grid grid-cols-4 divide-x divide-neutral-800/80 border-b border-neutral-800 bg-neutral-900/60"
+            className="flex divide-x divide-neutral-800/80 border-b border-neutral-800 bg-neutral-900/60"
           >
             <HeaderActionButton
               icon={<FolderPlus className="h-4 w-4 text-emerald-400" />}
@@ -628,7 +640,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           )}
         </>
       )}
-    </div>
+    </div>,
+    document.body
   );
 };
 
@@ -650,14 +663,14 @@ const HeaderActionButton: React.FC<{
       aria-keyshortcuts={shortcut}
       onClick={onClick}
       className={
-        'flex w-full flex-col items-center justify-center gap-1 px-1 py-2 text-center transition-colors outline-none disabled:cursor-not-allowed disabled:opacity-40 ' +
+        'flex flex-1 shrink-0 flex-col items-center justify-center gap-1 px-3 py-2 text-center transition-colors outline-none disabled:cursor-not-allowed disabled:opacity-40 ' +
         (danger
           ? 'text-neutral-200 hover:bg-rose-950/50 hover:text-rose-200 focus-visible:bg-rose-950/50'
           : 'text-neutral-200 hover:bg-neutral-800/90 hover:text-cyan-100 focus-visible:bg-neutral-800/90')
       }
     >
       <span className="flex h-5 w-5 items-center justify-center">{icon}</span>
-      <span className="w-full truncate px-0.5 text-[10.5px] leading-tight">{label}</span>
+      <span className="whitespace-nowrap text-[11px] leading-normal">{label}</span>
     </button>
   );
 
