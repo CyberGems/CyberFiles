@@ -62,15 +62,20 @@ export function getItemsInTree(items: FileItem[], rootPath: string): FileItem[] 
   return items.filter(item => isSameOrDescendantPath(item.path, rootPath));
 }
 
+const RESERVED_DEVICE_NAMES = /^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
+
 export function isValidFileName(name: string): boolean {
   const trimmed = name.trim();
-  return Boolean(
-    trimmed &&
-    trimmed !== '.' &&
-    trimmed !== '..' &&
-    !/[\\/:*?"<>|]/.test(trimmed) &&
-    !/[. ]$/.test(trimmed)
-  );
+  if (!trimmed || trimmed === '.' || trimmed === '..') return false;
+  if (/[\\/:*?"<>|]/.test(trimmed)) return false;
+  if (/[. ]$/.test(trimmed)) return false;
+  // Mirror validate_child_name in src-tauri/src/main.rs: control characters, the 255
+  // UTF-16 unit ceiling and the reserved device names are rejected by the backend too.
+  if (/\p{Cc}/u.test(trimmed)) return false;
+  if (trimmed.length > 255) return false;
+  const deviceStem = trimmed.split('.')[0].trimEnd();
+  if (RESERVED_DEVICE_NAMES.test(deviceStem)) return false;
+  return true;
 }
 
 export function getUniqueName(desiredName: string, existingNames: Iterable<string>): string {
@@ -91,8 +96,8 @@ export function getUniqueName(desiredName: string, existingNames: Iterable<strin
 export function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B';
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
   const val = parseFloat((bytes / Math.pow(k, i)).toFixed(i === 0 ? 0 : 1));
   return `${val} ${sizes[i]}`;
 }
@@ -403,26 +408,4 @@ export function applyBatchRenamePreview(items: FileItem[], rule: BatchRenameRule
       renamed: `${newBaseName}${newExt}`,
     };
   });
-}
-
-export function formatRelativeTime(dateString: string, lang: 'es' | 'en' = 'es'): string {
-  try {
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    if (diffMs < 0) return lang === 'es' ? 'Ahora mismo' : 'Just now';
-    const diffSec = Math.floor(diffMs / 1000);
-    if (diffSec < 60) return lang === 'es' ? 'Ahora mismo' : 'Just now';
-    const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return lang === 'es' ? `Hace ${diffMin} min` : `${diffMin} min ago`;
-    const diffHours = Math.floor(diffMin / 60);
-    if (diffHours < 24) return lang === 'es' ? `Hace ${diffHours} h` : `${diffHours} h ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays === 1) return lang === 'es' ? 'Ayer' : 'Yesterday';
-    if (diffDays < 7) return lang === 'es' ? `Hace ${diffDays} días` : `${diffDays} days ago`;
-    return date.toLocaleDateString(lang === 'es' ? 'es-ES' : 'en-US', { month: 'short', day: 'numeric' });
-  } catch {
-    return dateString;
-  }
 }

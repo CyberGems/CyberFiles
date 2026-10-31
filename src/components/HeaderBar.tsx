@@ -24,7 +24,7 @@ import {
   Pencil,
   ClipboardCopy,
 } from 'lucide-react';
-import { SYSTEM_HOME_PATH, ViewLayout, ViewMode } from '../types';
+import { ViewLayout, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 import type { WindowsTerminalOption } from '../utils/nativeFileSystem';
@@ -127,7 +127,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onOpenWorkspaceManager,
   workspaceChangesPending,
 }) => {
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
   const disabled = selectedCount === 0;
   const [openToolbarMenu, setOpenToolbarMenu] = React.useState<'terminal' | null>(null);
   const menuRootRef = React.useRef<HTMLDivElement>(null);

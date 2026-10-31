@@ -69,7 +69,7 @@ export interface FileOperationModalProps {
 const PANEL_OPEN_DELAY_MS = 450;
 const PANEL_HOLD_AFTER_FINISH_MS = 3200;
 
-function elapsedLabel(seconds: number, language: 'en' | 'es'): string {
+function elapsedLabel(seconds: number): string {
   const wholeSeconds = Math.max(0, Math.floor(seconds));
   const hours = Math.floor(wholeSeconds / 3600);
   const minutes = Math.floor((wholeSeconds % 3600) / 60);
@@ -174,7 +174,7 @@ function formatRelativeTime(timestamp: number | null | undefined, language: 'en'
   return date.toLocaleTimeString(isSpanish ? 'es-CR' : 'en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
-function formatDuration(startedAt: number | null | undefined, finishedAt: number | null | undefined, language: 'en' | 'es'): string {
+function formatDuration(startedAt: number | null | undefined, finishedAt: number | null | undefined): string {
   if (!startedAt || !finishedAt || finishedAt < startedAt) return '';
   const seconds = (finishedAt - startedAt) / 1000;
   if (seconds < 1) return '< 1s';
@@ -371,7 +371,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
     return x + ',' + y;
   }).join(' ');
   const currentItemLabel = activeOperation?.currentItem || activeOperation?.sourcePaths[0] || (isSpanish ? 'Preparando…' : 'Preparing…');
-  const remainingLabel = remaining === null ? '—' : elapsedLabel(remaining, language);
+  const remainingLabel = remaining === null ? '—' : elapsedLabel(remaining);
 
   return createPortal(
     <aside
@@ -575,7 +575,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
               <div className="grid grid-cols-3 gap-2 text-xs">
                 <div className="rounded-md border border-neutral-800 bg-neutral-900/60 p-2.5">
                   <div className="text-[11px] text-neutral-500">{isSpanish ? 'Tiempo' : 'Time'}</div>
-                  <div className="mt-1 font-mono text-neutral-200">{elapsedLabel(elapsed, language)}</div>
+                  <div className="mt-1 font-mono text-neutral-200">{elapsedLabel(elapsed)}</div>
                 </div>
                 <div className="rounded-md border border-neutral-800 bg-neutral-900/60 p-2.5">
                   <div className="text-[11px] text-neutral-500">{isSpanish ? 'Velocidad' : 'Speed'}</div>
@@ -780,7 +780,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                         ? (operation.completedPaths?.[0] || operation.targetPath)
                         : operation.targetPath;
                   const relativeTime = formatRelativeTime(operation.finishedAt, language);
-                  const duration = formatDuration(operation.startedAt, operation.finishedAt, language);
+                  const duration = formatDuration(operation.startedAt, operation.finishedAt);
                   const isExpandedFailures = expandedFailuresJobId === operation.jobId;
 
                   return (

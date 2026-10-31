@@ -8,6 +8,22 @@ export function formatLocalDateTime(timestamp: number | null | undefined): strin
 
 export type DateFormatMode = 'application' | 'system' | 'universal';
 
+/**
+ * ISO 8601 with the local offset (2026-10-31T08:20:39-06:00). The plain local format is
+ * for internal ordering, where adding an offset would only complicate comparisons.
+ */
+export function formatIsoWithOffset(timestamp: number | null | undefined): string {
+  if (timestamp === null || timestamp === undefined || !Number.isFinite(timestamp)) return '';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const absolute = Math.abs(offsetMinutes);
+  const offset = `${sign}${pad(Math.floor(absolute / 60))}:${pad(absolute % 60)}`;
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${offset}`;
+}
+
 export function formatDateTimeForDisplay(
   timestamp: number | null | undefined,
   fallbackValue: string | undefined,
@@ -19,7 +35,7 @@ export function formatDateTimeForDisplay(
     : fallbackValue ? Date.parse(fallbackValue) : Number.NaN;
   if (!Number.isFinite(resolvedTimestamp)) return fallbackValue || '';
 
-  if (mode === 'universal') return formatLocalDateTime(resolvedTimestamp);
+  if (mode === 'universal') return formatIsoWithOffset(resolvedTimestamp);
 
   const date = new Date(resolvedTimestamp);
   if (mode === 'system') {

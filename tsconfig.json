@@ -26,6 +26,7 @@
   },
   "exclude": [
     "dist",
-    "src-tauri/target"
+    "src-tauri/target",
+    "artifacts"
   ]
 }

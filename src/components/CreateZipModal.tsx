@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Archive, FolderOpen, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { DialogButton } from './DialogButton';

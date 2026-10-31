@@ -15,7 +15,6 @@ import {
   ArrowUp, 
   ArrowDown,
   CornerUpLeft,
-  Search, 
   X, 
   Plus, 
   RotateCw,
@@ -38,7 +37,7 @@ import {
   UnlockKeyhole,
   Keyboard,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, GroupByField, HiddenItemStyle, SortField, TabState, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
+import { DriveInfo, FileItem, FileType, HiddenItemStyle, SortField, TabState, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, getParentPath, isSameOrDescendantPath, normalizeWindowsPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
@@ -2277,7 +2276,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
 
   // Selection logic
-  const handleItemClick = (e: React.MouseEvent, item: FileItem, index: number) => {
+  const handleItemClick = (e: React.MouseEvent, item: FileItem, _index: number) => {
     if (suppressFileClickRef.current) {
       e.preventDefault();
       e.stopPropagation();

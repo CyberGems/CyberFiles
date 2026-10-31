@@ -109,7 +109,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeFolder, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { fetchLaunchContext, getLaunchTargetPath } from './utils/systemIntegration';
 import { recentFileActions, recordRecentEntry, removeRecentEntry, renameRecentEntries, toRecentFileItem, type RecentEntry } from './utils/recentFiles';
@@ -169,7 +169,6 @@ const AUTO_FOLDER_SIZE_ENABLED_KEY = 'cyberfiles_auto_folder_size_enabled_v1';
 const MAX_CUSTOM_QUICK_ACCESS_ITEMS = 100;
 const MAX_TEXT_PREVIEW_BYTES = 200_000;
 const TOAST_DURATION_MS = 3200;
-const DEFAULT_GLOBAL_SHORTCUT = 'Alt+Shift+F';
 const DEFAULT_FOLDER_STYLE = { viewMode: 'details' as ViewMode, sortField: 'name' as SortField, sortOrder: 'asc' as SortOrder, groupBy: 'none' as GroupByField };
 const DEFAULT_TAB_SIZE_PREFERENCES: TabSizePreferences = {
   horizontalMode: 'automatic',
@@ -2085,7 +2084,6 @@ export default function App() {
   }, [mouseGesturesEnabled]);
 
   const inactiveTabs = activePane === 'left' ? rightTabs : leftTabs;
-  const setInactiveTabs = activePane === 'left' ? setRightTabs : setLeftTabs;
   const inactiveTabIndex = activePane === 'left' ? activeRightTabIndex : activeLeftTabIndex;
   const inactiveTab = inactiveTabs[inactiveTabIndex] || inactiveTabs[0];
 
@@ -5012,52 +5010,6 @@ export default function App() {
   const handleOpenRecycleBin = useCallback(async () => {
     await handleNavigate(RECYCLE_BIN_PATH, activePane);
   }, [activePane, handleNavigate]);
-
-  // Opens a user-selected folder through the native Windows picker.
-  const handleOpenRealFolder = async () => {
-    if (!isTauriDesktop()) return;
-
-    try {
-      const selectedPath = await chooseNativeFolder(t.sidebar.openFolderDialogTitle);
-      if (!selectedPath) return;
-
-      nativeOpeningWorkspace.current = true;
-      const generation = ++nativeWorkspaceGeneration.current;
-      const loaded = await loadNativeFolder(selectedPath);
-      if (generation !== nativeWorkspaceGeneration.current) return;
-      const rootKey = getPathKey(loaded.rootPath);
-      nativeLoadedDirectories.current.clear();
-      nativeLoadedDirectories.current.add(rootKey);
-      nativeInFlightDirectories.current.clear();
-      selectAllAfterLoad.current.clear();
-      nativeRootPath.current = loaded.rootPath;
-      systemHomeWorkspace.current = false;
-      rememberRecentFolder(loaded.rootPath);
-      setFlatDirectories({});
-      staleFlatIds.current.clear();
-      setNativeDirectories({
-        [rootKey]: { nextOffset: loaded.nextOffset, hasMore: loaded.hasMore, loading: false, counts: loaded.counts },
-      });
-      setAllFiles(loaded.files);
-      setQuickAccess([{
-        id: `qa-${encodeURIComponent(loaded.rootPath.toLowerCase())}`,
-        name: loaded.rootName,
-        path: loaded.rootPath,
-        icon: 'folder',
-        count: loaded.files.length - 1,
-      }]);
-      nativeOpeningWorkspace.current = false;
-      openWorkspaceRoot(loaded.rootPath, loaded.rootName);
-      completeOnboarding();
-      const count = loaded.files.length - 1;
-      showToast(`${language === 'es' ? 'Carpeta cargada' : 'Folder loaded'}: "${loaded.rootName}" (${count} ${language === 'es' ? 'elementos' : 'items'}).`);
-    } catch (error: any) {
-      nativeOpeningWorkspace.current = false;
-      if (error.name !== 'AbortError') {
-        showToast(language === 'es' ? 'No se pudo acceder a la carpeta seleccionada.' : 'The selected folder could not be opened.');
-      }
-    }
-  };
 
   const handleOpenDrive = useCallback((path: string, openInNewTab = sidebarLocationsOpenInNewTab) => {
     if (isTauriDesktop()) {
