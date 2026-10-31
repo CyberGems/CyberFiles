@@ -92,10 +92,14 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
   const handleApply = async () => {
     if (!canApply) return;
     setApplyError('');
-    const applied = await onApplyRename(previewItems);
-    if (applied) {
-      onClose();
-    } else {
+    try {
+      const applied = await onApplyRename(previewItems);
+      if (applied) {
+        onClose();
+      } else {
+        setApplyError(t.batchRename.applyFailed);
+      }
+    } catch {
       setApplyError(t.batchRename.applyFailed);
     }
   };
