@@ -23,6 +23,34 @@
 
 ---
 
+## 📑 Table of Contents
+
+- [¿Qué es CyberFiles?](#qué-es-cyberfiles)
+- [🗂️ ¿Por qué CyberFiles?](#️-por-qué-cyberfiles)
+- [✨ Funciones principales](#-funciones-principales)
+- [🚀 Primeros pasos](#-primeros-pasos)
+- [🛠️ Tecnologías y arquitectura](#️-tecnologías-y-arquitectura)
+- [⌨️ Atajos de teclado](#️-atajos-de-teclado)
+- [🧪 Estado del proyecto](#-estado-del-proyecto)
+- [🤝 Contribuir](#-contribuir)
+- [🙏 Agradecimientos](#-agradecimientos)
+- [❤️ Donar](#️-donar)
+- [📄 Licencia](#-licencia)
+- [❓ Preguntas frecuentes](#-preguntas-frecuentes)
+- [🔗 Ver también](#-ver-también)
+
+<details>
+<summary><strong>🔗 Related links (outside this README)</strong></summary>
+
+- 🌐 [CyberFiles en la web](https://cybergems.org/apps/cyberfiles/) — resumen, descarga y guía de SmartScreen
+- 📚 [Documentación y FAQ — Wiki](https://github.com/CyberGems/CyberFiles/wiki) — solución de problemas y guías detalladas
+- 💾 [Releases](https://github.com/CyberGems/CyberFiles/releases) — instaladores, versiones portátiles y changelog
+- 🟣 [Suite CyberGems](https://github.com/CyberGems) — todas las apps de código abierto
+
+</details>
+
+---
+
 ## ¿Qué es CyberFiles?
 
 CyberFiles es un **gestor de archivos de doble panel para Windows** pensado para quienes mueven archivos todo el día y quieren que el teclado haga casi todo el trabajo. Combina dos paneles independientes, cada uno con sus propias pestañas e historial, con vistas de detalles, lista e iconos, diseños y sesiones guardados, operaciones de copia y movimiento en cola con deshacer, una ubicación Recientes que lista lo que abriste, herramientas para ZIP y RAR y un panel de propiedades que previsualiza texto, imágenes, PDF y el contenido de archivos comprimidos. El descubrimiento de unidades, los iconos nativos, la Papelera de reciclaje y el diálogo de propiedades de Windows se resuelven a través del Shell de Windows, no con imitaciones. Creado con **Tauri 2**, **Rust**, **React** y **TypeScript**.
@@ -315,9 +343,7 @@ La compatibilidad con RAR incluye código fuente de UnRAR. Sus términos de lice
 
 ## ❤️ Donar
 
-Después de incontables horas construyendo y refinando **CyberFiles** para mi propio uso, hace poco decidí compartirlo con el mundo junto al resto de mis herramientas de código abierto en [CyberGems](https://github.com/CyberGems#-all-apps--repositories).
-
-Si te apetece apoyar futuras actualizaciones, lo agradecería de verdad. Tu donación ayuda a mantener el desarrollo, publicar nuevas funciones, acelerar actualizaciones y correcciones, y mejorar la documentación. También puedes mostrar tu apoyo [dándole una estrella al repositorio en GitHub](https://github.com/CyberGems/CyberFiles). ¡Gracias! 🙏
+**CyberFiles** es 100% gratis y de código abierto. Si te resulta útil, por favor considera [donar](https://cybergems.org/donate) o [dar una estrella al repo en GitHub](https://github.com/CyberGems/CyberFiles) para apoyar el desarrollo continuo. [Lee la historia completa](https://cybergems.org/about/) del proyecto. ¡Gracias! 🙏
 
 <p align="center">
   <a href="https://www.paypal.com/donate/?hosted_button_id=M4PY3UPJA5Y6Q"><img src="https://img.shields.io/badge/Donar-PayPal-0070BA?style=for-the-badge&logo=paypal" alt="Donar por PayPal" /></a>
