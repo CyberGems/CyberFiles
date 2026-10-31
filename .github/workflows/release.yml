@@ -81,6 +81,12 @@ jobs:
       - name: Install JavaScript dependencies
         run: npm ci
 
+      - name: Validate source
+        run: |
+          npm run lint
+          npm test
+          cargo test --manifest-path src-tauri/Cargo.toml
+
       - name: Verify tag version and build installer
         shell: pwsh
         env:
@@ -91,8 +97,11 @@ jobs:
           $tagVersion = $env:RELEASE_TAG.TrimStart('v')
           $packageVersion = node -p "require('./package.json').version"
           $tauriVersion = node -p "require('./src-tauri/tauri.conf.json').version"
-          if ($tagVersion -ne $packageVersion -or $tagVersion -ne $tauriVersion) {
-            throw "Release tag '$($env:RELEASE_TAG)' must match package and Tauri versions ($packageVersion / $tauriVersion)."
+          $cargoMatch = Select-String -Path 'src-tauri/Cargo.toml' -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1
+          if (-not $cargoMatch) { throw 'Could not read the version from src-tauri/Cargo.toml.' }
+          $cargoVersion = $cargoMatch.Matches[0].Groups[1].Value
+          if ($tagVersion -ne $packageVersion -or $tagVersion -ne $tauriVersion -or $tagVersion -ne $cargoVersion) {
+            throw "Release tag '$($env:RELEASE_TAG)' must match package, Tauri and Cargo versions ($packageVersion / $tauriVersion / $cargoVersion)."
           }
           npm run build:installer
           npm run package:portable
