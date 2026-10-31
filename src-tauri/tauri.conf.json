@@ -25,7 +25,8 @@
         "maximizable": true,
         "skipTaskbar": false,
         "visible": false,
-        "theme": "Dark"
+        "theme": "Dark",
+        "backgroundColor": "#080d16"
       },
       {
         "label": "tray_menu",
