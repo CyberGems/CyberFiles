@@ -17,12 +17,10 @@ import {
   Sparkles, 
   Check, 
   Layers, 
-  Filter,
   Clock,
-  HardDrive,
   LoaderCircle
 } from 'lucide-react';
-import { FileItem, SearchMatch } from '../types';
+import { FileItem } from '../types';
 import { formatFileSize, getFileExtension } from '../utils/fileSystem';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { searchFileSystem, SearchOptions } from '../utils/searchIndex';
@@ -129,6 +127,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
   const [isSearchHistoryOpen, setIsSearchHistoryOpen] = useState(false);
   const [diskFiles, setDiskFiles] = useState<FileItem[]>([]);
   const [isScanningDisk, setIsScanningDisk] = useState(false);
+  const [scanTruncated, setScanTruncated] = useState(false);
   const [showPreservePrompt, setShowPreservePrompt] = useState(false);
   const [rememberPreserveDecision, setRememberPreserveDecision] = useState(false);
   const scanGenerationRef = useRef(0);
@@ -256,6 +255,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
     ) {
       setDiskFiles([]);
       setIsScanningDisk(false);
+      setScanTruncated(false);
       return;
     }
 
@@ -265,12 +265,14 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
       .then((result) => {
         if (scanGenerationRef.current === currentGeneration) {
           setDiskFiles(result.entries);
+          setScanTruncated(result.truncated);
           setIsScanningDisk(false);
         }
       })
       .catch(() => {
         if (scanGenerationRef.current === currentGeneration) {
           setDiskFiles([]);
+          setScanTruncated(false);
           setIsScanningDisk(false);
         }
       });
@@ -728,6 +730,12 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
             <span>
               {t.findFiles.scannedSummary.replace('{count}', String(searchResults.totalScanned))}
             </span>
+            {scanTruncated && (
+              <>
+                <span>·</span>
+                <span className="text-amber-400">{t.findFiles.scanTruncated}</span>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-1.5 text-neutral-500">
             <Clock className="w-3 h-3 text-cyan-400" />

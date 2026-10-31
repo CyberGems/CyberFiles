@@ -7,7 +7,7 @@ use std::{
     fs,
     io::{self, Cursor, Read, Write},
     path::{Path, PathBuf},
-    sync::{Arc, Condvar, Mutex, OnceLock},
+    sync::{atomic::{AtomicU64, Ordering}, Arc, Condvar, Mutex, OnceLock},
 };
 use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
@@ -747,6 +747,8 @@ struct FlatDirectoryListing {
     entries: Vec<NativeFolderEntry>,
     counts: DirectoryCounts,
     skipped_count: usize,
+    /// True when the scan stopped at the safety cap or was superseded by a newer scan.
+    truncated: bool,
 }
 
 #[derive(Serialize)]
@@ -2422,10 +2424,18 @@ async fn list_directory(path: String) -> Result<DirectoryListing, String> {
         };
 
         for entry in read_dir {
-            let entry = entry.map_err(|error| format!("Cannot read folder entry: {error}"))?;
+            // One unreadable child must not take the whole folder down. An entry can vanish
+            // between read_dir and stat, or deny access to its metadata; skip it and keep
+            // listing, the same criterion list_flat_directory already uses.
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(_) => continue,
+            };
             let entry_path = entry.path();
-            let metadata = fs::symlink_metadata(&entry_path)
-                .map_err(|error| format!("Cannot read folder entry metadata: {error}"))?;
+            let metadata = match fs::symlink_metadata(&entry_path) {
+                Ok(metadata) => metadata,
+                Err(_) => continue,
+            };
             // Do not follow links outside the user-selected workspace.
             if metadata.file_type().is_symlink() {
                 continue;
@@ -2483,6 +2493,14 @@ async fn list_directory(path: String) -> Result<DirectoryListing, String> {
     .map_err(|error| format!("Folder scan worker failed: {error}"))?
 }
 
+/// A flat scan walks an arbitrary tree, so it needs a hard ceiling: without it, searching
+/// from a drive root can allocate millions of entries and freeze the renderer.
+const MAX_FLAT_ENTRIES: usize = 100_000;
+
+/// Every flat scan bumps this counter. An older worker notices that a newer scan started
+/// and stops early instead of walking a tree nobody is waiting for anymore.
+static FLAT_SCAN_GENERATION: AtomicU64 = AtomicU64::new(0);
+
 #[tauri::command]
 async fn list_flat_directory(path: String) -> Result<FlatDirectoryListing, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -2499,9 +2517,18 @@ async fn list_flat_directory(path: String) -> Result<FlatDirectoryListing, Strin
             visible_folder_count: 0,
             hidden_count: 0,
         };
+        let scan_generation = FLAT_SCAN_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
         let mut skipped_count = 0;
+        let mut truncated = false;
         let mut stack = vec![(root.clone(), false)];
         while let Some((directory, parent_hidden)) = stack.pop() {
+            if truncated
+                || entries.len() >= MAX_FLAT_ENTRIES
+                || FLAT_SCAN_GENERATION.load(Ordering::SeqCst) != scan_generation
+            {
+                truncated = true;
+                break;
+            }
             let children = match fs::read_dir(&directory) {
                 Ok(children) => children,
                 Err(error) if directory == root => {
@@ -2513,6 +2540,10 @@ async fn list_flat_directory(path: String) -> Result<FlatDirectoryListing, Strin
                 }
             };
             for child in children {
+                if entries.len() >= MAX_FLAT_ENTRIES {
+                    truncated = true;
+                    break;
+                }
                 let child = match child {
                     Ok(child) => child,
                     Err(_) => {
@@ -2580,6 +2611,7 @@ async fn list_flat_directory(path: String) -> Result<FlatDirectoryListing, Strin
             entries,
             counts,
             skipped_count,
+            truncated,
         })
     })
     .await
@@ -3709,6 +3741,35 @@ fn start_zip_compression(
     start_native_zip_compression_operation(app, paths, target_path, archive_name, job_id)
 }
 
+/// Decode a text preview the way Windows editors actually write files: UTF-8 (with or
+/// without a BOM), UTF-16 LE/BE with a BOM, and a Latin-1 fallback for the legacy ANSI
+/// files that would otherwise fail the UTF-8 check.
+fn decode_text_preview(bytes: Vec<u8>) -> String {
+    if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        return String::from_utf8_lossy(&bytes[3..]).into_owned();
+    }
+    if bytes.starts_with(&[0xFF, 0xFE]) {
+        let units: Vec<u16> = bytes[2..]
+            .chunks_exact(2)
+            .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+            .collect();
+        return String::from_utf16_lossy(&units);
+    }
+    if bytes.starts_with(&[0xFE, 0xFF]) {
+        let units: Vec<u16> = bytes[2..]
+            .chunks_exact(2)
+            .map(|pair| u16::from_be_bytes([pair[0], pair[1]]))
+            .collect();
+        return String::from_utf16_lossy(&units);
+    }
+    match String::from_utf8(bytes) {
+        Ok(text) => text,
+        // Latin-1 maps every byte to a code point, so a legacy Windows file shows its
+        // text instead of the old "not valid UTF-8" error.
+        Err(error) => error.into_bytes().iter().map(|&byte| byte as char).collect(),
+    }
+}
+
 #[tauri::command]
 async fn read_text_preview(path: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -3734,7 +3795,7 @@ async fn read_text_preview(path: String) -> Result<String, String> {
         if bytes.len() as u64 > MAX_TEXT_PREVIEW_BYTES {
             return Err("The file is too large to preview.".to_string());
         }
-        String::from_utf8(bytes).map_err(|_| "The file is not valid UTF-8 text.".to_string())
+        Ok(decode_text_preview(bytes))
     })
     .await
     .map_err(|error| format!("Text preview worker failed: {error}"))?
