@@ -4329,7 +4329,7 @@ export default function App() {
     }
   }, [showToast, t.preview.windowsPropertiesFailed]);
 
-  const handleApplyBatchRename = useCallback(async (renames: { id: string; original: string; renamed: string }[]) => {
+  const handleApplyBatchRename = useCallback(async (renames: { id: string; original: string; renamed: string }[]): Promise<boolean> => {
     const lookup = new Map(renames.map(rename => [rename.id, rename.renamed]));
     const roots = getRootItems(allFiles, renames.map(rename => rename.id));
     const destinations = new Map<string, string>();
@@ -4340,21 +4340,21 @@ export default function App() {
       if (!newName || newName === root.name) continue;
       if (!isValidFileName(newName)) {
         showToast(t.core.invalidName);
-        return;
+        return false;
       }
       const destination = joinWindowsPath(getParentPath(root.path), newName).toLowerCase();
       if (occupied.has(destination) || allFiles.some(item => item.id !== root.id && item.path.toLowerCase() === destination)) {
         showToast(t.core.conflict);
-        return;
+        return false;
       }
       occupied.add(destination);
       destinations.set(root.id, joinWindowsPath(getParentPath(root.path), newName));
     }
 
     if (isTauriDesktop()) {
-      if (isFileOperationBusy) return;
+      if (isFileOperationBusy) return false;
       const changedRoots = roots.filter(root => destinations.has(root.id));
-      if (changedRoots.length === 0) return;
+      if (changedRoots.length === 0) return true;
       setIsFileOperationBusy(true);
       const startedAt = Date.now();
       const renamedPaths: string[] = [];
@@ -4424,7 +4424,7 @@ export default function App() {
       } finally {
         setIsFileOperationBusy(false);
       }
-      return;
+      return true;
     }
 
     const now = new Date().toISOString();
@@ -4465,6 +4465,7 @@ export default function App() {
       });
     }
     showToast(`${renames.length} ${language === 'es' ? 'elementos renombrados.' : 'items renamed.'}`);
+    return true;
   }, [allFiles, isFileOperationBusy, language, pushUndoAction, recordTransferOperation, refreshChangedDirectories, renameRecentPairs, showToast, t.core.conflict, t.core.invalidName, t.core.operationPartial, updateActiveTab]);
 
   const openCreateItem = useCallback((kind: NewItemKind, pane: 'left' | 'right' = activePane, suggestedName?: string) => {

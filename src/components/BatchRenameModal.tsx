@@ -1,23 +1,26 @@
-import React, { useState, useMemo } from 'react';
-import { 
-  X, 
-  ArrowRight, 
-  Check, 
-  RefreshCw, 
-  Sliders, 
-  Hash, 
-  Type, 
-  CaseSensitive, 
-  FileText 
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  X,
+  ArrowRight,
+  Check,
+  Sliders,
+  Hash,
+  Type,
+  CaseSensitive,
+  FileText,
 } from 'lucide-react';
 import { BatchRenameRule, FileItem } from '../types';
-import { applyBatchRenamePreview } from '../utils/fileSystem';
+import { applyBatchRenamePreview, isValidFileName } from '../utils/fileSystem';
+import { useLanguage } from '../locales/LanguageContext';
+import { Tooltip } from './Tooltip';
 
 interface BatchRenameModalProps {
   isOpen: boolean;
   onClose: () => void;
   selectedItems: FileItem[];
-  onApplyRename: (renames: { id: string; original: string; renamed: string }[]) => void;
+  /* Resolves to false when the rename was rejected (invalid name, conflict, busy), so the
+     modal can stay open and keep the configured rule instead of discarding it. */
+  onApplyRename: (renames: { id: string; original: string; renamed: string }[]) => boolean | Promise<boolean>;
 }
 
 export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
@@ -26,6 +29,8 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
   selectedItems,
   onApplyRename,
 }) => {
+  const { t } = useLanguage();
+  const [applyError, setApplyError] = useState('');
   const [rule, setRule] = useState<BatchRenameRule>({
     mode: 'replace',
     findText: '',
@@ -44,18 +49,71 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
     return applyBatchRenamePreview(selectedItems, rule);
   }, [selectedItems, rule]);
 
-  if (!isOpen) return null;
-
-  const handleApply = () => {
-    onApplyRename(previewItems);
-    onClose();
-  };
-
   const changedCount = previewItems.filter(p => p.original !== p.renamed).length;
 
+  const validation = useMemo(() => {
+    const changed = previewItems.filter(p => p.original !== p.renamed);
+    for (const item of changed) {
+      if (!isValidFileName(item.renamed)) {
+        return { valid: false, message: t.batchRename.invalidName.replace('{name}', item.renamed) };
+      }
+    }
+    const seen = new Set<string>();
+    for (const item of changed) {
+      const key = item.renamed.toLowerCase();
+      if (seen.has(key)) {
+        return { valid: false, message: t.batchRename.duplicateName.replace('{name}', item.renamed) };
+      }
+      seen.add(key);
+    }
+    return { valid: true, message: '' };
+  }, [previewItems, t.batchRename.invalidName, t.batchRename.duplicateName]);
+
+  const canApply = validation.valid && changedCount > 0;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
+    setApplyError('');
+  }, [rule]);
+
+  if (!isOpen) return null;
+
+  const handleApply = async () => {
+    if (!canApply) return;
+    setApplyError('');
+    const applied = await onApplyRename(previewItems);
+    if (applied) {
+      onClose();
+    } else {
+      setApplyError(t.batchRename.applyFailed);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 select-none animate-in fade-in duration-150">
-      <div className="w-full max-w-3xl bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-150"
+      onMouseDown={event => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="batch-rename-title"
+        className="w-full max-w-3xl bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden"
+        onMouseDown={event => event.stopPropagation()}
+      >
         {/* Header */}
         <div className="px-5 py-3.5 border-b border-neutral-800 flex items-center justify-between bg-neutral-950/70">
           <div className="flex items-center gap-2.5">
@@ -63,18 +121,22 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
               <Sliders className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-semibold text-neutral-100 text-sm">Estudio de Renombrado Masivo (Batch Rename)</h3>
+              <h3 id="batch-rename-title" className="font-semibold text-neutral-100 text-sm">{t.batchRename.title}</h3>
               <p className="text-[11px] text-neutral-400">
-                Previsualización en vivo sin modificar archivos reales
+                {t.batchRename.subtitle}
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-md text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <Tooltip label={t.batchRename.cancel} placement="bottom">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={t.batchRename.cancel}
+              className="p-1.5 rounded-md text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Content Area */}
@@ -82,43 +144,47 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
           {/* Mode Selector Tabs */}
           <div className="flex items-center gap-1.5 bg-neutral-950 p-1 rounded-lg border border-neutral-800/80">
             <button
+              type="button"
               onClick={() => setRule(r => ({ ...r, mode: 'replace' }))}
               className={`flex-1 py-1.5 px-3 rounded-md font-medium text-center transition-colors flex items-center justify-center gap-1.5 ${
                 rule.mode === 'replace' ? 'bg-neutral-800 text-cyan-300 shadow-sm' : 'text-neutral-400 hover:text-neutral-200'
               }`}
             >
               <Type className="w-3.5 h-3.5" />
-              <span>Buscar y Reemplazar</span>
+              <span>{t.batchRename.modeReplace}</span>
             </button>
 
             <button
+              type="button"
               onClick={() => setRule(r => ({ ...r, mode: 'prefix_suffix' }))}
               className={`flex-1 py-1.5 px-3 rounded-md font-medium text-center transition-colors flex items-center justify-center gap-1.5 ${
                 rule.mode === 'prefix_suffix' ? 'bg-neutral-800 text-cyan-300 shadow-sm' : 'text-neutral-400 hover:text-neutral-200'
               }`}
             >
               <FileText className="w-3.5 h-3.5" />
-              <span>Prefijo / Sufijo</span>
+              <span>{t.batchRename.modePrefixSuffix}</span>
             </button>
 
             <button
+              type="button"
               onClick={() => setRule(r => ({ ...r, mode: 'numbering' }))}
               className={`flex-1 py-1.5 px-3 rounded-md font-medium text-center transition-colors flex items-center justify-center gap-1.5 ${
                 rule.mode === 'numbering' ? 'bg-neutral-800 text-cyan-300 shadow-sm' : 'text-neutral-400 hover:text-neutral-200'
               }`}
             >
               <Hash className="w-3.5 h-3.5" />
-              <span>Numeración Secuencial</span>
+              <span>{t.batchRename.modeNumbering}</span>
             </button>
 
             <button
+              type="button"
               onClick={() => setRule(r => ({ ...r, mode: 'case' }))}
               className={`flex-1 py-1.5 px-3 rounded-md font-medium text-center transition-colors flex items-center justify-center gap-1.5 ${
                 rule.mode === 'case' ? 'bg-neutral-800 text-cyan-300 shadow-sm' : 'text-neutral-400 hover:text-neutral-200'
               }`}
             >
               <CaseSensitive className="w-3.5 h-3.5" />
-              <span>Mayúsculas / Minúsculas</span>
+              <span>{t.batchRename.modeCase}</span>
             </button>
           </div>
 
@@ -127,20 +193,20 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
             {rule.mode === 'replace' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-neutral-300">Buscar Texto</label>
+                  <label className="text-[11px] font-semibold text-neutral-300">{t.batchRename.findText}</label>
                   <input
                     type="text"
-                    placeholder="ej: copia, 2026, _raw"
+                    placeholder={t.batchRename.findTextPlaceholder}
                     value={rule.findText}
                     onChange={(e) => setRule({ ...rule, findText: e.target.value })}
                     className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-sans focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-neutral-300">Reemplazar con</label>
+                  <label className="text-[11px] font-semibold text-neutral-300">{t.batchRename.replaceWith}</label>
                   <input
                     type="text"
-                    placeholder="ej: final, v2, o dejar vacío para borrar"
+                    placeholder={t.batchRename.replaceWithPlaceholder}
                     value={rule.replaceText}
                     onChange={(e) => setRule({ ...rule, replaceText: e.target.value })}
                     className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-sans focus:border-cyan-400 focus:outline-none"
@@ -155,7 +221,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
                     className="rounded border-neutral-700 text-cyan-500 focus:ring-0 bg-neutral-900"
                   />
                   <label htmlFor="regex-toggle" className="text-neutral-300 font-medium cursor-pointer">
-                    Habilitar expresiones regulares
+                    {t.batchRename.useRegex}
                   </label>
                 </div>
               </div>
@@ -164,20 +230,20 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
             {rule.mode === 'prefix_suffix' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-neutral-300">Prefijo (Inicio)</label>
+                  <label className="text-[11px] font-semibold text-neutral-300">{t.batchRename.prefix}</label>
                   <input
                     type="text"
-                    placeholder="ej: [BACKUP]_"
+                    placeholder={t.batchRename.prefixPlaceholder}
                     value={rule.prefix}
                     onChange={(e) => setRule({ ...rule, prefix: e.target.value })}
                     className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-sans focus:border-cyan-400 focus:outline-none"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-neutral-300">Sufijo (Final)</label>
+                  <label className="text-[11px] font-semibold text-neutral-300">{t.batchRename.suffix}</label>
                   <input
                     type="text"
-                    placeholder="ej: _2026"
+                    placeholder={t.batchRename.suffixPlaceholder}
                     value={rule.suffix}
                     onChange={(e) => setRule({ ...rule, suffix: e.target.value })}
                     className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-sans focus:border-cyan-400 focus:outline-none"
@@ -189,7 +255,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
             {rule.mode === 'numbering' && (
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-neutral-300">Número Inicial</label>
+                  <label className="text-[11px] font-semibold text-neutral-300">{t.batchRename.startNumber}</label>
                   <input
                     type="number"
                     value={rule.startNumber}
@@ -198,7 +264,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-neutral-300">Incremento (Paso)</label>
+                  <label className="text-[11px] font-semibold text-neutral-300">{t.batchRename.step}</label>
                   <input
                     type="number"
                     value={rule.numberStep}
@@ -207,16 +273,16 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[11px] font-semibold text-neutral-300">Ceros a la izquierda</label>
+                  <label className="text-[11px] font-semibold text-neutral-300">{t.batchRename.padding}</label>
                   <select
                     value={rule.paddingDigits}
                     onChange={(e) => setRule({ ...rule, paddingDigits: parseInt(e.target.value) || 1 })}
                     className="w-full bg-neutral-900 border border-neutral-700/80 rounded-md px-3 py-1.5 text-neutral-100 font-sans focus:border-cyan-400 focus:outline-none"
                   >
-                    <option value={1}>Sin ceros (1, 2, 3)</option>
-                    <option value={2}>2 dígitos (01, 02, 03)</option>
-                    <option value={3}>3 dígitos (001, 002, 003)</option>
-                    <option value={4}>4 dígitos (0001, 0002)</option>
+                    <option value={1}>{t.batchRename.paddingNone}</option>
+                    <option value={2}>{t.batchRename.padding2}</option>
+                    <option value={3}>{t.batchRename.padding3}</option>
+                    <option value={4}>{t.batchRename.padding4}</option>
                   </select>
                 </div>
               </div>
@@ -227,6 +293,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                   {(['lowercase', 'uppercase', 'titlecase', 'kebab', 'camel'] as const).map((ct) => (
                     <button
+                      type="button"
                       key={ct}
                       onClick={() => setRule({ ...rule, caseType: ct })}
                       className={`p-2 rounded border text-center font-sans capitalize transition-colors ${
@@ -248,7 +315,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
                     className="rounded border-neutral-700 text-cyan-500 focus:ring-0 bg-neutral-900"
                   />
                   <label htmlFor="ext-case-toggle" className="text-neutral-300 font-medium cursor-pointer">
-                    Aplicar también a la extensión de archivo
+                    {t.batchRename.applyToExtension}
                   </label>
                 </div>
               </div>
@@ -258,17 +325,17 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
           {/* Live Before / After Comparison Table */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-400 px-1">
-              <span>Comparación en tiempo real ({selectedItems.length} archivos seleccionados)</span>
-              <span className="text-cyan-400 font-sans">{changedCount} con modificaciones</span>
+              <span>{t.batchRename.comparison.replace('{count}', String(selectedItems.length))}</span>
+              <span className="text-cyan-400 font-sans">{t.batchRename.changedCount.replace('{count}', String(changedCount))}</span>
             </div>
 
             <div className="border border-neutral-800 rounded-lg overflow-hidden max-h-56 overflow-y-auto bg-neutral-950 font-sans text-[11px]">
               <table className="w-full border-collapse">
                 <thead className="bg-neutral-900/90 text-neutral-400 text-[10px] uppercase tracking-wider sticky top-0 border-b border-neutral-800">
                   <tr>
-                    <th className="py-1.5 px-3 text-left font-semibold">Original</th>
+                    <th className="py-1.5 px-3 text-left font-semibold">{t.batchRename.original}</th>
                     <th className="py-1.5 px-3 text-center w-8"></th>
-                    <th className="py-1.5 px-3 text-left font-semibold">Nuevo Nombre</th>
+                    <th className="py-1.5 px-3 text-left font-semibold">{t.batchRename.newName}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-900">
@@ -297,29 +364,35 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-neutral-800 bg-neutral-950 flex items-center justify-between">
-          <div className="text-[11px] text-neutral-400">
-            {changedCount > 0 ? (
-              <span>Se aplicarán cambios a <strong className="text-cyan-300">{changedCount}</strong> elementos.</span>
+        <div className="px-5 py-3 border-t border-neutral-800 bg-neutral-950 flex items-center justify-between gap-4">
+          <div className="text-[11px] text-neutral-400 min-w-0">
+            {applyError ? (
+              <span className="text-rose-300">{applyError}</span>
+            ) : !validation.valid ? (
+              <span className="text-rose-300">{validation.message}</span>
+            ) : changedCount > 0 ? (
+              <span>{t.batchRename.applySummary.replace('{count}', String(changedCount))}</span>
             ) : (
-              <span>Sin modificaciones detectadas.</span>
+              <span>{t.batchRename.noChanges}</span>
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
+              type="button"
               onClick={onClose}
               className="px-4 py-1.5 rounded-md text-neutral-300 hover:bg-neutral-800 transition-colors"
             >
-              Cancelar
+              {t.batchRename.cancel}
             </button>
             <button
+              type="button"
               onClick={handleApply}
-              disabled={changedCount === 0}
+              disabled={!canApply}
               className="px-4 py-1.5 rounded-md bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-semibold disabled:opacity-40 disabled:hover:bg-cyan-500 transition-colors flex items-center gap-1.5 shadow-lg shadow-cyan-500/20"
             >
               <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>Aplicar Renombrado</span>
+              <span>{t.batchRename.apply}</span>
             </button>
           </div>
         </div>
