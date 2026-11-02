@@ -26,7 +26,7 @@
 
 <div align="center">
 
-### A dual-pane file manager for Windows
+### Two panes, tabs and keyboard shortcuts — the file manager for people who move files all day
 
 </div>
 
@@ -62,7 +62,7 @@
 
 ## 👋 Introduction
 
-CyberFiles is a **dual-pane file manager for Windows** built for people who move files all day and want the keyboard to do most of the work. It combines two independent panes, each with its own tabs and history, with details, list and icon views, saved layouts and sessions, queued copy and move operations with undo, a Recents location that lists what you opened, ZIP and RAR tools, and a properties panel that previews text, images, PDFs and archive contents. Windows drive discovery, native file icons, the Recycle Bin and the Windows properties dialog are wired through the Windows Shell rather than emulated. Built with **Tauri 2**, **Rust**, **React** and **TypeScript**.
+Windows Explorer gives you one pane, one tab and a dialog for everything. CyberFiles keeps two folders side by side, each with its own tabs and history, and lets the keyboard do most of the work: queued copy and move operations you can pause, cancel or undo, ZIP and RAR tools, a Recents list of what you just opened, and a properties panel that previews text, images, PDFs and archives. Drive discovery, native file icons, the Recycle Bin and the Windows properties dialog go through the real Windows Shell rather than an imitation. Built with **Tauri 2**, **Rust**, **React** and **TypeScript**.
 
 *Free and open source (GPLv3): no ads, no tracking, no telemetry, no account. Everything runs on your PC.*
 

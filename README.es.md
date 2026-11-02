@@ -26,7 +26,7 @@
 
 <div align="center">
 
-### Un gestor de archivos de doble panel para Windows
+### Dos paneles, pestañas y atajos de teclado: el gestor para quien mueve archivos todo el día
 
 </div>
 
@@ -62,7 +62,7 @@
 
 ## 👋 Introducción
 
-CyberFiles es un **gestor de archivos de doble panel para Windows** pensado para quienes mueven archivos todo el día y quieren que el teclado haga casi todo el trabajo. Combina dos paneles independientes, cada uno con sus propias pestañas e historial, con vistas de detalles, lista e iconos, diseños y sesiones guardados, operaciones de copia y movimiento en cola con deshacer, una ubicación Recientes que lista lo que abriste, herramientas para ZIP y RAR y un panel de propiedades que previsualiza texto, imágenes, PDF y el contenido de archivos comprimidos. El descubrimiento de unidades, los iconos nativos, la Papelera de reciclaje y el diálogo de propiedades de Windows se resuelven a través del Shell de Windows, no con imitaciones. Creado con **Tauri 2**, **Rust**, **React** y **TypeScript**.
+El Explorador de Windows te da un panel, una pestaña y un diálogo para cada cosa. CyberFiles mantiene dos carpetas lado a lado, cada una con sus pestañas e historial, y deja que el teclado haga casi todo: operaciones de copia y movimiento en cola que puedes pausar, cancelar o deshacer, herramientas ZIP y RAR, una lista de Recientes con lo último que abriste y un panel de propiedades que previsualiza texto, imágenes, PDF y archivos comprimidos. El descubrimiento de unidades, los iconos nativos, la Papelera y el diálogo de propiedades de Windows pasan por el Shell real, no por una imitación. Creado con **Tauri 2**, **Rust**, **React** y **TypeScript**.
 
 *Gratuito y de código abierto (GPLv3): sin anuncios, sin rastreo, sin telemetría y sin cuenta. Todo se ejecuta en tu PC.*
 
