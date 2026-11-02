@@ -51,7 +51,7 @@
 <details>
 <summary><strong>🔗 Related links (outside this README)</strong></summary>
 
-- 🌐 [CyberFiles on the web](https://cybergems.org/apps/cyberfiles/) — overview, download and SmartScreen guide
+- 🌐 [CyberFiles on GitHub](https://github.com/CyberGems/CyberFiles) — source code, issues and release notes
 - 📚 [Documentation & FAQ — Wiki](https://github.com/CyberGems/CyberFiles/wiki) — troubleshooting and deep-dives
 - 💾 [Releases](https://github.com/CyberGems/CyberFiles/releases) — installers, portable builds and changelog
 - 🟣 [CyberGems suite](https://github.com/CyberGems) — all open-source apps

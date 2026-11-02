@@ -51,7 +51,7 @@
 <details>
 <summary><strong>🔗 Related links (outside this README)</strong></summary>
 
-- 🌐 [CyberFiles en la web](https://cybergems.org/apps/cyberfiles/) — resumen, descarga y guía de SmartScreen
+- 🌐 [CyberFiles en GitHub](https://github.com/CyberGems/CyberFiles) — código fuente, issues y notas de versión
 - 📚 [Documentación y FAQ — Wiki](https://github.com/CyberGems/CyberFiles/wiki) — solución de problemas y guías detalladas
 - 💾 [Releases](https://github.com/CyberGems/CyberFiles/releases) — instaladores, versiones portátiles y changelog
 - 🟣 [Suite CyberGems](https://github.com/CyberGems) — todas las apps de código abierto
