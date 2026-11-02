@@ -4,13 +4,13 @@
 
 <p align="center">
   <a href="https://github.com/CyberGems/CyberFiles">
-    <img src="https://raw.githubusercontent.com/CyberGems/CyberFiles/main/public/icon.png" width="120" alt="CyberFiles, un gestor de archivos de doble panel para Windows" />
+    <img src="https://cybergems.org/banners/es/cyberfiles.png" alt="Gestor de archivos de doble panel con pestañas" />
   </a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/CyberGems/CyberFiles/releases/latest"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FCyberGems%2FCyberFiles%2Fmain%2Fpackage.json&query=%24.version&prefix=%20Descargar%20CyberFiles%20v&suffix=%20&style=for-the-badge&label=&labelColor=0891B2&color=0891B2" alt="Descargar la última versión" /><img src="https://img.shields.io/badge/Windows_10%2F11_(64--bit)-2563EB?style=for-the-badge" alt="Windows 10/11 (64 bits)" /></a>
-  &nbsp;<a href="https://github.com/CyberGems/CyberFiles/releases"><img src="https://img.shields.io/badge/Todas_las_versiones-30363D?style=for-the-badge&logo=github&logoColor=white" alt="Todas las versiones" /><img src="https://img.shields.io/badge/Notas_de_la_versi%C3%B3n-475569?style=for-the-badge" alt="Notas de la versión" /></a>
+  <a href="https://github.com/CyberGems/CyberFiles/releases/latest"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FCyberGems%2FCyberFiles%2Fmain%2Fpackage.json&query=%24.version&prefix=%20Descargar%20v&suffix=%20&style=for-the-badge&label=&labelColor=0891B2&color=0891B2" alt="Descargar la última versión" /><img src="https://img.shields.io/badge/Windows_10%2F11_(64--bit)-2563EB?style=for-the-badge" alt="Windows 10/11 (64 bits)" /></a>
+  &nbsp;<a href="https://github.com/CyberGems/CyberFiles/releases"><img src="https://img.shields.io/badge/Todas_las_versiones-30363D?style=for-the-badge&logo=github&logoColor=white" alt="Todas las versiones" /></a>
 </p>
 
 <p align="center">
@@ -18,14 +18,23 @@
   <img src="https://img.shields.io/badge/Plataforma-Windows_10%2F11-1F2428.svg?style=flat-square&color=334155" alt="Plataforma" />&nbsp;
   <img src="https://img.shields.io/badge/Tauri-2.x-1F2428.svg?style=flat-square&logo=tauri&logoColor=white&color=334155" alt="Tauri" />&nbsp;
   <img src="https://img.shields.io/badge/React-19-1F2428.svg?style=flat-square&logo=react&logoColor=white&color=334155" alt="React" />&nbsp;
-  <a href="https://github.com/CyberGems/CyberFiles/wiki"><img src="https://img.shields.io/badge/Wiki-Documentaci%C3%B3n-1F2428?style=flat-square&logo=gitbook&logoColor=white&color=334155" alt="Wiki" /></a>
+  <a href="https://github.com/CyberGems/CyberFiles/wiki"><img src="https://img.shields.io/badge/Wiki-Documentaci%C3%B3n-1F2428?style=flat-square&logo=gitbook&logoColor=white&color=334155" alt="Wiki" /></a>&nbsp;
+  <a href="https://github.com/CyberGems/CyberFiles/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/Notas_de_la_versi%C3%B3n-475569?style=flat-square" alt="Notas de la versión" /></a>
 </p>
+
+---
+
+<div align="center">
+
+### Un gestor de archivos de doble panel para Windows
+
+</div>
 
 ---
 
 ## 📑 Table of Contents
 
-- [¿Qué es CyberFiles?](#qué-es-cyberfiles)
+- [👋 Introducción](#-introducción)
 - [🗂️ ¿Por qué CyberFiles?](#️-por-qué-cyberfiles)
 - [✨ Funciones principales](#-funciones-principales)
 - [🚀 Primeros pasos](#-primeros-pasos)
@@ -51,7 +60,7 @@
 
 ---
 
-## ¿Qué es CyberFiles?
+## 👋 Introducción
 
 CyberFiles es un **gestor de archivos de doble panel para Windows** pensado para quienes mueven archivos todo el día y quieren que el teclado haga casi todo el trabajo. Combina dos paneles independientes, cada uno con sus propias pestañas e historial, con vistas de detalles, lista e iconos, diseños y sesiones guardados, operaciones de copia y movimiento en cola con deshacer, una ubicación Recientes que lista lo que abriste, herramientas para ZIP y RAR y un panel de propiedades que previsualiza texto, imágenes, PDF y el contenido de archivos comprimidos. El descubrimiento de unidades, los iconos nativos, la Papelera de reciclaje y el diálogo de propiedades de Windows se resuelven a través del Shell de Windows, no con imitaciones. Creado con **Tauri 2**, **Rust**, **React** y **TypeScript**.
 

@@ -4,13 +4,13 @@
 
 <p align="center">
   <a href="https://github.com/CyberGems/CyberFiles">
-    <img src="https://raw.githubusercontent.com/CyberGems/CyberFiles/main/public/icon.png" width="120" alt="CyberFiles, a dual-pane file manager for Windows" />
+    <img src="https://cybergems.org/banners/cyberfiles.png" alt="A fast, tabbed dual-pane file manager" />
   </a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/CyberGems/CyberFiles/releases/latest"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FCyberGems%2FCyberFiles%2Fmain%2Fpackage.json&query=%24.version&prefix=%20Download%20CyberFiles%20v&suffix=%20&style=for-the-badge&label=&labelColor=0891B2&color=0891B2" alt="Download Latest Release" /><img src="https://img.shields.io/badge/Windows_10%2F11_(64--bit)-2563EB?style=for-the-badge" alt="Windows 10/11 (64-bit)" /></a>
-  &nbsp;<a href="https://github.com/CyberGems/CyberFiles/releases"><img src="https://img.shields.io/badge/All_releases-30363D?style=for-the-badge&logo=github&logoColor=white" alt="All Releases" /><img src="https://img.shields.io/badge/Changelog-475569?style=for-the-badge" alt="Changelog" /></a>
+  <a href="https://github.com/CyberGems/CyberFiles/releases/latest"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2FCyberGems%2FCyberFiles%2Fmain%2Fpackage.json&query=%24.version&prefix=%20Download%20v&suffix=%20&style=for-the-badge&label=&labelColor=0891B2&color=0891B2" alt="Download Latest Release" /><img src="https://img.shields.io/badge/Windows_10%2F11_(64--bit)-2563EB?style=for-the-badge" alt="Windows 10/11 (64-bit)" /></a>
+  &nbsp;<a href="https://github.com/CyberGems/CyberFiles/releases"><img src="https://img.shields.io/badge/All_releases-30363D?style=for-the-badge&logo=github&logoColor=white" alt="All Releases" /></a>
 </p>
 
 <p align="center">
@@ -18,14 +18,23 @@
   <img src="https://img.shields.io/badge/Platform-Windows_10%2F11-1F2428.svg?style=flat-square&color=334155" alt="Platform" />&nbsp;
   <img src="https://img.shields.io/badge/Tauri-2.x-1F2428.svg?style=flat-square&logo=tauri&logoColor=white&color=334155" alt="Tauri" />&nbsp;
   <img src="https://img.shields.io/badge/React-19-1F2428.svg?style=flat-square&logo=react&logoColor=white&color=334155" alt="React" />&nbsp;
-  <a href="https://github.com/CyberGems/CyberFiles/wiki"><img src="https://img.shields.io/badge/Wiki-Documentation-1F2428?style=flat-square&logo=gitbook&logoColor=white&color=334155" alt="Wiki" /></a>
+  <a href="https://github.com/CyberGems/CyberFiles/wiki"><img src="https://img.shields.io/badge/Wiki-Documentation-1F2428?style=flat-square&logo=gitbook&logoColor=white&color=334155" alt="Wiki" /></a>&nbsp;
+  <a href="https://github.com/CyberGems/CyberFiles/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/Changelog-475569?style=flat-square" alt="Changelog" /></a>
 </p>
+
+---
+
+<div align="center">
+
+### A dual-pane file manager for Windows
+
+</div>
 
 ---
 
 ## 📑 Table of Contents
 
-- [What is CyberFiles?](#what-is-cyberfiles)
+- [👋 Introduction](#-introduction)
 - [🗂️ Why CyberFiles?](#️-why-cyberfiles)
 - [✨ Key Features](#-key-features)
 - [🚀 Getting Started](#-getting-started)
@@ -51,7 +60,7 @@
 
 ---
 
-## What is CyberFiles?
+## 👋 Introduction
 
 CyberFiles is a **dual-pane file manager for Windows** built for people who move files all day and want the keyboard to do most of the work. It combines two independent panes, each with its own tabs and history, with details, list and icon views, saved layouts and sessions, queued copy and move operations with undo, a Recents location that lists what you opened, ZIP and RAR tools, and a properties panel that previews text, images, PDFs and archive contents. Windows drive discovery, native file icons, the Recycle Bin and the Windows properties dialog are wired through the Windows Shell rather than emulated. Built with **Tauri 2**, **Rust**, **React** and **TypeScript**.
 
