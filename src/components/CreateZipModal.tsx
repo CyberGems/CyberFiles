@@ -86,7 +86,7 @@ export function CreateZipModal({ defaultName, itemCount, targetPath, onClose, on
         </div>
 
         <footer className="flex justify-end gap-2 border-t border-neutral-800 bg-neutral-950/40 px-4 py-3">
-          <Tooltip label={t.core.cancel} placement="top"><DialogButton size="compact" onClick={onClose}>{t.core.cancel}</DialogButton></Tooltip>
+          <DialogButton size="compact" onClick={onClose}>{t.core.cancel}</DialogButton>
           <Tooltip label={isSpanish ? 'Crear y añadir a Operaciones de archivos' : 'Create and add to File operations'} placement="top">
             <DialogButton size="compact" variant="primary" type="submit" disabled={!name.trim() || !destination}>{isSpanish ? 'Crear ZIP' : 'Create ZIP'}</DialogButton>
           </Tooltip>

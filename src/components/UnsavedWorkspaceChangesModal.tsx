@@ -209,30 +209,24 @@ export function UnsavedWorkspaceChangesModal({
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-neutral-800/90 bg-neutral-950/35 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-          <Tooltip label={copy.continueEditing} placement="top">
-            <DialogButton size="compact" disabled={busy} onClick={onCancel} className="w-full sm:w-auto">
-              <span className="inline-flex items-center gap-2"><ArrowLeft className="h-3.5 w-3.5" />{copy.continueEditing}</span>
-            </DialogButton>
-          </Tooltip>
-          <Tooltip label={copy.discardAndContinue} placement="top">
-            <DialogButton size="compact" disabled={busy} onClick={onDiscardAndContinue} className="w-full sm:w-auto">
-              <span className="inline-flex items-center gap-2"><Trash2 className="h-3.5 w-3.5" />{copy.discardAndContinue}</span>
-            </DialogButton>
-          </Tooltip>
-          <Tooltip label={copy.saveAndContinue} placement="top">
-            <DialogButton
-              size="compact"
-              variant="primary"
-              shortcut={copy.saveAndContinueShortcut}
-              data-save-default
-              aria-keyshortcuts="Enter"
-              disabled={busy || (needsNames && !canSave)}
-              onClick={submitSave}
-              className="w-full sm:w-auto"
-            >
-              <span className="inline-flex items-center gap-2"><Save className="h-3.5 w-3.5" />{copy.saveAndContinue}</span>
-            </DialogButton>
-          </Tooltip>
+          <DialogButton size="compact" disabled={busy} onClick={onCancel} className="w-full sm:w-auto">
+            <span className="inline-flex items-center gap-2"><ArrowLeft className="h-3.5 w-3.5" />{copy.continueEditing}</span>
+          </DialogButton>
+          <DialogButton size="compact" disabled={busy} onClick={onDiscardAndContinue} className="w-full sm:w-auto">
+            <span className="inline-flex items-center gap-2"><Trash2 className="h-3.5 w-3.5" />{copy.discardAndContinue}</span>
+          </DialogButton>
+          <DialogButton
+            size="compact"
+            variant="primary"
+            shortcut={copy.saveAndContinueShortcut}
+            data-save-default
+            aria-keyshortcuts="Enter"
+            disabled={busy || (needsNames && !canSave)}
+            onClick={submitSave}
+            className="w-full sm:w-auto"
+          >
+            <span className="inline-flex items-center gap-2"><Save className="h-3.5 w-3.5" />{copy.saveAndContinue}</span>
+          </DialogButton>
         </footer>
       </section>
     </div>

@@ -135,8 +135,10 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
         </div>
 
         <div className="flex justify-end gap-2 px-4 py-3 border-t border-neutral-800 bg-neutral-950/50">
-          <Tooltip label={t.core.cancel} placement="top"><span><DialogButton size="compact" disabled={isBusy} onClick={onCancel}>{t.core.cancel}</DialogButton></span></Tooltip>
-          <Tooltip label={permanentlyDelete ? t.core.permanentDeleteConfirmTooltip : allowPermanentDelete ? t.core.recycleBinDeleteConfirmTooltip : resolvedDescription} placement="top">
+          <span><DialogButton size="compact" disabled={isBusy} onClick={onCancel}>{t.core.cancel}</DialogButton></span>
+          {/* The tooltip only fills in when it states something the body does not show
+              already: otherwise it would repeat resolvedDescription, visible above. */}
+          <Tooltip label={permanentlyDelete ? t.core.permanentDeleteConfirmTooltip : allowPermanentDelete ? t.core.recycleBinDeleteConfirmTooltip : ''} placement="top">
             <span><DialogButton size="compact" variant={permanentlyDelete ? 'danger' : confirmVariant} disabled={isBusy} onClick={() => onConfirm(permanentlyDelete, rememberChoice)}>{isBusy ? busyLabel ?? t.core.operationInProgress : resolvedConfirmLabel}</DialogButton></span>
           </Tooltip>
         </div>

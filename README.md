@@ -99,7 +99,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 
 ### 📁 Browsing & Views
 - **This PC view**: drives, common Windows folders, network locations and advanced Windows folders in one place
-- **Address bar**: the current folder path with clickable segments; click a parent to jump back, click the current segment to refresh the listing, and open recent folders from the chevron at the right edge
+- **Address bar**: the current folder path with clickable segments; click a parent to jump back, click the current segment to refresh the listing, and open recent folders from the chevron at the right edge. Type or paste a path with environment variables such as `%APPDATA%\CyberSnap\logs` and CyberFiles resolves the tokens automatically
 - **Sidebar**: locations only, so the tree never leaves the screen: quick access with a lazy-loaded folder tree, drives with capacity bars, advanced Windows folders and Recycle Bin status
 - **Collapsible locations panel**: hide the sidebar with Ctrl+L, the button beside the properties toggle or the command palette, and both panes take the full width; the choice is part of saved layouts
 - **Recents**: a virtual location listing the files you opened or previewed in CyberFiles, sorted by last opened, with a last-opened column, per-item removal and a clear action

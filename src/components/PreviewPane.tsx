@@ -388,7 +388,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
         <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400">
           <FileText className="h-10 w-10 text-cyan-400" />
           <span className="text-[11px]">{status}</span>
-          {nativePropertiesSupported && <Tooltip label={t.preview.openWithDefaultApp} placement="top"><button type="button" onClick={onOpenWithDefaultApp} className="rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-[11px] text-neutral-200 transition-colors hover:border-cyan-600 hover:text-cyan-200">{t.preview.openWithDefaultApp}</button></Tooltip>}
+          {nativePropertiesSupported && <button type="button" onClick={onOpenWithDefaultApp} className="rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-[11px] text-neutral-200 transition-colors hover:border-cyan-600 hover:text-cyan-200">{t.preview.openWithDefaultApp}</button>}
         </div>
       );
     }

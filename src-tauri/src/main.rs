@@ -6373,7 +6373,11 @@ fn clean_path_argument(raw: &str) -> Option<String> {
     if trimmed.is_empty() {
         return None;
     }
-    let path = Path::new(trimmed);
+    // A late shortcut can arrive with literal `%VAR%` tokens (e.g. a .lnk target
+    // style path or a custom protocol line); expand them the same way dialogs
+    // and the address bar do, before the existence checks.
+    let trimmed = expand_windows_environment_path(trimmed);
+    let path = Path::new(&trimmed);
     if path.is_dir() {
         return Some(trimmed.to_string());
     }
@@ -6888,6 +6892,14 @@ mod tests {
                 .SetOperationFlags(FOF_NO_UI | FOFX_RECYCLEONDELETE)
                 .expect("Windows should accept recycle-on-delete flags");
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn expands_env_vars_in_launch_path_arguments() {
+        assert!(super::clean_path_argument(r"%TEMP%").is_some());
+        assert!(super::clean_path_argument(r"%TEMP%\").is_some());
+        assert!(super::clean_path_argument(r"%CYBERFILES_MISSING_VAR_123%\logs").is_none());
     }
 
     #[test]

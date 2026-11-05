@@ -118,8 +118,8 @@ export function CreateItemModal({ kind, defaultName, parentPath, isBusy, onClose
         )}
 
         <footer className="flex justify-end gap-2 border-t border-neutral-800 bg-neutral-950/40 px-4 py-3">
-          <Tooltip label={t.core.cancel} placement="top"><DialogButton size="compact" disabled={isBusy} onClick={onClose}>{t.core.cancel}</DialogButton></Tooltip>
-          <Tooltip label={t.contextMenu.create} placement="top"><DialogButton size="compact" variant="primary" type="submit" disabled={isBusy || !(typeof name === 'string' && name.trim())}>{isBusy ? t.core.operationInProgress : t.contextMenu.create}</DialogButton></Tooltip>
+          <DialogButton size="compact" disabled={isBusy} onClick={onClose}>{t.core.cancel}</DialogButton>
+          <DialogButton size="compact" variant="primary" type="submit" disabled={isBusy || !(typeof name === 'string' && name.trim())}>{isBusy ? t.core.operationInProgress : t.contextMenu.create}</DialogButton>
         </footer>
       </form>
     </div>
