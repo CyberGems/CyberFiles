@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { AlertTriangle, ArrowLeft, FolderOpen, LayoutGrid, Save, Trash2, X } from 'lucide-react';
+import { AlertTriangle, FolderOpen, LayoutGrid, Save, Trash2, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 import { DialogButton } from './DialogButton';
@@ -131,11 +131,11 @@ export function UnsavedWorkspaceChangesModal({
               </p>
             </div>
           </div>
-          <Tooltip label={copy.continueEditing} placement="bottom">
+          <Tooltip label={t.core.cancel} shortcut="Esc" placement="bottom">
             <button
               type="button"
               disabled={busy}
-              aria-label={copy.continueEditing}
+              aria-label={t.core.cancel}
               onClick={onCancel}
               className="rounded-lg p-2 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40"
             >
@@ -209,9 +209,6 @@ export function UnsavedWorkspaceChangesModal({
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-neutral-800/90 bg-neutral-950/35 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-          <DialogButton size="compact" disabled={busy} onClick={onCancel} className="w-full sm:w-auto">
-            <span className="inline-flex items-center gap-2"><ArrowLeft className="h-3.5 w-3.5" />{copy.continueEditing}</span>
-          </DialogButton>
           <DialogButton size="compact" disabled={busy} onClick={onDiscardAndContinue} className="w-full sm:w-auto">
             <span className="inline-flex items-center gap-2"><Trash2 className="h-3.5 w-3.5" />{copy.discardAndContinue}</span>
           </DialogButton>

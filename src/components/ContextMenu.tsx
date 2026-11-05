@@ -37,6 +37,7 @@ import {
   Undo2,
   Wrench,
   Star,
+  CornerDownLeft,
 } from 'lucide-react';
 import { ArchiveExtractionMode, ContextMenuPosition, FileItem, GroupByField, SortField, SortOrder, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
@@ -712,7 +713,13 @@ const MenuButton: React.FC<{
         <span className="flex h-4 w-4 shrink-0 items-center justify-center">{icon}</span>
         <span className="truncate">{label}</span>
       </span>
-      {shortcut && <span className="shrink-0 font-sans text-[11px] text-neutral-400">{shortcut}</span>}
+      {shortcut && (
+        /* Suite-wide convention: shortcuts render as keyboard-hint chips, and the
+           Enter hint uses the return glyph, matching DialogButton. */
+        <kbd className="keyboard-hint shrink-0 text-neutral-400">
+          {shortcut === 'Enter' ? <CornerDownLeft className="h-2.5 w-2.5" strokeWidth={2.5} /> : shortcut}
+        </kbd>
+      )}
       {trailing}
     </button>
   </div>
