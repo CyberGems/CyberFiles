@@ -1459,8 +1459,56 @@ fn validate_child_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Expands `%VAR%` environment variable tokens in a user-provided Windows path,
+/// e.g. `%APPDATA%\CyberSnap\logs` or `%USERPROFILE%`. Lookup is case-insensitive,
+/// matching how the Windows command parser treats variable names. Unresolvable,
+/// empty, or unterminated tokens are left untouched so the downstream canonicalize
+/// call reports the real filesystem error instead of a wrong expansion.
+fn expand_windows_environment_path(path: &str) -> String {
+    if !path.contains('%') {
+        return path.to_string();
+    }
+    let mut expanded = String::with_capacity(path.len());
+    let mut remainder = path;
+    while let Some(start) = remainder.find('%') {
+        expanded.push_str(&remainder[..start]);
+        let after_start = &remainder[start + 1..];
+        match after_start.find('%') {
+            Some(end) => {
+                let name = &after_start[..end];
+                let value = if name.is_empty() {
+                    None
+                } else {
+                    std::env::var(name)
+                        .ok()
+                        .or_else(|| std::env::var(name.to_uppercase()).ok())
+                };
+                match value {
+                    Some(value) => {
+                        expanded.push_str(&value);
+                        remainder = &after_start[end + 1..];
+                    }
+                    None => {
+                        // Keep the token in place so scanning continues after this '%' marker.
+                        expanded.push('%');
+                        remainder = after_start;
+                    }
+                }
+            }
+            None => {
+                // No closing separator: the trailing text is not a variable.
+                expanded.push_str(&remainder[start..]);
+                remainder = "";
+            }
+        }
+    }
+    expanded.push_str(remainder);
+    expanded
+}
+
 fn canonical_directory(path: &str) -> Result<PathBuf, String> {
-    let requested = Path::new(path);
+    let expanded = expand_windows_environment_path(path);
+    let requested = Path::new(&expanded);
     if !requested.is_absolute() {
         return Err("The destination must be an absolute folder path.".to_string());
     }
@@ -1472,7 +1520,8 @@ fn canonical_directory(path: &str) -> Result<PathBuf, String> {
 }
 
 fn canonical_item(path: &str) -> Result<PathBuf, String> {
-    let requested = Path::new(path);
+    let expanded = expand_windows_environment_path(path);
+    let requested = Path::new(&expanded);
     if !requested.is_absolute() {
         return Err("The source must be an absolute filesystem path.".to_string());
     }
@@ -2400,8 +2449,9 @@ fn is_hidden_metadata(metadata: &fs::Metadata, _path: &Path) -> bool {
 #[tauri::command]
 async fn list_directory(path: String) -> Result<DirectoryListing, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let expanded = expand_windows_environment_path(&path);
         let root =
-            fs::canonicalize(&path).map_err(|error| format!("Cannot access folder: {error}"))?;
+            fs::canonicalize(&expanded).map_err(|error| format!("Cannot access folder: {error}"))?;
         if !root.is_dir() {
             return Err("The selected location is not a folder.".to_string());
         }
@@ -2504,8 +2554,9 @@ static FLAT_SCAN_GENERATION: AtomicU64 = AtomicU64::new(0);
 #[tauri::command]
 async fn list_flat_directory(path: String) -> Result<FlatDirectoryListing, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let expanded = expand_windows_environment_path(&path);
         let root =
-            fs::canonicalize(&path).map_err(|error| format!("Cannot access folder: {error}"))?;
+            fs::canonicalize(&expanded).map_err(|error| format!("Cannot access folder: {error}"))?;
         if !root.is_dir() {
             return Err("The selected location is not a folder.".to_string());
         }
@@ -2629,7 +2680,8 @@ struct FolderChildCounts {
 #[tauri::command]
 async fn count_folder_children(path: String) -> Result<FolderChildCounts, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let root = fs::canonicalize(&path)
+        let expanded = expand_windows_environment_path(&path);
+        let root = fs::canonicalize(&expanded)
             .map_err(|error| format!("Cannot access folder: {error}"))?;
         if !root.is_dir() {
             return Err("The selected location is not a folder.".to_string());
@@ -2672,7 +2724,8 @@ async fn count_folder_children(path: String) -> Result<FolderChildCounts, String
 #[tauri::command]
 async fn count_hidden_items(path: String) -> Result<usize, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let root = fs::canonicalize(&path)
+        let expanded = expand_windows_environment_path(&path);
+        let root = fs::canonicalize(&expanded)
             .map_err(|error| format!("Cannot access folder: {error}"))?;
         if !root.is_dir() {
             return Err("The selected location is not a folder.".to_string());
@@ -2808,7 +2861,8 @@ fn calculate_directory_size_controlled(
 
 #[tauri::command]
 fn start_folder_size_calculation(app: tauri::AppHandle, path: String, job_id: String) -> Result<(), String> {
-    let root = fs::canonicalize(&path).map_err(|error| format!("Cannot access folder: {error}"))?;
+    let expanded = expand_windows_environment_path(&path);
+    let root = fs::canonicalize(&expanded).map_err(|error| format!("Cannot access folder: {error}"))?;
     if !root.is_dir() {
         return Err("The selected location is not a folder.".to_string());
     }
@@ -2931,8 +2985,9 @@ fn calculate_directory_size(
 #[tauri::command]
 async fn calculate_folder_size(path: String) -> Result<u64, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let expanded = expand_windows_environment_path(&path);
         let root =
-            fs::canonicalize(&path).map_err(|error| format!("Cannot access folder: {error}"))?;
+            fs::canonicalize(&expanded).map_err(|error| format!("Cannot access folder: {error}"))?;
         if !root.is_dir() {
             return Err("The selected location is not a folder.".to_string());
         }
@@ -2948,8 +3003,9 @@ async fn calculate_folder_size_bounded(
     max_entries: usize,
 ) -> Result<FolderSizeCalculation, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        let expanded = expand_windows_environment_path(&path);
         let root =
-            fs::canonicalize(&path).map_err(|error| format!("Cannot access folder: {error}"))?;
+            fs::canonicalize(&expanded).map_err(|error| format!("Cannot access folder: {error}"))?;
         if !root.is_dir() {
             return Err("The selected location is not a folder.".to_string());
         }
@@ -6714,8 +6770,41 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{runtime_info, validate_recycle_source};
+    use super::{canonical_directory, expand_windows_environment_path, runtime_info, validate_recycle_source};
     use std::path::Path;
+
+    #[test]
+    fn leaves_tokens_that_are_not_environment_variables_untouched() {
+        assert_eq!(expand_windows_environment_path(r"C:\plain\path"), r"C:\plain\path");
+        assert_eq!(expand_windows_environment_path(r"%CYBERFILES_MISSING_VAR_123%\logs"), r"%CYBERFILES_MISSING_VAR_123%\logs");
+        assert_eq!(expand_windows_environment_path("%%"), "%%");
+        assert_eq!(expand_windows_environment_path(r"%UNTERMINATED\logs"), r"%UNTERMINATED\logs");
+        assert_eq!(expand_windows_environment_path("trailing % text"), "trailing % text");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn expands_windows_environment_variables_in_paths() {
+        let roaming = std::env::var("APPDATA").expect("APPDATA should exist on Windows");
+        assert_eq!(
+            expand_windows_environment_path(r"%APPDATA%\CyberSnap\logs"),
+            format!(r"{roaming}\CyberSnap\logs")
+        );
+        // Variable names resolve case-insensitively, like the Windows command parser.
+        assert_eq!(
+            expand_windows_environment_path(r"%appdata%\logs"),
+            format!(r"{roaming}\logs")
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn canonicalizes_env_var_folder_paths_without_absolute_expansion() {
+        let roaming = std::env::var("APPDATA").expect("APPDATA should exist on Windows");
+        let expanded = canonical_directory(r"%APPDATA%").expect("APPDATA should canonicalize");
+        let expected = std::fs::canonicalize(&roaming).expect("APPDATA folder should exist");
+        assert_eq!(expanded, expected);
+    }
 
     #[test]
     fn exposes_development_runtime_metadata() {

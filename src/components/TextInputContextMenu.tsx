@@ -216,7 +216,9 @@ function getUsableExplorerAddress(value: string): string | null {
   const drivePath = /^[a-z]:[\\/]/i.test(address);
   const extendedDrivePath = /^\\\\\?\\[a-z]:[\\/]/i.test(address);
   const networkPath = /^\\\\[^\\]+\\[^\\]+/.test(address);
-  return drivePath || extendedDrivePath || networkPath ? address : null;
+  // `%VAR%\folder` style addresses: the native side expands the tokens on navigate.
+  const environmentPath = /^%[^%\\/]+%[\\/]/.test(address);
+  return drivePath || extendedDrivePath || networkPath || environmentPath ? address : null;
 }
 
 export function TextInputContextMenu() {
