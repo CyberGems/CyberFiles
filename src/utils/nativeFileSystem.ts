@@ -225,6 +225,15 @@ export async function chooseNativeFile(title = 'Choose a shortcut target'): Prom
   return typeof selected === 'string' ? selected : null;
 }
 
+/**
+ * Resolves `%VAR%` environment tokens in a user-provided path (e.g.
+ * `%APPDATA%\CyberSnap\logs`) so navigation state stores the real location.
+ */
+export async function expandNativeEnvironmentPath(path: string): Promise<string> {
+  if (!isTauriDesktop()) throw new Error('Native path expansion is unavailable.');
+  return invoke<string>('expand_environment_path', { path });
+}
+
 export async function listNativeDirectory(path: string): Promise<{ rootPath: string; rootName: string; entries: FileItem[]; counts: NativeDirectoryCounts; hasMore: boolean; nextOffset: number }> {
   const result = await invoke<LoadedNativeFolder>('list_directory', { path });
   return {

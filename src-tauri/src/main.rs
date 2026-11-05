@@ -1506,6 +1506,13 @@ fn expand_windows_environment_path(path: &str) -> String {
     expanded
 }
 
+/// Expands a user-typed `%VAR%` path so the UI can store the resolved location.
+/// Keep this synchronous and cheap: it never touches the filesystem.
+#[tauri::command]
+fn expand_environment_path(path: String) -> Result<String, String> {
+    Ok(expand_windows_environment_path(&path))
+}
+
 fn canonical_directory(path: &str) -> Result<PathBuf, String> {
     let expanded = expand_windows_environment_path(path);
     let requested = Path::new(&expanded);
@@ -6704,6 +6711,7 @@ fn main() {
             quit_app,
             list_directory,
             list_flat_directory,
+            expand_environment_path,
             count_hidden_items,
             count_folder_children,
             get_file_icons,
