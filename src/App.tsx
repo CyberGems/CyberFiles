@@ -784,7 +784,6 @@ export default function App() {
   const initialActiveSessionId = startupBehavior === 'continue'
     ? initialWorkspace?.sessionId ?? initialWorkspaceStore.lastSessionId
     : startupBehavior === 'session' ? savedStartupSession?.id ?? DEFAULT_SESSION_PROFILE_ID : DEFAULT_SESSION_PROFILE_ID;
-  const initialLayoutProfile = initialWorkspaceStore.layouts.find(profile => profile.id === initialActiveLayoutId);
   const initialSessionProfile = startupBehavior === 'continue'
     ? initialWorkspaceStore.sessions.find(profile => profile.id === initialActiveSessionId)
     : startupBehavior === 'session' ? savedStartupSession : undefined;
@@ -792,14 +791,17 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState(initialActiveSessionId);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(startupBehavior === 'continue' ? initialWorkspace?.id ?? null : null);
   const [workspaceStore, setWorkspaceStore] = useState(initialWorkspaceStore);
-  const [initialPanelPreferences] = useState<PanelViewPreferences>(() => initialLayoutProfile
-    ? { ...readPanelViewPreferences(), ...initialLayoutProfile.snapshot }
-    : readPanelViewPreferences());
+  // The live panel preferences are the persisted source of truth at startup:
+  // they are written on every change and already reflect the layout as last
+  // used. Layout profiles only apply their snapshot when explicitly applied
+  // (switching profiles or workspaces), so an active profile must not silently
+  // override newer user preferences on restart.
+  const [initialPanelPreferences] = useState<PanelViewPreferences>(readPanelViewPreferences);
   const initialSessionSnapshot = initialSessionProfile?.snapshot ?? defaultSessionSnapshot(startsAtSystemHome ? SYSTEM_HOME_PATH : '', t.sidebar.thisPc);
-  const [paneColumnPreferences, setPaneColumnPreferences] = useState<Record<WorkspacePaneId, PaneColumnsSnapshot>>(() => initialLayoutProfile?.snapshot.columns ?? {
+  const [paneColumnPreferences, setPaneColumnPreferences] = useState<Record<WorkspacePaneId, PaneColumnsSnapshot>>(() => ({
     left: readPaneColumnPreferences('left'),
     right: readPaneColumnPreferences('right'),
-  });
+  }));
   const [columnPreferencesRevision, setColumnPreferencesRevision] = useState(0);
   const [sessionReloadToken, setSessionReloadToken] = useState(initialSessionProfile ? 1 : 0);
   const [folderStyleLocked, setFolderStyleLocked] = useState(readFolderStyleLockPreference);
