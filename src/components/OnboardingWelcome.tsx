@@ -11,6 +11,7 @@ import {
   writeStartMinimizedOnStartup,
 } from '../utils/systemIntegration';
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile } from '../utils/workspaceProfiles';
+import { KeyboardShortcutContent } from './KeyboardShortcut';
 
 
 interface OnboardingWelcomeProps {
@@ -389,7 +390,7 @@ export function OnboardingWelcome({
               ) : (
                 <button autoFocus type="button" disabled={saving} onClick={handleFinish} className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2 text-sm font-semibold text-neutral-950 shadow-lg shadow-cyan-900/20 transition-colors hover:bg-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-200 focus:ring-offset-2 focus:ring-offset-neutral-900 disabled:opacity-50">
                   {t.onboarding.finish}
-                  <kbd className="keyboard-hint keyboard-hint-primary">Enter</kbd>
+                <kbd className="keyboard-hint keyboard-hint-primary"><KeyboardShortcutContent shortcut="Enter" /></kbd>
                   <Check className="h-4 w-4" />
                 </button>
               )}

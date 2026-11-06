@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { X, Keyboard } from 'lucide-react';
+import { KeyboardShortcutContent } from './KeyboardShortcut';
 import { useLanguage } from '../locales/LanguageContext';
 
 interface KeyboardShortcutsModalProps {
@@ -93,7 +94,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
             >
               <span className="text-neutral-300 text-[11.5px]">{s.desc}</span>
               <kbd className="keyboard-hint text-cyan-300">
-                {s.key}
+                <KeyboardShortcutContent shortcut={s.key} />
               </kbd>
             </div>
           ))}

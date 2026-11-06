@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronsRight } from 'lucide-react';
+import { KeyboardShortcutContent } from './KeyboardShortcut';
 
 export interface ToolbarOverflowEntry {
   id: string;
@@ -120,7 +121,7 @@ export const ToolbarOverflowMenu: React.FC<ToolbarOverflowMenuProps> = ({ label,
                 >
                   {entry.icon && <span className="flex h-4 w-4 shrink-0 items-center justify-center text-neutral-400">{entry.icon}</span>}
                   <span className="min-w-0 flex-1 truncate">{entry.label}</span>
-                  {entry.shortcut && <kbd className="keyboard-hint shrink-0">{entry.shortcut}</kbd>}
+                  {entry.shortcut && <kbd className="keyboard-hint shrink-0"><KeyboardShortcutContent shortcut={entry.shortcut} /></kbd>}
                   {entry.pressed !== undefined && <span aria-hidden="true" className={`ml-1 h-1.5 w-1.5 shrink-0 rounded-full ${entry.pressed ? 'bg-cyan-300' : 'bg-transparent'}`} />}
                 </button>
               ))}

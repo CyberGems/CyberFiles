@@ -19,12 +19,19 @@ import type {
   ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { KeyboardShortcutContent } from './KeyboardShortcut';
 
 type Placement = 'top' | 'bottom' | 'left' | 'right';
 type ResolvedPlacement = Placement;
 
 export function TooltipShortcut({ children }: { children: ReactNode }) {
-  return <kbd className="tooltip-shortcut-key">{children}</kbd>;
+  return (
+    <kbd className="tooltip-shortcut-key">
+      {typeof children === 'string'
+        ? <KeyboardShortcutContent shortcut={children} />
+        : children}
+    </kbd>
+  );
 }
 
 const SHORTCUT_PATTERN = /(?:(?:Control|Ctrl|Alt|Shift|Mayús|Win|Meta)(?:\+(?:Control|Ctrl|Alt|Shift|Mayús|Win|Meta))*\+(?:F\d{1,2}|Enter|Space|Espacio|Supr|Delete|Del|Backspace|Tab|Escape|Esc|Left|Right|Up|Down|Izquierda|Derecha|Arriba|Abajo|[A-Za-z0-9]|,|\.)(?![A-Za-z0-9]))|\b(?:F\d{1,2}|Enter|Space|Espacio|Supr|Delete|Del|Backspace|Tab|Escape|Esc)\b/i;

@@ -28,6 +28,7 @@ import {
   X,
 } from 'lucide-react';
 import { ArchiveExtractionMode, FileItem, ViewMode } from '../types';
+import { KeyboardShortcutContent } from './KeyboardShortcut';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 
@@ -570,7 +571,7 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
                     <span className="flex min-w-0 items-center gap-2">{entry.icon}<span className="truncate">{entry.label}</span></span>
                     {entry.checked
                       ? <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-cyan-300" />
-                      : entry.shortcut && <kbd className="keyboard-hint shrink-0">{entry.shortcut}</kbd>}
+                      : entry.shortcut && <kbd className="keyboard-hint shrink-0"><KeyboardShortcutContent shortcut={entry.shortcut} /></kbd>}
                   </button>
                 ))}
               </React.Fragment>

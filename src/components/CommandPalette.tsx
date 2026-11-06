@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Search } from 'lucide-react';
+import { KeyboardShortcutContent } from './KeyboardShortcut';
 
 export interface CommandPaletteCommand {
   id: string;
@@ -203,7 +204,7 @@ export function CommandPalette({
                     </span>
                     {command.shortcut && !command.disabled && (
                       <kbd className="keyboard-hint flex-shrink-0">
-                        {command.shortcut}
+                        <KeyboardShortcutContent shortcut={command.shortcut} />
                       </kbd>
                     )}
                   </button>

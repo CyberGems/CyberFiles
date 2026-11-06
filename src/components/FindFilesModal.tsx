@@ -27,6 +27,7 @@ import { searchFileSystem, SearchOptions } from '../utils/searchIndex';
 import { isTauriDesktop, listNativeFlatDirectory } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
+import { KeyboardShortcutContent } from './KeyboardShortcut';
 import { DialogButton } from './DialogButton';
 
 export const PRESERVE_SEARCH_STORAGE_KEY = 'cyberfiles_preserve_search_preference';
@@ -884,7 +885,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
               <kbd className="keyboard-hint">↑/↓</kbd> Navegar
             </span>
             <span className="flex items-center gap-1">
-              <kbd className="keyboard-hint">Enter</kbd> Localizar en panel
+              <kbd className="keyboard-hint"><KeyboardShortcutContent shortcut="Enter" /></kbd> Localizar en panel
             </span>
             <span className="flex items-center gap-1">
               <kbd className="keyboard-hint">Esc</kbd> Cerrar
