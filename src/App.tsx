@@ -132,6 +132,9 @@ const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
 // folder is large enough for an accidental click to be expensive.
 const FLAT_VIEW_CONFIRM_FOLDER_THRESHOLD = 20;
 const PANEL_VIEW_PREFERENCES_KEY = 'cyberfiles_panel_view_preferences_v1';
+// The language preference lives under the same key LanguageContext writes, so
+// legacy-profile migration can name the migrated profiles in the user's language.
+const LANGUAGE_STORAGE_KEY = 'cyberfiles_lang';
 const EMPTY_AREA_DOUBLE_CLICK_KEY = 'cyberfiles_empty_area_double_click_navigate_up';
 const TYPING_ACTIVATES_FILTER_KEY = 'cyberfiles_typing_activates_filter_v1';
 const MOUSE_GESTURES_ENABLED_KEY = 'cyberfiles_mouse_gestures_enabled_v1';
@@ -252,6 +255,17 @@ const DEFAULT_PANEL_VIEW_PREFERENCES: PanelViewPreferences = {
   sidebarSplitPercent: 22,
 };
 
+function migratedProfileNames(): { layout: string; session: string } {
+  try {
+    if (window.localStorage.getItem(LANGUAGE_STORAGE_KEY) === 'en') {
+      return { layout: 'Previous layout', session: 'Previous session' };
+    }
+  } catch {
+    // Storage unavailable: fall back to the default language used by the app.
+  }
+  return { layout: 'Diseño anterior', session: 'Sesión anterior' };
+}
+
 function initialWorkspaceProfileStore(): WorkspaceProfileStore {
   const store = readWorkspaceProfileStore();
   try {
@@ -269,10 +283,11 @@ function initialWorkspaceProfileStore(): WorkspaceProfileStore {
       sidebarSplitPercent: legacy.sidebarSplitPercent,
       columns: { left: readPaneColumnPreferences('left'), right: readPaneColumnPreferences('right') },
     };
+    const migratedNames = migratedProfileNames();
     if (JSON.stringify(snapshot) !== JSON.stringify(DEFAULT_LAYOUT_SNAPSHOT)) {
       const migrated: LayoutProfile = {
         id: createProfileId('layout'),
-        name: 'Diseño anterior',
+        name: migratedNames.layout,
         snapshot,
         updatedAt: Date.now(),
       };
@@ -298,7 +313,7 @@ function initialWorkspaceProfileStore(): WorkspaceProfileStore {
     if (JSON.stringify(priorSession) !== JSON.stringify(defaultSession)) {
       const migrated: TabSessionProfile = {
         id: createProfileId('session'),
-        name: 'Sesión anterior',
+        name: migratedNames.session,
         snapshot: priorSession,
         updatedAt: Date.now(),
       };
