@@ -633,7 +633,7 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
     >
       {columns.map(column => {
         if (column === 'extension') {
-          return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center overflow-hidden truncate font-mono text-[10.5px] font-medium uppercase tracking-wide text-cyan-400/90"><span data-file-column-content={column} className="inline-block max-w-full truncate">{item.isFolder || !showFileExtensions ? '' : (item.extension || '')}</span></div>;
+          return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center overflow-hidden truncate font-mono text-[10.5px] font-medium uppercase tracking-wide text-cyan-400/90"><span data-file-column-content={column} className="inline-block max-w-full truncate">{item.isFolder ? '' : (item.extension || '')}</span></div>;
         }
         if (column === 'name') {
           return (
