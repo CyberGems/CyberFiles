@@ -822,6 +822,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const statusCountButtonRef = useRef<HTMLButtonElement>(null);
   const [resizingColumn, setResizingColumn] = useState<ResizableColumn | null>(null);
   const [columnDropTarget, setColumnDropTarget] = useState<FileColumn | null>(null);
+  const [columnDragActive, setColumnDragActive] = useState(false);
   const [nativeFileIconState, setNativeFileIconState] = useState<{ scope: string; byItemId: Record<string, string> }>({ scope: '', byItemId: {} });
   const lastSingleClickOpenRef = useRef<{ itemId: string; timestamp: number } | null>(null);
   const typeAheadRef = useRef({ query: '', at: 0 });
@@ -1791,6 +1792,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       moved: false,
       target: null,
     };
+    setColumnDragActive(true);
     event.currentTarget.setPointerCapture(event.pointerId);
   };
 
@@ -1814,6 +1816,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }
     columnPointerDragRef.current = null;
     setColumnDropTarget(null);
+    setColumnDragActive(false);
   };
 
   useEffect(() => {
@@ -3626,7 +3629,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* 4. Column Headers (Details View) */}
       {effectiveViewMode === 'details' && !isSystemHome && (
         <div
-          className="cyberfiles-column-headers shrink-0 border border-neutral-800/80 bg-neutral-900/90 text-[10px] font-semibold text-neutral-300 select-none shadow-sm backdrop-blur-xs"
+          className="cyberfiles-column-headers shrink-0 border border-neutral-800/80 bg-neutral-900/90 text-[11px] font-semibold text-neutral-300 select-none shadow-sm backdrop-blur-xs"
           onContextMenu={openColumnMenu}
         >
           <div
@@ -3651,7 +3654,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     if (suppressColumnSortRef.current) return;
                     onSortChange(sortField);
                   }}
-                  className={`cyberfiles-column-header-cell group relative flex min-w-0 items-center gap-1 px-1 pr-2 cursor-grab active:cursor-grabbing transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${column === 'size' || column === 'created' || column === 'modified' ? 'justify-end' : ''} ${!isLast ? 'border-r border-neutral-800/25' : ''}`}
+                  className={`cyberfiles-column-header-cell group relative flex min-w-0 items-center gap-1 px-1 pr-2 transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDragActive ? 'cursor-grabbing' : 'cursor-pointer'} ${colIdx > 0 ? '-ml-2' : ''} ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${column === 'size' || column === 'created' || column === 'modified' ? 'justify-end' : ''} ${!isLast ? 'border-r border-neutral-800/25' : ''}`}
                 >
                   <span data-file-column-header={column} className="min-w-0 truncate">{columnLabel(column)}</span>
                   <DirectionIcon aria-hidden="true" className={`h-3 w-3 flex-shrink-0 ${isSorted ? 'text-cyan-400' : 'text-neutral-600'}`} />
