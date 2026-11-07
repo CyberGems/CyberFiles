@@ -214,6 +214,25 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   --command-control-height: 48px;
 }
 
+/* A group folded into the overflow menu stays in the DOM so the fit pass can
+   still measure its natural width, but it leaves the layout flow and ignores
+   the pointer while hidden. Anchored to the right edge so it can never poke
+   out of the bar and create phantom scroll room. */
+.command-bar-collapsed {
+  position: absolute;
+  top: 0;
+  right: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* The badge dot is drawn deliberately outside its button edge; inside a
+   right-anchored collapsed group it would poke past the bar and add scroll
+   room, so it stays unrendered while the group lives in the overflow menu. */
+.command-bar-collapsed .command-control-badge {
+  display: none;
+}
+
 .command-control,
 .command-segment {
   position: relative;

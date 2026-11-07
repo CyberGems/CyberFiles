@@ -131,6 +131,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   const disabled = selectedCount === 0;
   const [openToolbarMenu, setOpenToolbarMenu] = React.useState<'terminal' | null>(null);
   const menuRootRef = React.useRef<HTMLDivElement>(null);
+  const barRef = React.useRef<HTMLElement>(null);
+  const [collapsedGroups, setCollapsedGroups] = React.useState<string[]>([]);
   const hasDriveRoot = /^[a-z]:/i.test(currentFolderPath) && (currentFolderPath[2] === '\\' || currentFolderPath[2] === '/');
   const canUseFolderActions = windowsActionsAvailable && !currentFolderPath.startsWith('::') && (hasDriveRoot || currentFolderPath.startsWith('\\\\'));
   const canCreateFolder = Boolean(currentFolderPath) && !currentFolderPath.startsWith('::');
@@ -142,6 +144,74 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
     'powershell-admin': t.toolbar.powerShellAdminHere,
   };
   const workspaceTooltip = `${t.workspaceProfiles.open}${workspaceChangesPending ? ` · ${t.workspaceProfiles.modified}` : ''}`;
+
+  /* Groups are folded into the overflow menu only when the bar actually runs out
+     of room: each pass either collapses the next lower-priority group or, when
+     the bar fits again, restores the most essential collapsed one. Real widths
+     replace the old fixed container-query breakpoints, which clipped visibly
+     whenever label length, language or zoom changed. */
+  /* Groups fold into the overflow menu only when the bar actually runs out of
+     room. Each pass derives the desired collapsed set from the live layout
+     instead of trusting width estimates: it toggles the collapse class in the
+     DOM, measures the real result and commits the final state to React once.
+     This replaced the old fixed container-query breakpoints, which clipped
+     visibly whenever label length, language or zoom changed. */
+  const OVERFLOW_COLLAPSE_ORDER = [
+    'windows-actions',
+    'workspace-manager',
+    'view-modes',
+    'view-toggles',
+    'layout-modes',
+    'properties-panel',
+    'locations-panel',
+    'primary-actions',
+  ];
+
+  const fitToolbar = React.useCallback(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const fits = () => bar.scrollWidth <= bar.clientWidth + 1;
+
+    // Out of room: fold groups from the least essential until it really fits.
+    if (!fits()) {
+      for (const id of OVERFLOW_COLLAPSE_ORDER) {
+        const el = bar.querySelector(`[data-overflow-group="${id}"]`);
+        if (!el || el.classList.contains('command-bar-collapsed')) continue;
+        el.classList.add('command-bar-collapsed');
+        if (fits()) break;
+      }
+    }
+    // Spare room: bring back collapsed groups from the most essential downward,
+    // keeping only the ones that still leave the bar fitting when restored.
+    if (fits()) {
+      for (const id of [...OVERFLOW_COLLAPSE_ORDER].reverse()) {
+        const el = bar.querySelector(`[data-overflow-group="${id}"]`);
+        if (!el || !el.classList.contains('command-bar-collapsed')) continue;
+        el.classList.remove('command-bar-collapsed');
+        if (!fits()) el.classList.add('command-bar-collapsed');
+      }
+    }
+    // The DOM now encodes the desired state; mirror it into React, but only
+    // when it differs, so an unchanged layout never triggers a new render.
+    const desired = OVERFLOW_COLLAPSE_ORDER.filter(id => bar.querySelector(`[data-overflow-group="${id}"]`)?.classList.contains('command-bar-collapsed'));
+    setCollapsedGroups(prev => (prev.length === desired.length && prev.every(id => desired.includes(id)) ? prev : desired));
+  }, []);
+
+  React.useLayoutEffect(() => {
+    fitToolbar();
+  });
+
+  React.useEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const observer = new ResizeObserver(() => fitToolbar());
+    observer.observe(bar);
+    const right = bar.querySelector('.command-bar-actions');
+    if (right) observer.observe(right);
+    void document.fonts?.ready.then(() => fitToolbar()).catch(() => {});
+    return () => observer.disconnect();
+  }, [fitToolbar]);
+
   React.useEffect(() => {
     if (!openToolbarMenu) return;
     const handlePointerDown = (event: PointerEvent) => {
@@ -159,6 +229,16 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   }, [openToolbarMenu]);
 
   const overflowGroups: ToolbarOverflowGroup[] = [
+    {
+      id: 'primary-actions',
+      label: t.toolbar.fileActions,
+      entries: [
+        { id: 'primary-rename', label: t.toolbar.rename, shortcut: 'F2', icon: <Pencil className="h-4 w-4" />, disabled, onSelect: onRenameSelected },
+        { id: 'primary-delete', label: t.toolbar.delete, shortcut: 'Del', icon: <Trash2 className="h-4 w-4" />, disabled, onSelect: onDeleteSelected },
+        { id: 'primary-copy-path', label: selectedCount === 0 ? t.toolbar.copyFolderPath : t.toolbar.copyPath, icon: <ClipboardCopy className="h-4 w-4" />, disabled: !copyPathEnabled, onSelect: onCopyPath },
+        { id: 'primary-new-folder', label: t.toolbar.newFolder, shortcut: 'F7', icon: <FolderPlus className="h-4 w-4" />, disabled: !canCreateFolder, onSelect: onNewFolder },
+      ],
+    },
     {
       id: 'windows-actions',
       label: t.toolbar.tools,
@@ -205,7 +285,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
     },
     {
       id: 'view-toggles',
-      label: t.toolbar.tools,
+      label: t.toolbar.viewToggles,
       entries: [
         { id: 'toggle-hidden', label: t.toolbar.showHiddenFiles, shortcut: 'Ctrl+H', icon: showHiddenFiles ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />, pressed: showHiddenFiles, onSelect: onToggleShowHiddenFiles },
         { id: 'toggle-extensions', label: t.toolbar.showFileExtensions, shortcut: 'Ctrl+E', icon: <FileText className="h-4 w-4" />, pressed: showFileExtensions, onSelect: onToggleShowFileExtensions },
@@ -238,11 +318,14 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       }],
     },
   ];
+  const isCollapsedGroup = (id: string) => collapsedGroups.includes(id);
+  const groupClass = (id: string) => `flex shrink-0 items-center gap-1.5 ${isCollapsedGroup(id) ? 'command-bar-collapsed' : ''}`;
   return (
     <header
+      ref={barRef}
       data-label-position={toolbarLabelPosition}
       data-labels={toolbarLabelPosition === 'none' ? 'false' : 'true'}
-      className="cyberfiles-command-bar command-bar-container min-h-14 bg-neutral-900/95 border-b border-neutral-800 px-3 py-2 flex items-center justify-between gap-3 select-none z-20 backdrop-blur-md"
+      className="cyberfiles-command-bar relative min-h-14 overflow-hidden bg-neutral-900/95 border-b border-neutral-800 px-3 py-2 flex items-center justify-between gap-3 select-none z-20 backdrop-blur-md"
     >
       <div className="flex items-center gap-3 min-w-0">
         {isCompactWindow && (
@@ -267,7 +350,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </div>
         )}
 
-        <div className="header-actions flex items-center gap-1.5 overflow-x-auto min-w-0">
+        <div className="command-bar-primary flex shrink-0 items-center gap-1.5">
           <UndoHistoryMenu
             items={undoHistory}
             onUndo={onUndoAction}
@@ -275,6 +358,11 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             label={labels.undo}
             labelPosition={toolbarLabelPosition}
           />
+          <div
+            data-overflow-group="primary-actions"
+            aria-hidden={isCollapsedGroup('primary-actions') || undefined}
+            className={groupClass('primary-actions')}
+          >
           <CommandBarButton
             label={labels.rename}
             labelPosition={toolbarLabelPosition}
@@ -314,12 +402,13 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             tooltipShortcut="F7"
             ariaLabel={t.toolbar.newFolder}
           />
+          </div>
         </div>
       </div>
 
       <div ref={menuRootRef} className="command-bar-actions flex items-center gap-1.5 flex-shrink-0">
         {windowsActionsAvailable && (
-          <div data-overflow-group="windows-actions" className="flex items-center gap-1.5">
+          <div data-overflow-group="windows-actions" aria-hidden={isCollapsedGroup('windows-actions') || undefined} className={groupClass('windows-actions')}>
             <CommandBarButton
               label={labels.explorer}
               labelPosition={toolbarLabelPosition}
@@ -359,7 +448,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </div>
         )}
 
-        <div data-overflow-group="view-modes" className="flex items-center">
+        <div data-overflow-group="view-modes" aria-hidden={isCollapsedGroup('view-modes') || undefined} className={groupClass('view-modes')}>
           <CommandBarGroup label={t.toolbar.viewModes}>
             <CommandBarSegment label={labels.details} labelPosition={toolbarLabelPosition} icon={<List />} pressed={viewMode === 'details'} onClick={() => onViewModeChange('details')} tooltip={t.toolbar.viewDetails} tooltipShortcut="Ctrl+1" ariaLabel={t.toolbar.viewDetails} />
             <CommandBarSegment label={labels.compact} labelPosition={toolbarLabelPosition} icon={<StretchHorizontal />} pressed={viewMode === 'compact'} onClick={() => onViewModeChange('compact')} tooltip={t.toolbar.viewCompact} tooltipShortcut="Ctrl+2" ariaLabel={t.toolbar.viewCompact} />
@@ -367,7 +456,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </CommandBarGroup>
         </div>
 
-        <div data-overflow-group="layout-modes" className="flex items-center">
+        <div data-overflow-group="layout-modes" aria-hidden={isCollapsedGroup('layout-modes') || undefined} className={groupClass('layout-modes')}>
           <CommandBarGroup label={t.header.layoutModes}>
             <CommandBarSegment label={labels.layoutVertical} labelPosition={toolbarLabelPosition} icon={<Columns2 />} pressed={layout === 'dual-vertical'} onClick={() => onLayoutChange('dual-vertical')} tooltip={t.header.layoutDualVertical} tooltipShortcut="Alt+1" ariaLabel={t.header.layoutDualVertical} />
             <CommandBarSegment label={labels.layoutHorizontal} labelPosition={toolbarLabelPosition} icon={<Rows2 />} pressed={layout === 'dual-horizontal'} onClick={() => onLayoutChange('dual-horizontal')} tooltip={t.header.layoutDualHorizontal} tooltipShortcut="Alt+2" ariaLabel={t.header.layoutDualHorizontal} />
@@ -375,7 +464,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </CommandBarGroup>
         </div>
 
-        <div data-overflow-group="workspace-manager" className="flex items-center">
+        <div data-overflow-group="workspace-manager" aria-hidden={isCollapsedGroup('workspace-manager') || undefined} className={groupClass('workspace-manager')}>
           <CommandBarButton
             label={labels.workspace}
             labelPosition={toolbarLabelPosition}
@@ -388,7 +477,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           />
         </div>
 
-        <div data-overflow-group="view-toggles" className="flex items-center gap-1.5">
+        <div data-overflow-group="view-toggles" aria-hidden={isCollapsedGroup('view-toggles') || undefined} className={groupClass('view-toggles')}>
           <CommandBarButton label={labels.hidden} labelPosition={toolbarLabelPosition} icon={showHiddenFiles ? <Eye /> : <EyeOff />} pressed={showHiddenFiles} onClick={onToggleShowHiddenFiles} tooltip={t.toolbar.showHiddenFiles} tooltipShortcut="Ctrl+H" ariaLabel={t.toolbar.showHiddenFiles} />
           <CommandBarButton label={labels.extensions} labelPosition={toolbarLabelPosition} icon={<FileText />} pressed={showFileExtensions} onClick={onToggleShowFileExtensions} tooltip={t.toolbar.showFileExtensions} tooltipShortcut="Ctrl+E" ariaLabel={t.toolbar.showFileExtensions} />
           <CommandBarButton label={labels.graphs} labelPosition={toolbarLabelPosition} icon={<BarChart3 />} pressed={relativeGraphsEnabled} onClick={onToggleRelativeGraphs} tooltip={t.toolbar.relativeGraphs} tooltipShortcut="Ctrl+G" ariaLabel={t.toolbar.relativeGraphs} />
@@ -406,7 +495,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         </div>
 
         {!isCompactWindow && (
-          <div data-overflow-group="locations-panel" className="flex items-center">
+          <div data-overflow-group="locations-panel" aria-hidden={isCollapsedGroup('locations-panel') || undefined} className={groupClass('locations-panel')}>
             <CommandBarButton
               label={labels.locations}
               labelPosition={toolbarLabelPosition}
@@ -420,7 +509,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           </div>
         )}
 
-        <div data-overflow-group="properties-panel" className="flex items-center">
+        <div data-overflow-group="properties-panel" aria-hidden={isCollapsedGroup('properties-panel') || undefined} className={groupClass('properties-panel')}>
           <CommandBarButton
             label={labels.properties}
             labelPosition={toolbarLabelPosition}
@@ -433,44 +522,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           />
         </div>
 
-        <ToolbarOverflowMenu label={t.toolbar.moreActions} groups={overflowGroups} />
+        <ToolbarOverflowMenu label={t.toolbar.moreActions} groups={overflowGroups} collapsedIds={collapsedGroups} />
       </div>
-
-      <style>{`
-        .header-actions { scrollbar-width:none; }
-        .header-actions::-webkit-scrollbar { display:none; }
-        .command-bar-container { container-type:inline-size; container-name:commandbar; }
-        .toolbar-overflow-trigger { display:none; }
-        @container commandbar (max-width: 1180px) {
-          [data-overflow-group="windows-actions"],
-          [data-overflow-group="workspace-manager"] { display:none !important; }
-          .toolbar-overflow-trigger { display:flex; }
-        }
-        @container commandbar (max-width: 980px) {
-          [data-overflow-group="view-modes"],
-          [data-overflow-group="view-toggles"] { display:none !important; }
-        }
-        @container commandbar (max-width: 780px) {
-          [data-overflow-group="layout-modes"] { display:none !important; }
-        }
-        /* Visible labels widen every control, so groups fold into the overflow menu sooner. */
-        @container commandbar (max-width: 1640px) {
-          .cyberfiles-command-bar[data-labels='true'] [data-overflow-group="workspace-manager"] { display:none !important; }
-          .cyberfiles-command-bar[data-labels='true'] .toolbar-overflow-trigger { display:flex; }
-        }
-        @container commandbar (max-width: 1500px) {
-          .cyberfiles-command-bar[data-labels='true'] [data-overflow-group="view-modes"] { display:none !important; }
-        }
-        @container commandbar (max-width: 1340px) {
-          .cyberfiles-command-bar[data-labels='true'] [data-overflow-group="layout-modes"] { display:none !important; }
-        }
-        @container commandbar (max-width: 1180px) {
-          .cyberfiles-command-bar[data-labels='true'] [data-overflow-group="windows-actions"] { display:none !important; }
-        }
-        @container commandbar (max-width: 1050px) {
-          .cyberfiles-command-bar[data-labels='true'] [data-overflow-group="view-toggles"] { display:none !important; }
-        }
-      `}</style>
     </header>
   );
 };

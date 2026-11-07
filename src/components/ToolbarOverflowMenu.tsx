@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChevronsRight } from 'lucide-react';
 import { KeyboardShortcutContent } from './KeyboardShortcut';
 
@@ -21,37 +21,15 @@ export interface ToolbarOverflowGroup {
 interface ToolbarOverflowMenuProps {
   label: string;
   groups: ToolbarOverflowGroup[];
+  /** Ids of groups currently folded into this menu by the toolbar fit pass. */
+  collapsedIds: string[];
 }
 
-export const ToolbarOverflowMenu: React.FC<ToolbarOverflowMenuProps> = ({ label, groups }) => {
+export const ToolbarOverflowMenu: React.FC<ToolbarOverflowMenuProps> = ({ label, groups, collapsedIds }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [hiddenGroupIds, setHiddenGroupIds] = useState<string[]>([]);
-
-  useLayoutEffect(() => {
-    const toolbar = rootRef.current?.closest<HTMLElement>('.command-bar-container');
-    if (!toolbar) return;
-    const updateHiddenGroups = () => {
-      const hidden = groups
-        .filter(group => group.entries.length > 0)
-        .filter(group => {
-          const element = toolbar.querySelector<HTMLElement>(`[data-overflow-group="${group.id}"]`);
-          return !element || window.getComputedStyle(element).display === 'none';
-        })
-        .map(group => group.id);
-      setHiddenGroupIds(previous => previous.length === hidden.length && previous.every((id, index) => id === hidden[index]) ? previous : hidden);
-    };
-    updateHiddenGroups();
-    const observer = new ResizeObserver(updateHiddenGroups);
-    observer.observe(toolbar);
-    window.addEventListener('resize', updateHiddenGroups);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateHiddenGroups);
-    };
-  }, [groups]);
 
   useEffect(() => {
     if (!open) return;
@@ -86,6 +64,7 @@ export const ToolbarOverflowMenu: React.FC<ToolbarOverflowMenuProps> = ({ label,
     };
   }, [open]);
 
+  const openGroups = groups.filter(group => collapsedIds.includes(group.id) && group.entries.length > 0);
   return (
     <div ref={rootRef} className="toolbar-overflow-root relative shrink-0">
       <button
@@ -95,13 +74,13 @@ export const ToolbarOverflowMenu: React.FC<ToolbarOverflowMenuProps> = ({ label,
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen(value => !value)}
-        className={`command-control toolbar-overflow-trigger ${open ? 'border-cyan-700/70 text-cyan-200' : ''}`}
+        className={`command-control ${open ? 'border-cyan-700/70 text-cyan-200' : ''}`}
       >
         <ChevronsRight className="h-4 w-4" aria-hidden="true" />
       </button>
       {open && (
         <div ref={menuRef} role="menu" aria-label={label} className="absolute right-0 top-full z-[80] mt-2 max-h-[min(70vh,32rem)] w-[min(22rem,calc(100vw-1rem))] overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-950/95 p-1.5 text-xs shadow-2xl backdrop-blur-md">
-          {groups.filter(group => hiddenGroupIds.includes(group.id)).map(group => group.entries.length === 0 ? null : (
+          {openGroups.map(group => (
             <div key={group.id} role="group" aria-label={group.label} className="py-1">
               <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{group.label}</div>
               {group.entries.map(entry => (
@@ -127,6 +106,9 @@ export const ToolbarOverflowMenu: React.FC<ToolbarOverflowMenuProps> = ({ label,
               ))}
             </div>
           ))}
+          {openGroups.length === 0 && (
+            <div className="px-2.5 py-2 text-neutral-500" role="presentation">{label}</div>
+          )}
         </div>
       )}
     </div>
