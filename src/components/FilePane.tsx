@@ -3642,6 +3642,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             const isSorted = tab.sortField === sortField;
             const DirectionIcon = isSorted && tab.sortOrder === 'desc' ? ArrowDown : ArrowUp;
             const isLast = colIdx === visibleFileColumns.length - 1;
+            const isRightAligned = column === 'size' || column === 'created' || column === 'modified';
             return (
               <Tooltip key={column} label={column === 'extension' ? `${t.pane.columns.extensionTooltip}. ${t.pane.columns.columnHeaderTooltip}` : t.pane.columns.columnHeaderTooltip} placement="bottom">
                 <div
@@ -3654,13 +3655,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     if (suppressColumnSortRef.current) return;
                     onSortChange(sortField);
                   }}
-                  className={`cyberfiles-column-header-cell group relative flex min-w-0 items-center gap-1 pr-2 transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDragActive ? 'cursor-grabbing' : 'cursor-pointer'} ${colIdx > 0 ? '-ml-2 pl-2' : ''} ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${column === 'size' || column === 'created' || column === 'modified' ? 'justify-end' : ''} ${!isLast ? 'border-r border-neutral-800/25' : ''}`}
+                  className={`cyberfiles-column-header-cell group relative flex min-w-0 items-center gap-1 -ml-2 pl-2 transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDragActive ? 'cursor-grabbing' : 'cursor-pointer'} ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${isRightAligned ? 'justify-end' : ''} ${!isLast ? 'border-r border-neutral-800/25' : ''} ${isLast ? '-mr-2 pr-4' : 'pr-2'}`}
                 >
-                  {column === 'size' || column === 'created' || column === 'modified' ? (
+                  {isRightAligned ? (
                     <DirectionIcon aria-hidden="true" className={`h-3 w-3 flex-shrink-0 ${isSorted ? 'text-cyan-400' : 'text-neutral-600'}`} />
                   ) : null}
                   <span data-file-column-header={column} className="min-w-0 truncate">{columnLabel(column)}</span>
-                  {column !== 'size' && column !== 'created' && column !== 'modified' ? (
+                  {!isRightAligned ? (
                     <DirectionIcon aria-hidden="true" className={`h-3 w-3 flex-shrink-0 ${isSorted ? 'text-cyan-400' : 'text-neutral-600'}`} />
                   ) : null}
                   {!isLast && resizeHandle(column, columnLabel(column))}
