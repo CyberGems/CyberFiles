@@ -3626,12 +3626,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* 4. Column Headers (Details View) */}
       {effectiveViewMode === 'details' && !isSystemHome && (
         <div
-          className="cyberfiles-column-headers shrink-0 border border-neutral-800/80 bg-neutral-900/90 text-[10px] font-semibold uppercase tracking-wider text-neutral-300 select-none shadow-sm backdrop-blur-xs"
+          className="cyberfiles-column-headers shrink-0 border border-neutral-800/80 bg-neutral-900/90 text-[10px] font-semibold text-neutral-300 select-none shadow-sm backdrop-blur-xs"
           onContextMenu={openColumnMenu}
         >
           <div
             ref={columnHeadersRef}
-            className="mx-4 grid min-h-[35px] items-center gap-2 px-2 py-1.5"
+            className="mx-4 grid min-h-[35px] gap-2 px-2"
             style={{ width: detailsHeaderWidth, gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
           >
           {visibleFileColumns.map((column, colIdx) => {
@@ -3651,7 +3651,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     if (suppressColumnSortRef.current) return;
                     onSortChange(sortField);
                   }}
-                  className={`cyberfiles-column-header-cell group relative flex min-w-0 items-center gap-1 rounded-sm px-1 pr-2 cursor-grab active:cursor-grabbing transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${column === 'size' || column === 'created' || column === 'modified' ? 'justify-end' : ''} ${!isLast ? 'border-r border-neutral-800/25' : ''}`}
+                  className={`cyberfiles-column-header-cell group relative flex min-w-0 items-center gap-1 px-1 pr-2 cursor-grab active:cursor-grabbing transition-colors hover:bg-neutral-800/60 hover:text-neutral-100 ${columnDropTarget === column ? 'bg-cyan-950/70 text-cyan-200' : ''} ${column === 'size' || column === 'created' || column === 'modified' ? 'justify-end' : ''} ${!isLast ? 'border-r border-neutral-800/25' : ''}`}
                 >
                   <span data-file-column-header={column} className="min-w-0 truncate">{columnLabel(column)}</span>
                   <DirectionIcon aria-hidden="true" className={`h-3 w-3 flex-shrink-0 ${isSorted ? 'text-cyan-400' : 'text-neutral-600'}`} />
