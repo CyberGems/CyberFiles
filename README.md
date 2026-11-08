@@ -35,6 +35,7 @@
 ## 📑 Table of Contents
 
 - [👋 Introduction](#-introduction)
+- [📸 Screenshots](#-screenshots)
 - [🗂️ Why CyberFiles?](#️-why-cyberfiles)
 - [✨ Key Features](#-key-features)
 - [🚀 Getting Started](#-getting-started)
@@ -65,6 +66,14 @@
 Windows Explorer gives you one pane, one tab and a dialog for everything. CyberFiles keeps two folders side by side, each with its own tabs and history, and lets the keyboard do most of the work: queued copy and move operations you can pause, cancel or undo, ZIP and RAR tools, a Recents list of what you just opened, and a properties panel that previews text, images, PDFs and archives. Drive discovery, native file icons, the Recycle Bin and the Windows properties dialog go through the real Windows Shell rather than an imitation. Built with **Tauri 2**, **Rust**, **React** and **TypeScript**.
 
 *Free and open source (GPLv3): no ads, no tracking, no telemetry, no account. Everything runs on your PC.*
+
+---
+
+<!-- Screenshots: pending the bilingual EN/ES gallery in the capture plan at https://github.com/CyberGems/CyberGems.github.io/blob/main/docs/screenshots.md — replace the blockquote, keep this heading and the TOC entry. -->
+
+## 📸 Screenshots
+
+> Coming soon...
 
 ---
 

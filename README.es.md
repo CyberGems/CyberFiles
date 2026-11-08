@@ -35,6 +35,7 @@
 ## 📑 Table of Contents
 
 - [👋 Introducción](#-introducción)
+- [📸 Capturas](#-capturas)
 - [🗂️ ¿Por qué CyberFiles?](#️-por-qué-cyberfiles)
 - [✨ Funciones principales](#-funciones-principales)
 - [🚀 Primeros pasos](#-primeros-pasos)
@@ -65,6 +66,14 @@
 El Explorador de Windows te da un panel, una pestaña y un diálogo para cada cosa. CyberFiles mantiene dos carpetas lado a lado, cada una con sus pestañas e historial, y deja que el teclado haga casi todo: operaciones de copia y movimiento en cola que puedes pausar, cancelar o deshacer, herramientas ZIP y RAR, una lista de Recientes con lo último que abriste y un panel de propiedades que previsualiza texto, imágenes, PDF y archivos comprimidos. El descubrimiento de unidades, los iconos nativos, la Papelera y el diálogo de propiedades de Windows pasan por el Shell real, no por una imitación. Creado con **Tauri 2**, **Rust**, **React** y **TypeScript**.
 
 *Gratuito y de código abierto (GPLv3): sin anuncios, sin rastreo, sin telemetría y sin cuenta. Todo se ejecuta en tu PC.*
+
+---
+
+<!-- Capturas: pendiente de la galería bilingüe ES/EN del plan en https://github.com/CyberGems/CyberGems.github.io/blob/main/docs/screenshots.md — sustituir la cita, conservar este título y su entrada en el índice. -->
+
+## 📸 Capturas
+
+> Próximamente...
 
 ---
 
