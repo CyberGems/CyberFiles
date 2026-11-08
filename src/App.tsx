@@ -5708,6 +5708,10 @@ export default function App() {
     { id: 'show-hidden', group: t.commandPalette.groups.actions, label: showHiddenFiles ? t.commandPalette.commands.hideHidden : t.commandPalette.commands.showHidden, keywords: 'hidden files folders', onSelect: () => setShowHiddenFiles(value => !value) },
     { id: 'show-extensions', group: t.commandPalette.groups.actions, label: showFileExtensions ? t.commandPalette.commands.hideExtensions : t.commandPalette.commands.showExtensions, keywords: 'file suffix type', onSelect: () => setShowFileExtensions(value => !value) },
     { id: 'relative-graphs', group: t.commandPalette.groups.actions, label: relativeGraphsEnabled ? t.commandPalette.commands.hideGraphs : t.commandPalette.commands.showGraphs, keywords: 'relative size date bars', onSelect: () => setRelativeGraphsEnabled(value => !value) },
+    { id: 'lister-text-small', group: t.commandPalette.groups.actions, label: `${t.settings.listerTextSize}: ${t.settings.listerTextSizeSmall}`, keywords: 'lister text size small chico letras', onSelect: () => setListerTextScale('small') },
+    { id: 'lister-text-normal', group: t.commandPalette.groups.actions, label: `${t.settings.listerTextSize}: ${t.settings.listerTextSizeNormal}`, keywords: 'lister text size normal letras', onSelect: () => setListerTextScale('normal') },
+    { id: 'lister-text-large', group: t.commandPalette.groups.actions, label: `${t.settings.listerTextSize}: ${t.settings.listerTextSizeLarge}`, keywords: 'lister text size large grande letras', onSelect: () => setListerTextScale('large') },
+    { id: 'lister-text-xlarge', group: t.commandPalette.groups.actions, label: `${t.settings.listerTextSize}: ${t.settings.listerTextSizeXLarge}`, keywords: 'lister text size extra large muy grande letras', onSelect: () => setListerTextScale('xlarge') },
   ];
 
   const paletteViewCommands: CommandPaletteCommand[] = [
