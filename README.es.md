@@ -35,7 +35,7 @@
 ## 📑 Table of Contents
 
 - [👋 Introducción](#-introducción)
-- [📸 Capturas](#-capturas)
+- [🖼️ Capturas](#️-capturas)
 - [🗂️ ¿Por qué CyberFiles?](#️-por-qué-cyberfiles)
 - [✨ Funciones principales](#-funciones-principales)
 - [🚀 Primeros pasos](#-primeros-pasos)
@@ -71,7 +71,7 @@ El Explorador de Windows te da un panel, una pestaña y un diálogo para cada co
 
 <!-- Capturas: pendiente de la galería bilingüe ES/EN del plan en https://github.com/CyberGems/CyberGems.github.io/blob/main/docs/screenshots.md — sustituir la cita, conservar este título y su entrada en el índice. -->
 
-## 📸 Capturas
+## 🖼️ Capturas
 
 > Próximamente...
 

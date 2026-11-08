@@ -35,7 +35,7 @@
 ## 📑 Table of Contents
 
 - [👋 Introduction](#-introduction)
-- [📸 Screenshots](#-screenshots)
+- [🖼️ Screenshots](#️-screenshots)
 - [🗂️ Why CyberFiles?](#️-why-cyberfiles)
 - [✨ Key Features](#-key-features)
 - [🚀 Getting Started](#-getting-started)
@@ -71,7 +71,7 @@ Windows Explorer gives you one pane, one tab and a dialog for everything. CyberF
 
 <!-- Screenshots: pending the bilingual EN/ES gallery in the capture plan at https://github.com/CyberGems/CyberGems.github.io/blob/main/docs/screenshots.md — replace the blockquote, keep this heading and the TOC entry. -->
 
-## 📸 Screenshots
+## 🖼️ Screenshots
 
 > Coming soon...
 
