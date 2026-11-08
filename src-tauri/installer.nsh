@@ -15,6 +15,11 @@
 
 !include LogicLib.nsh
 
+; Keep the header layout unchanged (text left, artwork right) now that a
+; branded header bitmap replaces the default NSIS header icon control, which
+; rendered the app icon distorted at non-default DPI settings.
+!define MUI_HEADERIMAGE_RIGHT
+
 !macro NSIS_HOOK_POSTUNINSTALL
   ${If} $UpdateMode <> 1
     DeleteRegValue HKLM "${MANUPRODUCTKEY}" ""

@@ -73,6 +73,7 @@
         "installerHooks": "installer.nsh",
         "displayLanguageSelector": false,
         "sidebarImage": "icons/installerSidebar.bmp",
+        "headerImage": "icons/installerHeader.bmp",
         "installerIcon": "icons/icon.ico",
         "uninstallerIcon": "icons/icon.ico",
         "languages": [

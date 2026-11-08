@@ -19,6 +19,7 @@ import sys
 from PIL import Image, ImageDraw, ImageFilter
 
 SIDEBAR_SIZE = (164, 314)
+HEADER_SIZE = (150, 57)
 SMALL_SIZE = (55, 58)
 
 PLATE_TOP = (255, 255, 255)
@@ -90,6 +91,15 @@ def load_icon(icon_path):
 
 
 def compose_sidebar(icon_path):
+    """Welcome/finish banner (164x314).
+
+    Note: NSIS dialog units derive their horizontal extent from the dialog
+    font's average character width and their vertical extent from its height,
+    so at scaled DPI the wizard image control stretches the two axes by
+    different factors (measured ~1.32x horizontal vs ~1.53x vertical at 150%).
+    Some soft distortion of the banner art on scaled-DPI displays is therefore
+    inherent to NSIS and cannot be compensated from the bitmap itself.
+    """
     plate = draw_plate(SIDEBAR_SIZE).convert("RGBA")
     icon = load_icon(icon_path)
 
@@ -124,6 +134,50 @@ def compose_small(icon_path):
     return canvas
 
 
+def compose_header(icon_path):
+    """NSIS MUI2 header image: white canvas matching the header band, the
+    brand arc echo at the left edge and the logo centered at true aspect."""
+    icon = load_icon(icon_path)
+
+    target = HEADER_SIZE[1] - 12
+    scale = min(target / icon.width, target / icon.height)
+    icon = icon.resize((max(1, int(icon.width * scale)), max(1, int(icon.height * scale))), Image.Resampling.LANCZOS)
+
+    canvas = Image.new("RGBA", HEADER_SIZE, (255, 255, 255, 255))
+    draw = ImageDraw.Draw(canvas)
+
+    # Brand arc echo: a pale curve entering from the left edge, mirroring the
+    # sidebar plate so both installer images share the same visual language.
+    cx = -HEADER_SIZE[1] * 0.9
+    cy = HEADER_SIZE[1] * 0.5
+    radius = HEADER_SIZE[1] * 1.15
+    for offset, line_width in ((0, 2), (7, 1)):
+        points = []
+        for step in range(0, 3610):
+            angle = math.radians(step / 10)
+            x = cx + (radius + offset) * math.cos(angle)
+            y = cy + (radius + offset) * math.sin(angle)
+            if 0 <= x <= HEADER_SIZE[0] and 0 <= y <= HEADER_SIZE[1]:
+                points.append((x, y))
+        if len(points) > 1:
+            draw.line(points, fill=ARC_COLOR, width=line_width, joint="curve")
+
+    # Soft cyan glow behind the logo
+    cx = HEADER_SIZE[0] // 2
+    cy = HEADER_SIZE[1] // 2
+    glow = Image.new("RGBA", HEADER_SIZE, (0, 0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+    for i in range(10, 0, -1):
+        radius = 18 + i * 2
+        alpha = int(7 * (10 - i) / 10)
+        glow_draw.ellipse([cx - radius, cy - radius, cx + radius, cy + radius], fill=GLOW_COLOR + (alpha,))
+    glow = glow.filter(ImageFilter.GaussianBlur(5))
+    canvas = Image.alpha_composite(canvas, glow)
+
+    canvas.alpha_composite(icon, (cx - icon.width // 2, cy - icon.height // 2))
+    return canvas.convert("RGB")
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     flags = {a for a in sys.argv[1:] if a.startswith("--")}
@@ -132,6 +186,13 @@ def main():
         sys.exit(1)
     icon_path, out_dir, name = args[0], args[1], args[2]
     os.makedirs(out_dir, exist_ok=True)
+
+    if "--header" in flags:
+        header = compose_header(icon_path)
+        header_path = os.path.join(out_dir, "installerHeader.bmp")
+        header.save(header_path, format="BMP")
+        print(f"Saved {header_path} ({os.path.getsize(header_path)} bytes)")
+        return
 
     sidebar = compose_sidebar(icon_path)
     bmp_path = os.path.join(out_dir, f"{name}.bmp")
