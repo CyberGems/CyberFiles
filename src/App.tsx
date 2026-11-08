@@ -5708,6 +5708,7 @@ export default function App() {
     { id: 'show-hidden', group: t.commandPalette.groups.actions, label: showHiddenFiles ? t.commandPalette.commands.hideHidden : t.commandPalette.commands.showHidden, keywords: 'hidden files folders', onSelect: () => setShowHiddenFiles(value => !value) },
     { id: 'show-extensions', group: t.commandPalette.groups.actions, label: showFileExtensions ? t.commandPalette.commands.hideExtensions : t.commandPalette.commands.showExtensions, keywords: 'file suffix type', onSelect: () => setShowFileExtensions(value => !value) },
     { id: 'relative-graphs', group: t.commandPalette.groups.actions, label: relativeGraphsEnabled ? t.commandPalette.commands.hideGraphs : t.commandPalette.commands.showGraphs, keywords: 'relative size date bars', onSelect: () => setRelativeGraphsEnabled(value => !value) },
+    { id: 'flat-view', group: t.commandPalette.groups.actions, label: t.toolbar.flatView, shortcut: 'Ctrl+B', disabled: !flatViewAvailable, disabledReason: flatViewAvailable ? undefined : flatViewTooltip, keywords: 'flat view recursive all subfolders vista plana', onSelect: handleToggleFlatView },
     { id: 'lister-text-small', group: t.commandPalette.groups.actions, label: `${t.settings.listerTextSize}: ${t.settings.listerTextSizeSmall}`, keywords: 'lister text size small chico letras', onSelect: () => setListerTextScale('small') },
     { id: 'lister-text-normal', group: t.commandPalette.groups.actions, label: `${t.settings.listerTextSize}: ${t.settings.listerTextSizeNormal}`, keywords: 'lister text size normal letras', onSelect: () => setListerTextScale('normal') },
     { id: 'lister-text-large', group: t.commandPalette.groups.actions, label: `${t.settings.listerTextSize}: ${t.settings.listerTextSizeLarge}`, keywords: 'lister text size large grande letras', onSelect: () => setListerTextScale('large') },
@@ -5782,6 +5783,18 @@ export default function App() {
     ? [
       { id: 'show-in-explorer', group: t.commandPalette.groups.windows, label: t.commandPalette.commands.showInExplorer, keywords: 'windows explorer open folder', onSelect: handleShowCurrentFolderInExplorer },
       { id: 'open-terminal', group: t.commandPalette.groups.windows, label: t.commandPalette.commands.openTerminal, description: lastTerminalLabel[lastTerminalOption], keywords: 'cmd command prompt powershell shell console', onSelect: () => handleLaunchWindowsTerminal(lastTerminalOption) },
+      ...([
+        ['cmd', t.toolbar.commandPromptHere],
+        ['cmd-admin', t.toolbar.commandPromptAdminHere],
+        ['powershell', t.toolbar.powerShellHere],
+        ['powershell-admin', t.toolbar.powerShellAdminHere],
+      ] as [WindowsTerminalOption, string][]).map(([option, label]) => ({
+        id: `terminal-${option}`,
+        group: t.commandPalette.groups.windows,
+        label,
+        keywords: `${label} ${option} cmd command prompt powershell shell console terminal`,
+        onSelect: () => { setLastTerminalOption(option); handleLaunchWindowsTerminal(option); },
+      })),
       ...windowsSpecialFolders.map(folder => {
         const label = windowsSpecialFolderLabels[folder.id];
         return {
