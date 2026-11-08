@@ -111,6 +111,7 @@ import {
 } from './utils/workspaceProfiles';
 import { expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
+import { normalizeListerTextScale, type ListerTextScale } from './utils/listerTextScale';
 import { fetchLaunchContext, getLaunchTargetPath } from './utils/systemIntegration';
 import { recentFileActions, recordRecentEntry, removeRecentEntry, renameRecentEntries, toRecentFileItem, type RecentEntry } from './utils/recentFiles';
 import { AUTO_CHECK_INTERVAL_MS, checkForUpdate, getAutoCheckUpdates, getNotifiedVersion, isSkippedVersion, setNotifiedVersion, setSkippedVersion, type AvailableUpdate } from './utils/updates';
@@ -160,6 +161,7 @@ const DATE_FORMAT_KEY = 'cyberfiles_date_format_v1';
 const DATE_FORMAT_SYSTEM_DEFAULT_MIGRATION_KEY = 'cyberfiles_date_format_system_default_migrated_v1';
 const SHOW_HIDDEN_FILES_KEY = 'cyberfiles_show_hidden_files_v1';
 const SHOW_FILE_EXTENSIONS_KEY = 'cyberfiles_show_file_extensions_v1';
+const LISTER_TEXT_SCALE_KEY = 'cyberfiles_lister_text_scale_v1';
 const LAST_TERMINAL_OPTION_KEY = 'cyberfiles_last_terminal_option_v1';
 const STARTUP_BEHAVIOR_KEY = 'cyberfiles_startup_behavior_v1';
 const STARTUP_SESSION_KEY = 'cyberfiles_startup_session_v1';
@@ -481,6 +483,15 @@ function readDateFormatPreference(): DateFormatMode {
     return saved === 'application' || saved === 'system' || saved === 'universal' ? saved : 'system';
   } catch {
     return 'system';
+  }
+}
+
+function readListerTextScalePreference(): ListerTextScale {
+  try {
+    const saved = window.localStorage.getItem(LISTER_TEXT_SCALE_KEY);
+    return normalizeListerTextScale(saved);
+  } catch {
+    return 'normal';
   }
 }
 
@@ -844,6 +855,7 @@ export default function App() {
   const [relativeGraphsEnabled, setRelativeGraphsEnabled] = useState(() => readBooleanPreference(RELATIVE_GRAPHS_ENABLED_KEY, true));
   const [showHiddenFiles, setShowHiddenFiles] = useState(() => readBooleanPreference(SHOW_HIDDEN_FILES_KEY, true));
   const [showFileExtensions, setShowFileExtensions] = useState(() => readBooleanPreference(SHOW_FILE_EXTENSIONS_KEY, true));
+  const [listerTextScale, setListerTextScale] = useState<ListerTextScale>(readListerTextScalePreference);
   const [lastTerminalOption, setLastTerminalOption] = useState<WindowsTerminalOption>(readLastTerminalOption);
   const [windowsSpecialFolders, setWindowsSpecialFolders] = useState<WindowsSpecialFolder[]>([]);
   const [dateFormat, setDateFormat] = useState<DateFormatMode>(readDateFormatPreference);
@@ -2044,6 +2056,14 @@ export default function App() {
       // Keep the selected date format for this session when browser storage is unavailable.
     }
   }, [dateFormat]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LISTER_TEXT_SCALE_KEY, listerTextScale);
+    } catch {
+      // Keep the selected text size for this session when browser storage is unavailable.
+    }
+  }, [listerTextScale]);
 
   useEffect(() => {
     try {
@@ -5966,6 +5986,7 @@ export default function App() {
                   hiddenItemStyle={hiddenItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
+                  listerTextScale={listerTextScale}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   typingActivatesFilter={typingActivatesFilter}
@@ -6044,6 +6065,7 @@ export default function App() {
                   hiddenItemStyle={hiddenItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
+                  listerTextScale={listerTextScale}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   typingActivatesFilter={typingActivatesFilter}
@@ -6123,6 +6145,7 @@ export default function App() {
                   hiddenItemStyle={hiddenItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
+                  listerTextScale={listerTextScale}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   typingActivatesFilter={typingActivatesFilter}
@@ -6197,6 +6220,7 @@ export default function App() {
                   hiddenItemStyle={hiddenItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
+                  listerTextScale={listerTextScale}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   typingActivatesFilter={typingActivatesFilter}
@@ -6276,6 +6300,7 @@ export default function App() {
                   hiddenItemStyle={hiddenItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
+                  listerTextScale={listerTextScale}
                   singleClickOpens={singleClickOpen}
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   typingActivatesFilter={typingActivatesFilter}
@@ -6740,6 +6765,8 @@ export default function App() {
             onTooltipsEnabledChange={setTooltipsEnabled}
             dateFormat={dateFormat}
             onDateFormatChange={setDateFormat}
+            listerTextScale={listerTextScale}
+            onListerTextScaleChange={setListerTextScale}
             startupBehavior={startupBehavior}
             onStartupBehaviorChange={setStartupBehavior}
             startupSessionId={startupSessionId}

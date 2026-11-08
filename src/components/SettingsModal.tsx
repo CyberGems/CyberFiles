@@ -17,6 +17,7 @@ import { ConfirmActionModal } from './ConfirmActionModal';
 import { ColorValueEditor } from './ColorValueEditor';
 import { TOOLBAR_LABEL_POSITIONS, type ToolbarLabelPosition } from './CommandBarControl';
 import { readPreserveSearchPreference, writePreserveSearchPreference, type PreserveSearchPreference } from './FindFilesModal';
+import { LISTER_TEXT_SCALES, listerTextScaleFactor, LISTER_TEXT_SCALE_CSS_VAR, type ListerTextScale } from '../utils/listerTextScale';
 
 interface GlobalShortcutSettingsState {
   enabled: boolean;
@@ -70,6 +71,8 @@ interface SettingsModalProps {
   onTooltipsEnabledChange: (enabled: boolean) => void;
   dateFormat: DateFormatMode;
   onDateFormatChange: (format: DateFormatMode) => void;
+  listerTextScale: ListerTextScale;
+  onListerTextScaleChange: (scale: ListerTextScale) => void;
   startupBehavior: StartupBehavior;
   onStartupBehaviorChange: (behavior: StartupBehavior) => void;
   startupSessionId: string;
@@ -182,6 +185,8 @@ export function SettingsModal({
   onTooltipsEnabledChange,
   dateFormat,
   onDateFormatChange,
+  listerTextScale,
+  onListerTextScaleChange,
   startupBehavior,
   onStartupBehaviorChange,
   startupSessionId,
@@ -783,6 +788,46 @@ export function SettingsModal({
                 </button>
               );
             })}
+          </div>
+
+          <div data-settings-search-unit className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-3">
+            <div className="mb-2">
+              <div className="text-xs font-medium text-neutral-200">{t.settings.listerTextSize}</div>
+              <p className="mt-1 text-[11px] leading-relaxed text-neutral-400">{t.settings.listerTextSizeDescription}</p>
+            </div>
+            <div role="radiogroup" aria-label={t.settings.listerTextSize} className="grid gap-2 sm:grid-cols-4">
+              {([
+                { id: 'small', label: t.settings.listerTextSizeSmall, description: t.settings.listerTextSizeSmallDescription },
+                { id: 'normal', label: t.settings.listerTextSizeNormal, description: t.settings.listerTextSizeNormalDescription },
+                { id: 'large', label: t.settings.listerTextSizeLarge, description: t.settings.listerTextSizeLargeDescription },
+                { id: 'xlarge', label: t.settings.listerTextSizeXLarge, description: t.settings.listerTextSizeXLargeDescription },
+              ] as const).map(option => (
+                <Tooltip key={option.id} label={option.description} placement="top">
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={listerTextScale === option.id}
+                    onClick={() => onListerTextScaleChange(option.id)}
+                    className={`min-w-0 w-full rounded-md border px-2.5 py-2 text-left transition-colors cursor-pointer ${listerTextScale === option.id ? 'border-cyan-500/70 bg-cyan-950/30 text-cyan-100' : 'border-neutral-700 bg-neutral-900/60 text-neutral-300 hover:border-neutral-600 hover:bg-neutral-800/70'}`}
+                  >
+                    <span className="block text-[11px] font-semibold">{option.label}</span>
+                    {/* Sample row text at the selected scale, drawn like a real lister line. */}
+                    <span
+                      className="mt-1.5 block truncate font-medium text-neutral-100"
+                      style={{ fontSize: `calc(11.5px * ${listerTextScaleFactor(option.id)})` }}
+                    >
+                      informe-proyecto-2026.pdf
+                    </span>
+                    <span
+                      className="block truncate font-sans text-neutral-400"
+                      style={{ fontSize: `calc(10.5px * ${listerTextScaleFactor(option.id)})` }}
+                    >
+                      PDF · 2,4 MB
+                    </span>
+                  </button>
+                </Tooltip>
+              ))}
+            </div>
           </div>
 
           </div>

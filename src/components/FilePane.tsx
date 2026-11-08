@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, HiddenItemStyle, SortField, TabState, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
+import { listerTextScaleFactor, LISTER_TEXT_SCALE_CSS_VAR, type ListerTextScale } from '../utils/listerTextScale';
 import { formatFileSize, getParentPath, isSameOrDescendantPath, normalizeWindowsPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
@@ -93,6 +94,7 @@ interface FilePaneProps {
   autoFolderSizeEnabled: boolean;
   relativeGraphsEnabled: boolean;
   dateFormat: DateFormatMode;
+  listerTextScale: ListerTextScale;
   drives: DriveInfo[];
   windowsSpecialFolders: WindowsSpecialFolder[];
   onOpenWindowsSpecialFolder: (folder: WindowsSpecialFolder) => void;
@@ -627,13 +629,13 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
       onDoubleClick={() => handlers.onDoubleClick(item)}
       onContextMenu={event => handlers.onContextMenu(event, item)}
       style={{ width: rowWidth, gridTemplateColumns, cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...detailsRowBackgroundStyle(isSelected, isHidden, isRecentlyChanged, hiddenItemStyle, recentItemStyle) }}
-      className={`cyberfiles-file-row relative grid h-[30px] items-center gap-2 rounded-md border border-transparent px-2 text-xs cursor-pointer ${
+      className={`cyberfiles-file-row relative grid h-[calc(30px*var(--lister-text-scale,1))] items-center gap-2 rounded-md border border-transparent px-2 text-xs cursor-pointer ${
         isSelected ? 'text-neutral-100' : 'text-neutral-300 hover:text-neutral-100'
       }`}
     >
       {columns.map(column => {
         if (column === 'extension') {
-          return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center overflow-hidden truncate font-sans text-[11.5px] font-medium text-neutral-100/75"><span data-file-column-content={column} className="inline-block max-w-full truncate">{item.isFolder ? '' : (item.extension || '')}</span></div>;
+          return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center overflow-hidden truncate font-sans text-[calc(11.5px*var(--lister-text-scale,1))] font-medium text-neutral-100/75"><span data-file-column-content={column} className="inline-block max-w-full truncate">{item.isFolder ? '' : (item.extension || '')}</span></div>;
         }
         if (column === 'name') {
           return (
@@ -651,26 +653,26 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
                 handlers.renderRenameInput(item, 'min-w-0 flex-1')
               ) : (
                 <Tooltip label={renderItemTooltipContent(item, { t, language, folderChildCountState, folderSizeState, isTauri, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, isRecycleBin, dateFormat, isRecentlyActive, isHidden })} placement="top" boundary=".cyberfiles-file-viewport">
-                  <span data-file-column-content={column} data-file-name="true" onMouseEnter={() => handlers.onNameMouseEnter(item)} onMouseLeave={() => handlers.onNameMouseLeave(item)} className={`${flatLabel ? 'max-w-[55%] ' : ''}truncate text-[11.5px] font-medium text-neutral-100`} style={detailsItemNameStyle(isSelected, isHidden, isRecentlyChanged, hiddenItemStyle, recentItemStyle)} >{getDisplayItemName(item, showFileExtensions)}</span>
+                  <span data-file-column-content={column} data-file-name="true" onMouseEnter={() => handlers.onNameMouseEnter(item)} onMouseLeave={() => handlers.onNameMouseLeave(item)} className={`${flatLabel ? 'max-w-[55%] ' : ''}truncate text-[calc(11.5px*var(--lister-text-scale,1))] font-medium text-neutral-100`} style={detailsItemNameStyle(isSelected, isHidden, isRecentlyChanged, hiddenItemStyle, recentItemStyle)} >{getDisplayItemName(item, showFileExtensions)}</span>
                 </Tooltip>
               )}
               {folderBadge}
-              {flatLabel && <span className="min-w-0 truncate font-sans text-[10px] font-normal text-neutral-500">· {flatLabel}</span>}
+              {flatLabel && <span className="min-w-0 truncate font-sans text-[calc(10px*var(--lister-text-scale,1))] font-normal text-neutral-500">· {flatLabel}</span>}
             </div>
           );
         }
         if (column === 'type') {
-          return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center overflow-hidden truncate font-sans text-[10.5px] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-full truncate">{t.pane.folderTypeLabels[item.type].replace('{extension}', item.extension.toUpperCase()).trim()}</span></div>;
+          return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center overflow-hidden truncate font-sans text-[calc(10.5px*var(--lister-text-scale,1))] text-neutral-400"><span data-file-column-content={column} className="inline-block max-w-full truncate">{t.pane.folderTypeLabels[item.type].replace('{extension}', item.extension.toUpperCase()).trim()}</span></div>;
         }
         if (column === 'size') {
-          return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[11px] tabular-nums text-neutral-300/90" style={relativeGraphStyle(sizeGraphWidth, 'size')}>{item.isFolder ? (
+          return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[calc(11px*var(--lister-text-scale,1))] tabular-nums text-neutral-300/90" style={relativeGraphStyle(sizeGraphWidth, 'size')}>{item.isFolder ? (
               isTauri && !isRecycleBin && !item.recycleBinId ? (
                 folderSizeState?.status === 'done' ? (
                   <span data-file-column-content={column} className="inline-flex h-5 min-w-0 max-w-full items-center justify-end truncate leading-none tabular-nums font-mono">{formatFileSize(folderSizeState.size ?? 0)}</span>
                 ) : (
                   <Tooltip label={folderSizeState?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip} placement="top" boundary=".cyberfiles-file-viewport">
                     <button type="button" disabled={folderSizeState?.status === 'loading'} onClick={event => handlers.onCalculateFolderSize(event, item)} className="ml-auto inline-flex h-5 w-[44px] shrink-0 items-center justify-end gap-1 rounded px-1 py-0 text-right leading-none text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSizeState?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
-                      <span data-file-column-content={column} className="inline-flex items-center gap-1 whitespace-nowrap font-mono text-[10px]">
+                      <span data-file-column-content={column} className="inline-flex items-center gap-1 whitespace-nowrap font-mono text-[calc(10px*var(--lister-text-scale,1))]">
                         <span className={folderSizeState?.status === 'loading' ? 'invisible' : ''}>{folderSizeState?.status === 'error' ? '!' : t.pane.folderSizeCalculate}</span>
                         <span className="grid h-3 w-3 flex-shrink-0 place-items-center">
                           {folderSizeState?.status === 'loading'
@@ -686,14 +688,14 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
         }
         if (column === 'created') {
           const createdDate = formatDateTimeForDisplay(item.createdAtMs, item.createdDate, dateFormat, language);
-          return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={relativeGraphStyle(createdGraphWidth, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{createdDate || '--'}</span></div>;
+          return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[calc(10.5px*var(--lister-text-scale,1))] tabular-nums text-neutral-400" style={relativeGraphStyle(createdGraphWidth, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{createdDate || '--'}</span></div>;
         }
         // In Recents the "modified" column is relabelled to "Last opened", so it shows the
         // access-log timestamp instead of the file's modification date.
         const modifiedDate = isRecentLocation
           ? formatDateTimeForDisplay(item.lastOpenedAtMs, '', dateFormat, language)
           : formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language);
-        return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[10.5px] tabular-nums text-neutral-400" style={relativeGraphStyle(modifiedGraphWidth, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{modifiedDate || '--'}</span></div>;
+        return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[calc(10.5px*var(--lister-text-scale,1))] tabular-nums text-neutral-400" style={relativeGraphStyle(modifiedGraphWidth, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{modifiedDate || '--'}</span></div>;
       })}
     </div>
   );
@@ -733,6 +735,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   autoFolderSizeEnabled,
   relativeGraphsEnabled,
   dateFormat,
+  listerTextScale,
   drives,
   windowsSpecialFolders,
   onOpenWindowsSpecialFolder,
@@ -779,6 +782,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     editHosts: t.toolbar.editHostsFile,
   };
   const tooltipsEnabled = useContext(TooltipPreferenceContext);
+  const listerTextScaleFactorValue = listerTextScaleFactor(listerTextScale);
   const isSystemHome = tab.currentPath === SYSTEM_HOME_PATH;
   const isRecycleBin = tab.currentPath === RECYCLE_BIN_PATH;
   const isRecentLocation = tab.currentPath === RECENT_PATH;
@@ -1140,12 +1144,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const fileIndexById = React.useMemo(() => new Map(files.map((item, index) => [item.id, index])), [files]);
   const virtualizeFiles = !isSystemHome && effectiveViewMode !== 'compact' && files.length > 300;
   const compactRowCount = Math.max(1, Math.floor(
-    (viewportWindow.height - 12 - (tab.groupBy && tab.groupBy !== 'none' ? 32 : 0) + 4) / 34,
+    (viewportWindow.height - 12 - (tab.groupBy && tab.groupBy !== 'none' ? 32 : 0) + 4) / (34 * listerTextScaleFactorValue),
   ));
   const virtualColumns = effectiveViewMode === 'details' ? 1
     : effectiveViewMode === 'compact' ? viewportWindow.width >= 1024 ? 3 : viewportWindow.width >= 640 ? 2 : 1
       : Math.max(1, Math.min(5, Math.floor((viewportWindow.width + 12) / 140)));
-  const rowStride = effectiveViewMode === 'details' ? 32 : effectiveViewMode === 'compact' ? 34 : 156;
+  const rowStride = effectiveViewMode === 'details' ? 32 * listerTextScaleFactorValue : effectiveViewMode === 'compact' ? 34 * listerTextScaleFactorValue : 156;
   const headingStride = effectiveViewMode === 'details' ? 30 : effectiveViewMode === 'compact' ? 32 : 40;
   const focusedGroupPosition = React.useMemo(() => {
     if (!tab.focusedId) return null;
@@ -1948,7 +1952,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         }}
         /* As tall as the row: the field is the row while it is open, not a small box inside it.
            `py-0` plus `leading-none` keeps the text from pushing the box past the row. */
-        className={`h-[26px] w-full min-w-0 select-text rounded border border-cyan-400 bg-neutral-950 px-1.5 py-0 text-[12.5px] leading-none text-neutral-100 outline-none ${inputAlignment}`}
+        className={`h-[calc(26px*var(--lister-text-scale,1))] w-full min-w-0 select-text rounded border border-cyan-400 bg-neutral-950 px-1.5 py-0 text-[calc(12.5px*var(--lister-text-scale,1))] leading-none text-neutral-100 outline-none ${inputAlignment}`}
       />
     </form>
   );
@@ -3625,16 +3629,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
       )}
 
       <div ref={horizontalScrollContainerRef} className={`flex min-h-0 flex-1 flex-col ${styleLocked && !isSystemHome && effectiveViewMode === 'details' ? 'overflow-x-auto' : 'overflow-x-hidden'} overflow-y-hidden`}>
-        <div className="flex min-h-0 flex-1 flex-col" style={{ width: styleLocked && !isSystemHome && effectiveViewMode === 'details' ? `max(100%, ${detailsTableMinimumWidth}px)` : '100%' }}>
+        <div className="flex min-h-0 flex-1 flex-col" style={{ [LISTER_TEXT_SCALE_CSS_VAR]: listerTextScaleFactorValue, width: styleLocked && !isSystemHome && effectiveViewMode === 'details' ? `max(100%, ${detailsTableMinimumWidth}px)` : '100%' } as React.CSSProperties}>
       {/* 4. Column Headers (Details View) */}
       {effectiveViewMode === 'details' && !isSystemHome && (
         <div
-          className="cyberfiles-column-headers shrink-0 border border-neutral-800/80 bg-neutral-900/90 text-[11px] font-semibold text-neutral-300 select-none shadow-sm backdrop-blur-xs"
+          className="cyberfiles-column-headers shrink-0 border border-neutral-800/80 bg-neutral-900/90 text-[calc(11px*var(--lister-text-scale,1))] font-semibold text-neutral-300 select-none shadow-sm backdrop-blur-xs"
           onContextMenu={openColumnMenu}
         >
           <div
             ref={columnHeadersRef}
-            className="mx-4 grid min-h-[35px] gap-2 px-2"
+            className="mx-4 grid min-h-[calc(35px*var(--lister-text-scale,1))] gap-2 px-2"
             style={{ width: detailsHeaderWidth, gridTemplateColumns: fileGridTemplateColumns, paddingRight: `${8 + viewportScrollbarWidth}px` }}
           >
           {visibleFileColumns.map((column, colIdx) => {
@@ -3905,7 +3909,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
                   onContextMenu={event => handleFileItemContextMenu(event, item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`cyberfiles-file-row cyberfiles-compact-file-item relative flex min-w-0 h-[30px] items-center gap-2 rounded-md border border-transparent px-2 py-1 text-xs ${
+                  className={`cyberfiles-file-row cyberfiles-compact-file-item relative flex min-w-0 h-[calc(30px*var(--lister-text-scale,1))] items-center gap-2 rounded-md border border-transparent px-2 py-1 text-[calc(12px*var(--lister-text-scale,1))] ${
                     isSelected
                       ? 'text-neutral-100'
                       : 'text-neutral-300 hover:text-neutral-100'
@@ -3918,12 +3922,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     <Tooltip label={renderItemTooltip(item)} placement="top" boundary=".cyberfiles-file-viewport">
                       <span className="min-w-0 flex-1">
                         <span data-file-name="true" onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="inline-block max-w-full truncate" style={getItemNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
-                        {flatParentLabel(item) && <span className="ml-1 inline-block max-w-[45%] align-bottom truncate font-sans text-[10px] text-neutral-500">· {flatParentLabel(item)}</span>}
+                        {flatParentLabel(item) && <span className="ml-1 inline-block max-w-[45%] align-bottom truncate font-sans text-[calc(10px*var(--lister-text-scale,1))] text-neutral-500">· {flatParentLabel(item)}</span>}
                       </span>
                     </Tooltip>
                   )}
                   {renderFolderStatusBadge(item)}
-                  {!item.isFolder && <span className="flex-shrink-0 font-sans text-[10px] text-neutral-500">{formatFileSize(item.size)}</span>}
+                  {!item.isFolder && <span className="flex-shrink-0 font-sans text-[calc(10px*var(--lister-text-scale,1))] text-neutral-500">{formatFileSize(item.size)}</span>}
                 </div>
               );
               })}
@@ -3978,12 +3982,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     renderInlineRenameInput(item, 'w-full min-w-0', 'text-center')
                   ) : (
                     <span className="w-full min-w-0 px-1">
-                      <span data-file-name="true" className="inline-block max-w-full truncate text-[11px] font-medium" style={getItemNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+                      <span data-file-name="true" className="inline-block max-w-full truncate text-[calc(11px*var(--lister-text-scale,1))] font-medium" style={getItemNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
                     </span>
                   )}
-                  {flatParentLabel(item) && <span className="w-full truncate px-1 font-sans text-[9px] text-neutral-500">{flatParentLabel(item)}</span>}
+                  {flatParentLabel(item) && <span className="w-full truncate px-1 font-sans text-[calc(9px*var(--lister-text-scale,1))] text-neutral-500">{flatParentLabel(item)}</span>}
                   {renderFolderStatusBadge(item)}
-                  <span className="mt-0.5 text-[9px] font-sans text-neutral-400">
+                  <span className="mt-0.5 text-[calc(9px*var(--lister-text-scale,1))] font-sans text-neutral-400">
                     {item.isFolder ? t.pane.iconFolderLabel : formatFileSize(item.size)}
                   </span>
                 </div>
