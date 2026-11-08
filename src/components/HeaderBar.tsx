@@ -327,7 +327,9 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       data-labels={toolbarLabelPosition === 'none' ? 'false' : 'true'}
       className="cyberfiles-command-bar relative min-h-14 overflow-hidden bg-neutral-900/95 border-b border-neutral-800 px-3 py-2 flex items-center justify-between gap-3 select-none z-20 backdrop-blur-md"
     >
-      <div className="flex items-center gap-3 min-w-0">
+      {/* Never squeezable: an overflow the bar cannot see (hidden inside this block)
+          would paint over the right side instead of being folded into the menu. */}
+      <div className="flex items-center gap-3 shrink-0">
         {isCompactWindow && (
           <div className="compact-window-controls flex shrink-0 items-center gap-1">
             <Tooltip label={sidebarDrawerOpen ? t.header.closeSidebar : t.header.openSidebar} placement="bottom">

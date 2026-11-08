@@ -246,7 +246,9 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
         </Tooltip>
       </div>
 
-      <div className="flex h-full w-[min(23rem,40vw)] shrink-0 items-center gap-1.5" data-titlebar-no-drag="">
+      {/* The middle block yields to the fixed-width side blocks: the search label
+          truncates instead of letting the window controls paint over the chips. */}
+      <div className="flex h-full w-[min(23rem,40vw)] min-w-0 shrink items-center gap-1.5" data-titlebar-no-drag="">
         <button type="button" onClick={onOpenSearch} aria-label={t.findFiles.title} className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-cyan-900/80 bg-neutral-900 px-2.5 text-left text-xs text-neutral-400 transition-colors hover:border-cyan-700 hover:bg-neutral-800 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/70">
           <Search className="h-4 w-4 shrink-0 text-cyan-400" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate">{tTitlebar('Buscar archivos y contenido', 'Search files and content')}</span>
@@ -260,7 +262,9 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
         </Tooltip>
       </div>
 
-      <div className="flex h-full min-w-0 flex-1 items-center justify-end">
+      {/* Fixed-width right side: the window controls must keep their natural size,
+          so this block never shrinks and can never be squeezed out by the middle. */}
+      <div className="flex h-full shrink-0 items-center justify-end">
         <div className="flex h-full shrink-0 items-center gap-1 pr-2" data-titlebar-no-drag="">
           <Tooltip label={t.settings.openTooltip} shortcut="Ctrl+," placement="bottom">
             <button
