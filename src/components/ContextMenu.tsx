@@ -33,6 +33,7 @@ import {
   ListChecks,
   Square,
   Palette,
+  RefreshCw,
   History,
   Undo2,
   Wrench,
@@ -99,6 +100,7 @@ interface ContextMenuProps {
      looking. Stays in the menu, disabled, when the history has nothing reversible. */
   onUndo?: () => void;
   undoAvailable?: boolean;
+  onRefresh?: () => void;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -154,6 +156,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onCopyPath,
   onUndo,
   undoAvailable = false,
+  onRefresh,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const [newMenuOpen, setNewMenuOpen] = useState(false);
@@ -502,11 +505,11 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               onClick={() => { onPaste(); onClose(); }}
             />
             <HeaderActionButton
-              icon={<BoxSelect className="h-4 w-4 text-cyan-300" />}
-              label={t.contextMenu.selectAllShort}
-              shortcut="Ctrl+A"
-              disabled={!hasFolder || !hasSelectableItems || !onSelectAll}
-              onClick={() => { onSelectAll?.(); onClose(); }}
+              icon={<RefreshCw className="h-4 w-4 text-cyan-300" />}
+              label={t.toolbar.refresh}
+              shortcut="F5"
+              disabled={!hasFolder || !onRefresh}
+              onClick={() => { onRefresh?.(); onClose(); }}
             />
             <HeaderActionButton
               icon={<Undo2 className={`h-4 w-4 ${undoAvailable ? 'text-cyan-300' : 'text-neutral-500'}`} />}
