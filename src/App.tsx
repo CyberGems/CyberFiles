@@ -1182,10 +1182,10 @@ export default function App() {
     };
   }, [refreshRecycleBinStatus]);
 
-  const refreshSystemHome = useCallback(async () => {
+  const refreshSystemHome = useCallback(async (): Promise<DriveInfo[]> => {
     if (!isTauriDesktop()) {
       setSystemHomeLoading(false);
-      return;
+      return [];
     }
     setSystemHomeLoading(true);
     try {
@@ -1195,10 +1195,12 @@ export default function App() {
       ]);
       setDrives(nextDrives);
       setSystemLocations(nextLocations);
+      return nextDrives;
     } catch {
       setDrives([]);
       setSystemLocations([]);
       showToast(language === 'es' ? 'No se pudieron consultar las ubicaciones del sistema.' : 'System locations could not be loaded.');
+      return [];
     } finally {
       setSystemHomeLoading(false);
     }
@@ -2692,6 +2694,21 @@ export default function App() {
   const activePaneRef = useRef(activePane);
   activePaneRef.current = activePane;
 
+  /* Latest-value refs for the drive-change listener, which runs outside the
+     render cycle and must always see the current drives, language and tabs. */
+  const drivesRef = useRef(drives);
+  drivesRef.current = drives;
+  const languageRef = useRef(language);
+  languageRef.current = language;
+  const leftTabsRef = useRef(leftTabs);
+  leftTabsRef.current = leftTabs;
+  const rightTabsRef = useRef(rightTabs);
+  rightTabsRef.current = rightTabs;
+  const activeLeftTabIndexRef = useRef(activeLeftTabIndex);
+  activeLeftTabIndexRef.current = activeLeftTabIndex;
+  const activeRightTabIndexRef = useRef(activeRightTabIndex);
+  activeRightTabIndexRef.current = activeRightTabIndex;
+
   const launchPathHandledRef = useRef(false);
   useEffect(() => {
     if (launchPathHandledRef.current) return;
@@ -2734,7 +2751,33 @@ export default function App() {
     let unlisten: (() => void) | undefined;
     import('@tauri-apps/api/event').then(({ listen }) => {
       void listen('drives-changed', () => {
-        void refreshSystemHomeRef.current();
+        void (async () => {
+          const previousLetters = new Set(drivesRef.current.map(drive => drive.letter.toUpperCase()));
+          const nextDrives = await refreshSystemHomeRef.current();
+          const nextLetters = new Set(nextDrives.map(drive => drive.letter.toUpperCase()));
+          const language = languageRef.current;
+          const added = [...nextLetters].filter(letter => !previousLetters.has(letter));
+          const removed = [...previousLetters].filter(letter => !nextLetters.has(letter));
+          if (added.length > 0) {
+            showToast(language === 'es' ? `Unidad conectada: ${added.join(', ')}` : `Drive connected: ${added.join(', ')}`);
+          }
+          if (removed.length > 0) {
+            showToast(language === 'es' ? `Unidad retirada: ${removed.join(', ')}` : `Drive removed: ${removed.join(', ')}`);
+          }
+          /* A tab left inside a drive that is gone would only show a listing
+             error: send it back to This PC immediately. */
+          const gonePrefixes = removed.map(letter => `${letter.toLowerCase()}:`);
+          const panes: Array<'left' | 'right'> = ['left', 'right'];
+          for (const pane of panes) {
+            const tab = pane === 'left' ? leftTabsRef.current[activeLeftTabIndexRef.current] : rightTabsRef.current[activeRightTabIndexRef.current];
+            const path = tab?.currentPath;
+            if (!path || path === SYSTEM_HOME_PATH || path === RECYCLE_BIN_PATH || path === RECENT_PATH) continue;
+            const normalized = normalizeWindowsPath(path).toLowerCase();
+            if (gonePrefixes.some(prefix => normalized.startsWith(prefix))) {
+              handleNavigateRef.current(SYSTEM_HOME_PATH, pane, true);
+            }
+          }
+        })();
       }).then(fn => {
         unlisten = fn;
       });
