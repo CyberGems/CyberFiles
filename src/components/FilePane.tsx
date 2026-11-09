@@ -3557,18 +3557,37 @@ export const FilePane: React.FC<FilePaneProps> = ({
             className="fixed z-[110] max-h-[min(24rem,calc(100vh-1rem))] overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-950/95 p-1.5 text-xs shadow-2xl backdrop-blur-md"
           >
             <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.pane.recentFolders}</div>
-            {recentFolderPaths.length > 0 ? recentFolderPaths.map(path => (
-              <button
-                key={path}
-                type="button"
-                role="menuitem"
-                onClick={event => { event.stopPropagation(); setRecentFoldersMenuPosition(null); onNavigate(path); }}
-                className="flex w-full min-w-0 items-center gap-2 rounded px-2.5 py-2 text-left text-neutral-200 transition-colors hover:bg-neutral-800 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
-              >
-                <Folder className="h-3.5 w-3.5 flex-shrink-0 text-cyan-400" />
-                <span className="min-w-0 flex-1 truncate font-sans">{path}</span>
-              </button>
-            )) : (
+            {recentFolderPaths.length > 0 ? recentFolderPaths.map(path => {
+              const isOffline = availableDriveLetters.size > 0 && isPathOnUnavailableDrive(path, availableDriveLetters);
+              return (
+                <button
+                  key={path}
+                  type="button"
+                  role="menuitem"
+                  disabled={isOffline}
+                  aria-disabled={isOffline || undefined}
+                  onClick={event => {
+                    event.stopPropagation();
+                    if (isOffline) return;
+                    setRecentFoldersMenuPosition(null);
+                    onNavigate(path);
+                  }}
+                  className={`flex w-full min-w-0 items-center gap-2 rounded px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70 ${
+                    isOffline
+                      ? 'cursor-not-allowed text-neutral-500 opacity-60'
+                      : 'text-neutral-200 hover:bg-neutral-800 hover:text-cyan-200'
+                  }`}
+                >
+                  <Folder className={`h-3.5 w-3.5 flex-shrink-0 ${isOffline ? 'text-neutral-600' : 'text-cyan-400'}`} />
+                  <span className="min-w-0 flex-1 truncate font-sans">{path}</span>
+                  {isOffline && (
+                    <span className="ml-1 flex-shrink-0 rounded border border-amber-500/30 bg-amber-950/30 px-1.5 py-0.5 text-[9px] font-medium text-amber-300/90">
+                      {t.sidebar.quickAccessDriveOffline}
+                    </span>
+                  )}
+                </button>
+              );
+            }) : (
               <div className="px-2.5 py-3 text-center text-neutral-500">{t.pane.noRecentFolders}</div>
             )}
             <div className="my-1 h-px bg-neutral-800" />
