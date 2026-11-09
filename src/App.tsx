@@ -2726,6 +2726,26 @@ export default function App() {
   }, []);
 
 
+  /* USB drives and MTP devices appear or disappear while the app runs: the
+     backend polls GetLogicalDrives and emits this event, and the sidebar drive
+     list and the This PC view reload immediately. */
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    let unlisten: (() => void) | undefined;
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      void listen('drives-changed', () => {
+        void refreshSystemHomeRef.current();
+      }).then(fn => {
+        unlisten = fn;
+      });
+    }).catch(() => {
+      // Event listener unavailable outside Tauri
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
   useEffect(() => {
     if (!isTauriDesktop()) return;
 
@@ -3230,7 +3250,11 @@ export default function App() {
     } else {
       touchFileAccessed(item.id);
       recordRecentFile(item);
-      setPreviewOpen(true);
+      /* Opening a file must not force the properties/preview panel open: it only
+         refreshes the panel content when the user already has it visible. */
+      if (previewOpen) {
+        setPreviewOpen(true);
+      }
       if (isTauriDesktop()) {
         void openNativeFileWithDefaultApp(item.path).catch(() => showToast(t.core.fileOpenFailed));
         return;
@@ -6542,6 +6566,7 @@ export default function App() {
           }
         }}
         onCustomizeFolderIcon={item => handleOpenFolderIconModal({ path: item.path, name: item.name })}
+        onRefresh={() => { void handleNavigate(contextPaneTab.currentPath, contextPane, true); }}
         onUndo={() => {
           const latest = undoHistory[0];
           if (latest?.canUndo) void handleUndoAction(latest.id);
