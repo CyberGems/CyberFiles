@@ -486,3 +486,34 @@ export async function listNativeNetworkResources(): Promise<NetworkResource[]> {
   if (!isTauriDesktop()) return [];
   return invoke<NetworkResource[]>('list_network_resources');
 }
+
+export async function authenticateNativeNetworkResource(
+  path: string,
+  username: string,
+  password: string,
+  rememberCredentials: boolean,
+): Promise<void> {
+  if (!isTauriDesktop()) return;
+  await invoke('authenticate_network_resource', {
+    path,
+    username,
+    password,
+    rememberCredentials,
+  });
+}
+
+export function parseNetworkAuthRequiredError(error: unknown): { required: boolean; code?: number } {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const match = message.match(/NETWORK_AUTH_REQUIRED:(\d+):/);
+  if (!match) return { required: false };
+  const code = Number.parseInt(match[1], 10);
+  return { required: true, code: Number.isFinite(code) ? code : undefined };
+}
+
+export function parseNetworkAuthFailedError(error: unknown): { code?: number; raw: string } {
+  const raw = error instanceof Error ? error.message : String(error ?? '');
+  const match = raw.match(/NETWORK_AUTH_FAILED:(\d+):/);
+  if (!match) return { raw };
+  const code = Number.parseInt(match[1], 10);
+  return { code: Number.isFinite(code) ? code : undefined, raw };
+}

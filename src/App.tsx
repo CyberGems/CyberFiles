@@ -76,6 +76,7 @@ import { TabContextMenu, type TabMenuAction } from './components/TabContextMenu'
 import { TabStripContextMenu, type TabStripMenuAction } from './components/TabStripContextMenu';
 import { CreateItemModal, type NewItemKind } from './components/CreateItemModal';
 import { CreateZipModal } from './components/CreateZipModal';
+import { NetworkCredentialsModal } from './components/NetworkCredentialsModal';
 import { TextInputContextMenu } from './components/TextInputContextMenu';
 import { TooltipPreferenceContext } from './components/Tooltip';
 import { WorkspaceManagerModal } from './components/WorkspaceManagerModal';
@@ -118,7 +119,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { authenticateNativeNetworkResource, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { normalizeListerTextScale, type ListerTextScale } from './utils/listerTextScale';
 import { fetchLaunchContext, getLaunchTargetPath } from './utils/systemIntegration';
@@ -1323,6 +1324,8 @@ export default function App() {
   const [isBatchRenameOpen, setIsBatchRenameOpen] = useState(false);
   const [pendingCreateItem, setPendingCreateItem] = useState<{ kind: NewItemKind; pane: 'left' | 'right'; parentPath: string; suggestedName?: string } | null>(null);
   const [pendingZipCreation, setPendingZipCreation] = useState<{ sourcePaths: string[]; targetPath: string; pane: 'left' | 'right'; defaultName: string } | null>(null);
+  const [pendingNetworkAuth, setPendingNetworkAuth] = useState<{ path: string; pane: 'left' | 'right'; errorMessage?: string | null } | null>(null);
+  const [isNetworkAuthBusy, setIsNetworkAuthBusy] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -2847,13 +2850,29 @@ export default function App() {
           return { ...tab, selectedIds, focusedId: selectedIds[0] ?? null };
         });
       }
-    } catch {
+    } catch (error) {
       selectAllAfterLoad.current.delete(`${targetPane}:${pathKey}`);
       if (generation === nativeWorkspaceGeneration.current) {
         setNativeDirectories(previous => ({
           ...previous,
           [pathKey]: { ...(previous[pathKey] || { nextOffset: 0, hasMore: false }), loading: false },
         }));
+        const authRequired = parseNetworkAuthRequiredError(error);
+        if (authRequired.required) {
+          if (!openInNewTab && targetTab && getPathKey(targetTab.currentPath) !== pathKey) {
+            updatePaneTab(targetPane, tab => (tab.id === targetTab.id ? targetTab : tab));
+          } else if (getPathKey(targetTab?.currentPath || '') === pathKey) {
+            updatePaneTab(targetPane, tab => (
+              getPathKey(tab.currentPath) === pathKey
+                ? { ...tab, currentPath: NETWORK_PATH, title: t.sidebar.network }
+                : tab
+            ));
+            networkLoaded.current = true;
+            void refreshNetworkResources();
+          }
+          setPendingNetworkAuth({ path: targetPath, pane: targetPane, errorMessage: null });
+          return;
+        }
         /* A listing failure on a drive that is no longer present is the
            removal itself, not a real read error: refresh the drive list right
            away so the tab moves to This PC immediately even before the
@@ -2888,6 +2907,48 @@ export default function App() {
     nativeRootPath.current = SYSTEM_HOME_PATH;
     void handleNavigate(normalized, targetPane, true);
   }, [activePane, handleNavigate, rememberNetworkHost, showToast, t.pane.networkInvalidHost]);
+
+  const handleRequestNetworkAuth = useCallback((path: string, targetPane: 'left' | 'right' = activePane) => {
+    setPendingNetworkAuth({ path, pane: targetPane, errorMessage: null });
+  }, [activePane]);
+
+  const handleSubmitNetworkAuth = useCallback(async (values: {
+    username: string;
+    password: string;
+    rememberCredentials: boolean;
+  }) => {
+    if (!pendingNetworkAuth || isNetworkAuthBusy) return;
+    setIsNetworkAuthBusy(true);
+    setPendingNetworkAuth(previous => (previous ? { ...previous, errorMessage: null } : null));
+    try {
+      await authenticateNativeNetworkResource(
+        pendingNetworkAuth.path,
+        values.username,
+        values.password,
+        values.rememberCredentials,
+      );
+      const targetPath = pendingNetworkAuth.path;
+      const targetPane = pendingNetworkAuth.pane;
+      rememberNetworkHost(targetPath);
+      setPendingNetworkAuth(null);
+      showToast(t.networkAuthModal.connectedToast.replace('{path}', targetPath));
+      void refreshNetworkResources();
+      void handleNavigate(targetPath, targetPane, true);
+    } catch (error) {
+      const parsed = parseNetworkAuthFailedError(error);
+      const code = parsed.code;
+      const errorMessage = code === 1219
+        ? t.networkAuthModal.authFailedConflict
+        : code === 5 || code === 1244
+          ? t.networkAuthModal.authFailedAccessDenied
+          : code === 1326 || code === 86 || code === 1312 || code === 1327 || code === 1328 || code === 1330 || code === 1331 || code === 1907 || code === 1909 || code === 2202
+            ? t.networkAuthModal.authFailedLogon
+            : t.networkAuthModal.authFailedGeneric.replace('{code}', code !== undefined ? String(code) : parsed.raw);
+      setPendingNetworkAuth(previous => (previous ? { ...previous, errorMessage } : null));
+    } finally {
+      setIsNetworkAuthBusy(false);
+    }
+  }, [handleNavigate, isNetworkAuthBusy, pendingNetworkAuth, refreshNetworkResources, rememberNetworkHost, showToast, t.networkAuthModal.authFailedAccessDenied, t.networkAuthModal.authFailedConflict, t.networkAuthModal.authFailedGeneric, t.networkAuthModal.authFailedLogon, t.networkAuthModal.connectedToast]);
 
   const lastSessionReloadHandled = useRef(0);
   useEffect(() => {
@@ -5518,7 +5579,7 @@ export default function App() {
           isCloseDialogOpen || isSettingsOpen || isAboutOpen || isSearchOpen || isShortcutsOpen ||
           isBatchRenameOpen || isWorkspaceManagerOpen || isUnsavedWorkspaceChangesOpen ||
           isOnboardingOpen || isEmptyRecycleBinConfirmOpen || pendingDeleteItems.length > 0 ||
-          pendingCreateItem || pendingZipCreation || renameRequest || contextMenuPos
+          pendingCreateItem || pendingZipCreation || pendingNetworkAuth || renameRequest || contextMenuPos
         ) return;
         setIsCommandPaletteOpen(open => !open);
         return;
@@ -5546,14 +5607,14 @@ export default function App() {
           isCloseDialogOpen || isSettingsOpen || isAboutOpen || isSearchOpen || isShortcutsOpen ||
           isCommandPaletteOpen || isBatchRenameOpen || isWorkspaceManagerOpen ||
           isUnsavedWorkspaceChangesOpen || isOnboardingOpen || isEmptyRecycleBinConfirmOpen ||
-          pendingDeleteItems.length > 0 || pendingCreateItem || pendingZipCreation || renameRequest || contextMenuPos
+          pendingDeleteItems.length > 0 || pendingCreateItem || pendingZipCreation || pendingNetworkAuth || renameRequest || contextMenuPos
         ) return;
         setIsOperationsCenterOpen(true);
         return;
       }
 
       if (isCommandPaletteOpen) return;
-      if (isCloseDialogOpen || isSettingsOpen || isAboutOpen || isSearchOpen || isShortcutsOpen || isBatchRenameOpen || pendingDeleteItems.length > 0 || isFileOperationBusy) return;
+      if (isCloseDialogOpen || isSettingsOpen || isAboutOpen || isSearchOpen || isShortcutsOpen || isBatchRenameOpen || pendingDeleteItems.length > 0 || pendingNetworkAuth || isFileOperationBusy) return;
 
       // If typing inside an input/textarea, don't hijack keys
       if (
@@ -6378,6 +6439,7 @@ export default function App() {
                   isLoadingNetwork={networkLoading}
                   savedNetworkHosts={savedNetworkHosts}
                   onConnectNetworkHost={input => handleConnectNetworkHost(input, 'left')}
+                  onRequestNetworkAuth={path => handleRequestNetworkAuth(path, 'left')}
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
@@ -6462,6 +6524,7 @@ export default function App() {
                   isLoadingNetwork={networkLoading}
                   savedNetworkHosts={savedNetworkHosts}
                   onConnectNetworkHost={input => handleConnectNetworkHost(input, 'right')}
+                  onRequestNetworkAuth={path => handleRequestNetworkAuth(path, 'right')}
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
@@ -6547,6 +6610,7 @@ export default function App() {
                   isLoadingNetwork={networkLoading}
                   savedNetworkHosts={savedNetworkHosts}
                   onConnectNetworkHost={input => handleConnectNetworkHost(input, 'left')}
+                  onRequestNetworkAuth={path => handleRequestNetworkAuth(path, 'left')}
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
@@ -6627,6 +6691,7 @@ export default function App() {
                   isLoadingNetwork={networkLoading}
                   savedNetworkHosts={savedNetworkHosts}
                   onConnectNetworkHost={input => handleConnectNetworkHost(input, 'right')}
+                  onRequestNetworkAuth={path => handleRequestNetworkAuth(path, 'right')}
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
@@ -6712,6 +6777,7 @@ export default function App() {
                   isLoadingNetwork={networkLoading}
                   savedNetworkHosts={savedNetworkHosts}
                   onConnectNetworkHost={input => handleConnectNetworkHost(input, activePane)}
+                  onRequestNetworkAuth={path => handleRequestNetworkAuth(path, activePane)}
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
@@ -6951,6 +7017,16 @@ export default function App() {
         />
       )}
       {pendingZipCreation && <CreateZipModal key={pendingZipCreation.targetPath + ':' + pendingZipCreation.sourcePaths.join('|')} defaultName={pendingZipCreation.defaultName} itemCount={pendingZipCreation.sourcePaths.length} targetPath={pendingZipCreation.targetPath} onClose={() => setPendingZipCreation(null)} onChooseTarget={async () => { try { return await chooseNativeFolder(t.contextMenu.chooseTargetFolder); } catch (error) { showToast(t.core.operationFailedWithReason.replace('{reason}', String(error))); return null; } }} onSubmit={handleCreateZip} />}
+      {pendingNetworkAuth && (
+        <NetworkCredentialsModal
+          key={`${pendingNetworkAuth.pane}:${pendingNetworkAuth.path}`}
+          targetPath={pendingNetworkAuth.path}
+          errorMessage={pendingNetworkAuth.errorMessage}
+          isBusy={isNetworkAuthBusy}
+          onClose={() => { if (!isNetworkAuthBusy) setPendingNetworkAuth(null); }}
+          onSubmit={values => { void handleSubmitNetworkAuth(values); }}
+        />
+      )}
       <FileOperationModal
         hidden={isOnboardingOpen || isWorkspaceManagerOpen || isUnsavedWorkspaceChangesOpen || isSettingsOpen || isAboutOpen || isCloseDialogOpen}
         isOpen={isOperationsCenterOpen}

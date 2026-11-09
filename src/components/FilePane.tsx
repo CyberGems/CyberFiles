@@ -36,6 +36,7 @@ import {
   LockKeyhole,
   UnlockKeyhole,
   Keyboard,
+  KeyRound,
   Server,
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, HiddenItemStyle, NETWORK_PATH, NetworkResource, SortField, TabState, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
@@ -105,6 +106,7 @@ interface FilePaneProps {
   savedNetworkHosts?: string[];
   onConnectNetworkHost?: (input: string) => void;
   onRemoveSavedNetworkHost?: (hostPath: string) => void;
+  onRequestNetworkAuth?: (targetPath: string) => void;
   hasMore?: boolean;
   totalItemCount?: number;
   isLoadingDirectory?: boolean;
@@ -751,6 +753,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   savedNetworkHosts = [],
   onConnectNetworkHost,
   onRemoveSavedNetworkHost,
+  onRequestNetworkAuth,
   hasMore = false,
   totalItemCount,
   isLoadingDirectory = false,
@@ -4130,6 +4133,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             </span>
                             <span className="mt-1 block truncate text-[10px] text-neutral-400">{host.path}</span>
                           </span>
+                          {onRequestNetworkAuth && (
+                            <Tooltip label={t.pane.networkAuthenticateTooltip} placement="top">
+                              <button
+                                type="button"
+                                aria-label={`${t.pane.networkAuthenticateTooltip}: ${host.name}`}
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  onRequestNetworkAuth(host.path);
+                                }}
+                                className="rounded p-1 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-800 hover:text-cyan-300 group-hover:opacity-100 focus-visible:opacity-100"
+                              >
+                                <KeyRound className="h-3.5 w-3.5" />
+                              </button>
+                            </Tooltip>
+                          )}
                           {isSaved && onRemoveSavedNetworkHost && (
                             <Tooltip label={t.pane.networkRemoveSavedHost} placement="top">
                               <button
@@ -4176,10 +4194,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
                         : t.pane.networkShareBadge;
                     return (
                       <Tooltip key={resource.id} label={resource.path} placement="top" boundary=".cyberfiles-file-viewport">
-                        <button
-                          type="button"
-                          onClick={event => handleSystemHomeShortcutClick(event, shortcutId, () => onNavigate(resource.path))}
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={event => handleSystemHomeShortcutClick(event as unknown as React.MouseEvent<HTMLButtonElement>, shortcutId, () => onNavigate(resource.path))}
                           onDoubleClick={() => handleSystemHomeShortcutDoubleClick(() => onNavigate(resource.path))}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              onNavigate(resource.path);
+                            }
+                          }}
                           style={{ cursor: singleClickOpens ? 'pointer' : 'default' }}
                           className={`cyberfiles-system-home-card group flex min-h-[68px] w-full min-w-0 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
                             isSelected
@@ -4199,7 +4224,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             </span>
                             <span className="mt-1 block truncate text-[10px] text-neutral-400">{resource.path}</span>
                           </span>
-                        </button>
+                          {onRequestNetworkAuth && isUncPath(resource.path) && (
+                            <Tooltip label={t.pane.networkAuthenticateTooltip} placement="top">
+                              <button
+                                type="button"
+                                aria-label={`${t.pane.networkAuthenticateTooltip}: ${resource.name}`}
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  onRequestNetworkAuth(resource.path);
+                                }}
+                                className="rounded p-1 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-800 hover:text-cyan-300 group-hover:opacity-100 focus-visible:opacity-100"
+                              >
+                                <KeyRound className="h-3.5 w-3.5" />
+                              </button>
+                            </Tooltip>
+                          )}
+                        </div>
                       </Tooltip>
                     );
                   })}

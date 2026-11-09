@@ -1539,6 +1539,36 @@ fn canonical_item(path: &str) -> Result<PathBuf, String> {
     Ok(fs::canonicalize(requested).unwrap_or_else(|_| requested.to_path_buf()))
 }
 
+fn is_windows_network_auth_error(code: i32) -> bool {
+    matches!(
+        code,
+        5      // ERROR_ACCESS_DENIED
+        | 86   // ERROR_INVALID_PASSWORD
+        | 1219 // ERROR_SESSION_CREDENTIAL_CONFLICT
+        | 1244 // ERROR_NOT_AUTHENTICATED
+        | 1312 // ERROR_NO_SUCH_LOGON_SESSION
+        | 1326 // ERROR_LOGON_FAILURE
+        | 1327 // ERROR_ACCOUNT_RESTRICTION
+        | 1328 // ERROR_INVALID_LOGON_HOURS
+        | 1330 // ERROR_PASSWORD_EXPIRED
+        | 1331 // ERROR_ACCOUNT_DISABLED
+        | 1907 // ERROR_PASSWORD_MUST_CHANGE
+        | 1909 // ERROR_ACCOUNT_LOCKED_OUT
+        | 2202 // ERROR_BAD_USERNAME
+    )
+}
+
+fn format_network_access_error(expanded: &str, error: &std::io::Error, prefix: &str) -> String {
+    let is_unc = expanded.trim().replace('/', "\\").starts_with("\\\\");
+    if is_unc {
+        if let Some(code) = error.raw_os_error().filter(|&code| is_windows_network_auth_error(code))
+        {
+            return format!("NETWORK_AUTH_REQUIRED:{code}:{prefix}: {error}");
+        }
+    }
+    format!("{prefix}: {error}")
+}
+
 fn resolve_accessible_directory(expanded: &str) -> Result<PathBuf, String> {
     match fs::canonicalize(expanded) {
         Ok(canonical) => {
@@ -1549,11 +1579,24 @@ fn resolve_accessible_directory(expanded: &str) -> Result<PathBuf, String> {
         }
         Err(error) => {
             let fallback = PathBuf::from(expanded);
-            if fallback.is_absolute() && fallback.is_dir() {
-                Ok(fallback)
-            } else {
-                Err(format!("Cannot access folder: {error}"))
+            if fallback.is_absolute() {
+                match fs::metadata(&fallback) {
+                    Ok(metadata) if metadata.is_dir() => return Ok(fallback),
+                    Ok(_) => return Err("The selected location is not a folder.".to_string()),
+                    Err(meta_err) => {
+                        return Err(format_network_access_error(
+                            expanded,
+                            &meta_err,
+                            "Cannot access folder",
+                        ));
+                    }
+                }
             }
+            Err(format_network_access_error(
+                expanded,
+                &error,
+                "Cannot access folder",
+            ))
         }
     }
 }
@@ -2558,6 +2601,41 @@ extern "system" {
         lp_remote_name: *mut u16,
         lpn_length: *mut u32,
     ) -> u32;
+    fn WNetAddConnection2W(
+        lp_net_resource: *const NetResourceW,
+        lp_password: *const u16,
+        lp_user_name: *const u16,
+        dw_flags: u32,
+    ) -> u32;
+    fn WNetCancelConnection2W(
+        lp_name: *const u16,
+        dw_flags: u32,
+        f_force: i32,
+    ) -> u32;
+}
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct CredentialW {
+    flags: u32,
+    cred_type: u32,
+    target_name: *mut u16,
+    comment: *mut u16,
+    last_written_low: u32,
+    last_written_high: u32,
+    credential_blob_size: u32,
+    credential_blob: *mut u8,
+    persist: u32,
+    attribute_count: u32,
+    attributes: *mut std::ffi::c_void,
+    target_alias: *mut u16,
+    user_name: *mut u16,
+}
+
+#[cfg(target_os = "windows")]
+#[link(name = "advapi32")]
+extern "system" {
+    fn CredWriteW(credential: *const CredentialW, flags: u32) -> i32;
 }
 
 #[cfg(target_os = "windows")]
@@ -2642,6 +2720,18 @@ fn list_unc_server_shares(server_root: &str) -> Result<DirectoryListing, String>
         let mut handle: isize = 0;
         let open_status = unsafe { WNetOpenEnumW(2, 1, 0, &container, &mut handle) };
         if open_status != 0 {
+            if is_windows_network_auth_error(status as i32)
+                || is_windows_network_auth_error(open_status as i32)
+            {
+                let auth_code = if is_windows_network_auth_error(status as i32) {
+                    status
+                } else {
+                    open_status
+                };
+                return Err(format!(
+                    "NETWORK_AUTH_REQUIRED:{auth_code}:Cannot access network host {server_root} (Windows error {auth_code})."
+                ));
+            }
             return Err(format!(
                 "Cannot access network host {server_root} (Windows error {status})."
             ));
@@ -2726,8 +2816,8 @@ async fn list_directory(path: String) -> Result<DirectoryListing, String> {
             .file_name()
             .map(|name| name.to_string_lossy().to_string())
             .unwrap_or_else(|| root.to_string_lossy().to_string());
-        let read_dir =
-            fs::read_dir(&root).map_err(|error| format!("Cannot read folder: {error}"))?;
+        let read_dir = fs::read_dir(&root)
+            .map_err(|error| format_network_access_error(&expanded, &error, "Cannot read folder"))?;
         // Enumerate the complete folder off the UI thread. The frontend renders
         // only the visible rows, but selection and sorting need every entry.
         let mut entries = Vec::new();
@@ -5588,6 +5678,170 @@ async fn list_network_resources() -> Result<Vec<NativeNetworkResource>, String> 
         .map_err(|error| format!("Network discovery worker failed: {error}"))
 }
 
+#[cfg(target_os = "windows")]
+fn save_windows_domain_credential(host: &str, username: &str, password: &str) {
+    let mut target_wide: Vec<u16> = host.encode_utf16().chain(Some(0)).collect();
+    let mut user_wide: Vec<u16> = username.encode_utf16().chain(Some(0)).collect();
+    let password_utf16: Vec<u16> = password.encode_utf16().collect();
+    let mut password_bytes: Vec<u8> = Vec::with_capacity(password_utf16.len() * 2);
+    for unit in password_utf16 {
+        password_bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    let cred = CredentialW {
+        flags: 0,
+        cred_type: 2, // CRED_TYPE_DOMAIN_PASSWORD
+        target_name: target_wide.as_mut_ptr(),
+        comment: std::ptr::null_mut(),
+        last_written_low: 0,
+        last_written_high: 0,
+        credential_blob_size: password_bytes.len() as u32,
+        credential_blob: if password_bytes.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            password_bytes.as_mut_ptr()
+        },
+        persist: 3, // CRED_PERSIST_ENTERPRISE
+        attribute_count: 0,
+        attributes: std::ptr::null_mut(),
+        target_alias: std::ptr::null_mut(),
+        user_name: user_wide.as_mut_ptr(),
+    };
+    unsafe {
+        CredWriteW(&cred, 0);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn add_wnet_connection(
+    remote_target: &str,
+    res_type: u32,
+    username: &str,
+    password: &str,
+    flags: u32,
+) -> u32 {
+    let mut remote_wide: Vec<u16> = remote_target.encode_utf16().chain(Some(0)).collect();
+    let user_wide: Vec<u16> = username.encode_utf16().chain(Some(0)).collect();
+    let pass_wide: Vec<u16> = password.encode_utf16().chain(Some(0)).collect();
+    let resource = NetResourceW {
+        dw_scope: 0,
+        dw_type: res_type,
+        dw_display_type: 0,
+        dw_usage: 0,
+        lp_local_name: std::ptr::null_mut(),
+        lp_remote_name: remote_wide.as_mut_ptr(),
+        lp_comment: std::ptr::null_mut(),
+        lp_provider: std::ptr::null_mut(),
+    };
+    let user_ptr = if username.trim().is_empty() {
+        std::ptr::null()
+    } else {
+        user_wide.as_ptr()
+    };
+    let status = unsafe { WNetAddConnection2W(&resource, pass_wide.as_ptr(), user_ptr, flags) };
+    if status == 87 && flags != 0 {
+        unsafe { WNetAddConnection2W(&resource, pass_wide.as_ptr(), user_ptr, 0) }
+    } else {
+        status
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn cancel_conflicting_unc_connections(host: &str, share: Option<&str>) {
+    let mut targets = vec![format!("\\\\{host}\\IPC$"), format!("\\\\{host}")];
+    if let Some(share_name) = share {
+        targets.insert(0, format!("\\\\{host}\\{share_name}"));
+    }
+    for target in targets {
+        let wide: Vec<u16> = target.encode_utf16().chain(Some(0)).collect();
+        unsafe {
+            WNetCancelConnection2W(wide.as_ptr(), 0, 1);
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn authenticate_network_resource_blocking(
+    path: &str,
+    username: &str,
+    password: &str,
+    remember_credentials: bool,
+) -> Result<(), String> {
+    let normalized = path.trim().replace('/', "\\");
+    if !normalized.starts_with("\\\\") || normalized.starts_with("\\\\?\\") {
+        return Err("The target must be a valid UNC network path.".to_string());
+    }
+    let segments: Vec<&str> = normalized[2..]
+        .split('\\')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    let Some(&host) = segments.first() else {
+        return Err("The target must include a network server or host name.".to_string());
+    };
+    let share = segments.get(1).copied();
+    let flags = if remember_credentials { 0x0000_1000 } else { 0 }; // CONNECT_CMD_SAVECRED
+
+    let candidates: Vec<(String, u32)> = match share {
+        Some(share_name) => vec![
+            (format!("\\\\{host}\\{share_name}"), 1), // RESOURCETYPE_DISK
+            (format!("\\\\{host}\\IPC$"), 0),         // RESOURCETYPE_ANY
+            (format!("\\\\{host}"), 0),
+        ],
+        None => vec![
+            (format!("\\\\{host}\\IPC$"), 0), // RESOURCETYPE_ANY
+            (format!("\\\\{host}"), 0),
+        ],
+    };
+
+    let mut last_status = 0u32;
+    for (target, res_type) in &candidates {
+        let mut status = add_wnet_connection(target, *res_type, username, password, flags);
+        if status == 1219 || status == 85 {
+            // ERROR_SESSION_CREDENTIAL_CONFLICT or ERROR_ALREADY_ASSIGNED
+            cancel_conflicting_unc_connections(host, share);
+            status = add_wnet_connection(target, *res_type, username, password, flags);
+        }
+        if status == 0 {
+            if remember_credentials && !username.trim().is_empty() {
+                save_windows_domain_credential(host, username.trim(), password);
+            }
+            return Ok(());
+        }
+        last_status = status;
+        // Try the next target representation only when the target format was rejected (67 / 87 / 50).
+        if !matches!(status, 50 | 67 | 87) {
+            break;
+        }
+    }
+
+    Err(format!(
+        "NETWORK_AUTH_FAILED:{last_status}:Could not authenticate with \\\\{host} (Windows error {last_status})."
+    ))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn authenticate_network_resource_blocking(
+    _path: &str,
+    _username: &str,
+    _password: &str,
+    _remember_credentials: bool,
+) -> Result<(), String> {
+    Err("SMB authentication is available only on Windows.".to_string())
+}
+
+#[tauri::command]
+async fn authenticate_network_resource(
+    path: String,
+    username: String,
+    password: String,
+    remember_credentials: bool,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        authenticate_network_resource_blocking(&path, &username, &password, remember_credentials)
+    })
+    .await
+    .map_err(|error| format!("Network authentication worker failed: {error}"))?
+}
+
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct RecycleBinStatus {
@@ -7520,6 +7774,7 @@ fn main() {
             list_drives,
             list_system_locations,
             list_network_resources,
+            authenticate_network_resource,
             get_recycle_bin_status,
             list_recycle_bin,
             restore_recycle_bin_items,
