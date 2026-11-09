@@ -313,7 +313,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       ref={barRef}
       data-label-position={toolbarLabelPosition}
       data-labels={toolbarLabelPosition === 'none' ? 'false' : 'true'}
-      className="cyberfiles-command-bar relative min-h-14 overflow-hidden bg-neutral-900/95 border-b border-neutral-800 px-3 py-2 flex items-center justify-between gap-3 select-none z-20 backdrop-blur-md"
+      className="cyberfiles-command-bar relative flex items-center justify-between gap-3 overflow-hidden bg-neutral-900/95 border-b border-neutral-800 px-3 select-none z-20 backdrop-blur-md"
     >
       {/* Never squeezable: an overflow the bar cannot see (hidden inside this block)
           would paint over the right side instead of being folded into the menu. */}
