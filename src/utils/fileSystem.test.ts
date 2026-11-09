@@ -8,12 +8,15 @@ import {
   getChildItems,
   getFileExtension,
   getParentPath,
+  getPathDriveLetter,
   getRootItems,
   getUniqueName,
   isMediaPreviewPath,
+  isPathOnUnavailableDrive,
   isWindowsDriveRoot,
   isSameOrDescendantPath,
   isValidFileName,
+  normalizeDriveLetter,
   rewritePathPrefix,
   sortFiles,
 } from './fileSystem';
@@ -40,6 +43,18 @@ test('normalizes repeated separators at drive roots and reaches the virtual home
   assert.equal(isWindowsDriveRoot('C:\\Users'), false);
   assert.equal(getParentPath('C:\\Users'), 'C:\\');
   assert.equal(getParentPath('C:\\\\'), 'C:\\');
+});
+
+test('normalizes drive letters with or without colons and detects paths on missing drives', () => {
+  assert.equal(normalizeDriveLetter('e:'), 'E');
+  assert.equal(normalizeDriveLetter('E:\\'), 'E');
+  assert.equal(getPathDriveLetter('i:\\Photos\\2026'), 'I');
+  assert.equal(getPathDriveLetter('::cyberfiles-this-pc::'), null);
+  const available = new Set(['C:', 'D:'].map(normalizeDriveLetter));
+  assert.equal(isPathOnUnavailableDrive('C:\\Users\\Carlos', available), false);
+  assert.equal(isPathOnUnavailableDrive('I:\\', available), true);
+  assert.equal(isPathOnUnavailableDrive('i:/backup/docs', available), true);
+  assert.equal(isPathOnUnavailableDrive('::cyberfiles-this-pc::', available), false);
 });
 
 test('recognizes common localized media folders for their thumbnail view default', () => {

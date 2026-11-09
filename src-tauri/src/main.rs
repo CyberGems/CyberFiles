@@ -4754,6 +4754,9 @@ fn system_drives() -> Vec<NativeDrive> {
                 0,
             ) != 0
         };
+        if kind != "network" && !has_space && !has_label {
+            continue;
+        }
         let label = if has_label {
             let length = volume_label
                 .iter()
@@ -4794,19 +4797,72 @@ fn list_drives() -> Vec<NativeDrive> {
     system_drives()
 }
 
-/// Polls the logical drive bitmask and notifies the UI when a volume appears
-/// or disappears (USB drives, MTP devices, network mappings). Windows does not
-/// deliver WM_DEVICECHANGE to this window reliably, so a cheap poll of
-/// GetLogicalDrives is the most robust cross-setup signal.
+/// Computes a bitmask of logical drives that currently have a mounted, ready
+/// volume. Checking readiness in addition to `GetLogicalDrives` catches drives
+/// that are ejected or dismounted while keeping their assigned drive letter.
+#[cfg(target_os = "windows")]
+fn active_drives_mask() -> u32 {
+    use windows_sys::Win32::Storage::FileSystem::{
+        GetDiskFreeSpaceExW, GetDriveTypeW, GetLogicalDrives, GetVolumeInformationW,
+    };
+
+    let mask = unsafe { GetLogicalDrives() };
+    let mut active = 0_u32;
+    for index in 0..26 {
+        if mask & (1 << index) == 0 {
+            continue;
+        }
+        let letter = (b'A' + index as u8) as char;
+        let root = [letter as u16, b':' as u16, b'\\' as u16, 0];
+        let drive_type = unsafe { GetDriveTypeW(root.as_ptr()) };
+        if drive_type == 4 {
+            active |= 1 << index;
+            continue;
+        }
+        let mut total_bytes = 0_u64;
+        let mut free_bytes = 0_u64;
+        let has_space = unsafe {
+            GetDiskFreeSpaceExW(
+                root.as_ptr(),
+                std::ptr::null_mut(),
+                &mut total_bytes,
+                &mut free_bytes,
+            ) != 0
+        };
+        if has_space {
+            active |= 1 << index;
+            continue;
+        }
+        let has_label = unsafe {
+            GetVolumeInformationW(
+                root.as_ptr(),
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                0,
+            ) != 0
+        };
+        if has_label {
+            active |= 1 << index;
+        }
+    }
+    active
+}
+
+/// Polls the active drive bitmask and notifies the UI when a volume appears
+/// or disappears (USB drives, card readers, network mappings). Windows does not
+/// deliver WM_DEVICECHANGE to this window reliably, so a fast poll of mounted
+/// logical drives is the most robust cross-setup signal.
 #[cfg(target_os = "windows")]
 fn start_drive_change_watcher(app: tauri::AppHandle) {
-    use windows_sys::Win32::Storage::FileSystem::GetLogicalDrives;
-
     std::thread::spawn(move || {
-        let mut last_mask = unsafe { GetLogicalDrives() };
+        let mut last_mask = active_drives_mask();
         loop {
-            std::thread::sleep(std::time::Duration::from_secs(2));
-            let mask = unsafe { GetLogicalDrives() };
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            let mask = active_drives_mask();
             if mask != last_mask {
                 last_mask = mask;
                 let _ = app.emit("drives-changed", ());

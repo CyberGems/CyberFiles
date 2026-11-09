@@ -40,12 +40,15 @@ import {
   getRootItems,
   getItemsInTree,
   getUniqueName,
+  getPathDriveLetter,
+  isPathOnUnavailableDrive,
   isSameOrDescendantPath,
   isTextPreviewableFile,
   isMediaPreviewPath,
   isWindowsDriveRoot,
   isValidFileName,
   joinWindowsPath,
+  normalizeDriveLetter,
   rewritePathPrefix,
   normalizeWindowsPath,
 } from './utils/fileSystem';
@@ -1186,30 +1189,6 @@ export default function App() {
     };
   }, [refreshRecycleBinStatus]);
 
-  const refreshSystemHome = useCallback(async (): Promise<DriveInfo[]> => {
-    if (!isTauriDesktop()) {
-      setSystemHomeLoading(false);
-      return [];
-    }
-    setSystemHomeLoading(true);
-    try {
-      const [nextDrives, nextLocations] = await Promise.all([
-        listNativeDrives(),
-        listNativeSystemLocations(),
-      ]);
-      setDrives(nextDrives);
-      setSystemLocations(nextLocations);
-      return nextDrives;
-    } catch {
-      setDrives([]);
-      setSystemLocations([]);
-      showToast(language === 'es' ? 'No se pudieron consultar las ubicaciones del sistema.' : 'System locations could not be loaded.');
-      return [];
-    } finally {
-      setSystemHomeLoading(false);
-    }
-  }, [language, showToast]);
-
   const completeOnboarding = useCallback(() => {
     setIsOnboardingOpen(false);
     try {
@@ -1355,10 +1334,6 @@ export default function App() {
   const removeUndoAction = useCallback((id: string) => {
     updateUndoAction(id, () => null);
   }, [updateUndoAction]);
-
-  useEffect(() => {
-    void refreshSystemHome();
-  }, [refreshSystemHome]);
 
   useEffect(() => {
     const suppressNativeContextMenu = (event: Event) => {
@@ -2181,6 +2156,159 @@ export default function App() {
     });
   }, []);
 
+  /* Latest-value refs for drive-change handling, which runs outside the render
+     cycle and must always see the current drives, language, styles and tabs. */
+  const drivesRef = useRef(drives);
+  drivesRef.current = drives;
+  const languageRef = useRef(language);
+  languageRef.current = language;
+  const leftTabsRef = useRef(leftTabs);
+  leftTabsRef.current = leftTabs;
+  const rightTabsRef = useRef(rightTabs);
+  rightTabsRef.current = rightTabs;
+  const activeLeftTabIndexRef = useRef(activeLeftTabIndex);
+  activeLeftTabIndexRef.current = activeLeftTabIndex;
+  const activeRightTabIndexRef = useRef(activeRightTabIndex);
+  activeRightTabIndexRef.current = activeRightTabIndex;
+  const thisPcTitleRef = useRef(t.sidebar.thisPc);
+  thisPcTitleRef.current = t.sidebar.thisPc;
+  const folderStyleLockedRef = useRef(folderStyleLocked);
+  folderStyleLockedRef.current = folderStyleLocked;
+  const savedFolderStylesRef = useRef(savedFolderStyles);
+  savedFolderStylesRef.current = savedFolderStyles;
+  const knownDriveLettersRef = useRef<Set<string> | null>(null);
+
+  const evictUnavailableDriveState = useCallback((availableDrives: DriveInfo[], resetHistory = false) => {
+    if (availableDrives.length === 0) return;
+    const availableLetters = new Set(availableDrives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean));
+    if (availableLetters.size === 0) return;
+
+    for (const key of [...nativeLoadedDirectories.current]) {
+      if (isPathOnUnavailableDrive(key, availableLetters)) {
+        nativeLoadedDirectories.current.delete(key);
+      }
+    }
+    for (const key of [...nativeInFlightDirectories.current.keys()]) {
+      if (isPathOnUnavailableDrive(key, availableLetters)) {
+        nativeInFlightDirectories.current.delete(key);
+      }
+    }
+    for (const entry of [...selectAllAfterLoad.current]) {
+      const separator = entry.indexOf(':');
+      const pathPart = separator >= 0 ? entry.slice(separator + 1) : entry;
+      if (isPathOnUnavailableDrive(pathPart, availableLetters)) {
+        selectAllAfterLoad.current.delete(entry);
+      }
+    }
+    for (const entry of [...flatSelectAllAfterLoad.current]) {
+      const separator = entry.indexOf('\u0000');
+      const pathPart = separator >= 0 ? entry.slice(separator + 1) : entry;
+      if (isPathOnUnavailableDrive(pathPart, availableLetters)) {
+        flatSelectAllAfterLoad.current.delete(entry);
+      }
+    }
+
+    const staleFlatRoots = Object.keys(flatDirectoriesRef.current).filter(key => isPathOnUnavailableDrive(key, availableLetters));
+    if (staleFlatRoots.length > 0) {
+      invalidateFlatDirectories(staleFlatRoots);
+    }
+
+    setNativeDirectories(previous => {
+      const keys = Object.keys(previous);
+      if (!keys.some(key => isPathOnUnavailableDrive(key, availableLetters))) return previous;
+      return Object.fromEntries(Object.entries(previous).filter(([key]) => !isPathOnUnavailableDrive(key, availableLetters)));
+    });
+
+    setAllFiles(previous => {
+      if (!previous.some(item => isPathOnUnavailableDrive(item.path, availableLetters))) return previous;
+      return previous.filter(item => !isPathOnUnavailableDrive(item.path, availableLetters));
+    });
+
+    const redirectTabs = (tabs: TabState[]) => {
+      if (!tabs.some(tab => isPathOnUnavailableDrive(tab.currentPath, availableLetters))) {
+        return tabs;
+      }
+      systemHomeWorkspace.current = true;
+      nativeRootPath.current = SYSTEM_HOME_PATH;
+      return tabs.map(tab => {
+        if (!isPathOnUnavailableDrive(tab.currentPath, availableLetters)) return tab;
+        const rememberedStyle = getNavigationFolderStyle(tab, folderStyleLockedRef.current, savedFolderStylesRef.current);
+        const targetStyle = displayedStyleForPath(SYSTEM_HOME_PATH, rememberedStyle, savedFolderStylesRef.current, folderStyleLockedRef.current);
+        const retainedHistory = resetHistory
+          ? []
+          : tab.history
+              .slice(0, tab.historyIndex + 1)
+              .filter(entry => !isPathOnUnavailableDrive(entry, availableLetters));
+        const history = retainedHistory[retainedHistory.length - 1] === SYSTEM_HOME_PATH
+          ? retainedHistory.slice(-MAX_TAB_HISTORY_ENTRIES)
+          : [...retainedHistory, SYSTEM_HOME_PATH].slice(-MAX_TAB_HISTORY_ENTRIES);
+        return {
+          ...tab,
+          currentPath: SYSTEM_HOME_PATH,
+          title: thisPcTitleRef.current,
+          history,
+          historyIndex: history.length - 1,
+          ...targetStyle,
+          folderStyle: rememberedStyle,
+          folderStyleOnEntry: rememberedStyle,
+          filterQuery: '',
+          flatView: false,
+          selectedIds: [],
+          focusedId: null,
+        };
+      });
+    };
+
+    setLeftTabs(redirectTabs);
+    setRightTabs(redirectTabs);
+  }, [invalidateFlatDirectories]);
+
+  const refreshSystemHome = useCallback(async (notifyDriveChanges = false): Promise<DriveInfo[]> => {
+    if (!isTauriDesktop()) {
+      setSystemHomeLoading(false);
+      return [];
+    }
+    setSystemHomeLoading(true);
+    if (notifyDriveChanges) suppressFolderErrorRef.current = true;
+    try {
+      const [nextDrives, nextLocations] = await Promise.all([
+        listNativeDrives(),
+        listNativeSystemLocations(),
+      ]);
+      const nextLetters = new Set(nextDrives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean));
+      const previousLetters = knownDriveLettersRef.current;
+      knownDriveLettersRef.current = nextLetters;
+      if (notifyDriveChanges && previousLetters !== null && nextLetters.size > 0) {
+        const currentLanguage = languageRef.current;
+        const added = [...nextLetters].filter(letter => !previousLetters.has(letter)).map(letter => `${letter}:`);
+        const removed = [...previousLetters].filter(letter => !nextLetters.has(letter)).map(letter => `${letter}:`);
+        if (added.length > 0) {
+          showToast(currentLanguage === 'es' ? `Unidad conectada: ${added.join(', ')}` : `Drive connected: ${added.join(', ')}`);
+        }
+        if (removed.length > 0) {
+          showToast(currentLanguage === 'es' ? `Unidad retirada: ${removed.join(', ')}` : `Drive removed: ${removed.join(', ')}`);
+        }
+      }
+      drivesRef.current = nextDrives;
+      setDrives(nextDrives);
+      setSystemLocations(nextLocations);
+      evictUnavailableDriveState(nextDrives, previousLetters === null);
+      return nextDrives;
+    } catch {
+      setDrives([]);
+      setSystemLocations([]);
+      showToast(language === 'es' ? 'No se pudieron consultar las ubicaciones del sistema.' : 'System locations could not be loaded.');
+      return [];
+    } finally {
+      if (notifyDriveChanges) suppressFolderErrorRef.current = false;
+      setSystemHomeLoading(false);
+    }
+  }, [evictUnavailableDriveState, language, showToast]);
+
+  useEffect(() => {
+    void refreshSystemHome();
+  }, [refreshSystemHome]);
+
   const loadFlatDirectory = useCallback(async (path: string) => {
     if (!isTauriDesktop()) return;
     const key = getPathKey(path);
@@ -2396,6 +2524,14 @@ export default function App() {
     const targetPath = expansionSource === SYSTEM_HOME_PATH || expansionSource === RECYCLE_BIN_PATH || expansionSource === RECENT_PATH ? expansionSource : normalizeWindowsPath(expansionSource);
     const pathKey = getPathKey(targetPath);
     if (nativeOpeningWorkspace.current) return;
+    const targetDriveLetter = getPathDriveLetter(targetPath);
+    if (targetDriveLetter && drivesRef.current.length > 0) {
+      const availableLetters = new Set(drivesRef.current.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean));
+      if (!availableLetters.has(targetDriveLetter)) {
+        evictUnavailableDriveState(drivesRef.current);
+        return;
+      }
+    }
     if (forceRefresh && targetPath !== SYSTEM_HOME_PATH && targetPath !== RECYCLE_BIN_PATH && targetPath !== RECENT_PATH) invalidateFlatDirectories([targetPath]);
     if (targetPath === SYSTEM_HOME_PATH) {
       systemHomeWorkspace.current = true;
@@ -2616,20 +2752,27 @@ export default function App() {
           [pathKey]: { ...(previous[pathKey] || { nextOffset: 0, hasMore: false }), loading: false },
         }));
         /* A listing failure on a drive that is no longer present is the
-           removal itself, not a real read error: the drive-change handler
-           already reports it and moves the tab to This PC. */
-        const driveMatch = targetPath.match(/^([A-Z]):/i);
-        const driveGone = driveMatch
-          ? !drivesRef.current.some(drive => drive.letter.toUpperCase() === driveMatch[1].toUpperCase())
+           removal itself, not a real read error: refresh the drive list right
+           away so the tab moves to This PC immediately even before the
+           background watcher poll fires. */
+        const targetDrive = getPathDriveLetter(targetPath);
+        let driveGone = targetDrive
+          ? !drivesRef.current.some(drive => normalizeDriveLetter(drive.letter) === targetDrive)
           : false;
-        if (!driveGone && !suppressFolderErrorRef.current) {
+        if (targetDrive && !driveGone) {
+          const latestDrives = await refreshSystemHomeRef.current(true);
+          driveGone = latestDrives.length > 0 && !latestDrives.some(drive => normalizeDriveLetter(drive.letter) === targetDrive);
+        }
+        if (driveGone) {
+          evictUnavailableDriveState(drivesRef.current);
+        } else if (!suppressFolderErrorRef.current) {
           showToast(language === 'es' ? 'No se pudo leer esta carpeta.' : 'This folder could not be read.');
         }
       }
     } finally {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
-  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, systemHomeItems, leftTabs, rightTabs, updatePaneTab, language, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, folderStyleLocked, savedFolderStyles, newTabsNextToCurrent, rememberRecentFolder, showHiddenFiles, invalidateFlatDirectories]);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, systemHomeItems, leftTabs, rightTabs, updatePaneTab, language, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, folderStyleLocked, savedFolderStyles, newTabsNextToCurrent, rememberRecentFolder, showHiddenFiles, invalidateFlatDirectories, evictUnavailableDriveState]);
 
   const lastSessionReloadHandled = useRef(0);
   useEffect(() => {
@@ -2707,23 +2850,6 @@ export default function App() {
   const activePaneRef = useRef(activePane);
   activePaneRef.current = activePane;
 
-  /* Latest-value refs for the drive-change listener, which runs outside the
-     render cycle and must always see the current drives, language and tabs. */
-  const drivesRef = useRef(drives);
-  drivesRef.current = drives;
-  const languageRef = useRef(language);
-  languageRef.current = language;
-  const leftTabsRef = useRef(leftTabs);
-  leftTabsRef.current = leftTabs;
-  const rightTabsRef = useRef(rightTabs);
-  rightTabsRef.current = rightTabs;
-  const activeLeftTabIndexRef = useRef(activeLeftTabIndex);
-  activeLeftTabIndexRef.current = activeLeftTabIndex;
-  const activeRightTabIndexRef = useRef(activeRightTabIndex);
-  activeRightTabIndexRef.current = activeRightTabIndex;
-  const thisPcTitleRef = useRef(t.sidebar.thisPc);
-  thisPcTitleRef.current = t.sidebar.thisPc;
-
   const launchPathHandledRef = useRef(false);
   useEffect(() => {
     if (launchPathHandledRef.current) return;
@@ -2740,130 +2866,56 @@ export default function App() {
      'open-path' event. */
   useEffect(() => {
     if (!isTauriDesktop()) return;
+    let cancelled = false;
     let unlisten: (() => void) | undefined;
-    import('@tauri-apps/api/event').then(({ listen }) => {
-      void listen<string>('open-path', event => {
-        if (event.payload) {
-          handleNavigateRef.current(event.payload, activePaneRef.current, true, true);
-        }
-      }).then(fn => {
-        unlisten = fn;
-      });
+    void listen<string>('open-path', event => {
+      if (event.payload) {
+        handleNavigateRef.current(event.payload, activePaneRef.current, true, true);
+      }
+    }).then(stop => {
+      if (cancelled) stop();
+      else unlisten = stop;
     }).catch(() => {
       // Event listener unavailable outside Tauri
     });
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, []);
 
-
-  /* USB drives and MTP devices appear or disappear while the app runs: the
-     backend polls GetLogicalDrives and emits this event, and the sidebar drive
-     list and the This PC view reload immediately. */
+  /* USB drives, card readers and network volumes appear or disappear while the
+     app runs: the backend polls active drives and emits this event, and the
+     sidebar drive list, open tabs on removed volumes, cached listings, and the
+     This PC view reconcile immediately. */
   useEffect(() => {
     if (!isTauriDesktop()) return;
+    let cancelled = false;
     let unlisten: (() => void) | undefined;
-    import('@tauri-apps/api/event').then(({ listen }) => {
-      void listen('drives-changed', () => {
-        void (async () => {
-          const previousLetters = new Set(drivesRef.current.map(drive => drive.letter.toUpperCase()));
-          /* Listing failures raised while the drive set is changing are the
-             removal itself, not real read errors: keep the generic folder
-             error toast quiet for this window. */
-          suppressFolderErrorRef.current = true;
-          let nextDrives: DriveInfo[] = [];
-          try {
-            nextDrives = await refreshSystemHomeRef.current();
-          } finally {
-            suppressFolderErrorRef.current = false;
-          }
-          const nextLetters = new Set(nextDrives.map(drive => drive.letter.toUpperCase()));
-          const language = languageRef.current;
-          const added = [...nextLetters].filter(letter => !previousLetters.has(letter));
-          const removed = [...previousLetters].filter(letter => !nextLetters.has(letter));
-          if (added.length > 0) {
-            showToast(language === 'es' ? `Unidad conectada: ${added.join(', ')}` : `Drive connected: ${added.join(', ')}`);
-          }
-          if (removed.length > 0) {
-            showToast(language === 'es' ? `Unidad retirada: ${removed.join(', ')}` : `Drive removed: ${removed.join(', ')}`);
-          }
-          /* Drive letters come as "E:", so strip the colon before building
-             the path prefix: a removed "E:" must match every path under that
-             volume. Every tab left inside it goes back to This PC: the active
-             ones navigate right away, inactive ones are corrected in place.
-             The removed path stays in each tab history so Forward can return
-             once the drive is reconnected. */
-          const gonePrefixes = removed.map(letter => `${letter.replace(/:$/, '').toLowerCase()}:\\`);
-          const panes: Array<'left' | 'right'> = ['left', 'right'];
-          for (const pane of panes) {
-            const tabs = pane === 'left' ? leftTabsRef.current : rightTabsRef.current;
-            const activeIndex = pane === 'left' ? activeLeftTabIndexRef.current : activeRightTabIndexRef.current;
-            const updateTabs = pane === 'left' ? setLeftTabs : setRightTabs;
-            const affected = tabs.filter(tab => {
-              const path = tab.currentPath;
-              if (!path || path === SYSTEM_HOME_PATH || path === RECYCLE_BIN_PATH || path === RECENT_PATH) return false;
-              const normalized = normalizeWindowsPath(path).toLowerCase();
-              return gonePrefixes.some(prefix => normalized.startsWith(prefix));
-            });
-            if (affected.length === 0) continue;
-            const affectedIds = new Set(affected.map(tab => tab.id));
-            updateTabs(previous => previous.map(tab => {
-              if (!affectedIds.has(tab.id)) return tab;
-              const history = [...tab.history.slice(0, tab.historyIndex + 1), SYSTEM_HOME_PATH].slice(-MAX_TAB_HISTORY_ENTRIES);
-              return {
-                ...tab,
-                currentPath: SYSTEM_HOME_PATH,
-                title: thisPcTitleRef.current,
-                history,
-                historyIndex: history.length - 1,
-                selectedIds: [],
-                focusedId: null,
-              };
-            }));
-          }
-        })();
-      }).then(fn => {
-        unlisten = fn;
-      });
+    void listen('drives-changed', () => {
+      void refreshSystemHomeRef.current(true);
+    }).then(stop => {
+      if (cancelled) stop();
+      else unlisten = stop;
     }).catch(() => {
       // Event listener unavailable outside Tauri
     });
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, []);
 
-  /* A session saved inside a drive that is no longer present would reopen an
-     empty lister: as soon as the first drive list arrives, tabs pointing at a
-     missing volume are moved back to This PC. */
-  const drivesSanitizedRef = useRef(false);
+  /* Whenever the drive list updates (startup, hot-unplug, or HMR), any tab
+     still pointing at a missing volume is moved back to This PC and its cached
+     entries are dropped. */
   useEffect(() => {
-    if (!isTauriDesktop() || drivesSanitizedRef.current) return;
-    /* Every Windows machine has at least one drive, so an empty list means
-       the first real load has not landed yet: sanitizing now would send every
-       tab to This PC on a false premise. */
-    if (systemHomeLoading || drives.length === 0) return;
-    drivesSanitizedRef.current = true;
-    const available = new Set(drives.map(drive => drive.letter.toUpperCase()));
-    const sanitize = (tabs: TabState[]) => tabs.map(tab => {
-      const path = tab.currentPath;
-      if (!path || path === SYSTEM_HOME_PATH || path === RECYCLE_BIN_PATH || path === RECENT_PATH) return tab;
-      const match = normalizeWindowsPath(path).match(/^([A-Z]):/i);
-      if (!match || available.has(match[1].toUpperCase())) return tab;
-      return {
-        ...tab,
-        currentPath: SYSTEM_HOME_PATH,
-        title: t.sidebar.thisPc,
-        history: [SYSTEM_HOME_PATH],
-        historyIndex: 0,
-        selectedIds: [],
-        focusedId: null,
-      };
-    });
-    setLeftTabs(sanitize);
-    setRightTabs(sanitize);
-  }, [drives, systemHomeLoading, t.sidebar.thisPc]);
+    if (!isTauriDesktop() || systemHomeLoading || drives.length === 0) return;
+    if (knownDriveLettersRef.current === null) {
+      knownDriveLettersRef.current = new Set(drives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean));
+    }
+    evictUnavailableDriveState(drives);
+  }, [drives, systemHomeLoading, evictUnavailableDriveState]);
 
   useEffect(() => {
     if (!isTauriDesktop()) return;
@@ -2877,24 +2929,16 @@ export default function App() {
           ? [snapshot.activePane]
           : ['left', 'right'];
         const refreshedPaths = new Set<string>();
-        let refreshedSystemHome = false;
+        void refreshSystemHomeRef.current(true);
 
         for (const pane of visiblePanes) {
           const tab = pane === 'left'
             ? snapshot.leftTabs[snapshot.activeLeftTabIndex]
             : snapshot.rightTabs[snapshot.activeRightTabIndex];
-          if (!tab?.currentPath) continue;
+          if (!tab?.currentPath || tab.currentPath === SYSTEM_HOME_PATH) continue;
           const pathKey = getPathKey(tab.currentPath);
           if (refreshedPaths.has(pathKey)) continue;
           refreshedPaths.add(pathKey);
-
-          if (tab.currentPath === SYSTEM_HOME_PATH) {
-            if (!refreshedSystemHome) {
-              refreshedSystemHome = true;
-              void refreshSystemHomeRef.current();
-            }
-            continue;
-          }
           void handleNavigateRef.current(tab.currentPath, pane, true);
         }
       }, 250);

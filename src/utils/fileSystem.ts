@@ -15,6 +15,21 @@ export function isWindowsDriveRoot(path: string): boolean {
   return /^[a-zA-Z]:\\$/.test(normalizeWindowsPath(path));
 }
 
+export function normalizeDriveLetter(value: string): string {
+  return value.trim().replace(/:.*$/, '').toUpperCase();
+}
+
+export function getPathDriveLetter(path: string): string | null {
+  if (!path || path.startsWith('::')) return null;
+  const match = normalizeWindowsPath(path).match(/^([A-Z]):/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
+export function isPathOnUnavailableDrive(path: string, availableLetters: Set<string>): boolean {
+  const letter = getPathDriveLetter(path);
+  return letter !== null && !availableLetters.has(letter);
+}
+
 const MEDIA_PREVIEW_FOLDER_NAMES = new Set([
   'picture', 'pictures', 'image', 'images', 'photo', 'photos', 'foto', 'fotos', 'imagen', 'imagenes', 'mis imagenes',
   'music', 'musica', 'my music', 'mi musica',
