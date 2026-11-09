@@ -4794,6 +4794,30 @@ fn list_drives() -> Vec<NativeDrive> {
     system_drives()
 }
 
+/// Polls the logical drive bitmask and notifies the UI when a volume appears
+/// or disappears (USB drives, MTP devices, network mappings). Windows does not
+/// deliver WM_DEVICECHANGE to this window reliably, so a cheap poll of
+/// GetLogicalDrives is the most robust cross-setup signal.
+#[cfg(target_os = "windows")]
+fn start_drive_change_watcher(app: tauri::AppHandle) {
+    use windows_sys::Win32::Storage::FileSystem::GetLogicalDrives;
+
+    std::thread::spawn(move || {
+        let mut last_mask = unsafe { GetLogicalDrives() };
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let mask = unsafe { GetLogicalDrives() };
+            if mask != last_mask {
+                last_mask = mask;
+                let _ = app.emit("drives-changed", ());
+            }
+        }
+    });
+}
+
+#[cfg(not(target_os = "windows"))]
+fn start_drive_change_watcher(_app: tauri::AppHandle) {}
+
 #[tauri::command]
 fn list_system_locations(app: tauri::AppHandle) -> Vec<NativeLocation> {
     let resolver = app.path();
@@ -6604,6 +6628,7 @@ fn main() {
             {
                 let portable = portable_data_directory_from_executable().is_some();
                 start_single_instance_listener(app.handle().clone(), portable);
+                start_drive_change_watcher(app.handle().clone());
             }
 
             let mut initial_shortcut_hint: Option<String> = None;
