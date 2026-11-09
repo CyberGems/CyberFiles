@@ -2615,7 +2615,14 @@ export default function App() {
           ...previous,
           [pathKey]: { ...(previous[pathKey] || { nextOffset: 0, hasMore: false }), loading: false },
         }));
-        if (!suppressFolderErrorRef.current) {
+        /* A listing failure on a drive that is no longer present is the
+           removal itself, not a real read error: the drive-change handler
+           already reports it and moves the tab to This PC. */
+        const driveMatch = targetPath.match(/^([A-Z]):/i);
+        const driveGone = driveMatch
+          ? !drivesRef.current.some(drive => drive.letter.toUpperCase() === driveMatch[1].toUpperCase())
+          : false;
+        if (!driveGone && !suppressFolderErrorRef.current) {
           showToast(language === 'es' ? 'No se pudo leer esta carpeta.' : 'This folder could not be read.');
         }
       }
@@ -2781,12 +2788,13 @@ export default function App() {
           if (removed.length > 0) {
             showToast(language === 'es' ? `Unidad retirada: ${removed.join(', ')}` : `Drive removed: ${removed.join(', ')}`);
           }
-          /* Drive letters come as "E:", so a removed "E:" matches any path
-             under that volume. Every tab left inside it goes back to This PC:
-             the active ones navigate right away, inactive ones are corrected
-             in place. The removed path stays in each tab history so Forward
-             can return once the drive is reconnected. */
-          const gonePrefixes = removed.map(letter => `${letter.toLowerCase()}:\\`);
+          /* Drive letters come as "E:", so strip the colon before building
+             the path prefix: a removed "E:" must match every path under that
+             volume. Every tab left inside it goes back to This PC: the active
+             ones navigate right away, inactive ones are corrected in place.
+             The removed path stays in each tab history so Forward can return
+             once the drive is reconnected. */
+          const gonePrefixes = removed.map(letter => `${letter.replace(/:$/, '').toLowerCase()}:\\`);
           const panes: Array<'left' | 'right'> = ['left', 'right'];
           for (const pane of panes) {
             const tabs = pane === 'left' ? leftTabsRef.current : rightTabsRef.current;
