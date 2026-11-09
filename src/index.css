@@ -243,9 +243,11 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   height: var(--command-control-height);
   min-width: var(--command-control-height);
   padding: 0 7px;
-  border: 1px solid var(--color-neutral-800);
+  /* Flat by default: the frame is reserved for hover and active states so the
+     bar reads as one quiet row divided by category separators. */
+  border: 1px solid transparent;
   border-radius: 4px;
-  background: var(--color-neutral-900);
+  background: transparent;
   color: var(--color-neutral-300);
   font-size: 11px;
   font-weight: 500;
@@ -255,7 +257,7 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
 }
 
 .command-control:is(:hover, [aria-expanded='true']):not(:disabled):not(.command-split) {
-  border-color: var(--color-neutral-700);
+  border-color: transparent;
   background: var(--color-neutral-800);
   color: var(--color-neutral-100);
 }
@@ -315,6 +317,30 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   background: var(--color-amber-300);
 }
 
+/* Category separators keep toolbar sections readable without boxing every
+   button. A separator vanishes when an adjacent group folds into the overflow
+   menu, so orphan lines never sit next to a hidden block. */
+.command-bar-actions > .command-bar-separator {
+  flex-shrink: 0;
+  align-self: center;
+  width: 1px;
+  height: 30px;
+  margin: 0 4px;
+  background: linear-gradient(180deg, transparent 0%, var(--color-neutral-700) 22%, var(--color-neutral-700) 78%, transparent 100%);
+}
+
+.command-bar-actions > .command-bar-collapsed + .command-bar-separator {
+  display: none;
+}
+
+.command-bar-actions > .command-bar-separator:has(+ .command-bar-collapsed) {
+  display: none;
+}
+
+.command-bar-actions > .command-bar-separator:has(+ .command-bar-separator) {
+  display: none;
+}
+
 /* Segmented options (view modes, pane layouts) keep a single frame around them. */
 .command-group {
   display: inline-flex;
@@ -344,7 +370,15 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   padding: 0;
   gap: 0;
   align-items: stretch;
-  overflow: hidden;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+/* Only an open dropdown keeps a frame, so the anchor of the floating menu is
+   visible while the menu is up. */
+.command-split[data-expanded='true'] {
+  border-color: var(--color-neutral-700);
+  background: var(--color-neutral-900);
 }
 
 /* The label direction applies to the primary half, never to the frame itself. */
@@ -406,7 +440,6 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   transition: background-color 0.14s ease, color 0.14s ease;
 }
 
-.command-split[data-expanded='true'] { border-color: var(--color-neutral-700); }
 .command-split > .command-split-caret:is(:hover, [aria-expanded='true']):not(:disabled) {
   background: var(--color-neutral-800);
   color: var(--color-neutral-100);
@@ -417,11 +450,13 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   cursor: not-allowed;
 }
 
-/* Default workbench theme keeps the navy chrome for the unified controls. */
+/* Default workbench theme keeps the navy chrome for the unified controls.
+   Like the base theme, the resting state is flat; hover/expanded get the navy
+   gradient fill. Active toggles keep their accent via the aria-pressed rules. */
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-control {
-  border-color: #1f465e;
-  background: linear-gradient(180deg, rgba(20, 55, 75, 0.72) 0%, rgba(9, 31, 46, 0.8) 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 1px 1px rgba(0, 0, 0, 0.28);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
   color: #d7e6ef;
 }
 
@@ -430,12 +465,13 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   background: linear-gradient(180deg, #174764 0%, #0d3047 100%);
 }
 
-html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split > .command-split-caret {
-  border-left-color: #1f465e;
-}
-
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split[data-expanded='true'] {
   border-color: #36718f;
+  background: linear-gradient(180deg, rgba(20, 55, 75, 0.72) 0%, rgba(9, 31, 46, 0.8) 100%);
+}
+
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split > .command-split-caret {
+  border-left-color: #1f465e;
 }
 
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split > .command-split-caret:is(:hover, [aria-expanded='true']):not(:disabled) {

@@ -116,6 +116,7 @@ export const ToolbarOverflowMenu: React.FC<ToolbarOverflowMenuProps> = ({ label,
           ref={menuRef}
           role="menu"
           aria-label={label}
+          data-command-bar-portal="true"
           style={{ position: 'fixed', top: placement.top, right: placement.right, maxHeight: placement.maxHeight }}
           className="z-[90] w-[min(22rem,calc(100vw-1rem))] overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-950/95 p-1.5 text-xs shadow-2xl backdrop-blur-md"
         >
