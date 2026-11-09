@@ -5919,15 +5919,21 @@ export default function App() {
     { id: 'layout-single', group: t.commandPalette.groups.view, label: t.commandPalette.commands.layoutSingle, keywords: 'one pane', onSelect: () => setLayout('single') },
   ];
 
+  const paletteAvailableDriveLetters = new Set(drives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean));
   const quickAccessPaths = new Set(sidebarQuickAccess.map(item => getPathKey(item.path)));
-  const paletteQuickAccess: CommandPaletteCommand[] = sidebarQuickAccess.map(item => ({
-    id: `quick-access-${item.id}`,
-    group: t.commandPalette.groups.quickAccess,
-    label: item.path === SYSTEM_HOME_PATH ? t.commandPalette.commands.thisPc : item.name,
-    description: item.path === SYSTEM_HOME_PATH ? undefined : item.path,
-    keywords: item.path,
-    onSelect: () => handleOpenCustomQuickAccess(item, false),
-  }));
+  const paletteQuickAccess: CommandPaletteCommand[] = sidebarQuickAccess.map(item => {
+    const isOffline = paletteAvailableDriveLetters.size > 0 && isPathOnUnavailableDrive(item.path, paletteAvailableDriveLetters);
+    return {
+      id: `quick-access-${item.id}`,
+      group: t.commandPalette.groups.quickAccess,
+      label: item.path === SYSTEM_HOME_PATH ? t.commandPalette.commands.thisPc : item.name,
+      description: item.path === SYSTEM_HOME_PATH ? undefined : item.path,
+      keywords: item.path,
+      disabled: isOffline,
+      disabledReason: isOffline ? t.sidebar.quickAccessDriveOfflineHint.replace('{path}', item.path) : undefined,
+      onSelect: () => handleOpenCustomQuickAccess(item, false),
+    };
+  });
   const paletteDrives: CommandPaletteCommand[] = drives
     .filter(drive => !quickAccessPaths.has(getPathKey(`${drive.letter}\\`)))
     .map(drive => ({
@@ -5949,12 +5955,15 @@ export default function App() {
     })
     .map((path, index) => {
       const name = path.split(/\\|\//).filter(Boolean).pop() || path;
+      const isOffline = paletteAvailableDriveLetters.size > 0 && isPathOnUnavailableDrive(path, paletteAvailableDriveLetters);
       return {
         id: `recent-folder-${index}`,
         group: t.commandPalette.groups.recent,
         label: name,
         description: path,
         keywords: path,
+        disabled: isOffline,
+        disabledReason: isOffline ? t.sidebar.quickAccessDriveOfflineHint.replace('{path}', path) : undefined,
         onSelect: () => handleOpenCustomQuickAccess({ id: `recent-${index}`, name, path, icon: 'folder', isCustom: true }, false),
       };
     });
