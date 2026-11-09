@@ -815,6 +815,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const hoveredFolderItemsRef = useRef(new Map<string, FileItem>());
   const folderSizeJobsRef = useRef(new Map<string, string>());
   const folderSizeLeaveTimersRef = useRef(new Map<string, number>());
+  const folderItemPathsRef = useRef(new Map<string, string>());
+  const availableDriveLetters = React.useMemo(
+    () => new Set(drives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean)),
+    [drives],
+  );
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [columnWidths, setColumnWidths] = useState(() => columnPreferences.widths);
   const [columnLayout, setColumnLayout] = useState(() => columnPreferences.layout);
@@ -1274,6 +1279,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     event.preventDefault();
     event.stopPropagation();
     if (!isTauriDesktop()) return;
+    folderItemPathsRef.current.set(item.id, item.path);
     const activeJobId = folderSizeJobsRef.current.get(item.id);
     if (activeJobId) {
       folderSizeJobsRef.current.delete(item.id);
@@ -1339,6 +1345,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   };
   const handleFolderTooltipMouseEnter = (item: FileItem) => {
     if (!item.isFolder || item.recycleBinId || isRecycleBin) return;
+    folderItemPathsRef.current.set(item.id, item.path);
     void loadFolderChildCounts(item);
     hoveredFolderItemsRef.current.set(item.id, item);
     const leaveTimer = folderSizeLeaveTimersRef.current.get(item.id);
@@ -1390,7 +1397,44 @@ export const FilePane: React.FC<FilePaneProps> = ({
     folderSizeLeaveTimersRef.current.clear();
     hoveredFolderItemsRef.current.clear();
     folderSizeJobsRef.current.clear();
+    folderItemPathsRef.current.clear();
   }, []);
+  useEffect(() => {
+    if (availableDriveLetters.size === 0) return;
+    const removedIds: string[] = [];
+    for (const [itemId, itemPath] of folderItemPathsRef.current.entries()) {
+      if (!isPathOnUnavailableDrive(itemPath, availableDriveLetters)) continue;
+      removedIds.push(itemId);
+      const hoverTimer = folderSizeHoverTimersRef.current.get(itemId);
+      if (hoverTimer !== undefined) {
+        window.clearTimeout(hoverTimer);
+        folderSizeHoverTimersRef.current.delete(itemId);
+      }
+      const leaveTimer = folderSizeLeaveTimersRef.current.get(itemId);
+      if (leaveTimer !== undefined) {
+        window.clearTimeout(leaveTimer);
+        folderSizeLeaveTimersRef.current.delete(itemId);
+      }
+      hoveredFolderItemsRef.current.delete(itemId);
+      const jobId = folderSizeJobsRef.current.get(itemId);
+      if (jobId) {
+        folderSizeJobsRef.current.delete(itemId);
+        void cancelNativeFolderSizeCalculation(jobId);
+      }
+      folderItemPathsRef.current.delete(itemId);
+      delete folderChildCountsRef.current[itemId];
+    }
+    if (removedIds.length === 0) return;
+    const removedSet = new Set(removedIds);
+    setFolderSizeStates(previous => {
+      if (!Object.keys(previous).some(id => removedSet.has(id))) return previous;
+      return Object.fromEntries(Object.entries(previous).filter(([id]) => !removedSet.has(id)));
+    });
+    setFolderChildCounts(previous => {
+      if (!Object.keys(previous).some(id => removedSet.has(id))) return previous;
+      return Object.fromEntries(Object.entries(previous).filter(([id]) => !removedSet.has(id)));
+    });
+  }, [availableDriveLetters]);
   useEffect(() => {
     if (autoFolderSizeEnabled && tooltipsEnabled) return;
     for (const timer of folderSizeHoverTimersRef.current.values()) window.clearTimeout(timer);
@@ -2969,11 +3013,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
     onActivate();
     open();
   };
-
-  const availableDriveLetters = React.useMemo(
-    () => new Set(drives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean)),
-    [drives],
-  );
 
   const renderQuickAccessCard = (item: QuickAccessItem) => {
     const customIcon = getCustomFolderIcon(item.path, customFolderIcons ?? {});
