@@ -211,7 +211,10 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
 
 .cyberfiles-command-bar[data-label-position='top'],
 .cyberfiles-command-bar[data-label-position='bottom'] {
-  --command-control-height: 48px;
+  /* Three extra pixels buy air between icon and label; the control (and with
+     it the bar) grows by the same amount, so the hover fill keeps touching
+     the bar edges with no dead space. */
+  --command-control-height: 51px;
 }
 
 /* A group folded into the overflow menu stays in the DOM so the fit pass can
@@ -277,13 +280,13 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
 
 :is(.command-control, .command-segment)[data-label='bottom'] {
   flex-direction: column;
-  gap: 2px;
+  gap: 5px;
   padding: 0 6px;
 }
 
 :is(.command-control, .command-segment)[data-label='top'] {
   flex-direction: column-reverse;
-  gap: 2px;
+  gap: 5px;
   padding: 0 6px;
 }
 
@@ -417,13 +420,13 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
 
 .command-split > .command-split-main[data-label='bottom'] {
   flex-direction: column;
-  gap: 2px;
+  gap: 5px;
   padding: 0 6px;
 }
 
 .command-split > .command-split-main[data-label='top'] {
   flex-direction: column-reverse;
-  gap: 2px;
+  gap: 5px;
   padding: 0 6px;
 }
 
