@@ -10,13 +10,18 @@ import {
   getParentPath,
   getPathDriveLetter,
   getRootItems,
+  getUncHostRoot,
   getUniqueName,
   isMediaPreviewPath,
   isPathOnUnavailableDrive,
+  isUncPath,
+  isUncServerRoot,
   isWindowsDriveRoot,
   isSameOrDescendantPath,
   isValidFileName,
   normalizeDriveLetter,
+  normalizeNetworkHostInput,
+  normalizeWindowsPath,
   rewritePathPrefix,
   sortFiles,
 } from './fileSystem';
@@ -55,6 +60,27 @@ test('normalizes drive letters with or without colons and detects paths on missi
   assert.equal(isPathOnUnavailableDrive('I:\\', available), true);
   assert.equal(isPathOnUnavailableDrive('i:/backup/docs', available), true);
   assert.equal(isPathOnUnavailableDrive('::cyberfiles-this-pc::', available), false);
+});
+
+test('normalizes UNC paths, server roots, and parent navigation across LAN shares', () => {
+  assert.equal(normalizeWindowsPath('\\\\NAS01\\Media\\Movies\\'), '\\\\NAS01\\Media\\Movies');
+  assert.equal(normalizeWindowsPath('//192.168.1.50/Public///'), '\\\\192.168.1.50\\Public');
+  assert.equal(isUncPath('\\\\NAS01'), true);
+  assert.equal(isUncPath('\\\\NAS01\\Media'), true);
+  assert.equal(isUncPath('C:\\Users'), false);
+  assert.equal(isUncServerRoot('\\\\NAS01'), true);
+  assert.equal(isUncServerRoot('\\\\NAS01\\'), true);
+  assert.equal(isUncServerRoot('\\\\NAS01\\Media'), false);
+  assert.equal(getUncHostRoot('\\\\NAS01\\Media\\Movies'), '\\\\NAS01');
+  assert.equal(getParentPath('\\\\NAS01\\Media\\Movies'), '\\\\NAS01\\Media');
+  assert.equal(getParentPath('\\\\NAS01\\Media'), '\\\\NAS01');
+  assert.equal(getParentPath('\\\\NAS01'), '\\\\NAS01');
+  assert.equal(isSameOrDescendantPath('\\\\NAS01\\Media\\Movies', '\\\\NAS01'), true);
+  assert.equal(isSameOrDescendantPath('\\\\NAS01-BACKUP\\Media', '\\\\NAS01'), false);
+  assert.equal(normalizeNetworkHostInput('192.168.1.50'), '\\\\192.168.1.50');
+  assert.equal(normalizeNetworkHostInput('\\\\NAS01\\Public\\'), '\\\\NAS01\\Public');
+  assert.equal(normalizeNetworkHostInput('//fileserver/shared'), '\\\\fileserver\\shared');
+  assert.equal(normalizeNetworkHostInput('C:\\Users'), null);
 });
 
 test('recognizes common localized media folders for their thumbnail view default', () => {

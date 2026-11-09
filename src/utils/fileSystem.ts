@@ -8,11 +8,51 @@ export function normalizeWindowsPath(path: string): string {
   const normalized = path.replace(/\//g, '\\').trim();
   const driveRoot = normalized.match(/^([a-zA-Z]:)\\*$/);
   if (driveRoot) return `${driveRoot[1]}\\`;
+  if (normalized.startsWith('\\\\') && !normalized.startsWith('\\\\?\\')) {
+    const rest = normalized.slice(2).replace(/\\+/g, '\\').replace(/\\+$/, '');
+    return rest ? `\\\\${rest}` : '\\\\';
+  }
   return normalized.replace(/\\+$/, '') || normalized;
 }
 
 export function isWindowsDriveRoot(path: string): boolean {
   return /^[a-zA-Z]:\\$/.test(normalizeWindowsPath(path));
+}
+
+export function isUncPath(path: string): boolean {
+  if (!path || path.startsWith('::')) return false;
+  return /^\\\\[^\\?]+/.test(normalizeWindowsPath(path));
+}
+
+export function isUncServerRoot(path: string): boolean {
+  if (!path || path.startsWith('::')) return false;
+  return /^\\\\[^\\?]+$/.test(normalizeWindowsPath(path));
+}
+
+export function getUncHostRoot(path: string): string | null {
+  if (!isUncPath(path)) return null;
+  const normalized = normalizeWindowsPath(path);
+  const parts = normalized.slice(2).split('\\').filter(Boolean);
+  return parts.length > 0 ? `\\\\${parts[0]}` : null;
+}
+
+export function normalizeNetworkHostInput(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed || trimmed.startsWith('::') || /^[a-zA-Z]:/.test(trimmed) || trimmed.startsWith('%')) {
+    return null;
+  }
+  const cleaned = trimmed
+    .replace(/\//g, '\\')
+    .replace(/^\\+/, '')
+    .replace(/\\+/g, '\\')
+    .replace(/\\+$/, '');
+  if (!cleaned) return null;
+  const segments = cleaned.split('\\');
+  const host = segments[0];
+  if (!host || /[\s<>:"|?*\x00-\x1f]/.test(host)) {
+    return null;
+  }
+  return `\\\\${cleaned}`;
 }
 
 export function normalizeDriveLetter(value: string): string {
@@ -162,7 +202,7 @@ export function getFileExtension(filename: string): string {
 export function detectFileType(name: string, isFolder: boolean): FileType {
   if (isFolder) return 'folder';
   const ext = getFileExtension(name);
-  
+
   switch (ext) {
     case 'jpg':
     case 'jpeg':
@@ -306,6 +346,15 @@ export function getParentPath(currentPath: string): string {
   const normalizedPath = normalizeWindowsPath(currentPath);
   if (/^[a-zA-Z]:\\?$/.test(normalizedPath)) return `${normalizedPath.slice(0, 2)}\\`;
 
+  if (isUncPath(normalizedPath)) {
+    const uncParts = normalizedPath.slice(2).split('\\').filter(Boolean);
+    if (uncParts.length <= 1) {
+      return uncParts.length === 1 ? `\\\\${uncParts[0]}` : normalizedPath;
+    }
+    uncParts.pop();
+    return `\\\\${uncParts.join('\\')}`;
+  }
+
   const normalized = normalizedPath.replace(/\\+$/, '');
   const parts = normalized.split(/\\|\//);
   if (parts.length <= 1) return normalized;
@@ -316,11 +365,11 @@ export function getParentPath(currentPath: string): string {
 
 export function getChildItems(allFiles: FileItem[], folderPath: string): FileItem[] {
   const normFolder = normalizeWindowsPath(folderPath).replace(/\\+$/, '').toLowerCase();
-  
+
   return allFiles.filter(item => {
     // If the path equals folderPath, don't include itself
     if (item.path.toLowerCase() === normFolder) return false;
-    
+
     // Find parent of item
     const itemParent = getParentPath(item.path).toLowerCase();
     return itemParent === normFolder;

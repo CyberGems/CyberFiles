@@ -99,6 +99,16 @@ export type ViewMode = 'details' | 'compact' | 'icons';
 export const SYSTEM_HOME_PATH = '::cyberfiles-this-pc::';
 export const RECYCLE_BIN_PATH = '::cyberfiles-recycle-bin::';
 export const RECENT_PATH = '::cyberfiles-recent::';
+export const NETWORK_PATH = '::cyberfiles-network::';
+
+export interface NetworkResource {
+  id: string;
+  name: string;
+  path: string;
+  kind: 'host' | 'share' | 'mapped-drive' | 'shortcut';
+  comment?: string;
+  driveLetter?: string;
+}
 
 export interface TabState {
   id: string;

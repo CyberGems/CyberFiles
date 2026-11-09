@@ -36,11 +36,12 @@ import {
   LockKeyhole,
   UnlockKeyhole,
   Keyboard,
+  Server,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, HiddenItemStyle, SortField, TabState, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
+import { DriveInfo, FileItem, FileType, HiddenItemStyle, NETWORK_PATH, NetworkResource, SortField, TabState, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { listerTextScaleFactor, LISTER_TEXT_SCALE_CSS_VAR, type ListerTextScale } from '../utils/listerTextScale';
-import { formatFileSize, getParentPath, isPathOnUnavailableDrive, isSameOrDescendantPath, normalizeDriveLetter, normalizeWindowsPath } from '../utils/fileSystem';
+import { formatFileSize, getParentPath, isPathOnUnavailableDrive, isSameOrDescendantPath, isUncPath, normalizeDriveLetter, normalizeWindowsPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { advanceMouseGesturePath, MOUSE_GESTURE_MIN_DISTANCE, type MouseGesturePath } from '../utils/mouseGesture';
@@ -99,6 +100,11 @@ interface FilePaneProps {
   windowsSpecialFolders: WindowsSpecialFolder[];
   onOpenWindowsSpecialFolder: (folder: WindowsSpecialFolder) => void;
   quickAccessItems: QuickAccessItem[];
+  networkResources?: NetworkResource[];
+  isLoadingNetwork?: boolean;
+  savedNetworkHosts?: string[];
+  onConnectNetworkHost?: (input: string) => void;
+  onRemoveSavedNetworkHost?: (hostPath: string) => void;
   hasMore?: boolean;
   totalItemCount?: number;
   isLoadingDirectory?: boolean;
@@ -740,6 +746,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
   windowsSpecialFolders,
   onOpenWindowsSpecialFolder,
   quickAccessItems,
+  networkResources = [],
+  isLoadingNetwork = false,
+  savedNetworkHosts = [],
+  onConnectNetworkHost,
+  onRemoveSavedNetworkHost,
   hasMore = false,
   totalItemCount,
   isLoadingDirectory = false,
@@ -784,8 +795,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const tooltipsEnabled = useContext(TooltipPreferenceContext);
   const listerTextScaleFactorValue = listerTextScaleFactor(listerTextScale);
   const isSystemHome = tab.currentPath === SYSTEM_HOME_PATH;
+  const isNetworkLocation = tab.currentPath === NETWORK_PATH;
   const isRecycleBin = tab.currentPath === RECYCLE_BIN_PATH;
   const isRecentLocation = tab.currentPath === RECENT_PATH;
+  const [networkHostInput, setNetworkHostInput] = useState('');
+  const [collapsedNetworkSections, setCollapsedNetworkSections] = useState<{ hosts: boolean; shares: boolean }>({
+    hosts: false,
+    shares: false,
+  });
   const effectiveViewMode = tab.viewMode;
   const nativeFileIconSize = effectiveViewMode === 'icons' ? 'large' : 'small';
   const nativeFileIconScope = `${tab.currentPath}\u0000${nativeFileIconSize}`;
@@ -1926,7 +1943,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }
 
     flushSync(() => {
-      setPathInput(isSystemHome ? '' : tab.currentPath);
+      setPathInput(isSystemHome || isNetworkLocation ? '' : tab.currentPath);
       setIsEditingPath(true);
     });
 
@@ -2033,9 +2050,26 @@ export const FilePane: React.FC<FilePaneProps> = ({
     return <FolderStatusBadge badge={customConfig.badge} language={language} className="flex-shrink-0" />;
   };
 
-  // Breadcrumbs generator for Windows paths: "C:\Users\Cali\Documents"
+  // Breadcrumbs generator for Windows and UNC paths
   const breadcrumbSegments = React.useMemo(() => {
-    if (!tab.currentPath || isSystemHome || isRecycleBin || isRecentLocation) return [];
+    if (!tab.currentPath || isSystemHome || isNetworkLocation || isRecycleBin || isRecentLocation) return [];
+    const normalized = normalizeWindowsPath(tab.currentPath);
+    if (isUncPath(normalized)) {
+      const parts = normalized.slice(2).split('\\').filter(Boolean);
+      const result: { label: string; fullPath: string }[] = [];
+      let accumulated = '';
+      parts.forEach((seg, idx) => {
+        if (idx === 0) {
+          accumulated = `\\\\${seg}`;
+          result.push({ label: `\\\\${seg}`, fullPath: accumulated });
+        } else {
+          accumulated = `${accumulated}\\${seg}`;
+          result.push({ label: seg, fullPath: accumulated });
+        }
+      });
+      return result;
+    }
+
     const raw = tab.currentPath.replace(/\/+$/, '').replace(/\\+$/, '');
     const segments = raw.split(/\\|\//);
     const result: { label: string; fullPath: string }[] = [];
@@ -2055,11 +2089,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
       }
     });
     return result;
-  }, [tab.currentPath, isSystemHome, isRecycleBin, isRecentLocation, drives]);
+  }, [tab.currentPath, isSystemHome, isNetworkLocation, isRecycleBin, isRecentLocation, drives]);
   const visibleBreadcrumbStart = Math.min(firstVisibleBreadcrumb, Math.max(0, breadcrumbSegments.length - 1));
 
   useLayoutEffect(() => {
-    if (isEditingPath || isSystemHome || isRecycleBin || isRecentLocation) return;
+    if (isEditingPath || isSystemHome || isNetworkLocation || isRecycleBin || isRecentLocation) return;
     const viewport = breadcrumbViewportRef.current;
     const measure = breadcrumbMeasureRef.current;
     if (!viewport || !measure) return;
@@ -3104,11 +3138,51 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const visibleWindowsSpecialFolders = windowsSpecialFolders.filter(folder =>
     matchesSystemHomeFilter(windowsSpecialFolderLabels[folder.id], folder.path, folder.isFile ? 'file' : 'folder'),
   );
+  const showSystemHomeNetworkCard = isTauriDesktop() && matchesSystemHomeFilter(t.pane.networkTitle, t.sidebar.network, t.pane.networkSubtitle, 'lan', 'smb');
   const quickAccessItemCount = systemFolders.length + customQuickAccessItems.length;
-  const systemHomeVisibleItemCount = files.length + customQuickAccessItems.length + visibleWindowsSpecialFolders.length;
+  const systemHomeVisibleItemCount = files.length + customQuickAccessItems.length + visibleWindowsSpecialFolders.length + (showSystemHomeNetworkCard ? 1 : 0);
   const systemVolumes = files.filter(item => item.id.startsWith('system-drive-'));
   const networkVolumes = systemVolumes.filter(item => drives.find(drive => item.id === `system-drive-${drive.id}`)?.type === 'network');
+  const systemNetworkItemCount = networkVolumes.length + (showSystemHomeNetworkCard ? 1 : 0);
   const deviceVolumes = systemVolumes.filter(item => !networkVolumes.includes(item));
+
+  const networkFilterQuery = isNetworkLocation ? tab.filterQuery.trim().toLowerCase() : '';
+  const matchesNetworkFilter = (...values: Array<string | undefined>) => !networkFilterQuery || values.some(value =>
+    Boolean(value && value.toLowerCase().includes(networkFilterQuery)),
+  );
+  const savedNetworkHostSet = React.useMemo(
+    () => new Set(savedNetworkHosts.map(host => normalizeWindowsPath(host).toLowerCase())),
+    [savedNetworkHosts],
+  );
+  const combinedNetworkHosts = React.useMemo(() => {
+    const byPath = new Map<string, NetworkResource>();
+    for (const resource of networkResources) {
+      if (resource.kind !== 'host') continue;
+      const normalized = normalizeWindowsPath(resource.path);
+      byPath.set(normalized.toLowerCase(), { ...resource, path: normalized });
+    }
+    for (const saved of savedNetworkHosts) {
+      const normalized = normalizeWindowsPath(saved);
+      const key = normalized.toLowerCase();
+      if (!byPath.has(key)) {
+        byPath.set(key, {
+          id: `saved-host:${key}`,
+          name: normalized.replace(/^\\+/, ''),
+          path: normalized,
+          kind: 'host',
+        });
+      }
+    }
+    return [...byPath.values()].filter(host => matchesNetworkFilter(host.name, host.path, host.comment));
+  }, [networkResources, savedNetworkHosts, networkFilterQuery]);
+  const visibleNetworkShares = React.useMemo(
+    () => networkResources
+      .filter(resource => resource.kind !== 'host')
+      .filter(resource => matchesNetworkFilter(resource.name, resource.path, resource.comment, resource.driveLetter)),
+    [networkResources, networkFilterQuery],
+  );
+  const networkVisibleItemCount = combinedNetworkHosts.length + visibleNetworkShares.length;
+
   const sectionHeading = (section: SystemHomeSection, label: string) => {
     const isCollapsed = collapsedSystemHomeSections[section];
     const contentId = `${paneId}-system-home-${section}-content`;
@@ -3127,13 +3201,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
     );
   };
 
-  const visibleItemCount = `${isSystemHome ? systemHomeVisibleItemCount : files.length}${hasMore ? '+' : ''}`;
-  const itemCountLabel = isLoadingDirectory && tab.flatView ? t.pane.loadingFolder : hasMore && totalItemCount !== undefined
+  const visibleItemCount = `${isSystemHome ? systemHomeVisibleItemCount : isNetworkLocation ? networkVisibleItemCount : files.length}${hasMore ? '+' : ''}`;
+  const itemCountLabel = (isLoadingDirectory && tab.flatView) || (isNetworkLocation && isLoadingNetwork) ? t.pane.loadingFolder : hasMore && totalItemCount !== undefined
     ? t.pane.loadedOfTotal.replace('{loaded}', String(files.length)).replace('{total}', String(totalItemCount))
     : t.pane.itemsCount.replace('{count}', visibleItemCount);
   /* Rendered as an overlay on the viewport instead of inside the scrolling content: the
      viewport is wider than the pane in details view, so centring inside it drifts right. */
-  const showEmptyState = files.length === 0 && (!isSystemHome || systemHomeVisibleItemCount === 0);
+  const showEmptyState = !isNetworkLocation && files.length === 0 && (!isSystemHome || systemHomeVisibleItemCount === 0);
   /* The viewport keeps the lister's min-content width and an ancestor clips it, so the pane
      box is the only measurement that matches what the user actually sees. */
   const [paneBoxWidth, setPaneBoxWidth] = useState(0);
@@ -3403,7 +3477,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             if (isRecycleBin || isRecentLocation) return;
             if ((e.target as HTMLElement).closest('button, input, textarea')) return;
             if (!isEditingPath) {
-              setPathInput(isSystemHome ? '' : tab.currentPath);
+              setPathInput(isSystemHome || isNetworkLocation ? '' : tab.currentPath);
               setIsEditingPath(true);
             } else {
               pathInputRef.current?.focus();
@@ -3435,6 +3509,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <div className="flex items-center gap-1.5 px-1 text-neutral-200 text-xs font-sans">
               <Monitor className="h-3.5 w-3.5 text-cyan-400" />
               <span>{t.sidebar.thisPc}</span>
+            </div>
+          ) : isNetworkLocation ? (
+            <div className="flex items-center gap-1.5 px-1 text-neutral-200 text-xs font-sans">
+              <Network className="h-3.5 w-3.5 text-cyan-400" />
+              <span>{t.sidebar.network}</span>
             </div>
           ) : isRecycleBin ? (
             <div className="flex items-center gap-1.5 px-1 text-neutral-200 text-xs font-sans">
@@ -3671,7 +3750,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* 3. Filter / selection bar: one row, two states, constant height */}
       <PaneActionBar
         filterQuery={tab.filterQuery}
-        filterPlaceholder={isSystemHome ? t.pane.systemHomeFilterPlaceholder : t.pane.filterPlaceholder}
+        filterPlaceholder={isSystemHome ? t.pane.systemHomeFilterPlaceholder : isNetworkLocation ? t.pane.networkFilterPlaceholder : t.pane.filterPlaceholder}
         onFilterChange={onFilterChange}
         filterInputRef={filterInputRef}
         onFocusList={() => viewportRef.current?.focus()}
@@ -3711,10 +3790,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
         </div>
       )}
 
-      <div ref={horizontalScrollContainerRef} className={`flex min-h-0 flex-1 flex-col ${styleLocked && !isSystemHome && effectiveViewMode === 'details' ? 'overflow-x-auto' : 'overflow-x-hidden'} overflow-y-hidden`}>
-        <div className="flex min-h-0 flex-1 flex-col" style={{ [LISTER_TEXT_SCALE_CSS_VAR]: listerTextScaleFactorValue, width: styleLocked && !isSystemHome && effectiveViewMode === 'details' ? `max(100%, ${detailsTableMinimumWidth}px)` : '100%' } as React.CSSProperties}>
+      <div ref={horizontalScrollContainerRef} className={`flex min-h-0 flex-1 flex-col ${styleLocked && !isSystemHome && !isNetworkLocation && effectiveViewMode === 'details' ? 'overflow-x-auto' : 'overflow-x-hidden'} overflow-y-hidden`}>
+        <div className="flex min-h-0 flex-1 flex-col" style={{ [LISTER_TEXT_SCALE_CSS_VAR]: listerTextScaleFactorValue, width: styleLocked && !isSystemHome && !isNetworkLocation && effectiveViewMode === 'details' ? `max(100%, ${detailsTableMinimumWidth}px)` : '100%' } as React.CSSProperties}>
       {/* 4. Column Headers (Details View) */}
-      {effectiveViewMode === 'details' && !isSystemHome && (
+      {effectiveViewMode === 'details' && !isSystemHome && !isNetworkLocation && (
         <div
           className="cyberfiles-column-headers shrink-0 border border-neutral-800/80 bg-neutral-900/90 text-[calc(11px*var(--lister-text-scale,1))] font-semibold text-neutral-300 select-none shadow-sm backdrop-blur-xs"
           onContextMenu={openColumnMenu}
@@ -3882,7 +3961,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             )}
           </div>
         )}
-        <div className={`min-h-full ${isSystemHome ? 'px-2' : 'px-4'} ${effectiveViewMode === 'compact' ? 'h-full w-max min-w-full' : ''}`}>
+        <div className={`min-h-full ${isSystemHome || isNetworkLocation ? 'px-2' : 'px-4'} ${effectiveViewMode === 'compact' && !isNetworkLocation ? 'h-full w-max min-w-full' : ''}`}>
         {showEmptyState ? null : isSystemHome ? (
           <div className="cyberfiles-system-home space-y-5 py-3 sm:py-4">
             {quickAccessItemCount > 0 && (
@@ -3902,10 +3981,33 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 </div>
               </section>
             )}
-            {networkVolumes.length > 0 && (
+            {systemNetworkItemCount > 0 && (
               <section>
-                {sectionHeading('network', t.pane.systemNetwork.replace('{count}', String(networkVolumes.length)))}
+                {sectionHeading('network', t.pane.systemNetwork.replace('{count}', String(systemNetworkItemCount)))}
                 <div id={`${paneId}-system-home-network-content`} style={{ display: collapsedSystemHomeSections.network ? 'none' : undefined }} className="cyberfiles-system-home-grid grid grid-cols-1 gap-1.5">
+                  {showSystemHomeNetworkCard && (
+                    <Tooltip label={t.pane.networkSubtitle} placement="top" boundary=".cyberfiles-file-viewport">
+                      <button
+                        type="button"
+                        onClick={event => handleSystemHomeShortcutClick(event, 'system-home-network-lan', () => onNavigate(NETWORK_PATH))}
+                        onDoubleClick={() => handleSystemHomeShortcutDoubleClick(() => onNavigate(NETWORK_PATH))}
+                        style={{ cursor: singleClickOpens ? 'pointer' : 'default' }}
+                        className={`cyberfiles-system-home-card group flex min-h-[68px] w-full min-w-0 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
+                          selectedSystemHomeShortcutId === 'system-home-network-lan'
+                            ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
+                            : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'
+                        }`}
+                      >
+                        <span data-system-home-icon="network" className="cyberfiles-system-home-icon flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-400/10 text-indigo-300">
+                          <Network className="h-7 w-7" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="cyberfiles-system-home-name block truncate text-xs font-medium text-neutral-100">{t.pane.networkTitle}</span>
+                          <span className="mt-1 block truncate text-[10px] text-neutral-400">{t.pane.networkSubtitle}</span>
+                        </span>
+                      </button>
+                    </Tooltip>
+                  )}
                   {networkVolumes.map(item => renderSystemHomeCard(item, files.indexOf(item), 'network'))}
                 </div>
               </section>
@@ -3917,6 +4019,208 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   {visibleWindowsSpecialFolders.map(renderWindowsSpecialFolderCard)}
                 </div>
               </section>
+            )}
+          </div>
+        ) : isNetworkLocation ? (
+          <div className="cyberfiles-system-home space-y-5 py-3 sm:py-4">
+            <div className="rounded-xl border border-neutral-800/90 bg-neutral-950/75 p-3 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-950/40 text-cyan-300">
+                    <Network className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-xs font-semibold text-neutral-100">{t.pane.networkTitle}</div>
+                    <div className="truncate text-[11px] text-neutral-400">{t.pane.networkSubtitle}</div>
+                  </div>
+                </div>
+                {onRefresh && (
+                  <Tooltip label={t.pane.networkRefreshTooltip} placement="bottom">
+                    <button
+                      type="button"
+                      disabled={isLoadingNetwork}
+                      onClick={() => onRefresh()}
+                      aria-label={t.pane.networkRefreshTooltip}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-cyan-500/50 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-50"
+                    >
+                      <RotateCw className={`h-3.5 w-3.5 ${isLoadingNetwork ? 'animate-spin text-cyan-400' : ''}`} />
+                    </button>
+                  </Tooltip>
+                )}
+              </div>
+              <form
+                onSubmit={event => {
+                  event.preventDefault();
+                  const trimmed = networkHostInput.trim();
+                  if (!trimmed) return;
+                  if (onConnectNetworkHost) {
+                    onConnectNetworkHost(trimmed);
+                    setNetworkHostInput('');
+                  } else {
+                    onNavigate(trimmed);
+                    setNetworkHostInput('');
+                  }
+                }}
+                className="mt-3 flex items-center gap-2"
+              >
+                <input
+                  type="text"
+                  value={networkHostInput}
+                  onChange={event => setNetworkHostInput(event.target.value)}
+                  placeholder={t.pane.networkConnectPlaceholder}
+                  aria-label={t.pane.networkConnectPlaceholder}
+                  className="h-8 min-w-0 flex-1 rounded-lg border border-neutral-800 bg-neutral-900/90 px-3 font-sans text-xs text-neutral-100 placeholder-neutral-500 outline-none transition-colors focus:border-cyan-500/70"
+                />
+                <button
+                  type="submit"
+                  disabled={!networkHostInput.trim()}
+                  className="inline-flex h-8 flex-shrink-0 items-center gap-1.5 rounded-lg border border-cyan-500/50 bg-cyan-950/60 px-3 text-xs font-medium text-cyan-200 transition-colors hover:border-cyan-400 hover:bg-cyan-900/60 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <span>{t.pane.networkConnectButton}</span>
+                </button>
+              </form>
+            </div>
+
+            {combinedNetworkHosts.length > 0 && (
+              <section>
+                <button
+                  type="button"
+                  aria-expanded={!collapsedNetworkSections.hosts}
+                  onClick={() => setCollapsedNetworkSections(prev => ({ ...prev, hosts: !prev.hosts }))}
+                  className="collapse-toggle mb-2 flex w-full cursor-pointer items-center gap-2 rounded-lg py-2 text-left text-[11px] font-semibold text-neutral-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+                >
+                  <ChevronDown data-collapse-chevron="true" className={`h-3.5 w-3.5 flex-shrink-0 text-neutral-500 transition-transform ${collapsedNetworkSections.hosts ? '-rotate-90' : ''}`} />
+                  <span className="whitespace-nowrap">{t.pane.networkHostsSection.replace('{count}', String(combinedNetworkHosts.length))}</span>
+                  <span data-collapse-rule="true" className="h-px flex-1 bg-neutral-800" />
+                </button>
+                <div style={{ display: collapsedNetworkSections.hosts ? 'none' : undefined }} className="cyberfiles-system-home-grid grid grid-cols-1 gap-1.5">
+                  {combinedNetworkHosts.map(host => {
+                    const shortcutId = `network-host:${host.id}`;
+                    const isSaved = savedNetworkHostSet.has(host.path.toLowerCase());
+                    const isSelected = selectedSystemHomeShortcutId === shortcutId;
+                    return (
+                      <Tooltip key={host.id} label={host.comment ? `${host.path} · ${host.comment}` : host.path} placement="top" boundary=".cyberfiles-file-viewport">
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={event => handleSystemHomeShortcutClick(event as unknown as React.MouseEvent<HTMLButtonElement>, shortcutId, () => onNavigate(host.path))}
+                          onDoubleClick={() => handleSystemHomeShortcutDoubleClick(() => onNavigate(host.path))}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              onNavigate(host.path);
+                            }
+                          }}
+                          style={{ cursor: singleClickOpens ? 'pointer' : 'default' }}
+                          className={`cyberfiles-system-home-card group flex min-h-[68px] w-full min-w-0 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
+                            isSelected
+                              ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
+                              : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'
+                          }`}
+                        >
+                          <span data-system-home-icon="network" className="cyberfiles-system-home-icon flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-cyan-400/10 text-cyan-300">
+                            <Server className="h-6 w-6" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5">
+                              <span className="cyberfiles-system-home-name truncate text-xs font-medium text-neutral-100">{host.name}</span>
+                              <span className="flex-shrink-0 rounded border border-cyan-500/25 bg-cyan-950/35 px-1.5 py-0.5 text-[9px] font-medium text-cyan-300/90">
+                                {isSaved ? t.pane.networkSavedHostBadge : t.pane.networkHostBadge}
+                              </span>
+                            </span>
+                            <span className="mt-1 block truncate text-[10px] text-neutral-400">{host.path}</span>
+                          </span>
+                          {isSaved && onRemoveSavedNetworkHost && (
+                            <Tooltip label={t.pane.networkRemoveSavedHost} placement="top">
+                              <button
+                                type="button"
+                                aria-label={`${t.pane.networkRemoveSavedHost}: ${host.name}`}
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  onRemoveSavedNetworkHost(host.path);
+                                }}
+                                className="rounded p-1 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-800 hover:text-rose-300 group-hover:opacity-100 focus-visible:opacity-100"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </Tooltip>
+                          )}
+                        </div>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {visibleNetworkShares.length > 0 && (
+              <section>
+                <button
+                  type="button"
+                  aria-expanded={!collapsedNetworkSections.shares}
+                  onClick={() => setCollapsedNetworkSections(prev => ({ ...prev, shares: !prev.shares }))}
+                  className="collapse-toggle mb-2 flex w-full cursor-pointer items-center gap-2 rounded-lg py-2 text-left text-[11px] font-semibold text-neutral-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+                >
+                  <ChevronDown data-collapse-chevron="true" className={`h-3.5 w-3.5 flex-shrink-0 text-neutral-500 transition-transform ${collapsedNetworkSections.shares ? '-rotate-90' : ''}`} />
+                  <span className="whitespace-nowrap">{t.pane.networkSharesSection.replace('{count}', String(visibleNetworkShares.length))}</span>
+                  <span data-collapse-rule="true" className="h-px flex-1 bg-neutral-800" />
+                </button>
+                <div style={{ display: collapsedNetworkSections.shares ? 'none' : undefined }} className="cyberfiles-system-home-grid grid grid-cols-1 gap-1.5">
+                  {visibleNetworkShares.map(resource => {
+                    const shortcutId = `network-share:${resource.id}`;
+                    const isSelected = selectedSystemHomeShortcutId === shortcutId;
+                    const badgeLabel = resource.kind === 'mapped-drive' && resource.driveLetter
+                      ? t.pane.networkMappedDriveBadge.replace('{drive}', resource.driveLetter)
+                      : resource.kind === 'shortcut'
+                        ? t.pane.networkShortcutBadge
+                        : t.pane.networkShareBadge;
+                    return (
+                      <Tooltip key={resource.id} label={resource.path} placement="top" boundary=".cyberfiles-file-viewport">
+                        <button
+                          type="button"
+                          onClick={event => handleSystemHomeShortcutClick(event, shortcutId, () => onNavigate(resource.path))}
+                          onDoubleClick={() => handleSystemHomeShortcutDoubleClick(() => onNavigate(resource.path))}
+                          style={{ cursor: singleClickOpens ? 'pointer' : 'default' }}
+                          className={`cyberfiles-system-home-card group flex min-h-[68px] w-full min-w-0 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
+                            isSelected
+                              ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
+                              : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'
+                          }`}
+                        >
+                          <span data-system-home-icon="network" className="cyberfiles-system-home-icon flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-400/10 text-indigo-300">
+                            {resource.kind === 'mapped-drive' ? <HardDrive className="h-6 w-6" /> : <FolderOpen className="h-6 w-6" />}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5">
+                              <span className="cyberfiles-system-home-name truncate text-xs font-medium text-neutral-100">{resource.name}</span>
+                              <span className="flex-shrink-0 rounded border border-indigo-500/25 bg-indigo-950/35 px-1.5 py-0.5 text-[9px] font-medium text-indigo-300/90">
+                                {badgeLabel}
+                              </span>
+                            </span>
+                            <span className="mt-1 block truncate text-[10px] text-neutral-400">{resource.path}</span>
+                          </span>
+                        </button>
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {combinedNetworkHosts.length === 0 && visibleNetworkShares.length === 0 && (
+              <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-neutral-800/70 bg-neutral-950/40 px-6 py-10 text-center text-neutral-400">
+                {isLoadingNetwork ? (
+                  <>
+                    <RotateCw className="h-6 w-6 animate-spin text-cyan-400" />
+                    <span className="text-xs">{t.pane.networkLoading}</span>
+                  </>
+                ) : (
+                  <>
+                    <Network className="h-7 w-7 text-neutral-600" />
+                    <span className="max-w-md text-xs">{networkFilterQuery ? t.pane.filterNoResults : t.pane.networkEmpty}</span>
+                  </>
+                )}
+              </div>
             )}
           </div>
         ) : effectiveViewMode === 'details' ? (

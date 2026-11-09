@@ -13,6 +13,7 @@ import {
   RECYCLE_BIN_PATH,
   RECENT_PATH,
   SYSTEM_HOME_PATH,
+  NETWORK_PATH,
   ContextMenuPosition, 
   DriveInfo, 
   QuickAccessItem,
@@ -22,6 +23,7 @@ import {
   GroupByField,
   ArchiveExtractionMode,
   TabCloseButtonMode,
+  type NetworkResource,
   type NewTabActionPreference,
   type NewTabActionMode,
   type NewTabTrigger,
@@ -41,14 +43,18 @@ import {
   getItemsInTree,
   getUniqueName,
   getPathDriveLetter,
+  getUncHostRoot,
   isPathOnUnavailableDrive,
   isSameOrDescendantPath,
   isTextPreviewableFile,
   isMediaPreviewPath,
+  isUncPath,
+  isUncServerRoot,
   isWindowsDriveRoot,
   isValidFileName,
   joinWindowsPath,
   normalizeDriveLetter,
+  normalizeNetworkHostInput,
   rewritePathPrefix,
   normalizeWindowsPath,
 } from './utils/fileSystem';
@@ -112,7 +118,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { normalizeListerTextScale, type ListerTextScale } from './utils/listerTextScale';
 import { fetchLaunchContext, getLaunchTargetPath } from './utils/systemIntegration';
@@ -173,6 +179,7 @@ const CUSTOM_QUICK_ACCESS_KEY = 'cyberfiles_custom_quick_access_v1';
 const QUICK_ACCESS_ORDER_KEY = 'cyberfiles_quick_access_order_v1';
 const QUICK_ACCESS_SORT_MODE_KEY = 'cyberfiles_quick_access_sort_mode_v1';
 const RECENT_FOLDER_PATHS_KEY = 'cyberfiles_recent_folder_paths_v1';
+const SAVED_NETWORK_HOSTS_KEY = 'cyberfiles_saved_network_hosts_v1';
 const AUTO_FOLDER_SIZE_ENABLED_KEY = 'cyberfiles_auto_folder_size_enabled_v1';
 const MAX_CUSTOM_QUICK_ACCESS_ITEMS = 100;
 const MAX_TEXT_PREVIEW_BYTES = 200_000;
@@ -658,6 +665,28 @@ function readRecentFolderPaths(): string[] {
   }
 }
 
+function readSavedNetworkHosts(): string[] {
+  try {
+    const saved: unknown = JSON.parse(window.localStorage.getItem(SAVED_NETWORK_HOSTS_KEY) || 'null');
+    if (!Array.isArray(saved)) return [];
+    const seen = new Set<string>();
+    const hosts: string[] = [];
+    for (const value of saved) {
+      if (typeof value !== 'string') continue;
+      const hostRoot = getUncHostRoot(value);
+      if (!hostRoot) continue;
+      const key = getPathKey(hostRoot);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      hosts.push(hostRoot);
+      if (hosts.length === 50) break;
+    }
+    return hosts;
+  } catch {
+    return [];
+  }
+}
+
 function getTabFolderStyle(tab: TabState): FolderStyle {
   return {
     viewMode: tab.folderStyle?.viewMode ?? tab.viewMode,
@@ -732,7 +761,7 @@ const createEmptyTab = (
   folderStyle: { sortField, sortOrder, groupBy: 'none', viewMode },
 });
 
-function restoreSessionTabs(snapshot: TabSessionSnapshot, pane: WorkspacePaneId, systemHomeTitle: string, recycleBinTitle: string, recentsTitle: string, savedStyles: SavedFolderStyles): TabState[] {
+function restoreSessionTabs(snapshot: TabSessionSnapshot, pane: WorkspacePaneId, systemHomeTitle: string, recycleBinTitle: string, recentsTitle: string, networkTitle: string, savedStyles: SavedFolderStyles): TabState[] {
   const savedTabs = pane === 'left' ? snapshot.leftTabs : snapshot.rightTabs;
   return savedTabs.map((saved, index) => ({
     ...saved,
@@ -740,7 +769,8 @@ function restoreSessionTabs(snapshot: TabSessionSnapshot, pane: WorkspacePaneId,
     title: saved.currentPath === SYSTEM_HOME_PATH ? systemHomeTitle
       : saved.currentPath === RECYCLE_BIN_PATH ? recycleBinTitle
         : saved.currentPath === RECENT_PATH ? recentsTitle
-          : saved.title,
+          : saved.currentPath === NETWORK_PATH ? networkTitle
+            : saved.title,
     filterQuery: '',
     flatView: saved.flatView === true,
     selectedIds: [],
@@ -767,7 +797,7 @@ function createSessionSnapshot(
     const savedHistory = history.slice(historyOffset);
     return {
       id,
-      title: currentPath === SYSTEM_HOME_PATH || currentPath === RECYCLE_BIN_PATH || currentPath === RECENT_PATH ? currentPath : title,
+      title: currentPath === SYSTEM_HOME_PATH || currentPath === RECYCLE_BIN_PATH || currentPath === RECENT_PATH || currentPath === NETWORK_PATH ? currentPath : title,
       customTitle,
       tabColor,
       lockClose,
@@ -883,6 +913,44 @@ export default function App() {
   const [drives, setDrives] = useState<DriveInfo[]>([]);
   const [systemLocations, setSystemLocations] = useState<NativeLocation[]>([]);
   const [systemHomeLoading, setSystemHomeLoading] = useState(startsAtSystemHome);
+  const [networkResources, setNetworkResources] = useState<NetworkResource[]>([]);
+  const [networkLoading, setNetworkLoading] = useState(false);
+  const networkDiscoveryInFlight = useRef(false);
+  const networkLoaded = useRef(false);
+  const [savedNetworkHosts, setSavedNetworkHosts] = useState<string[]>(readSavedNetworkHosts);
+  const rememberNetworkHost = useCallback((value: string) => {
+    const hostRoot = getUncHostRoot(value);
+    if (!hostRoot) return;
+    setSavedNetworkHosts(previous => [
+      hostRoot,
+      ...previous.filter(existing => getPathKey(existing) !== getPathKey(hostRoot)),
+    ].slice(0, 50));
+  }, []);
+  const handleRemoveSavedNetworkHost = useCallback((hostPath: string) => {
+    const key = getPathKey(hostPath);
+    setSavedNetworkHosts(previous => previous.filter(existing => getPathKey(existing) !== key));
+  }, []);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SAVED_NETWORK_HOSTS_KEY, JSON.stringify(savedNetworkHosts));
+    } catch {
+      // Saved network hosts remain available for the current session.
+    }
+  }, [savedNetworkHosts]);
+  const refreshNetworkResources = useCallback(async () => {
+    if (!isTauriDesktop() || networkDiscoveryInFlight.current) return;
+    networkDiscoveryInFlight.current = true;
+    setNetworkLoading(true);
+    try {
+      const resources = await listNativeNetworkResources();
+      setNetworkResources(resources);
+    } catch {
+      // Keep previously discovered resources if LAN discovery fails.
+    } finally {
+      networkDiscoveryInFlight.current = false;
+      setNetworkLoading(false);
+    }
+  }, []);
   const [quickAccess, setQuickAccess] = useState<QuickAccessItem[]>([]);
   const [recentFolderPaths, setRecentFolderPaths] = useState<string[]>(readRecentFolderPaths);
   const [customQuickAccess, setCustomQuickAccess] = useState<QuickAccessItem[]>(readCustomQuickAccess);
@@ -1200,13 +1268,13 @@ export default function App() {
 
   // Left Pane State & Tabs
   const [leftTabs, setLeftTabs] = useState<TabState[]>([
-    ...restoreSessionTabs(initialSessionSnapshot, 'left', t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, savedFolderStyles),
+    ...restoreSessionTabs(initialSessionSnapshot, 'left', t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, t.sidebar.network, savedFolderStyles),
   ]);
   const [activeLeftTabIndex, setActiveLeftTabIndex] = useState(initialSessionSnapshot?.activeLeftTabIndex ?? 0);
 
   // Right Pane State & Tabs
   const [rightTabs, setRightTabs] = useState<TabState[]>([
-    ...restoreSessionTabs(initialSessionSnapshot, 'right', t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, savedFolderStyles),
+    ...restoreSessionTabs(initialSessionSnapshot, 'right', t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, t.sidebar.network, savedFolderStyles),
   ]);
   const [activeRightTabIndex, setActiveRightTabIndex] = useState(initialSessionSnapshot?.activeRightTabIndex ?? 0);
 
@@ -1242,6 +1310,14 @@ export default function App() {
     const recycleBinOpen = [...leftTabs, ...rightTabs].some(tab => tab.currentPath === RECYCLE_BIN_PATH);
     if (recycleBinOpen && !recycleBinLoaded.current) void refreshRecycleBinContents();
   }, [leftTabs, rightTabs, refreshRecycleBinContents]);
+
+  useEffect(() => {
+    const networkOpen = [...leftTabs, ...rightTabs].some(tab => tab.currentPath === NETWORK_PATH);
+    if (networkOpen && !networkLoaded.current) {
+      networkLoaded.current = true;
+      void refreshNetworkResources();
+    }
+  }, [leftTabs, rightTabs, refreshNetworkResources]);
 
   // Modals state
   const [isBatchRenameOpen, setIsBatchRenameOpen] = useState(false);
@@ -1450,7 +1526,7 @@ export default function App() {
   const setActiveTabs = activePane === 'left' ? setLeftTabs : setRightTabs;
   const activeTabIndex = activePane === 'left' ? activeLeftTabIndex : activeRightTabIndex;
   const currentTab = activeTabs[activeTabIndex] || activeTabs[0];
-  const hiddenItemsCount = currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH || currentTab.currentPath === RECENT_PATH || !isTauriDesktop()
+  const hiddenItemsCount = currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH || currentTab.currentPath === RECENT_PATH || currentTab.currentPath === NETWORK_PATH || !isTauriDesktop()
     ? null
     : (currentTab.flatView ? flatDirectories[getPathKey(currentTab.currentPath)] : nativeDirectories[getPathKey(currentTab.currentPath)])?.counts?.hiddenCount ?? null;
   const systemQuickAccess = useMemo<QuickAccessItem[]>(() => {
@@ -1472,17 +1548,24 @@ export default function App() {
   const hasSystemWorkspaceAccess = systemHomeWorkspace.current || currentTab.history.includes(SYSTEM_HOME_PATH);
   const isNativeDesktop = isTauriDesktop();
   const baseSidebarQuickAccess = useMemo(() => [
-    ...(isNativeDesktop ? [{ id: 'system-quick-home', name: t.sidebar.thisPc, path: SYSTEM_HOME_PATH, icon: 'monitor' }] : []),
+    ...(isNativeDesktop ? [
+      { id: 'system-quick-home', name: t.sidebar.thisPc, path: SYSTEM_HOME_PATH, icon: 'monitor' },
+      { id: 'system-quick-network', name: t.sidebar.network, path: NETWORK_PATH, icon: 'network' },
+    ] : []),
     ...(hasSystemWorkspaceAccess ? systemQuickAccess : quickAccess),
-  ], [hasSystemWorkspaceAccess, isNativeDesktop, quickAccess, systemQuickAccess, t.sidebar.thisPc]);
+  ], [hasSystemWorkspaceAccess, isNativeDesktop, quickAccess, systemQuickAccess, t.sidebar.network, t.sidebar.thisPc]);
+  const isPinnedQuickAccessPath = useCallback((path: string) => {
+    const key = getPathKey(path);
+    return key === getPathKey(SYSTEM_HOME_PATH) || key === getPathKey(NETWORK_PATH);
+  }, []);
   const sidebarQuickAccess = useMemo(() => {
     const baseQuickAccessPaths = new Set(baseSidebarQuickAccess.map(item => getPathKey(item.path)));
     const combined = [
       ...baseSidebarQuickAccess,
       ...customQuickAccess.filter(item => !baseQuickAccessPaths.has(getPathKey(item.path))),
     ];
-    const pinned = combined.filter(item => getPathKey(item.path) === getPathKey(SYSTEM_HOME_PATH));
-    const sortable = combined.filter(item => getPathKey(item.path) !== getPathKey(SYSTEM_HOME_PATH));
+    const pinned = combined.filter(item => isPinnedQuickAccessPath(item.path));
+    const sortable = combined.filter(item => !isPinnedQuickAccessPath(item.path));
     if (quickAccessSortMode === 'name' || quickAccessSortMode === 'name-desc') {
       const direction = quickAccessSortMode === 'name' ? 1 : -1;
       sortable.sort((a, b) =>
@@ -1502,7 +1585,7 @@ export default function App() {
       })
       .map(entry => entry.item);
     return [...pinned, ...manuallySorted];
-  }, [baseSidebarQuickAccess, customQuickAccess, quickAccessOrder, quickAccessSortMode]);
+  }, [baseSidebarQuickAccess, customQuickAccess, isPinnedQuickAccessPath, quickAccessOrder, quickAccessSortMode]);
   const leftViewMode = leftTabs[activeLeftTabIndex]?.viewMode ?? initialPanelPreferences.leftViewMode;
   const rightViewMode = rightTabs[activeRightTabIndex]?.viewMode ?? initialPanelPreferences.rightViewMode;
   const leftSort = leftTabs[activeLeftTabIndex] ?? leftTabs[0];
@@ -1565,13 +1648,13 @@ export default function App() {
 
   const applySessionSnapshot = useCallback((snapshot: TabSessionSnapshot) => {
     const normalized = normalizeSessionSnapshot(snapshot);
-    setLeftTabs(restoreSessionTabs(normalized, 'left', t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, savedFolderStyles));
-    setRightTabs(restoreSessionTabs(normalized, 'right', t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, savedFolderStyles));
+    setLeftTabs(restoreSessionTabs(normalized, 'left', t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, t.sidebar.network, savedFolderStyles));
+    setRightTabs(restoreSessionTabs(normalized, 'right', t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, t.sidebar.network, savedFolderStyles));
     setActiveLeftTabIndex(normalized.activeLeftTabIndex);
     setActiveRightTabIndex(normalized.activeRightTabIndex);
     setActivePane(normalized.activePane);
     setSessionReloadToken(token => token + 1);
-  }, [t.sidebar.thisPc, t.sidebar.recycleBinTitle, savedFolderStyles]);
+  }, [t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, t.sidebar.network, savedFolderStyles]);
 
   const persistProfileStoreForActive = useCallback((next: WorkspaceProfileStore, nextLayoutId: string, nextSessionId: string, nextWorkspaceId: string | null) => {
     persistWorkspaceStore({
@@ -1846,12 +1929,21 @@ export default function App() {
 
   useEffect(() => {
     const updateSystemHomeTitle = (tabs: TabState[]) => {
-      if (!tabs.some(tab => tab.currentPath === SYSTEM_HOME_PATH && tab.title !== t.sidebar.thisPc)) return tabs;
-      return tabs.map(tab => tab.currentPath === SYSTEM_HOME_PATH ? { ...tab, title: t.sidebar.thisPc } : tab);
+      if (!tabs.some(tab =>
+        (tab.currentPath === SYSTEM_HOME_PATH && tab.title !== t.sidebar.thisPc) ||
+        (tab.currentPath === NETWORK_PATH && tab.title !== t.sidebar.network)
+      )) return tabs;
+      return tabs.map(tab =>
+        tab.currentPath === SYSTEM_HOME_PATH
+          ? { ...tab, title: t.sidebar.thisPc }
+          : tab.currentPath === NETWORK_PATH
+            ? { ...tab, title: t.sidebar.network }
+            : tab
+      );
     };
     setLeftTabs(updateSystemHomeTitle);
     setRightTabs(updateSystemHomeTitle);
-  }, [t.sidebar.thisPc]);
+  }, [t.sidebar.thisPc, t.sidebar.network]);
 
   useEffect(() => {
     try {
@@ -2456,7 +2548,7 @@ export default function App() {
     return item ? [item] : [];
   });
   const activeFolderItem = React.useMemo(() => {
-    if (!currentTab.currentPath || currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH || currentTab.currentPath === RECENT_PATH) return null;
+    if (!currentTab.currentPath || currentTab.currentPath === SYSTEM_HOME_PATH || currentTab.currentPath === RECYCLE_BIN_PATH || currentTab.currentPath === RECENT_PATH || currentTab.currentPath === NETWORK_PATH) return null;
     const currentPathKey = getPathKey(currentTab.currentPath);
     return allFiles.find(item => item.isFolder && getPathKey(item.path) === currentPathKey) ?? null;
   }, [allFiles, currentTab.currentPath]);
@@ -2521,7 +2613,7 @@ export default function App() {
         // Keep the raw path; the native listing will report the real error.
       }
     }
-    const targetPath = expansionSource === SYSTEM_HOME_PATH || expansionSource === RECYCLE_BIN_PATH || expansionSource === RECENT_PATH ? expansionSource : normalizeWindowsPath(expansionSource);
+    const targetPath = expansionSource === SYSTEM_HOME_PATH || expansionSource === RECYCLE_BIN_PATH || expansionSource === RECENT_PATH || expansionSource === NETWORK_PATH ? expansionSource : normalizeWindowsPath(expansionSource);
     const pathKey = getPathKey(targetPath);
     if (nativeOpeningWorkspace.current) return;
     const targetDriveLetter = getPathDriveLetter(targetPath);
@@ -2532,8 +2624,8 @@ export default function App() {
         return;
       }
     }
-    if (forceRefresh && targetPath !== SYSTEM_HOME_PATH && targetPath !== RECYCLE_BIN_PATH && targetPath !== RECENT_PATH) invalidateFlatDirectories([targetPath]);
-    if (targetPath === SYSTEM_HOME_PATH) {
+    if (forceRefresh && targetPath !== SYSTEM_HOME_PATH && targetPath !== RECYCLE_BIN_PATH && targetPath !== RECENT_PATH && targetPath !== NETWORK_PATH) invalidateFlatDirectories([targetPath]);
+    if (targetPath === SYSTEM_HOME_PATH || targetPath === NETWORK_PATH || isUncPath(targetPath)) {
       systemHomeWorkspace.current = true;
       nativeRootPath.current = SYSTEM_HOME_PATH;
     }
@@ -2542,7 +2634,7 @@ export default function App() {
     const targetTab = targetTabs[targetTabIndex];
     let returnedFolderPath: string | null = null;
     const departingPath = targetTab?.currentPath;
-    if (departingPath && departingPath !== SYSTEM_HOME_PATH && departingPath !== RECYCLE_BIN_PATH && departingPath !== RECENT_PATH && getPathKey(departingPath) !== pathKey) {
+    if (departingPath && departingPath !== SYSTEM_HOME_PATH && departingPath !== RECYCLE_BIN_PATH && departingPath !== RECENT_PATH && departingPath !== NETWORK_PATH && getPathKey(departingPath) !== pathKey) {
       if (targetPath === SYSTEM_HOME_PATH) {
         returnedFolderPath = systemHomeItems
           .filter(item => isSameOrDescendantPath(departingPath, item.path))
@@ -2566,7 +2658,7 @@ export default function App() {
       : undefined;
     const systemWorkspace = systemHomeWorkspace.current || targetTab?.history.includes(SYSTEM_HOME_PATH) === true;
     const workspaceRoot = nativeRootPath.current;
-    if (targetPath !== RECYCLE_BIN_PATH && targetPath !== RECENT_PATH && workspaceRoot && !systemWorkspace && !isSameOrDescendantPath(targetPath, workspaceRoot)) {
+    if (targetPath !== RECYCLE_BIN_PATH && targetPath !== RECENT_PATH && targetPath !== NETWORK_PATH && workspaceRoot && !systemWorkspace && !isSameOrDescendantPath(targetPath, workspaceRoot)) {
       showToast(language === 'es' ? 'Abre una unidad o carpeta para cambiar el espacio de trabajo.' : 'Open a drive or folder to change the workspace.');
       return;
     }
@@ -2577,7 +2669,11 @@ export default function App() {
         ? t.sidebar.recycleBinTitle
         : targetPath === RECENT_PATH
           ? t.sidebar.recentsTitle
-          : targetPath.split(/\\|\//).filter(Boolean).pop() || targetPath;
+          : targetPath === NETWORK_PATH
+            ? t.sidebar.network
+            : isUncServerRoot(targetPath)
+              ? targetPath
+              : targetPath.split(/\\|\//).filter(Boolean).pop() || targetPath;
     if (openInNewTab) {
       const sourceTab = targetTab ?? createEmptyTab(`tab-source-${Date.now()}`);
       const rememberedStyle = getNavigationFolderStyle(sourceTab, folderStyleLocked, savedFolderStyles);
@@ -2670,8 +2766,14 @@ export default function App() {
       // The listing is pure state (recentEntries); there is nothing to load.
       return;
     }
+    if (targetPath === NETWORK_PATH) {
+      networkLoaded.current = true;
+      void refreshNetworkResources();
+      return;
+    }
     if (!workspaceRoot || (!systemWorkspace && !isSameOrDescendantPath(targetPath, workspaceRoot))) return;
     if (!forceRefresh && nativeLoadedDirectories.current.has(pathKey)) {
+      if (isUncPath(targetPath)) rememberNetworkHost(targetPath);
       rememberRecentFolder(targetPath);
       return;
     }
@@ -2716,6 +2818,7 @@ export default function App() {
         });
       }
       nativeLoadedDirectories.current.add(pathKey);
+      if (isUncPath(targetPath)) rememberNetworkHost(targetPath);
       rememberRecentFolder(targetPath);
       setNativeDirectories(previous => ({
         ...previous,
@@ -2772,7 +2875,19 @@ export default function App() {
     } finally {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
-  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, systemHomeItems, leftTabs, rightTabs, updatePaneTab, language, refreshSystemHome, refreshRecycleBinContents, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, folderStyleLocked, savedFolderStyles, newTabsNextToCurrent, rememberRecentFolder, showHiddenFiles, invalidateFlatDirectories, evictUnavailableDriveState]);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, systemHomeItems, leftTabs, rightTabs, updatePaneTab, language, refreshSystemHome, refreshRecycleBinContents, refreshNetworkResources, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, t.sidebar.network, folderStyleLocked, savedFolderStyles, newTabsNextToCurrent, rememberNetworkHost, rememberRecentFolder, showHiddenFiles, invalidateFlatDirectories, evictUnavailableDriveState]);
+
+  const handleConnectNetworkHost = useCallback((rawInput: string, targetPane: 'left' | 'right' = activePane) => {
+    const normalized = normalizeNetworkHostInput(rawInput);
+    if (!normalized) {
+      showToast(t.pane.networkInvalidHost);
+      return;
+    }
+    rememberNetworkHost(normalized);
+    systemHomeWorkspace.current = true;
+    nativeRootPath.current = SYSTEM_HOME_PATH;
+    void handleNavigate(normalized, targetPane, true);
+  }, [activePane, handleNavigate, rememberNetworkHost, showToast, t.pane.networkInvalidHost]);
 
   const lastSessionReloadHandled = useRef(0);
   useEffect(() => {
@@ -2793,13 +2908,17 @@ export default function App() {
         // because the virtual location never lands in the loaded-directories cache.
         return;
       }
+      if (tab.currentPath === NETWORK_PATH) {
+        if (explicitReload) void refreshNetworkResources();
+        return;
+      }
       const pathKey = getPathKey(tab.currentPath);
       if (nativeLoadedDirectories.current.has(pathKey) || nativeInFlightDirectories.current.has(pathKey)) return;
       void handleNavigate(tab.currentPath, pane, true);
     };
     restoreActiveFolder('left', leftTabs[activeLeftTabIndex]);
     restoreActiveFolder('right', rightTabs[activeRightTabIndex]);
-  }, [sessionReloadToken, activeLeftTabIndex, activeRightTabIndex, leftTabs, rightTabs, handleNavigate, refreshSystemHome, refreshRecycleBinContents]);
+  }, [sessionReloadToken, activeLeftTabIndex, activeRightTabIndex, leftTabs, rightTabs, handleNavigate, refreshSystemHome, refreshRecycleBinContents, refreshNetworkResources]);
 
   const refreshChangedDirectories = useCallback(async (paths: string[]) => {
     invalidateFlatDirectories(paths);
@@ -3022,10 +3141,22 @@ export default function App() {
       else if (systemHomeWorkspace.current) handleNavigate(SYSTEM_HOME_PATH, targetPane);
       return;
     }
+    if (activeTabObj.currentPath === NETWORK_PATH) {
+      if (systemHomeWorkspace.current || activeTabObj.history.includes(SYSTEM_HOME_PATH)) {
+        void handleNavigate(SYSTEM_HOME_PATH, targetPane);
+      } else if (activeTabObj.historyIndex > 0) {
+        handleNavigateBack(targetPane);
+      }
+      return;
+    }
     const currentPath = activeTabObj.currentPath === SYSTEM_HOME_PATH
       ? SYSTEM_HOME_PATH
       : normalizeWindowsPath(activeTabObj.currentPath);
     if (currentPath === SYSTEM_HOME_PATH) return;
+    if (isUncServerRoot(currentPath)) {
+      void handleNavigate(NETWORK_PATH, targetPane);
+      return;
+    }
     if (isWindowsDriveRoot(currentPath)) {
       if (systemHomeWorkspace.current || activeTabObj.history.includes(SYSTEM_HOME_PATH)) {
         handleNavigate(SYSTEM_HOME_PATH, targetPane);
@@ -3139,7 +3270,13 @@ export default function App() {
             ? t.sidebar.thisPc
             : newPath === RECYCLE_BIN_PATH
               ? t.sidebar.recycleBinTitle
-              : newPath.split(/\\|\//).filter(Boolean).pop() || newPath,
+              : newPath === RECENT_PATH
+                ? t.sidebar.recentsTitle
+                : newPath === NETWORK_PATH
+                  ? t.sidebar.network
+                  : isUncServerRoot(newPath)
+                    ? newPath
+                    : newPath.split(/\\|\//).filter(Boolean).pop() || newPath,
           currentPath: newPath,
           history: [newPath],
           historyIndex: 0,
@@ -5310,7 +5447,7 @@ export default function App() {
     if (item.isFolder) addCustomQuickAccessPath(item.path, item.name);
   }, [addCustomQuickAccessPath]);
   const handleOpenCustomQuickAccess = useCallback((item: QuickAccessItem, openInNewTab = sidebarLocationsOpenInNewTab) => {
-    if (item.path === SYSTEM_HOME_PATH) {
+    if (item.path === SYSTEM_HOME_PATH || item.path === NETWORK_PATH) {
       systemHomeWorkspace.current = true;
       nativeRootPath.current = SYSTEM_HOME_PATH;
       void handleNavigate(item.path, activePane, false, openInNewTab);
@@ -5342,7 +5479,7 @@ export default function App() {
 
   const handleReorderQuickAccess = useCallback((draggedId: string, targetId: string) => {
     if (quickAccessSortMode !== 'manual' || draggedId === targetId) return;
-    const reorderedIds = sidebarQuickAccess.filter(item => getPathKey(item.path) !== getPathKey(SYSTEM_HOME_PATH)).map(item => item.id);
+    const reorderedIds = sidebarQuickAccess.filter(item => !isPinnedQuickAccessPath(item.path)).map(item => item.id);
     const fromIndex = reorderedIds.indexOf(draggedId);
     const toIndex = reorderedIds.indexOf(targetId);
     if (fromIndex < 0 || toIndex < 0) return;
@@ -5353,16 +5490,16 @@ export default function App() {
       ...reorderedIds,
       ...previous.filter(id => !visibleIds.has(id)),
     ]);
-  }, [quickAccessSortMode, sidebarQuickAccess]);
+  }, [isPinnedQuickAccessPath, quickAccessSortMode, sidebarQuickAccess]);
 
   const handleMoveQuickAccess = useCallback((itemId: string, direction: -1 | 1) => {
     if (quickAccessSortMode !== 'manual') return;
-    const items = sidebarQuickAccess.filter(item => getPathKey(item.path) !== getPathKey(SYSTEM_HOME_PATH)).map(item => item.id);
+    const items = sidebarQuickAccess.filter(item => !isPinnedQuickAccessPath(item.path)).map(item => item.id);
     const index = items.indexOf(itemId);
     const targetIndex = index + direction;
     if (index < 0 || targetIndex < 0 || targetIndex >= items.length) return;
     handleReorderQuickAccess(itemId, items[targetIndex]);
-  }, [handleReorderQuickAccess, quickAccessSortMode, sidebarQuickAccess]);
+  }, [handleReorderQuickAccess, isPinnedQuickAccessPath, quickAccessSortMode, sidebarQuickAccess]);
   // Keyboard Shortcuts listener
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -5734,7 +5871,7 @@ export default function App() {
   const currentDirectFolderCount = currentDirectCounts
     ? (showHiddenFiles ? currentDirectCounts.folderCount : currentDirectCounts.visibleFolderCount)
     : null;
-  const flatViewLocationAvailable = isTauriDesktop() && !!currentTab.currentPath && !currentTab.currentPath.startsWith('::');
+  const flatViewLocationAvailable = isTauriDesktop() && !!currentTab.currentPath && !currentTab.currentPath.startsWith('::') && !isUncServerRoot(currentTab.currentPath);
   const flatViewAvailable = flatViewLocationAvailable && (currentTab.flatView === true || (currentDirectFolderCount !== null && currentDirectFolderCount > 0));
   const flatViewTooltip = currentTab.flatView && flatViewLocationAvailable
     ? t.toolbar.flatViewDisableTooltip
@@ -5834,17 +5971,20 @@ export default function App() {
   const saveCurrentFolderStyle = () => saveFolderStyleForPath(contextPaneTab.currentPath, getCurrentFolderStyle(contextPaneTab));
   const removeCurrentFolderStyle = () => removeFolderStyleForPath(contextPaneTab.currentPath);
 
-  const isCommandLocation = (path: string) => Boolean(path) && path !== SYSTEM_HOME_PATH && path !== RECYCLE_BIN_PATH && !path.startsWith('::');
+  const isCommandLocation = (path: string) => Boolean(path) && path !== SYSTEM_HOME_PATH && path !== RECYCLE_BIN_PATH && !path.startsWith('::') && !isUncServerRoot(path);
   const currentParentPath = isCommandLocation(currentTab.currentPath) ? getParentPath(currentTab.currentPath) : '';
   const activeWorkspaceRoot = nativeRootPath.current;
   const canNavigateUpFromCurrent = currentTab.currentPath === RECYCLE_BIN_PATH || currentTab.currentPath === RECENT_PATH
     ? currentTab.historyIndex > 0 || systemHomeWorkspace.current
-    : currentTab.currentPath !== SYSTEM_HOME_PATH && (
-      (isWindowsDriveRoot(currentTab.currentPath) && (systemHomeWorkspace.current || currentTab.history.includes(SYSTEM_HOME_PATH))) ||
-      (Boolean(currentParentPath) && currentParentPath !== currentTab.currentPath && (
-        systemHomeWorkspace.current || !activeWorkspaceRoot || isSameOrDescendantPath(currentParentPath, activeWorkspaceRoot)
-      ))
-    );
+    : currentTab.currentPath === NETWORK_PATH
+      ? currentTab.historyIndex > 0 || systemHomeWorkspace.current || currentTab.history.includes(SYSTEM_HOME_PATH)
+      : currentTab.currentPath !== SYSTEM_HOME_PATH && (
+        isUncServerRoot(currentTab.currentPath) ||
+        (isWindowsDriveRoot(currentTab.currentPath) && (systemHomeWorkspace.current || currentTab.history.includes(SYSTEM_HOME_PATH))) ||
+        (Boolean(currentParentPath) && currentParentPath !== currentTab.currentPath && (
+          systemHomeWorkspace.current || !activeWorkspaceRoot || isSameOrDescendantPath(currentParentPath, activeWorkspaceRoot)
+        ))
+      );
   const currentFolderIsReal = isCommandLocation(currentTab.currentPath);
   const oppositeFolderIsReal = isCommandLocation(inactiveTab.currentPath);
   const selectionDisabledReason = isFileOperationBusy
@@ -5923,12 +6063,17 @@ export default function App() {
   const quickAccessPaths = new Set(sidebarQuickAccess.map(item => getPathKey(item.path)));
   const paletteQuickAccess: CommandPaletteCommand[] = sidebarQuickAccess.map(item => {
     const isOffline = paletteAvailableDriveLetters.size > 0 && isPathOnUnavailableDrive(item.path, paletteAvailableDriveLetters);
+    const isVirtualSystemItem = item.path === SYSTEM_HOME_PATH || item.path === NETWORK_PATH;
     return {
       id: `quick-access-${item.id}`,
       group: t.commandPalette.groups.quickAccess,
-      label: item.path === SYSTEM_HOME_PATH ? t.commandPalette.commands.thisPc : item.name,
-      description: item.path === SYSTEM_HOME_PATH ? undefined : item.path,
-      keywords: item.path,
+      label: item.path === SYSTEM_HOME_PATH
+        ? t.commandPalette.commands.thisPc
+        : item.path === NETWORK_PATH
+          ? t.commandPalette.commands.network
+          : item.name,
+      description: isVirtualSystemItem ? undefined : item.path,
+      keywords: item.path === NETWORK_PATH ? `${item.name} lan smb unc network red` : item.path,
       disabled: isOffline,
       disabledReason: isOffline ? t.sidebar.quickAccessDriveOfflineHint.replace('{path}', item.path) : undefined,
       onSelect: () => handleOpenCustomQuickAccess(item, false),
@@ -6229,12 +6374,17 @@ export default function App() {
                   relativeGraphsEnabled={relativeGraphsEnabled}
                   dateFormat={dateFormat}
                   drives={drives}
+                  networkResources={networkResources}
+                  isLoadingNetwork={networkLoading}
+                  savedNetworkHosts={savedNetworkHosts}
+                  onConnectNetworkHost={input => handleConnectNetworkHost(input, 'left')}
+                  onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
                   quickAccessItems={sidebarQuickAccess}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
                   totalItemCount={leftKnownCounts?.totalCount}
-                  isLoadingDirectory={(leftDisplayTab.flatView && !leftAtSystemHome && !leftAtRecycleBin && !leftDirectoryState) || leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
+                  isLoadingDirectory={(leftDisplayTab.flatView && !leftAtSystemHome && !leftAtRecycleBin && !leftDirectoryState) || leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading) || (leftDisplayTab.currentPath === NETWORK_PATH && networkLoading)}
                   flatViewStatus={leftDisplayTab.flatView ? flatDirectories[getPathKey(leftDisplayTab.currentPath)] : undefined}
                   onExitFlatView={() => updatePaneTab('left', tab => ({ ...tab, flatView: false, selectedIds: [], focusedId: null }))}
                   onLoadMore={leftAtRecycleBin ? () => void loadMoreRecycleBin() : undefined}
@@ -6308,12 +6458,17 @@ export default function App() {
                   relativeGraphsEnabled={relativeGraphsEnabled}
                   dateFormat={dateFormat}
                   drives={drives}
+                  networkResources={networkResources}
+                  isLoadingNetwork={networkLoading}
+                  savedNetworkHosts={savedNetworkHosts}
+                  onConnectNetworkHost={input => handleConnectNetworkHost(input, 'right')}
+                  onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
                   quickAccessItems={sidebarQuickAccess}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
                   totalItemCount={rightKnownCounts?.totalCount}
-                  isLoadingDirectory={(rightDisplayTab.flatView && !rightAtSystemHome && !rightAtRecycleBin && !rightDirectoryState) || rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
+                  isLoadingDirectory={(rightDisplayTab.flatView && !rightAtSystemHome && !rightAtRecycleBin && !rightDirectoryState) || rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading) || (rightDisplayTab.currentPath === NETWORK_PATH && networkLoading)}
                   flatViewStatus={rightDisplayTab.flatView ? flatDirectories[getPathKey(rightDisplayTab.currentPath)] : undefined}
                   onExitFlatView={() => updatePaneTab('right', tab => ({ ...tab, flatView: false, selectedIds: [], focusedId: null }))}
                   onLoadMore={rightAtRecycleBin ? () => void loadMoreRecycleBin() : undefined}
@@ -6388,12 +6543,17 @@ export default function App() {
                   relativeGraphsEnabled={relativeGraphsEnabled}
                   dateFormat={dateFormat}
                   drives={drives}
+                  networkResources={networkResources}
+                  isLoadingNetwork={networkLoading}
+                  savedNetworkHosts={savedNetworkHosts}
+                  onConnectNetworkHost={input => handleConnectNetworkHost(input, 'left')}
+                  onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
                   quickAccessItems={sidebarQuickAccess}
                   hasMore={leftAtRecycleBin ? recycleBinPage.hasMore : leftDirectoryState?.hasMore}
                   totalItemCount={leftKnownCounts?.totalCount}
-                  isLoadingDirectory={(leftDisplayTab.flatView && !leftAtSystemHome && !leftAtRecycleBin && !leftDirectoryState) || leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading)}
+                  isLoadingDirectory={(leftDisplayTab.flatView && !leftAtSystemHome && !leftAtRecycleBin && !leftDirectoryState) || leftDirectoryState?.loading || (leftAtSystemHome && systemHomeLoading) || (leftAtRecycleBin && recycleBinPage.loading) || (leftDisplayTab.currentPath === NETWORK_PATH && networkLoading)}
                   flatViewStatus={leftDisplayTab.flatView ? flatDirectories[getPathKey(leftDisplayTab.currentPath)] : undefined}
                   onExitFlatView={() => updatePaneTab('left', tab => ({ ...tab, flatView: false, selectedIds: [], focusedId: null }))}
                   onLoadMore={leftAtRecycleBin ? () => void loadMoreRecycleBin() : undefined}
@@ -6463,12 +6623,17 @@ export default function App() {
                   relativeGraphsEnabled={relativeGraphsEnabled}
                   dateFormat={dateFormat}
                   drives={drives}
+                  networkResources={networkResources}
+                  isLoadingNetwork={networkLoading}
+                  savedNetworkHosts={savedNetworkHosts}
+                  onConnectNetworkHost={input => handleConnectNetworkHost(input, 'right')}
+                  onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
                   quickAccessItems={sidebarQuickAccess}
                   hasMore={rightAtRecycleBin ? recycleBinPage.hasMore : rightDirectoryState?.hasMore}
                   totalItemCount={rightKnownCounts?.totalCount}
-                  isLoadingDirectory={(rightDisplayTab.flatView && !rightAtSystemHome && !rightAtRecycleBin && !rightDirectoryState) || rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading)}
+                  isLoadingDirectory={(rightDisplayTab.flatView && !rightAtSystemHome && !rightAtRecycleBin && !rightDirectoryState) || rightDirectoryState?.loading || (rightAtSystemHome && systemHomeLoading) || (rightAtRecycleBin && recycleBinPage.loading) || (rightDisplayTab.currentPath === NETWORK_PATH && networkLoading)}
                   flatViewStatus={rightDisplayTab.flatView ? flatDirectories[getPathKey(rightDisplayTab.currentPath)] : undefined}
                   onExitFlatView={() => updatePaneTab('right', tab => ({ ...tab, flatView: false, selectedIds: [], focusedId: null }))}
                   onLoadMore={rightAtRecycleBin ? () => void loadMoreRecycleBin() : undefined}
@@ -6543,12 +6708,17 @@ export default function App() {
                   relativeGraphsEnabled={relativeGraphsEnabled}
                   dateFormat={dateFormat}
                   drives={drives}
+                  networkResources={networkResources}
+                  isLoadingNetwork={networkLoading}
+                  savedNetworkHosts={savedNetworkHosts}
+                  onConnectNetworkHost={input => handleConnectNetworkHost(input, activePane)}
+                  onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
                   quickAccessItems={sidebarQuickAccess}
                   hasMore={currentAtRecycleBin ? recycleBinPage.hasMore : (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.hasMore}
                   totalItemCount={activeKnownCounts?.totalCount}
-                  isLoadingDirectory={(currentTab.flatView && !currentTab.currentPath.startsWith('::') && !(activePane === 'left' ? leftDirectoryState : rightDirectoryState)) || (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.loading || (currentTab.currentPath === SYSTEM_HOME_PATH && systemHomeLoading) || (currentAtRecycleBin && recycleBinPage.loading)}
+                  isLoadingDirectory={(currentTab.flatView && !currentTab.currentPath.startsWith('::') && !(activePane === 'left' ? leftDirectoryState : rightDirectoryState)) || (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.loading || (currentTab.currentPath === SYSTEM_HOME_PATH && systemHomeLoading) || (currentAtRecycleBin && recycleBinPage.loading) || (currentTab.currentPath === NETWORK_PATH && networkLoading)}
                   flatViewStatus={currentTab.flatView ? flatDirectories[getPathKey(currentTab.currentPath)] : undefined}
                   onExitFlatView={() => updatePaneTab(activePane, tab => ({ ...tab, flatView: false, selectedIds: [], focusedId: null }))}
                   onLoadMore={currentAtRecycleBin ? () => void loadMoreRecycleBin() : undefined}

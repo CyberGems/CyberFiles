@@ -18,9 +18,10 @@ import {
   Pencil,
   Check,
   Clock,
+  Network,
 } from 'lucide-react';
-import { DriveInfo, FileItem, QuickAccessItem, QuickAccessSortMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
-import { formatFileSize, isPathOnUnavailableDrive, normalizeDriveLetter } from '../utils/fileSystem';
+import { DriveInfo, FileItem, NETWORK_PATH, QuickAccessItem, QuickAccessSortMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
+import { formatFileSize, isPathOnUnavailableDrive, isUncPath, normalizeDriveLetter } from '../utils/fileSystem';
 import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
 import { FolderIconRenderer } from './folderIconsData';
@@ -354,6 +355,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const getQuickAccessIcon = (iconName: string) => {
     switch (iconName) {
       case 'monitor': return <Monitor className="w-3.5 h-3.5" />;
+      case 'network': return <Network className="w-3.5 h-3.5" />;
       case 'desktop': return <Monitor className="w-3.5 h-3.5" />;
       case 'download': return <Download className="w-3.5 h-3.5" />;
       case 'downloads': return <Download className="w-3.5 h-3.5" />;
@@ -449,7 +451,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {!collapsedSections.quickAccess && <div className="space-y-0.5">
               {quickAccess.map(item => {
-                const isSelected = currentPath.toLowerCase() === item.path.toLowerCase();
+                const isSelected = currentPath.toLowerCase() === item.path.toLowerCase()
+                  || (item.path === NETWORK_PATH && isUncPath(currentPath));
                 const isEditing = editingQuickAccessId === item.id;
 
                 if (isEditing && item.isCustom) {
@@ -504,16 +507,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }
 
                 const isOffline = availableDriveLetters.size > 0 && isPathOnUnavailableDrive(item.path, availableDriveLetters);
-                const canExpandTree = isTauriDesktop() && item.path !== SYSTEM_HOME_PATH && !isOffline;
+                const isVirtualLocation = item.path === SYSTEM_HOME_PATH || item.path === NETWORK_PATH;
+                const canExpandTree = isTauriDesktop() && !isVirtualLocation && !isOffline;
                 const treeExpanded = !isOffline && expandedFolderPaths.has(item.path);
 
                 return (
                   <React.Fragment key={item.id}>
                   <div
-                    data-quick-access-drop-id={item.path === SYSTEM_HOME_PATH ? undefined : item.id}
+                    data-quick-access-drop-id={isVirtualLocation ? undefined : item.id}
                     className={"group flex min-w-0 items-center gap-0.5 rounded " + (dragTargetQuickAccessId === item.id ? "ring-1 ring-cyan-500/60 bg-cyan-950/20 " : "") + (draggingQuickAccessId === item.id ? "opacity-50" : "")}
                   >
-                    {quickAccessSortMode === 'manual' && item.path !== SYSTEM_HOME_PATH && (
+                    {quickAccessSortMode === 'manual' && !isVirtualLocation && (
                       <Tooltip label={t.sidebar.quickAccessReorderHint} placement="right">
                         <button
                           type="button"
@@ -557,7 +561,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     )}
                     <Tooltip
                       label={
-                        item.path === SYSTEM_HOME_PATH
+                        isVirtualLocation
                           ? item.name
                           : isOffline
                             ? t.sidebar.quickAccessDriveOfflineHint.replace('{path}', item.path)
@@ -569,7 +573,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         type="button"
                         draggable={false}
                         aria-disabled={isOffline || undefined}
-                        onClick={() => item.path === SYSTEM_HOME_PATH || item.isCustom ? onOpenCustomQuickAccess(item) : onNavigate(item.path)}
+                        onClick={() => isVirtualLocation || item.isCustom ? onOpenCustomQuickAccess(item) : onNavigate(item.path)}
                         className={`flex min-w-0 flex-1 items-center justify-between rounded-md px-2.5 py-1.5 text-left transition-colors ${
                           isOffline
                             ? 'cursor-not-allowed text-neutral-500 opacity-65 hover:bg-neutral-900/40'

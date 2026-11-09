@@ -1523,7 +1523,7 @@ fn canonical_directory(path: &str) -> Result<PathBuf, String> {
     if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err("The destination is not a regular folder.".to_string());
     }
-    fs::canonicalize(requested).map_err(|e| e.to_string())
+    Ok(fs::canonicalize(requested).unwrap_or_else(|_| requested.to_path_buf()))
 }
 
 fn canonical_item(path: &str) -> Result<PathBuf, String> {
@@ -1536,7 +1536,26 @@ fn canonical_item(path: &str) -> Result<PathBuf, String> {
     if metadata.file_type().is_symlink() {
         return Err("Symbolic links are not followed by file operations.".to_string());
     }
-    fs::canonicalize(requested).map_err(|e| e.to_string())
+    Ok(fs::canonicalize(requested).unwrap_or_else(|_| requested.to_path_buf()))
+}
+
+fn resolve_accessible_directory(expanded: &str) -> Result<PathBuf, String> {
+    match fs::canonicalize(expanded) {
+        Ok(canonical) => {
+            if !canonical.is_dir() {
+                return Err("The selected location is not a folder.".to_string());
+            }
+            Ok(canonical)
+        }
+        Err(error) => {
+            let fallback = PathBuf::from(expanded);
+            if fallback.is_absolute() && fallback.is_dir() {
+                Ok(fallback)
+            } else {
+                Err(format!("Cannot access folder: {error}"))
+            }
+        }
+    }
 }
 
 fn same_or_descendant_path(candidate: &Path, root: &Path) -> bool {
@@ -2453,15 +2472,255 @@ fn is_hidden_metadata(metadata: &fs::Metadata, _path: &Path) -> bool {
     }
 }
 
+fn is_unc_server_root(path: &str) -> Option<String> {
+    let normalized = path.trim().replace('/', "\\");
+    if !normalized.starts_with("\\\\") || normalized.starts_with("\\\\?\\") {
+        return None;
+    }
+    let parts: Vec<&str> = normalized[2..]
+        .split('\\')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    if parts.len() == 1 {
+        Some(format!("\\\\{}", parts[0]))
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn wide_ptr_to_string(ptr: *const u16) -> String {
+    if ptr.is_null() {
+        return String::new();
+    }
+    let mut len = 0usize;
+    while unsafe { *ptr.add(len) } != 0 {
+        len += 1;
+    }
+    String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(ptr, len) })
+}
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct ShareInfo1 {
+    shi1_netname: *mut u16,
+    shi1_type: u32,
+    shi1_remark: *mut u16,
+}
+
+#[cfg(target_os = "windows")]
+#[repr(C)]
+struct NetResourceW {
+    dw_scope: u32,
+    dw_type: u32,
+    dw_display_type: u32,
+    dw_usage: u32,
+    lp_local_name: *mut u16,
+    lp_remote_name: *mut u16,
+    lp_comment: *mut u16,
+    lp_provider: *mut u16,
+}
+
+#[cfg(target_os = "windows")]
+#[link(name = "netapi32")]
+extern "system" {
+    fn NetShareEnum(
+        servername: *const u16,
+        level: u32,
+        bufptr: *mut *mut u8,
+        prefmaxlen: u32,
+        entriesread: *mut u32,
+        totalentries: *mut u32,
+        resume_handle: *mut u32,
+    ) -> u32;
+    fn NetApiBufferFree(buffer: *const std::ffi::c_void) -> u32;
+}
+
+#[cfg(target_os = "windows")]
+#[link(name = "mpr")]
+extern "system" {
+    fn WNetOpenEnumW(
+        dw_scope: u32,
+        dw_type: u32,
+        dw_usage: u32,
+        lp_net_resource: *const NetResourceW,
+        lph_enum: *mut isize,
+    ) -> u32;
+    fn WNetEnumResourceW(
+        h_enum: isize,
+        lpc_count: *mut u32,
+        lp_buffer: *mut u8,
+        lp_buffer_size: *mut u32,
+    ) -> u32;
+    fn WNetCloseEnum(h_enum: isize) -> u32;
+    fn WNetGetConnectionW(
+        lp_local_name: *const u16,
+        lp_remote_name: *mut u16,
+        lpn_length: *mut u32,
+    ) -> u32;
+}
+
+#[cfg(target_os = "windows")]
+fn list_unc_server_shares(server_root: &str) -> Result<DirectoryListing, String> {
+    let server_name = server_root.trim_start_matches('\\').to_string();
+    let server_wide: Vec<u16> = server_root.encode_utf16().chain(Some(0)).collect();
+    let mut buf_ptr: *mut u8 = std::ptr::null_mut();
+    let mut entries_read: u32 = 0;
+    let mut total_entries: u32 = 0;
+    let mut resume_handle: u32 = 0;
+
+    let status = unsafe {
+        NetShareEnum(
+            server_wide.as_ptr(),
+            1,
+            &mut buf_ptr,
+            u32::MAX,
+            &mut entries_read,
+            &mut total_entries,
+            &mut resume_handle,
+        )
+    };
+
+    let mut entries = Vec::new();
+    let mut counts = DirectoryCounts {
+        file_count: 0,
+        folder_count: 0,
+        visible_file_count: 0,
+        visible_folder_count: 0,
+        hidden_count: 0,
+    };
+
+    if status == 0 || status == 234 {
+        if !buf_ptr.is_null() {
+            let items = unsafe {
+                std::slice::from_raw_parts(buf_ptr as *const ShareInfo1, entries_read as usize)
+            };
+            for item in items {
+                let base_type = item.shi1_type & 0xFF;
+                if base_type != 0 {
+                    continue;
+                }
+                let name = unsafe { wide_ptr_to_string(item.shi1_netname) };
+                if name.is_empty() {
+                    continue;
+                }
+                let is_hidden = (item.shi1_type & 0x8000_0000) != 0 || name.ends_with('$');
+                if is_hidden {
+                    counts.hidden_count += 1;
+                }
+                counts.folder_count += 1;
+                if !is_hidden {
+                    counts.visible_folder_count += 1;
+                }
+                entries.push(NativeFolderEntry {
+                    path: format!("\\\\{server_name}\\{name}"),
+                    name,
+                    is_folder: true,
+                    is_hidden,
+                    size: 0,
+                    modified_ms: None,
+                    created_ms: None,
+                });
+            }
+            unsafe {
+                NetApiBufferFree(buf_ptr.cast());
+            }
+        }
+    } else {
+        // Fallback to WNetOpenEnumW on the server container when NetShareEnum RPC is blocked.
+        let mut remote_wide = server_wide.clone();
+        let container = NetResourceW {
+            dw_scope: 2, // RESOURCE_GLOBALNET
+            dw_type: 1,  // RESOURCETYPE_DISK
+            dw_display_type: 2,
+            dw_usage: 2, // RESOURCEUSAGE_CONTAINER
+            lp_local_name: std::ptr::null_mut(),
+            lp_remote_name: remote_wide.as_mut_ptr(),
+            lp_comment: std::ptr::null_mut(),
+            lp_provider: std::ptr::null_mut(),
+        };
+        let mut handle: isize = 0;
+        let open_status = unsafe { WNetOpenEnumW(2, 1, 0, &container, &mut handle) };
+        if open_status != 0 {
+            return Err(format!(
+                "Cannot access network host {server_root} (Windows error {status})."
+            ));
+        }
+        let mut buffer = vec![0u8; 32 * 1024];
+        loop {
+            let mut count: u32 = u32::MAX;
+            let mut buffer_size = buffer.len() as u32;
+            let enum_status = unsafe {
+                WNetEnumResourceW(handle, &mut count, buffer.as_mut_ptr(), &mut buffer_size)
+            };
+            if enum_status != 0 || count == 0 {
+                break;
+            }
+            let resources = unsafe {
+                std::slice::from_raw_parts(
+                    buffer.as_ptr() as *const NetResourceW,
+                    count as usize,
+                )
+            };
+            for resource in resources {
+                let remote = unsafe { wide_ptr_to_string(resource.lp_remote_name) };
+                let Some(share_name) = remote
+                    .trim_start_matches('\\')
+                    .split('\\')
+                    .nth(1)
+                    .filter(|value| !value.is_empty())
+                    .map(|value| value.to_string())
+                else {
+                    continue;
+                };
+                let is_hidden = share_name.ends_with('$');
+                if is_hidden {
+                    counts.hidden_count += 1;
+                }
+                counts.folder_count += 1;
+                if !is_hidden {
+                    counts.visible_folder_count += 1;
+                }
+                entries.push(NativeFolderEntry {
+                    path: format!("\\\\{server_name}\\{share_name}"),
+                    name: share_name,
+                    is_folder: true,
+                    is_hidden,
+                    size: 0,
+                    modified_ms: None,
+                    created_ms: None,
+                });
+            }
+        }
+        unsafe {
+            WNetCloseEnum(handle);
+        }
+    }
+
+    let next_offset = entries.len();
+    Ok(DirectoryListing {
+        root_path: server_root.to_string(),
+        root_name: server_name,
+        entries,
+        counts,
+        has_more: false,
+        next_offset,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn list_unc_server_shares(_server_root: &str) -> Result<DirectoryListing, String> {
+    Err("SMB share enumeration is available only on Windows.".to_string())
+}
+
 #[tauri::command]
 async fn list_directory(path: String) -> Result<DirectoryListing, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let expanded = expand_windows_environment_path(&path);
-        let root =
-            fs::canonicalize(&expanded).map_err(|error| format!("Cannot access folder: {error}"))?;
-        if !root.is_dir() {
-            return Err("The selected location is not a folder.".to_string());
+        if let Some(server_root) = is_unc_server_root(&expanded) {
+            return list_unc_server_shares(&server_root);
         }
+        let root = resolve_accessible_directory(&expanded)?;
 
         let root_name = root
             .file_name()
@@ -2562,11 +2821,16 @@ static FLAT_SCAN_GENERATION: AtomicU64 = AtomicU64::new(0);
 async fn list_flat_directory(path: String) -> Result<FlatDirectoryListing, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let expanded = expand_windows_environment_path(&path);
-        let root =
-            fs::canonicalize(&expanded).map_err(|error| format!("Cannot access folder: {error}"))?;
-        if !root.is_dir() {
-            return Err("The selected location is not a folder.".to_string());
+        if let Some(server_root) = is_unc_server_root(&expanded) {
+            let listing = list_unc_server_shares(&server_root)?;
+            return Ok(FlatDirectoryListing {
+                entries: listing.entries,
+                counts: listing.counts,
+                skipped_count: 0,
+                truncated: false,
+            });
         }
+        let root = resolve_accessible_directory(&expanded)?;
         let mut entries = Vec::new();
         let mut counts = DirectoryCounts {
             file_count: 0,
@@ -2688,11 +2952,15 @@ struct FolderChildCounts {
 async fn count_folder_children(path: String) -> Result<FolderChildCounts, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let expanded = expand_windows_environment_path(&path);
-        let root = fs::canonicalize(&expanded)
-            .map_err(|error| format!("Cannot access folder: {error}"))?;
-        if !root.is_dir() {
-            return Err("The selected location is not a folder.".to_string());
+        if let Some(server_root) = is_unc_server_root(&expanded) {
+            let listing = list_unc_server_shares(&server_root)?;
+            return Ok(FolderChildCounts {
+                file_count: 0,
+                folder_count: listing.counts.folder_count,
+                extension_counts: HashMap::new(),
+            });
         }
+        let root = resolve_accessible_directory(&expanded)?;
 
         let entries = fs::read_dir(&root)
             .map_err(|error| format!("Cannot read folder: {error}"))?;
@@ -2732,11 +3000,11 @@ async fn count_folder_children(path: String) -> Result<FolderChildCounts, String
 async fn count_hidden_items(path: String) -> Result<usize, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let expanded = expand_windows_environment_path(&path);
-        let root = fs::canonicalize(&expanded)
-            .map_err(|error| format!("Cannot access folder: {error}"))?;
-        if !root.is_dir() {
-            return Err("The selected location is not a folder.".to_string());
+        if let Some(server_root) = is_unc_server_root(&expanded) {
+            let listing = list_unc_server_shares(&server_root)?;
+            return Ok(listing.counts.hidden_count);
         }
+        let root = resolve_accessible_directory(&expanded)?;
 
         let entries = fs::read_dir(&root)
             .map_err(|error| format!("Cannot read folder: {error}"))?;
@@ -4897,6 +5165,429 @@ fn list_system_locations(app: tauri::AppHandle) -> Vec<NativeLocation> {
     .collect()
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeNetworkResource {
+    id: String,
+    name: String,
+    path: String,
+    kind: String,
+    comment: Option<String>,
+    drive_letter: Option<String>,
+}
+
+#[cfg(target_os = "windows")]
+fn extract_unc_host_root(path: &str) -> Option<(String, String)> {
+    let normalized = path.trim().replace('/', "\\");
+    if !normalized.starts_with("\\\\") || normalized.starts_with("\\\\?\\") {
+        return None;
+    }
+    let host = normalized[2..]
+        .split('\\')
+        .find(|segment| !segment.is_empty())?;
+    Some((host.to_string(), format!("\\\\{host}")))
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_network_shortcut_target(path: &Path) -> Option<String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::{Interface, PCWSTR};
+    use windows::Win32::System::Com::IBindCtx;
+    use windows::Win32::UI::Shell::{IShellItem, IShellItem2, SHCreateItemFromParsingName};
+
+    let target_key = recycle_bin_property_key("System.Link.TargetParsingPath").ok()?;
+    let candidate = if path.is_dir() && path.join("target.lnk").is_file() {
+        path.join("target.lnk")
+    } else {
+        path.to_path_buf()
+    };
+    let wide: Vec<u16> = candidate.as_os_str().encode_wide().chain(Some(0)).collect();
+    let item: IShellItem =
+        unsafe { SHCreateItemFromParsingName(PCWSTR(wide.as_ptr()), None::<&IBindCtx>) }.ok()?;
+    let item2: IShellItem2 = item.cast().ok()?;
+    let raw = unsafe { item2.GetString(&target_key) }.ok()?;
+    let resolved = unsafe { take_shell_string(raw) }.ok()?;
+    let trimmed = resolved.trim().to_string();
+    if trimmed.starts_with("\\\\") || Path::new(&trimmed).is_absolute() {
+        Some(trimmed)
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn enumerate_wnet_global_hosts(
+    container: Option<&NetResourceW>,
+    depth: usize,
+    sender: &std::sync::mpsc::Sender<NativeNetworkResource>,
+) {
+    if depth > 3 {
+        return;
+    }
+    let mut handle: isize = 0;
+    let container_ptr = container.map_or(std::ptr::null(), |value| value as *const NetResourceW);
+    let status = unsafe { WNetOpenEnumW(2, 0, 0, container_ptr, &mut handle) };
+    if status != 0 {
+        return;
+    }
+    let mut buffer = vec![0u8; 32 * 1024];
+    loop {
+        let mut count: u32 = u32::MAX;
+        let mut buffer_size = buffer.len() as u32;
+        let enum_status =
+            unsafe { WNetEnumResourceW(handle, &mut count, buffer.as_mut_ptr(), &mut buffer_size) };
+        if enum_status != 0 || count == 0 {
+            break;
+        }
+        let items = unsafe {
+            std::slice::from_raw_parts(buffer.as_ptr() as *const NetResourceW, count as usize)
+        };
+        for item in items {
+            let remote = unsafe { wide_ptr_to_string(item.lp_remote_name) };
+            let comment = unsafe { wide_ptr_to_string(item.lp_comment) };
+            if item.dw_display_type == 2 {
+                // RESOURCEDISPLAYTYPE_SERVER
+                if let Some((host, host_path)) = extract_unc_host_root(&remote) {
+                    let _ = sender.send(NativeNetworkResource {
+                        id: format!("host:{}", host_path.to_ascii_lowercase()),
+                        name: host,
+                        path: host_path,
+                        kind: "host".to_string(),
+                        comment: (!comment.trim().is_empty()).then(|| comment.trim().to_string()),
+                        drive_letter: None,
+                    });
+                }
+            } else if (item.dw_usage & 0x2) != 0 {
+                // RESOURCEUSAGE_CONTAINER (network provider / domain / workgroup)
+                enumerate_wnet_global_hosts(Some(item), depth + 1, sender);
+            }
+        }
+    }
+    unsafe {
+        WNetCloseEnum(handle);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn enumerate_shell_network_places(sender: &std::sync::mpsc::Sender<NativeNetworkResource>) {
+    use windows::core::{w, Interface};
+    use windows::Win32::System::Com::{
+        CoInitializeEx, CoUninitialize, IBindCtx, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::UI::Shell::{
+        BHID_EnumItems, IEnumShellItems, IShellItem, IShellItem2, SHCreateItemFromParsingName,
+        SIGDN_DESKTOPABSOLUTEPARSING,
+    };
+
+    let initialized = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+    if initialized.is_err() {
+        return;
+    }
+    struct ComApartment;
+    impl Drop for ComApartment {
+        fn drop(&mut self) {
+            unsafe { CoUninitialize() };
+        }
+    }
+    let _apartment = ComApartment;
+
+    let Ok(network_folder) =
+        (unsafe { SHCreateItemFromParsingName::<_, _, IShellItem>(w!("shell:NetworkPlacesFolder"), None::<&IBindCtx>) })
+    else {
+        return;
+    };
+    let Ok(enumeration) = (unsafe {
+        network_folder.BindToHandler::<_, IEnumShellItems>(None::<&IBindCtx>, &BHID_EnumItems)
+    }) else {
+        return;
+    };
+
+    loop {
+        let mut fetched = 0_u32;
+        let mut next_item: [Option<IShellItem>; 1] = [None];
+        if unsafe { enumeration.Next(&mut next_item, Some(&mut fetched)) }.is_err() || fetched == 0
+        {
+            break;
+        }
+        let Some(shell_item) = next_item[0].take() else {
+            continue;
+        };
+        let Ok(shell_item2) = shell_item.cast::<IShellItem2>() else {
+            continue;
+        };
+        let Ok(parsing_ptr) = (unsafe { shell_item2.GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING) })
+        else {
+            continue;
+        };
+        let Ok(parsing_name) = (unsafe { take_shell_string(parsing_ptr) }) else {
+            continue;
+        };
+        if let Some((host, host_path)) = extract_unc_host_root(&parsing_name) {
+            let _ = sender.send(NativeNetworkResource {
+                id: format!("host:{}", host_path.to_ascii_lowercase()),
+                name: host,
+                path: host_path,
+                kind: "host".to_string(),
+                comment: None,
+                drive_letter: None,
+            });
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn discover_network_resources_blocking() -> Vec<NativeNetworkResource> {
+    use std::collections::HashSet;
+    use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
+    use windows_sys::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives};
+
+    let mut results: Vec<NativeNetworkResource> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+
+    let mut push_resource = |resource: NativeNetworkResource| {
+        let key = format!(
+            "{}:{}",
+            resource.kind,
+            resource.path.trim_end_matches('\\').to_ascii_lowercase()
+        );
+        if seen.insert(key) {
+            results.push(resource);
+        }
+    };
+
+    // 1. Local machine SMB host
+    if let Ok(computer_name) = std::env::var("COMPUTERNAME") {
+        let trimmed = computer_name.trim();
+        if !trimmed.is_empty() {
+            let host_path = format!("\\\\{trimmed}");
+            push_resource(NativeNetworkResource {
+                id: format!("host:{}", host_path.to_ascii_lowercase()),
+                name: trimmed.to_string(),
+                path: host_path,
+                kind: "host".to_string(),
+                comment: None,
+                drive_letter: None,
+            });
+        }
+    }
+
+    // 2. Mapped network drives (GetLogicalDrives + GetDriveTypeW == DRIVE_REMOTE + WNetGetConnectionW)
+    let mask = unsafe { GetLogicalDrives() };
+    for index in 0..26 {
+        if mask & (1 << index) == 0 {
+            continue;
+        }
+        let letter = format!("{}:", (b'A' + index as u8) as char);
+        let root = format!("{letter}\\");
+        let root_wide: Vec<u16> = root.encode_utf16().chain(Some(0)).collect();
+        if unsafe { GetDriveTypeW(root_wide.as_ptr()) } != 4 {
+            continue;
+        }
+        let local_wide: Vec<u16> = letter.encode_utf16().chain(Some(0)).collect();
+        let mut remote_buf = vec![0u16; 1024];
+        let mut remote_len = remote_buf.len() as u32;
+        let remote_path = if unsafe {
+            WNetGetConnectionW(
+                local_wide.as_ptr(),
+                remote_buf.as_mut_ptr(),
+                &mut remote_len,
+            )
+        } == 0
+        {
+            Some(unsafe { wide_ptr_to_string(remote_buf.as_ptr()) })
+                .filter(|value| !value.trim().is_empty())
+        } else {
+            None
+        };
+
+        if let Some(ref unc) = remote_path {
+            if let Some((host, host_path)) = extract_unc_host_root(unc) {
+                push_resource(NativeNetworkResource {
+                    id: format!("host:{}", host_path.to_ascii_lowercase()),
+                    name: host,
+                    path: host_path,
+                    kind: "host".to_string(),
+                    comment: None,
+                    drive_letter: None,
+                });
+            }
+        }
+
+        let display_name = match &remote_path {
+            Some(unc) => {
+                let share_label = unc
+                    .trim_start_matches('\\')
+                    .split('\\')
+                    .nth(1)
+                    .unwrap_or(unc.as_str());
+                format!("{share_label} ({letter})")
+            }
+            None => letter.clone(),
+        };
+        push_resource(NativeNetworkResource {
+            id: format!("mapped:{}", letter.to_ascii_lowercase()),
+            name: display_name,
+            path: remote_path.clone().unwrap_or(root),
+            kind: "mapped-drive".to_string(),
+            comment: remote_path,
+            drive_letter: Some(letter),
+        });
+    }
+
+    // 3. Connected (1) and Remembered (3) SMB disk shares via WNetOpenEnumW
+    for scope in [1u32, 3u32] {
+        let mut handle: isize = 0;
+        if unsafe { WNetOpenEnumW(scope, 1, 0, std::ptr::null(), &mut handle) } != 0 {
+            continue;
+        }
+        let mut buffer = vec![0u8; 32 * 1024];
+        loop {
+            let mut count: u32 = u32::MAX;
+            let mut buffer_size = buffer.len() as u32;
+            let enum_status = unsafe {
+                WNetEnumResourceW(handle, &mut count, buffer.as_mut_ptr(), &mut buffer_size)
+            };
+            if enum_status != 0 || count == 0 {
+                break;
+            }
+            let items = unsafe {
+                std::slice::from_raw_parts(buffer.as_ptr() as *const NetResourceW, count as usize)
+            };
+            for item in items {
+                let remote = unsafe { wide_ptr_to_string(item.lp_remote_name) };
+                let comment = unsafe { wide_ptr_to_string(item.lp_comment) };
+                if !remote.starts_with("\\\\") {
+                    continue;
+                }
+                if let Some((host, host_path)) = extract_unc_host_root(&remote) {
+                    push_resource(NativeNetworkResource {
+                        id: format!("host:{}", host_path.to_ascii_lowercase()),
+                        name: host.clone(),
+                        path: host_path,
+                        kind: "host".to_string(),
+                        comment: None,
+                        drive_letter: None,
+                    });
+                    let segments: Vec<&str> = remote[2..]
+                        .split('\\')
+                        .filter(|segment| !segment.is_empty())
+                        .collect();
+                    if segments.len() >= 2 {
+                        let share_name = segments[1];
+                        let share_path = format!("\\\\{}\\{}", segments[0], share_name);
+                        push_resource(NativeNetworkResource {
+                            id: format!("share:{}", share_path.to_ascii_lowercase()),
+                            name: format!("{share_name} ({host})"),
+                            path: share_path,
+                            kind: "share".to_string(),
+                            comment: (!comment.trim().is_empty())
+                                .then(|| comment.trim().to_string())
+                                .or_else(|| Some(format!("\\\\{host}"))),
+                            drive_letter: None,
+                        });
+                    }
+                }
+            }
+        }
+        unsafe {
+            WNetCloseEnum(handle);
+        }
+    }
+
+    // 4. Windows Network Shortcuts (%APPDATA%\Microsoft\Windows\Network Shortcuts)
+    if let Ok(appdata) = std::env::var("APPDATA") {
+        let shortcuts_dir = Path::new(&appdata)
+            .join("Microsoft")
+            .join("Windows")
+            .join("Network Shortcuts");
+        if shortcuts_dir.is_dir() {
+            let com_init = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+            if let Ok(entries) = fs::read_dir(&shortcuts_dir) {
+                for entry in entries.flatten() {
+                    let entry_path = entry.path();
+                    let raw_name = entry.file_name().to_string_lossy().to_string();
+                    if raw_name.eq_ignore_ascii_case("desktop.ini") {
+                        continue;
+                    }
+                    let clean_name = raw_name
+                        .strip_suffix(".lnk")
+                        .or_else(|| raw_name.strip_suffix(".LNK"))
+                        .unwrap_or(&raw_name)
+                        .to_string();
+                    let resolved = if com_init.is_ok() {
+                        resolve_network_shortcut_target(&entry_path)
+                    } else {
+                        None
+                    };
+                    if let Some(ref target) = resolved {
+                        if let Some((host, host_path)) = extract_unc_host_root(target) {
+                            push_resource(NativeNetworkResource {
+                                id: format!("host:{}", host_path.to_ascii_lowercase()),
+                                name: host,
+                                path: host_path,
+                                kind: "host".to_string(),
+                                comment: None,
+                                drive_letter: None,
+                            });
+                        }
+                    }
+                    let target_path = resolved
+                        .clone()
+                        .unwrap_or_else(|| display_path(&entry_path));
+                    push_resource(NativeNetworkResource {
+                        id: format!("shortcut:{}", target_path.to_ascii_lowercase()),
+                        name: clean_name,
+                        path: target_path,
+                        kind: "shortcut".to_string(),
+                        comment: resolved,
+                        drive_letter: None,
+                    });
+                }
+            }
+            if com_init.is_ok() {
+                unsafe {
+                    CoUninitialize();
+                }
+            }
+        }
+    }
+
+    // 5. Bounded-timeout LAN host discovery (shell:NetworkPlacesFolder + WNet RESOURCE_GLOBALNET)
+    let (tx, rx) = std::sync::mpsc::channel::<NativeNetworkResource>();
+    let tx_shell = tx.clone();
+    std::thread::spawn(move || {
+        enumerate_shell_network_places(&tx_shell);
+    });
+    std::thread::spawn(move || {
+        enumerate_wnet_global_hosts(None, 0, &tx);
+    });
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1400);
+    loop {
+        let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) else {
+            break;
+        };
+        match rx.recv_timeout(remaining) {
+            Ok(resource) => push_resource(resource),
+            Err(_) => break,
+        }
+    }
+
+    results
+}
+
+#[cfg(not(target_os = "windows"))]
+fn discover_network_resources_blocking() -> Vec<NativeNetworkResource> {
+    Vec::new()
+}
+
+#[tauri::command]
+async fn list_network_resources() -> Result<Vec<NativeNetworkResource>, String> {
+    tauri::async_runtime::spawn_blocking(discover_network_resources_blocking)
+        .await
+        .map_err(|error| format!("Network discovery worker failed: {error}"))
+}
+
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct RecycleBinStatus {
@@ -6828,6 +7519,7 @@ fn main() {
             image_thumbnail,
             list_drives,
             list_system_locations,
+            list_network_resources,
             get_recycle_bin_status,
             list_recycle_bin,
             restore_recycle_bin_items,

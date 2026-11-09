@@ -1,6 +1,6 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import type { DriveInfo, FileItem } from '../types';
+import type { DriveInfo, FileItem, NetworkResource } from '../types';
 import { detectFileType, getFileExtension } from './fileSystem';
 import { formatLocalDateTime } from './dateTime';
 
@@ -480,4 +480,9 @@ export async function loadNativeImageThumbnail(path: string): Promise<string | n
 export async function setNativeTrayLanguage(language: 'es' | 'en') {
   if (!isTauriDesktop()) return;
   await invoke('set_tray_language', { language });
+}
+
+export async function listNativeNetworkResources(): Promise<NetworkResource[]> {
+  if (!isTauriDesktop()) return [];
+  return invoke<NetworkResource[]>('list_network_resources');
 }
