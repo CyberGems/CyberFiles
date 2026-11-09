@@ -5842,6 +5842,180 @@ async fn authenticate_network_resource(
     .map_err(|error| format!("Network authentication worker failed: {error}"))?
 }
 
+fn normalize_drive_letter_param(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim().trim_end_matches(['\\', '/']);
+    let cleaned = trimmed.strip_suffix(':').unwrap_or(trimmed).trim();
+    let mut chars = cleaned.chars();
+    let Some(letter) = chars.next() else {
+        return Err("Invalid drive letter.".to_string());
+    };
+    if chars.next().is_some() || !letter.is_ascii_alphabetic() {
+        return Err("Invalid drive letter.".to_string());
+    }
+    Ok(format!("{}:", letter.to_ascii_uppercase()))
+}
+
+#[cfg(target_os = "windows")]
+fn map_network_drive_blocking(
+    remote_path: &str,
+    drive_letter: &str,
+    reconnect_at_sign_in: bool,
+    username: Option<&str>,
+    password: Option<&str>,
+    remember_credentials: bool,
+) -> Result<String, String> {
+    let local_drive = normalize_drive_letter_param(drive_letter)?;
+    let normalized = remote_path
+        .trim()
+        .replace('/', "\\")
+        .trim_end_matches('\\')
+        .to_string();
+    if !normalized.starts_with("\\\\") || normalized.starts_with("\\\\?\\") {
+        return Err("NETWORK_MAP_FAILED:67:The folder must be a valid UNC path (\\\\server\\share).".to_string());
+    }
+    let segments: Vec<&str> = normalized[2..]
+        .split('\\')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    if segments.len() < 2 {
+        return Err("NETWORK_MAP_FAILED:67:The folder must include both a server name and a shared folder (\\\\server\\share).".to_string());
+    }
+    let host = segments[0];
+    let share = segments[1];
+
+    let mut local_wide: Vec<u16> = local_drive.encode_utf16().chain(Some(0)).collect();
+    let mut remote_wide: Vec<u16> = normalized.encode_utf16().chain(Some(0)).collect();
+    let user_trimmed = username.map(str::trim).filter(|u| !u.is_empty());
+    let user_wide: Vec<u16> = user_trimmed
+        .unwrap_or_default()
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+    let pass_wide: Vec<u16> = password
+        .unwrap_or_default()
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+
+    let resource = NetResourceW {
+        dw_scope: 0,
+        dw_type: 1, // RESOURCETYPE_DISK
+        dw_display_type: 0,
+        dw_usage: 0,
+        lp_local_name: local_wide.as_mut_ptr(),
+        lp_remote_name: remote_wide.as_mut_ptr(),
+        lp_comment: std::ptr::null_mut(),
+        lp_provider: std::ptr::null_mut(),
+    };
+
+    let (user_ptr, pass_ptr) = if user_trimmed.is_some() {
+        (user_wide.as_ptr(), pass_wide.as_ptr())
+    } else {
+        (std::ptr::null(), std::ptr::null())
+    };
+
+    let mut flags = if reconnect_at_sign_in { 0x0000_0001 } else { 0 }; // CONNECT_UPDATE_PROFILE
+    if remember_credentials && user_trimmed.is_some() {
+        flags |= 0x0000_1000; // CONNECT_CMD_SAVECRED
+    }
+
+    let mut status = unsafe { WNetAddConnection2W(&resource, pass_ptr, user_ptr, flags) };
+    if status == 87 && (flags & 0x0000_1000) != 0 {
+        let fallback_flags = flags & !0x0000_1000;
+        status = unsafe { WNetAddConnection2W(&resource, pass_ptr, user_ptr, fallback_flags) };
+    }
+    if status == 1219 && user_trimmed.is_some() {
+        cancel_conflicting_unc_connections(host, Some(share));
+        status = unsafe { WNetAddConnection2W(&resource, pass_ptr, user_ptr, flags & !0x0000_1000) };
+    }
+
+    if status == 0 {
+        if remember_credentials {
+            if let Some(user_value) = user_trimmed {
+                save_windows_domain_credential(host, user_value, password.unwrap_or_default());
+            }
+        }
+        Ok(format!("{local_drive}\\"))
+    } else {
+        Err(format!(
+            "NETWORK_MAP_FAILED:{status}:Could not map {local_drive} to {normalized} (Windows error {status})."
+        ))
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn map_network_drive_blocking(
+    _remote_path: &str,
+    _drive_letter: &str,
+    _reconnect_at_sign_in: bool,
+    _username: Option<&str>,
+    _password: Option<&str>,
+    _remember_credentials: bool,
+) -> Result<String, String> {
+    Err("Network drive mapping is available only on Windows.".to_string())
+}
+
+#[tauri::command]
+async fn map_network_drive(
+    remote_path: String,
+    drive_letter: String,
+    reconnect_at_sign_in: bool,
+    username: Option<String>,
+    password: Option<String>,
+    remember_credentials: bool,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        map_network_drive_blocking(
+            &remote_path,
+            &drive_letter,
+            reconnect_at_sign_in,
+            username.as_deref(),
+            password.as_deref(),
+            remember_credentials,
+        )
+    })
+    .await
+    .map_err(|error| format!("Map network drive worker failed: {error}"))?
+}
+
+#[cfg(target_os = "windows")]
+fn disconnect_network_drive_blocking(drive_letter: &str, force: bool) -> Result<(), String> {
+    let local_drive = normalize_drive_letter_param(drive_letter)?;
+    let wide: Vec<u16> = local_drive.encode_utf16().chain(Some(0)).collect();
+    let force_flag = if force { 1 } else { 0 };
+    // Try removing both persistent profile mapping (CONNECT_UPDATE_PROFILE = 1) and active session mapping.
+    let mut status = unsafe { WNetCancelConnection2W(wide.as_ptr(), 0x0000_0001, force_flag) };
+    if status != 0 {
+        status = unsafe { WNetCancelConnection2W(wide.as_ptr(), 0, force_flag) };
+    }
+    if (status == 2401 || status == 2404) && !force {
+        // Retry with force when open handles or cached directory handles are held
+        status = unsafe { WNetCancelConnection2W(wide.as_ptr(), 0x0000_0001, 1) };
+        if status != 0 {
+            status = unsafe { WNetCancelConnection2W(wide.as_ptr(), 0, 1) };
+        }
+    }
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(format!(
+            "NETWORK_DISCONNECT_FAILED:{status}:Could not disconnect {local_drive} (Windows error {status})."
+        ))
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn disconnect_network_drive_blocking(_drive_letter: &str, _force: bool) -> Result<(), String> {
+    Err("Network drive disconnection is available only on Windows.".to_string())
+}
+
+#[tauri::command]
+async fn disconnect_network_drive(drive_letter: String, force: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || disconnect_network_drive_blocking(&drive_letter, force))
+        .await
+        .map_err(|error| format!("Disconnect network drive worker failed: {error}"))?
+}
+
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct RecycleBinStatus {
@@ -7775,6 +7949,8 @@ fn main() {
             list_system_locations,
             list_network_resources,
             authenticate_network_resource,
+            map_network_drive,
+            disconnect_network_drive,
             get_recycle_bin_status,
             list_recycle_bin,
             restore_recycle_bin_items,

@@ -38,11 +38,12 @@ import {
   Keyboard,
   KeyRound,
   Server,
+  Unplug,
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, HiddenItemStyle, NETWORK_PATH, NetworkResource, SortField, TabState, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { listerTextScaleFactor, LISTER_TEXT_SCALE_CSS_VAR, type ListerTextScale } from '../utils/listerTextScale';
-import { formatFileSize, getParentPath, isPathOnUnavailableDrive, isSameOrDescendantPath, isUncPath, normalizeDriveLetter, normalizeWindowsPath } from '../utils/fileSystem';
+import { formatFileSize, getParentPath, isPathOnUnavailableDrive, isSameOrDescendantPath, isUncPath, isUncServerRoot, normalizeDriveLetter, normalizeWindowsPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { advanceMouseGesturePath, MOUSE_GESTURE_MIN_DISTANCE, type MouseGesturePath } from '../utils/mouseGesture';
@@ -107,6 +108,8 @@ interface FilePaneProps {
   onConnectNetworkHost?: (input: string) => void;
   onRemoveSavedNetworkHost?: (hostPath: string) => void;
   onRequestNetworkAuth?: (targetPath: string) => void;
+  onRequestMapNetworkDrive?: (initialUncPath?: string) => void;
+  onDisconnectNetworkDrive?: (driveLetter: string) => void;
   hasMore?: boolean;
   totalItemCount?: number;
   isLoadingDirectory?: boolean;
@@ -754,6 +757,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onConnectNetworkHost,
   onRemoveSavedNetworkHost,
   onRequestNetworkAuth,
+  onRequestMapNetworkDrive,
+  onDisconnectNetworkDrive,
   hasMore = false,
   totalItemCount,
   isLoadingDirectory = false,
@@ -2968,13 +2973,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
     return (
       <Tooltip key={item.id} label={tooltipLabel} placement="top" boundary=".cyberfiles-file-viewport">
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         data-file-item="true"
         data-file-id={item.id}
-        onClick={event => { handleItemClick(event, item, index); handleConfiguredSingleClick(event, item); }}
+        onClick={event => { handleItemClick(event as unknown as React.MouseEvent<HTMLElement>, item, index); handleConfiguredSingleClick(event as unknown as React.MouseEvent<HTMLElement>, item); }}
         onDoubleClick={() => handleConfiguredDoubleClick(item)}
         onContextMenu={event => handleFileItemContextMenu(event, item)}
+        onKeyDown={event => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            onItemDoubleClick(item);
+          }
+        }}
         onMouseEnter={category === 'folder' ? () => handleFolderTooltipMouseEnter(item) : undefined}
         onMouseLeave={category === 'folder' ? () => handleFolderTooltipMouseLeave(item) : undefined}
         style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, selected) }}
@@ -3019,7 +3031,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <span className="mt-1 block truncate text-[10px] text-neutral-500">{t.pane.capacityUnavailable}</span>
           )}
         </span>
-      </button>
+        {drive?.type === 'network' && onDisconnectNetworkDrive && (
+          <Tooltip label={t.pane.networkDisconnectDriveTooltip.replace('{drive}', drive.letter)} placement="top">
+            <button
+              type="button"
+              aria-label={t.pane.networkDisconnectDriveTooltip.replace('{drive}', drive.letter)}
+              onClick={event => {
+                event.stopPropagation();
+                onDisconnectNetworkDrive(drive.letter);
+              }}
+              className="rounded p-1 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-800 hover:text-rose-300 group-hover:opacity-100 focus-visible:opacity-100"
+            >
+              <Unplug className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>
+        )}
+      </div>
       </Tooltip>
     );
   };
@@ -4037,19 +4064,31 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     <div className="truncate text-[11px] text-neutral-400">{t.pane.networkSubtitle}</div>
                   </div>
                 </div>
-                {onRefresh && (
-                  <Tooltip label={t.pane.networkRefreshTooltip} placement="bottom">
+                <div className="flex items-center gap-1.5">
+                  {onRequestMapNetworkDrive && (
                     <button
                       type="button"
-                      disabled={isLoadingNetwork}
-                      onClick={() => onRefresh()}
-                      aria-label={t.pane.networkRefreshTooltip}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-cyan-500/50 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-50"
+                      onClick={() => onRequestMapNetworkDrive()}
+                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-indigo-500/40 bg-indigo-950/45 px-2.5 text-[11px] font-medium text-indigo-200 transition-colors hover:border-indigo-400/70 hover:bg-indigo-900/50 hover:text-indigo-100"
                     >
-                      <RotateCw className={`h-3.5 w-3.5 ${isLoadingNetwork ? 'animate-spin text-cyan-400' : ''}`} />
+                      <HardDrive className="h-3.5 w-3.5" />
+                      <span>{t.pane.networkMapDriveButton}</span>
                     </button>
-                  </Tooltip>
-                )}
+                  )}
+                  {onRefresh && (
+                    <Tooltip label={t.pane.networkRefreshTooltip} placement="bottom">
+                      <button
+                        type="button"
+                        disabled={isLoadingNetwork}
+                        onClick={() => onRefresh()}
+                        aria-label={t.pane.networkRefreshTooltip}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-cyan-500/50 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-50"
+                      >
+                        <RotateCw className={`h-3.5 w-3.5 ${isLoadingNetwork ? 'animate-spin text-cyan-400' : ''}`} />
+                      </button>
+                    </Tooltip>
+                  )}
+                </div>
               </div>
               <form
                 onSubmit={event => {
@@ -4224,6 +4263,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             </span>
                             <span className="mt-1 block truncate text-[10px] text-neutral-400">{resource.path}</span>
                           </span>
+                          {resource.kind !== 'mapped-drive' && onRequestMapNetworkDrive && isUncPath(resource.path) && !isUncServerRoot(resource.path) && (
+                            <Tooltip label={t.pane.networkMapShareTooltip} placement="top">
+                              <button
+                                type="button"
+                                aria-label={`${t.pane.networkMapShareTooltip}: ${resource.name}`}
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  onRequestMapNetworkDrive(resource.path);
+                                }}
+                                className="rounded p-1 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-800 hover:text-indigo-300 group-hover:opacity-100 focus-visible:opacity-100"
+                              >
+                                <HardDrive className="h-3.5 w-3.5" />
+                              </button>
+                            </Tooltip>
+                          )}
                           {onRequestNetworkAuth && isUncPath(resource.path) && (
                             <Tooltip label={t.pane.networkAuthenticateTooltip} placement="top">
                               <button
@@ -4236,6 +4290,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
                                 className="rounded p-1 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-800 hover:text-cyan-300 group-hover:opacity-100 focus-visible:opacity-100"
                               >
                                 <KeyRound className="h-3.5 w-3.5" />
+                              </button>
+                            </Tooltip>
+                          )}
+                          {resource.kind === 'mapped-drive' && resource.driveLetter && onDisconnectNetworkDrive && (
+                            <Tooltip label={t.pane.networkDisconnectDriveTooltip.replace('{drive}', resource.driveLetter)} placement="top">
+                              <button
+                                type="button"
+                                aria-label={t.pane.networkDisconnectDriveTooltip.replace('{drive}', resource.driveLetter)}
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  onDisconnectNetworkDrive(resource.driveLetter!);
+                                }}
+                                className="rounded p-1 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-800 hover:text-rose-300 group-hover:opacity-100 focus-visible:opacity-100"
+                              >
+                                <Unplug className="h-3.5 w-3.5" />
                               </button>
                             </Tooltip>
                           )}

@@ -39,9 +39,12 @@ import {
   Wrench,
   Star,
   CornerDownLeft,
+  HardDrive,
+  Unplug,
 } from 'lucide-react';
 import { ArchiveExtractionMode, ContextMenuPosition, FileItem, GroupByField, SortField, SortOrder, ViewMode } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
+import { isUncPath, isUncServerRoot } from '../utils/fileSystem';
 import type { NewItemKind } from './CreateItemModal';
 import { Tooltip } from './Tooltip';
 
@@ -63,6 +66,9 @@ interface ContextMenuProps {
   onOpenInNewTab?: (item: FileItem) => void;
   onOpenProperties?: (item: FileItem) => void;
   onAddToQuickAccess: (item: FileItem) => void;
+  onMapNetworkDrive?: (item: FileItem) => void;
+  onDisconnectNetworkDrive?: (item: FileItem) => void;
+  isMappedNetworkDriveItem?: (item: FileItem) => boolean;
   onCustomizeFolderIcon?: (item: FileItem) => void;
   onClearFilter: () => void;
   onViewModeChange: (mode: ViewMode) => void;
@@ -121,6 +127,9 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onOpenInNewTab,
   onOpenProperties,
   onAddToQuickAccess,
+  onMapNetworkDrive,
+  onDisconnectNetworkDrive,
+  isMappedNetworkDriveItem,
   onCustomizeFolderIcon,
   onClearFilter,
   onViewModeChange,
@@ -416,6 +425,20 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                         label={t.contextMenu.addToQuickAccess}
                         onClick={() => { onAddToQuickAccess(item); onClose(); }}
                       />
+                      {onMapNetworkDrive && isUncPath(item.path) && !isUncServerRoot(item.path) && (
+                        <MenuButton
+                          icon={<HardDrive className="h-4 w-4 text-indigo-300" />}
+                          label={t.contextMenu.mapNetworkDrive}
+                          onClick={() => { onMapNetworkDrive(item); onClose(); }}
+                        />
+                      )}
+                      {onDisconnectNetworkDrive && isMappedNetworkDriveItem?.(item) && (
+                        <MenuButton
+                          icon={<Unplug className="h-4 w-4 text-rose-400" />}
+                          label={t.contextMenu.disconnectNetworkDrive}
+                          onClick={() => { onDisconnectNetworkDrive(item); onClose(); }}
+                        />
+                      )}
                       {onCustomizeFolderIcon && (
                         <MenuButton
                           icon={<Palette className="h-4 w-4 text-pink-400" />}

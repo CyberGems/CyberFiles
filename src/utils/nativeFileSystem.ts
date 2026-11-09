@@ -517,3 +517,38 @@ export function parseNetworkAuthFailedError(error: unknown): { code?: number; ra
   const code = Number.parseInt(match[1], 10);
   return { code: Number.isFinite(code) ? code : undefined, raw };
 }
+
+export async function mapNativeNetworkDrive(options: {
+  remotePath: string;
+  driveLetter: string;
+  reconnectAtSignIn: boolean;
+  username?: string;
+  password?: string;
+  rememberCredentials?: boolean;
+}): Promise<string> {
+  if (!isTauriDesktop()) return `${options.driveLetter.replace(/[:\\]+$/, '')}:\\`;
+  return invoke<string>('map_network_drive', {
+    remotePath: options.remotePath,
+    driveLetter: options.driveLetter,
+    reconnectAtSignIn: options.reconnectAtSignIn,
+    username: options.username?.trim() || null,
+    password: options.password ?? null,
+    rememberCredentials: options.rememberCredentials === true,
+  });
+}
+
+export async function disconnectNativeNetworkDrive(driveLetter: string, force = false): Promise<void> {
+  if (!isTauriDesktop()) return;
+  await invoke('disconnect_network_drive', {
+    driveLetter,
+    force,
+  });
+}
+
+export function parseNetworkMapFailedError(error: unknown): { code?: number; raw: string } {
+  const raw = error instanceof Error ? error.message : String(error ?? '');
+  const match = raw.match(/NETWORK_MAP_FAILED:(\d+):/);
+  if (!match) return { raw };
+  const code = Number.parseInt(match[1], 10);
+  return { code: Number.isFinite(code) ? code : undefined, raw };
+}

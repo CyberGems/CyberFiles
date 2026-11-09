@@ -19,6 +19,7 @@ import {
   Check,
   Clock,
   Network,
+  Unplug,
 } from 'lucide-react';
 import { DriveInfo, FileItem, NETWORK_PATH, QuickAccessItem, QuickAccessSortMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, isPathOnUnavailableDrive, isUncPath, normalizeDriveLetter } from '../utils/fileSystem';
@@ -51,6 +52,7 @@ interface SidebarProps {
   currentPath: string;
   onNavigate: (path: string) => void;
   onOpenDrive?: (path: string) => void;
+  onDisconnectNetworkDrive?: (driveLetter: string) => void;
   windowsSpecialFolders: WindowsSpecialFolder[];
   onOpenWindowsSpecialFolder: (folder: WindowsSpecialFolder) => void;
   recycleBinSupported: boolean;
@@ -75,6 +77,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentPath,
   onNavigate,
   onOpenDrive,
+  onDisconnectNetworkDrive,
   windowsSpecialFolders,
   onOpenWindowsSpecialFolder,
   recycleBinSupported,
@@ -665,22 +668,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
               const isSelected = currentPath.startsWith(drive.letter);
 
               return (
-                <button
+                <div
                   key={drive.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => onOpenDrive ? onOpenDrive(drive.letter + '\\') : onNavigate(drive.letter + '\\')}
-                  className={`w-full text-left p-2 rounded-lg border transition-all ${
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      if (onOpenDrive) onOpenDrive(drive.letter + '\\');
+                      else onNavigate(drive.letter + '\\');
+                    }
+                  }}
+                  className={`group w-full text-left p-2 rounded-lg border transition-all cursor-pointer ${
                     isSelected
                       ? 'bg-neutral-900 border-cyan-500/40 text-neutral-100 shadow-sm'
                       : 'bg-neutral-950/60 border-neutral-800/60 text-neutral-300 hover:bg-neutral-900/70 hover:border-neutral-700'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <HardDrive className={`w-3.5 h-3.5 ${isSelected ? 'text-cyan-400' : 'text-neutral-400'}`} />
-                      <span className="font-sans font-bold text-xs">{drive.letter}</span>
+                  <div className="flex items-center justify-between mb-1.5 gap-1">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      {drive.type === 'network' ? (
+                        <Network className={`w-3.5 h-3.5 flex-shrink-0 ${isSelected ? 'text-indigo-300' : 'text-indigo-400/80'}`} />
+                      ) : (
+                        <HardDrive className={`w-3.5 h-3.5 flex-shrink-0 ${isSelected ? 'text-cyan-400' : 'text-neutral-400'}`} />
+                      )}
+                      <span className="font-sans font-bold text-xs flex-shrink-0">{drive.letter}</span>
                       <span className="text-[11px] text-neutral-400 truncate max-w-[100px]">{drive.label}</span>
                     </div>
-                    <span className="text-[10px] text-neutral-400 font-sans">{hasCapacity ? `${usedPercentage}%` : '—'}</span>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {drive.type === 'network' && onDisconnectNetworkDrive && (
+                        <Tooltip label={t.pane.networkDisconnectDriveTooltip.replace('{drive}', drive.letter)} placement="right">
+                          <button
+                            type="button"
+                            aria-label={t.pane.networkDisconnectDriveTooltip.replace('{drive}', drive.letter)}
+                            onClick={event => {
+                              event.stopPropagation();
+                              onDisconnectNetworkDrive(drive.letter);
+                            }}
+                            className="rounded p-0.5 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-800 hover:text-rose-300 group-hover:opacity-100 focus-visible:opacity-100"
+                          >
+                            <Unplug className="w-3 h-3" />
+                          </button>
+                        </Tooltip>
+                      )}
+                      <span className="text-[10px] text-neutral-400 font-sans">{hasCapacity ? `${usedPercentage}%` : '—'}</span>
+                    </div>
                   </div>
 
                   {/* Usage Meter Bar */}
@@ -697,7 +730,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <span>{t.sidebar.freeOf.replace('{free}', hasCapacity ? formatFileSize(drive.totalBytes - drive.usedBytes) : '—')}</span>
                     <span>{t.sidebar.totalOf.replace('{total}', hasCapacity ? formatFileSize(drive.totalBytes) : '—')}</span>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>}

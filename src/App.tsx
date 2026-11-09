@@ -76,6 +76,7 @@ import { TabContextMenu, type TabMenuAction } from './components/TabContextMenu'
 import { TabStripContextMenu, type TabStripMenuAction } from './components/TabStripContextMenu';
 import { CreateItemModal, type NewItemKind } from './components/CreateItemModal';
 import { CreateZipModal } from './components/CreateZipModal';
+import { MapNetworkDriveModal } from './components/MapNetworkDriveModal';
 import { NetworkCredentialsModal } from './components/NetworkCredentialsModal';
 import { TextInputContextMenu } from './components/TextInputContextMenu';
 import { TooltipPreferenceContext } from './components/Tooltip';
@@ -119,7 +120,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { authenticateNativeNetworkResource, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, mapNativeNetworkDrive, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, parseNetworkMapFailedError, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { normalizeListerTextScale, type ListerTextScale } from './utils/listerTextScale';
 import { fetchLaunchContext, getLaunchTargetPath } from './utils/systemIntegration';
@@ -1326,6 +1327,8 @@ export default function App() {
   const [pendingZipCreation, setPendingZipCreation] = useState<{ sourcePaths: string[]; targetPath: string; pane: 'left' | 'right'; defaultName: string } | null>(null);
   const [pendingNetworkAuth, setPendingNetworkAuth] = useState<{ path: string; pane: 'left' | 'right'; errorMessage?: string | null } | null>(null);
   const [isNetworkAuthBusy, setIsNetworkAuthBusy] = useState(false);
+  const [pendingMapNetworkDrive, setPendingMapNetworkDrive] = useState<{ initialPath: string; pane: 'left' | 'right'; errorMessage?: string | null } | null>(null);
+  const [isMapNetworkDriveBusy, setIsMapNetworkDriveBusy] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -2949,6 +2952,66 @@ export default function App() {
       setIsNetworkAuthBusy(false);
     }
   }, [handleNavigate, isNetworkAuthBusy, pendingNetworkAuth, refreshNetworkResources, rememberNetworkHost, showToast, t.networkAuthModal.authFailedAccessDenied, t.networkAuthModal.authFailedConflict, t.networkAuthModal.authFailedGeneric, t.networkAuthModal.authFailedLogon, t.networkAuthModal.connectedToast]);
+
+  const handleRequestMapNetworkDrive = useCallback((initialUncPath = '', targetPane: 'left' | 'right' = activePane) => {
+    setPendingMapNetworkDrive({ initialPath: initialUncPath, pane: targetPane, errorMessage: null });
+  }, [activePane]);
+
+  const handleSubmitMapNetworkDrive = useCallback(async (values: {
+    driveLetter: string;
+    remotePath: string;
+    reconnectAtSignIn: boolean;
+    username?: string;
+    password?: string;
+    rememberCredentials?: boolean;
+  }) => {
+    if (!pendingMapNetworkDrive || isMapNetworkDriveBusy) return;
+    setIsMapNetworkDriveBusy(true);
+    setPendingMapNetworkDrive(previous => (previous ? { ...previous, errorMessage: null } : null));
+    try {
+      const mappedRootPath = await mapNativeNetworkDrive(values);
+      const targetPane = pendingMapNetworkDrive.pane;
+      rememberNetworkHost(values.remotePath);
+      setPendingMapNetworkDrive(null);
+      await refreshSystemHome(true);
+      void refreshNetworkResources();
+      showToast(
+        t.mapNetworkDriveModal.mappedToast
+          .replace('{drive}', values.driveLetter)
+          .replace('{path}', values.remotePath),
+      );
+      void handleNavigate(mappedRootPath, targetPane, true);
+    } catch (error) {
+      const parsed = parseNetworkMapFailedError(error);
+      const code = parsed.code;
+      const errorMessage = code === 85 || code === 1202
+        ? t.mapNetworkDriveModal.errorDriveInUse
+        : code === 53 || code === 67 || code === 1203
+          ? t.mapNetworkDriveModal.errorPathNotFound
+          : code === 1219
+            ? t.mapNetworkDriveModal.errorConflict
+            : code === 5 || code === 86 || code === 1244 || code === 1326 || code === 1327 || code === 1330 || code === 1331 || code === 1909 || code === 2202
+              ? t.mapNetworkDriveModal.errorAuthFailed
+              : t.mapNetworkDriveModal.errorGeneric.replace('{code}', code !== undefined ? String(code) : parsed.raw);
+      setPendingMapNetworkDrive(previous => (previous ? { ...previous, errorMessage } : null));
+    } finally {
+      setIsMapNetworkDriveBusy(false);
+    }
+  }, [handleNavigate, isMapNetworkDriveBusy, pendingMapNetworkDrive, refreshNetworkResources, refreshSystemHome, rememberNetworkHost, showToast, t.mapNetworkDriveModal.errorAuthFailed, t.mapNetworkDriveModal.errorConflict, t.mapNetworkDriveModal.errorDriveInUse, t.mapNetworkDriveModal.errorGeneric, t.mapNetworkDriveModal.errorPathNotFound, t.mapNetworkDriveModal.mappedToast]);
+
+  const handleDisconnectNetworkDrive = useCallback(async (driveLetterInput: string) => {
+    const normalized = normalizeDriveLetter(driveLetterInput);
+    if (!normalized) return;
+    try {
+      await disconnectNativeNetworkDrive(normalized, false);
+      const latestDrives = await refreshSystemHome(true);
+      evictUnavailableDriveState(latestDrives);
+      void refreshNetworkResources();
+      showToast(t.mapNetworkDriveModal.disconnectedToast.replace('{drive}', normalized));
+    } catch {
+      showToast(t.mapNetworkDriveModal.disconnectFailedToast.replace('{drive}', normalized));
+    }
+  }, [evictUnavailableDriveState, refreshNetworkResources, refreshSystemHome, showToast, t.mapNetworkDriveModal.disconnectFailedToast, t.mapNetworkDriveModal.disconnectedToast]);
 
   const lastSessionReloadHandled = useRef(0);
   useEffect(() => {
@@ -5579,7 +5642,7 @@ export default function App() {
           isCloseDialogOpen || isSettingsOpen || isAboutOpen || isSearchOpen || isShortcutsOpen ||
           isBatchRenameOpen || isWorkspaceManagerOpen || isUnsavedWorkspaceChangesOpen ||
           isOnboardingOpen || isEmptyRecycleBinConfirmOpen || pendingDeleteItems.length > 0 ||
-          pendingCreateItem || pendingZipCreation || pendingNetworkAuth || renameRequest || contextMenuPos
+          pendingCreateItem || pendingZipCreation || pendingNetworkAuth || pendingMapNetworkDrive || renameRequest || contextMenuPos
         ) return;
         setIsCommandPaletteOpen(open => !open);
         return;
@@ -5607,14 +5670,14 @@ export default function App() {
           isCloseDialogOpen || isSettingsOpen || isAboutOpen || isSearchOpen || isShortcutsOpen ||
           isCommandPaletteOpen || isBatchRenameOpen || isWorkspaceManagerOpen ||
           isUnsavedWorkspaceChangesOpen || isOnboardingOpen || isEmptyRecycleBinConfirmOpen ||
-          pendingDeleteItems.length > 0 || pendingCreateItem || pendingZipCreation || pendingNetworkAuth || renameRequest || contextMenuPos
+          pendingDeleteItems.length > 0 || pendingCreateItem || pendingZipCreation || pendingNetworkAuth || pendingMapNetworkDrive || renameRequest || contextMenuPos
         ) return;
         setIsOperationsCenterOpen(true);
         return;
       }
 
       if (isCommandPaletteOpen) return;
-      if (isCloseDialogOpen || isSettingsOpen || isAboutOpen || isSearchOpen || isShortcutsOpen || isBatchRenameOpen || pendingDeleteItems.length > 0 || pendingNetworkAuth || isFileOperationBusy) return;
+      if (isCloseDialogOpen || isSettingsOpen || isAboutOpen || isSearchOpen || isShortcutsOpen || isBatchRenameOpen || pendingDeleteItems.length > 0 || pendingNetworkAuth || pendingMapNetworkDrive || isFileOperationBusy) return;
 
       // If typing inside an input/textarea, don't hijack keys
       if (
@@ -6373,6 +6436,7 @@ export default function App() {
           currentPath={currentTab.currentPath}
           onNavigate={(path) => { handleNavigate(path, activePane, false, sidebarLocationsOpenInNewTab); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           onOpenDrive={path => { handleOpenDrive(path); if (isCompactWindow) setSidebarDrawerOpen(false); }}
+          onDisconnectNetworkDrive={letter => { void handleDisconnectNetworkDrive(letter); }}
           windowsSpecialFolders={windowsSpecialFolders}
           onOpenWindowsSpecialFolder={folder => { handleOpenWindowsSpecialFolder(folder); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           recycleBinSupported={isTauriDesktop()}
@@ -6440,6 +6504,8 @@ export default function App() {
                   savedNetworkHosts={savedNetworkHosts}
                   onConnectNetworkHost={input => handleConnectNetworkHost(input, 'left')}
                   onRequestNetworkAuth={path => handleRequestNetworkAuth(path, 'left')}
+                  onRequestMapNetworkDrive={path => handleRequestMapNetworkDrive(path ?? '', 'left')}
+                  onDisconnectNetworkDrive={letter => { void handleDisconnectNetworkDrive(letter); }}
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
@@ -6525,6 +6591,8 @@ export default function App() {
                   savedNetworkHosts={savedNetworkHosts}
                   onConnectNetworkHost={input => handleConnectNetworkHost(input, 'right')}
                   onRequestNetworkAuth={path => handleRequestNetworkAuth(path, 'right')}
+                  onRequestMapNetworkDrive={path => handleRequestMapNetworkDrive(path ?? '', 'right')}
+                  onDisconnectNetworkDrive={letter => { void handleDisconnectNetworkDrive(letter); }}
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
@@ -6611,6 +6679,8 @@ export default function App() {
                   savedNetworkHosts={savedNetworkHosts}
                   onConnectNetworkHost={input => handleConnectNetworkHost(input, 'left')}
                   onRequestNetworkAuth={path => handleRequestNetworkAuth(path, 'left')}
+                  onRequestMapNetworkDrive={path => handleRequestMapNetworkDrive(path ?? '', 'left')}
+                  onDisconnectNetworkDrive={letter => { void handleDisconnectNetworkDrive(letter); }}
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
@@ -6692,6 +6762,8 @@ export default function App() {
                   savedNetworkHosts={savedNetworkHosts}
                   onConnectNetworkHost={input => handleConnectNetworkHost(input, 'right')}
                   onRequestNetworkAuth={path => handleRequestNetworkAuth(path, 'right')}
+                  onRequestMapNetworkDrive={path => handleRequestMapNetworkDrive(path ?? '', 'right')}
+                  onDisconnectNetworkDrive={letter => { void handleDisconnectNetworkDrive(letter); }}
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
@@ -6778,6 +6850,8 @@ export default function App() {
                   savedNetworkHosts={savedNetworkHosts}
                   onConnectNetworkHost={input => handleConnectNetworkHost(input, activePane)}
                   onRequestNetworkAuth={path => handleRequestNetworkAuth(path, activePane)}
+                  onRequestMapNetworkDrive={path => handleRequestMapNetworkDrive(path ?? '', activePane)}
+                  onDisconnectNetworkDrive={letter => { void handleDisconnectNetworkDrive(letter); }}
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
@@ -6936,6 +7010,16 @@ export default function App() {
           }
         }}
         onAddToQuickAccess={handleAddFolderToQuickAccess}
+        onMapNetworkDrive={item => handleRequestMapNetworkDrive(item.path, contextPane)}
+        onDisconnectNetworkDrive={item => { void handleDisconnectNetworkDrive(item.path); }}
+        isMappedNetworkDriveItem={item => {
+          const letter = getPathDriveLetter(item.path);
+          return Boolean(
+            letter &&
+            isWindowsDriveRoot(item.path) &&
+            drives.some(drive => normalizeDriveLetter(drive.letter) === letter && drive.type === 'network'),
+          );
+        }}
         onClearFilter={() => updatePaneTab(contextPane, tab => ({ ...tab, filterQuery: '' }))}
         onViewModeChange={mode => updatePaneTab(contextPane, tab => setTabViewMode(tab, mode))}
         hasSavedFolderStyle={Boolean(savedFolderStyles[folderStylePathKey(contextPaneTab.currentPath)])}
@@ -7025,6 +7109,17 @@ export default function App() {
           isBusy={isNetworkAuthBusy}
           onClose={() => { if (!isNetworkAuthBusy) setPendingNetworkAuth(null); }}
           onSubmit={values => { void handleSubmitNetworkAuth(values); }}
+        />
+      )}
+      {pendingMapNetworkDrive && (
+        <MapNetworkDriveModal
+          key={`${pendingMapNetworkDrive.pane}:${pendingMapNetworkDrive.initialPath}`}
+          initialPath={pendingMapNetworkDrive.initialPath}
+          usedDriveLetters={drives.map(drive => drive.letter)}
+          errorMessage={pendingMapNetworkDrive.errorMessage}
+          isBusy={isMapNetworkDriveBusy}
+          onClose={() => { if (!isMapNetworkDriveBusy) setPendingMapNetworkDrive(null); }}
+          onSubmit={values => { void handleSubmitMapNetworkDrive(values); }}
         />
       )}
       <FileOperationModal
