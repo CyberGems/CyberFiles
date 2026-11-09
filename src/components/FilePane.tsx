@@ -40,7 +40,7 @@ import {
 import { DriveInfo, FileItem, FileType, HiddenItemStyle, SortField, TabState, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { listerTextScaleFactor, LISTER_TEXT_SCALE_CSS_VAR, type ListerTextScale } from '../utils/listerTextScale';
-import { formatFileSize, getParentPath, isSameOrDescendantPath, normalizeWindowsPath } from '../utils/fileSystem';
+import { formatFileSize, getParentPath, isPathOnUnavailableDrive, isSameOrDescendantPath, normalizeDriveLetter, normalizeWindowsPath } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { advanceMouseGesturePath, MOUSE_GESTURE_MIN_DISTANCE, type MouseGesturePath } from '../utils/mouseGesture';
@@ -2970,27 +2970,52 @@ export const FilePane: React.FC<FilePaneProps> = ({
     open();
   };
 
+  const availableDriveLetters = React.useMemo(
+    () => new Set(drives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean)),
+    [drives],
+  );
+
   const renderQuickAccessCard = (item: QuickAccessItem) => {
     const customIcon = getCustomFolderIcon(item.path, customFolderIcons ?? {});
     const shortcutId = `quick-access:${item.id}`;
-    const isCurrentLocation = tab.currentPath.toLowerCase() === item.path.toLowerCase();
-    const isSelected = selectedSystemHomeShortcutId === shortcutId || isCurrentLocation;
+    const isOffline = availableDriveLetters.size > 0 && isPathOnUnavailableDrive(item.path, availableDriveLetters);
+    const isCurrentLocation = !isOffline && tab.currentPath.toLowerCase() === item.path.toLowerCase();
+    const isSelected = !isOffline && (selectedSystemHomeShortcutId === shortcutId || isCurrentLocation);
     return (
-      <Tooltip key={item.id} label={item.path} placement="top" boundary=".cyberfiles-file-viewport">
+      <Tooltip
+        key={item.id}
+        label={isOffline ? t.sidebar.quickAccessDriveOfflineHint.replace('{path}', item.path) : item.path}
+        placement="top"
+        boundary=".cyberfiles-file-viewport"
+      >
         <button
           type="button"
+          disabled={isOffline}
           onClick={event => handleSystemHomeShortcutClick(event, shortcutId, () => onNavigate(item.path))}
           onDoubleClick={() => handleSystemHomeShortcutDoubleClick(() => onNavigate(item.path))}
-          aria-label={`${item.name}: ${item.path}`}
+          aria-label={`${item.name}: ${isOffline ? t.sidebar.quickAccessDriveOfflineHint.replace('{path}', item.path) : item.path}`}
           aria-current={isCurrentLocation ? 'location' : undefined}
-          style={{ cursor: singleClickOpens ? 'pointer' : 'default' }}
-          className={`cyberfiles-system-home-card group flex min-h-[68px] w-full min-w-0 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${isSelected ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]' : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'}`}
+          style={{ cursor: isOffline ? 'not-allowed' : singleClickOpens ? 'pointer' : 'default' }}
+          className={`cyberfiles-system-home-card group flex min-h-[68px] w-full min-w-0 items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
+            isOffline
+              ? 'border-neutral-800/60 bg-neutral-950/40 opacity-55'
+              : isSelected
+                ? 'border-cyan-500/60 bg-cyan-950/45 shadow-[0_0_0_1px_rgba(34,211,238,0.12)]'
+                : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'
+          }`}
         >
-          <span data-system-home-icon="folder" className="cyberfiles-system-home-icon flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-amber-300/10 text-amber-300 group-hover:bg-amber-300/15">
+          <span data-system-home-icon="folder" className={`cyberfiles-system-home-icon flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg ${isOffline ? 'bg-neutral-800/50 text-neutral-500' : 'bg-amber-300/10 text-amber-300 group-hover:bg-amber-300/15'}`}>
             {customIcon ? <FolderIconRenderer config={customIcon} size="large" /> : <Folder className="h-7 w-7" />}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="cyberfiles-system-home-name block text-xs font-medium text-neutral-100">{item.name}</span>
+            <span className="flex items-center gap-1.5">
+              <span className={`cyberfiles-system-home-name truncate text-xs font-medium ${isOffline ? 'text-neutral-400' : 'text-neutral-100'}`}>{item.name}</span>
+              {isOffline && (
+                <span className="flex-shrink-0 rounded border border-amber-500/30 bg-amber-950/30 px-1.5 py-0.5 text-[9px] font-medium text-amber-300/90">
+                  {t.sidebar.quickAccessDriveOffline}
+                </span>
+              )}
+            </span>
             <span className="mt-1 block truncate text-[10px] text-neutral-500">{item.path}</span>
           </span>
         </button>

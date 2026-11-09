@@ -5317,12 +5317,20 @@ export default function App() {
       return;
     }
 
+    if (drivesRef.current.length > 0) {
+      const availableLetters = new Set(drivesRef.current.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean));
+      if (isPathOnUnavailableDrive(item.path, availableLetters)) {
+        showToast(t.sidebar.quickAccessDriveOfflineToast.replace('{name}', item.name));
+        return;
+      }
+    }
+
     if (!systemHomeWorkspace.current && nativeRootPath.current && !isSameOrDescendantPath(item.path, nativeRootPath.current)) {
       systemHomeWorkspace.current = true;
       nativeRootPath.current = SYSTEM_HOME_PATH;
     }
     void handleNavigate(item.path, activePane, false, openInNewTab);
-  }, [activePane, handleNavigate, sidebarLocationsOpenInNewTab]);
+  }, [activePane, handleNavigate, showToast, sidebarLocationsOpenInNewTab, t.sidebar.quickAccessDriveOfflineToast]);
 
   const handleRenameCustomQuickAccess = useCallback((id: string, name: string) => {
     setCustomQuickAccess(previous => previous.map(item => item.id === id ? { ...item, name: name.trim().slice(0, 80) } : item));

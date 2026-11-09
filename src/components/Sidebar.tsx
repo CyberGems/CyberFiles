@@ -20,7 +20,7 @@ import {
   Clock,
 } from 'lucide-react';
 import { DriveInfo, FileItem, QuickAccessItem, QuickAccessSortMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
-import { formatFileSize } from '../utils/fileSystem';
+import { formatFileSize, isPathOnUnavailableDrive, normalizeDriveLetter } from '../utils/fileSystem';
 import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
 import { FolderIconRenderer } from './folderIconsData';
@@ -106,6 +106,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [folderTreeStates, setFolderTreeStates] = useState<Record<string, FolderTreeState>>({});
   const [quickAccessSortOpen, setQuickAccessSortOpen] = useState(false);
   const quickAccessSortRef = React.useRef<HTMLDivElement>(null);
+  const availableDriveLetters = React.useMemo(
+    () => new Set(drives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean)),
+    [drives],
+  );
+
+  useEffect(() => {
+    if (availableDriveLetters.size === 0) return;
+    setExpandedFolderPaths(previous => {
+      if (![...previous].some(path => isPathOnUnavailableDrive(path, availableDriveLetters))) return previous;
+      return new Set([...previous].filter(path => !isPathOnUnavailableDrive(path, availableDriveLetters)));
+    });
+    setFolderTreeStates(previous => {
+      const keys = Object.keys(previous);
+      if (!keys.some(path => isPathOnUnavailableDrive(path, availableDriveLetters))) return previous;
+      return Object.fromEntries(Object.entries(previous).filter(([path]) => !isPathOnUnavailableDrive(path, availableDriveLetters)));
+    });
+  }, [availableDriveLetters]);
 
   const loadFolderTreeChildren = async (path: string, offset = 0) => {
     setFolderTreeStates(previous => {
@@ -486,8 +503,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   );
                 }
 
-                const canExpandTree = isTauriDesktop() && item.path !== SYSTEM_HOME_PATH;
-                const treeExpanded = expandedFolderPaths.has(item.path);
+                const isOffline = availableDriveLetters.size > 0 && isPathOnUnavailableDrive(item.path, availableDriveLetters);
+                const canExpandTree = isTauriDesktop() && item.path !== SYSTEM_HOME_PATH && !isOffline;
+                const treeExpanded = !isOffline && expandedFolderPaths.has(item.path);
 
                 return (
                   <React.Fragment key={item.id}>
@@ -537,19 +555,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         </button>
                       </Tooltip>
                     )}
-                    <Tooltip label={item.path === SYSTEM_HOME_PATH ? item.name : item.path} placement="right">
+                    <Tooltip
+                      label={
+                        item.path === SYSTEM_HOME_PATH
+                          ? item.name
+                          : isOffline
+                            ? t.sidebar.quickAccessDriveOfflineHint.replace('{path}', item.path)
+                            : item.path
+                      }
+                      placement="right"
+                    >
                       <button
                         type="button"
                         draggable={false}
+                        aria-disabled={isOffline || undefined}
                         onClick={() => item.path === SYSTEM_HOME_PATH || item.isCustom ? onOpenCustomQuickAccess(item) : onNavigate(item.path)}
                         className={`flex min-w-0 flex-1 items-center justify-between rounded-md px-2.5 py-1.5 text-left transition-colors ${
-                          isSelected
-                            ? 'bg-neutral-800/90 text-cyan-300 font-medium'
-                            : 'text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100'
+                          isOffline
+                            ? 'cursor-not-allowed text-neutral-500 opacity-65 hover:bg-neutral-900/40'
+                            : isSelected
+                              ? 'bg-neutral-800/90 text-cyan-300 font-medium'
+                              : 'text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100'
                         }`}
                       >
                         <span className="flex min-w-0 items-center gap-2">
-                          <span className={isSelected ? 'text-cyan-400' : 'text-neutral-400'}>
+                          <span className={isOffline ? 'text-neutral-600' : isSelected ? 'text-cyan-400' : 'text-neutral-400'}>
                             {getCustomFolderIcon(item.path, customFolderIcons ?? {}) ? (
                               <FolderIconRenderer
                                 config={getCustomFolderIcon(item.path, customFolderIcons ?? {})}
@@ -562,11 +592,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           <span className="truncate text-[11px]">{item.name}</span>
                         </span>
 
-                        {item.count !== undefined && (
+                        {isOffline ? (
+                          <span className="ml-1 flex-shrink-0 rounded border border-amber-500/30 bg-amber-950/30 px-1.5 py-0.5 text-[9px] font-medium text-amber-300/90">
+                            {t.sidebar.quickAccessDriveOffline}
+                          </span>
+                        ) : item.count !== undefined ? (
                           <span className="ml-1 flex-shrink-0 rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-[9px] font-sans text-neutral-400">
                             {item.count}
                           </span>
-                        )}
+                        ) : null}
                       </button>
                     </Tooltip>
 
