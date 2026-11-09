@@ -319,14 +319,14 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
 
 /* Category separators keep toolbar sections readable without boxing every
    button. A separator vanishes when an adjacent group folds into the overflow
-   menu, so orphan lines never sit next to a hidden block. */
+   menu, so orphan lines never sit next to a hidden block. Full control height
+   and a subdued tone, so it divides without demanding attention. */
 .command-bar-actions > .command-bar-separator {
   flex-shrink: 0;
-  align-self: center;
+  align-self: stretch;
   width: 1px;
-  height: 30px;
-  margin: 0 4px;
-  background: linear-gradient(180deg, transparent 0%, var(--color-neutral-700) 22%, var(--color-neutral-700) 78%, transparent 100%);
+  margin: 2px 7px 2px 7px;
+  background: var(--color-neutral-800);
 }
 
 .command-bar-actions > .command-bar-collapsed + .command-bar-separator {
@@ -365,7 +365,9 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   color: var(--color-neutral-100);
 }
 
-/* Split controls: primary action and its caret share the same frame. */
+/* Split controls: primary action and its caret share the same frame. Both
+   halves highlight together on one shared hover; the divider between them only
+   exists while hovered/expanded, in a light tone as the anchor point. */
 .command-split {
   padding: 0;
   gap: 0;
@@ -374,11 +376,17 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   background: transparent;
   box-shadow: none;
 }
-/* Only an open dropdown keeps a frame, so the anchor of the floating menu is
-   visible while the menu is up. */
+.command-split:is(:hover, [data-expanded='true']) {
+  background: var(--color-neutral-800);
+}
+/* Fully disabled splits never light up on hover. */
+.command-split:is(:hover):not(:has(> .command-split-main:enabled)):not(:has(> .command-split-caret:enabled)) {
+  background: transparent;
+}
+/* Only an open dropdown keeps the frame treatment, so the anchor of the
+   floating menu stays visible while the menu is up. */
 .command-split[data-expanded='true'] {
   border-color: var(--color-neutral-700);
-  background: var(--color-neutral-900);
 }
 
 /* The label direction applies to the primary half, never to the frame itself. */
@@ -419,11 +427,6 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   padding: 0 6px;
 }
 
-.command-split > .command-split-main:hover:not(:disabled) {
-  background: var(--color-neutral-800);
-  color: var(--color-neutral-100);
-}
-
 .command-split > .command-split-main:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -434,14 +437,18 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   place-items: center;
   width: 22px;
   border: 0;
-  border-left: 1px solid var(--color-neutral-800);
+  /* The divider is reserved for hover/expanded and light-colored: it marks
+     where the menu opens without adding a permanent line. */
+  border-left: 1px solid transparent;
   background: transparent;
   color: var(--color-neutral-400);
   transition: background-color 0.14s ease, color 0.14s ease;
 }
 
+.command-split:is(:hover, [data-expanded='true']) > .command-split-caret {
+  border-left-color: rgba(255, 255, 255, 0.35);
+}
 .command-split > .command-split-caret:is(:hover, [aria-expanded='true']):not(:disabled) {
-  background: var(--color-neutral-800);
   color: var(--color-neutral-100);
 }
 
@@ -465,17 +472,30 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   background: linear-gradient(180deg, #174764 0%, #0d3047 100%);
 }
 
-html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split[data-expanded='true'] {
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split {
+  border-color: transparent;
+  background: transparent;
+}
+
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split:is(:hover, [data-expanded='true']) {
   border-color: #36718f;
-  background: linear-gradient(180deg, rgba(20, 55, 75, 0.72) 0%, rgba(9, 31, 46, 0.8) 100%);
+  background: linear-gradient(180deg, #174764 0%, #0d3047 100%);
+}
+
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split:is(:hover):not(:has(> .command-split-main:enabled)):not(:has(> .command-split-caret:enabled)) {
+  border-color: transparent;
+  background: transparent;
 }
 
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split > .command-split-caret {
-  border-left-color: #1f465e;
+  border-left-color: transparent;
+}
+
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split:is(:hover, [data-expanded='true']) > .command-split-caret {
+  border-left-color: rgba(125, 211, 252, 0.55);
 }
 
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split > .command-split-caret:is(:hover, [aria-expanded='true']):not(:disabled) {
-  background: linear-gradient(180deg, #174764 0%, #0d3047 100%);
   color: #a5f3fc;
 }
 
