@@ -1002,6 +1002,10 @@ export default function App() {
   const [toastSequence, setToastSequence] = useState(0);
   const toastSequenceRef = useRef(0);
   const toastTimerRef = useRef<number | null>(null);
+  /* Set while a drive change is being processed: folder listing failures in
+     that window are the removal itself, not a real read error, so the generic
+     "could not read this folder" toast stays quiet. */
+  const suppressFolderErrorRef = useRef(false);
 
   const showToast = useCallback((msg: string, detail?: string) => {
     if (!notificationBannersEnabled) return;
@@ -2611,7 +2615,9 @@ export default function App() {
           ...previous,
           [pathKey]: { ...(previous[pathKey] || { nextOffset: 0, hasMore: false }), loading: false },
         }));
-        showToast(language === 'es' ? 'No se pudo leer esta carpeta.' : 'This folder could not be read.');
+        if (!suppressFolderErrorRef.current) {
+          showToast(language === 'es' ? 'No se pudo leer esta carpeta.' : 'This folder could not be read.');
+        }
       }
     } finally {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
@@ -2708,6 +2714,8 @@ export default function App() {
   activeLeftTabIndexRef.current = activeLeftTabIndex;
   const activeRightTabIndexRef = useRef(activeRightTabIndex);
   activeRightTabIndexRef.current = activeRightTabIndex;
+  const thisPcTitleRef = useRef(t.sidebar.thisPc);
+  thisPcTitleRef.current = t.sidebar.thisPc;
 
   const launchPathHandledRef = useRef(false);
   useEffect(() => {
@@ -2753,7 +2761,16 @@ export default function App() {
       void listen('drives-changed', () => {
         void (async () => {
           const previousLetters = new Set(drivesRef.current.map(drive => drive.letter.toUpperCase()));
-          const nextDrives = await refreshSystemHomeRef.current();
+          /* Listing failures raised while the drive set is changing are the
+             removal itself, not real read errors: keep the generic folder
+             error toast quiet for this window. */
+          suppressFolderErrorRef.current = true;
+          let nextDrives: DriveInfo[] = [];
+          try {
+            nextDrives = await refreshSystemHomeRef.current();
+          } finally {
+            suppressFolderErrorRef.current = false;
+          }
           const nextLetters = new Set(nextDrives.map(drive => drive.letter.toUpperCase()));
           const language = languageRef.current;
           const added = [...nextLetters].filter(letter => !previousLetters.has(letter));
@@ -2764,18 +2781,38 @@ export default function App() {
           if (removed.length > 0) {
             showToast(language === 'es' ? `Unidad retirada: ${removed.join(', ')}` : `Drive removed: ${removed.join(', ')}`);
           }
-          /* A tab left inside a drive that is gone would only show a listing
-             error: send it back to This PC immediately. */
-          const gonePrefixes = removed.map(letter => `${letter.toLowerCase()}:`);
+          /* Drive letters come as "E:", so a removed "E:" matches any path
+             under that volume. Every tab left inside it goes back to This PC:
+             the active ones navigate right away, inactive ones are corrected
+             in place. The removed path stays in each tab history so Forward
+             can return once the drive is reconnected. */
+          const gonePrefixes = removed.map(letter => `${letter.toLowerCase()}:\\`);
           const panes: Array<'left' | 'right'> = ['left', 'right'];
           for (const pane of panes) {
-            const tab = pane === 'left' ? leftTabsRef.current[activeLeftTabIndexRef.current] : rightTabsRef.current[activeRightTabIndexRef.current];
-            const path = tab?.currentPath;
-            if (!path || path === SYSTEM_HOME_PATH || path === RECYCLE_BIN_PATH || path === RECENT_PATH) continue;
-            const normalized = normalizeWindowsPath(path).toLowerCase();
-            if (gonePrefixes.some(prefix => normalized.startsWith(prefix))) {
-              handleNavigateRef.current(SYSTEM_HOME_PATH, pane, true);
-            }
+            const tabs = pane === 'left' ? leftTabsRef.current : rightTabsRef.current;
+            const activeIndex = pane === 'left' ? activeLeftTabIndexRef.current : activeRightTabIndexRef.current;
+            const updateTabs = pane === 'left' ? setLeftTabs : setRightTabs;
+            const affected = tabs.filter(tab => {
+              const path = tab.currentPath;
+              if (!path || path === SYSTEM_HOME_PATH || path === RECYCLE_BIN_PATH || path === RECENT_PATH) return false;
+              const normalized = normalizeWindowsPath(path).toLowerCase();
+              return gonePrefixes.some(prefix => normalized.startsWith(prefix));
+            });
+            if (affected.length === 0) continue;
+            const affectedIds = new Set(affected.map(tab => tab.id));
+            updateTabs(previous => previous.map(tab => {
+              if (!affectedIds.has(tab.id)) return tab;
+              const history = [...tab.history.slice(0, tab.historyIndex + 1), SYSTEM_HOME_PATH].slice(-MAX_TAB_HISTORY_ENTRIES);
+              return {
+                ...tab,
+                currentPath: SYSTEM_HOME_PATH,
+                title: thisPcTitleRef.current,
+                history,
+                historyIndex: history.length - 1,
+                selectedIds: [],
+                focusedId: null,
+              };
+            }));
           }
         })();
       }).then(fn => {
@@ -2788,6 +2825,37 @@ export default function App() {
       unlisten?.();
     };
   }, []);
+
+  /* A session saved inside a drive that is no longer present would reopen an
+     empty lister: as soon as the first drive list arrives, tabs pointing at a
+     missing volume are moved back to This PC. */
+  const drivesSanitizedRef = useRef(false);
+  useEffect(() => {
+    if (!isTauriDesktop() || drivesSanitizedRef.current) return;
+    /* Every Windows machine has at least one drive, so an empty list means
+       the first real load has not landed yet: sanitizing now would send every
+       tab to This PC on a false premise. */
+    if (systemHomeLoading || drives.length === 0) return;
+    drivesSanitizedRef.current = true;
+    const available = new Set(drives.map(drive => drive.letter.toUpperCase()));
+    const sanitize = (tabs: TabState[]) => tabs.map(tab => {
+      const path = tab.currentPath;
+      if (!path || path === SYSTEM_HOME_PATH || path === RECYCLE_BIN_PATH || path === RECENT_PATH) return tab;
+      const match = normalizeWindowsPath(path).match(/^([A-Z]):/i);
+      if (!match || available.has(match[1].toUpperCase())) return tab;
+      return {
+        ...tab,
+        currentPath: SYSTEM_HOME_PATH,
+        title: t.sidebar.thisPc,
+        history: [SYSTEM_HOME_PATH],
+        historyIndex: 0,
+        selectedIds: [],
+        focusedId: null,
+      };
+    });
+    setLeftTabs(sanitize);
+    setRightTabs(sanitize);
+  }, [drives, systemHomeLoading, t.sidebar.thisPc]);
 
   useEffect(() => {
     if (!isTauriDesktop()) return;
