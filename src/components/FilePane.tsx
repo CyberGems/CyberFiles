@@ -30,6 +30,8 @@ import {
   Disc3,
   Network,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Clock,
   Trash2,
@@ -920,6 +922,76 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const viewportRef = useRef<HTMLDivElement>(null);
   const horizontalTabListRef = useRef<HTMLDivElement>(null);
   const verticalTabListRef = useRef<HTMLDivElement>(null);
+  /* Overflow state of the horizontal tab strip: it decides whether the add-tab
+     button sits inline after the last tab (room to spare) or stays anchored at
+     the right edge with scroll arrows and the tabs list (strip full). */
+  const [tabStripScroll, setTabStripScroll] = useState({ overflowing: false, canScrollLeft: false, canScrollRight: false });
+  const [tabsListOpen, setTabsListOpen] = useState(false);
+  const [tabsListPosition, setTabsListPosition] = useState({ top: 0, left: 0 });
+  const tabsListButtonRef = useRef<HTMLButtonElement>(null);
+  const scrollTabStrip = (direction: -1 | 1) => {
+    const el = horizontalTabListRef.current;
+    if (!el) return;
+    el.scrollBy({ left: direction * Math.max(180, Math.round(el.clientWidth * 0.5)), behavior: 'smooth' });
+  };
+  const toggleTabsList = () => {
+    if (tabsListOpen) {
+      setTabsListOpen(false);
+      return;
+    }
+    const rect = tabsListButtonRef.current?.getBoundingClientRect();
+    if (rect) setTabsListPosition({ top: rect.bottom + 6, left: Math.max(8, rect.right - 256) });
+    setTabsListOpen(true);
+  };
+  useEffect(() => {
+    const el = horizontalTabListRef.current;
+    if (!el) return;
+    const measure = () => {
+      /* Tabs only, so the inline add button can never flip this measurement back
+         and forth: the last tab's layout box against the visible width decides. */
+      const tabEls = el.querySelectorAll<HTMLElement>('[data-folder-tab]');
+      const last = tabEls[tabEls.length - 1];
+      const overflowing = last ? last.offsetLeft + last.offsetWidth > el.clientWidth + 1 : false;
+      setTabStripScroll({
+        overflowing,
+        canScrollLeft: el.scrollLeft > 1,
+        canScrollRight: overflowing && el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    el.addEventListener('scroll', measure, { passive: true });
+    return () => {
+      observer.disconnect();
+      el.removeEventListener('scroll', measure);
+    };
+  }, [tabs, tabStripPosition, tabStripScroll.overflowing]);
+  useEffect(() => {
+    if (!tabsListOpen) return;
+    const closeTabsList = () => setTabsListOpen(false);
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Element && event.target.closest('[data-tabs-list-root="true"]')) return;
+      closeTabsList();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeTabsList();
+      tabsListButtonRef.current?.focus();
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    horizontalTabListRef.current?.addEventListener('scroll', closeTabsList);
+    window.addEventListener('resize', closeTabsList);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+      horizontalTabListRef.current?.removeEventListener('scroll', closeTabsList);
+      window.removeEventListener('resize', closeTabsList);
+    };
+  }, [tabsListOpen]);
   const lastScrolledFocusedIdRef = useRef<string | null>(null);
   const columnHeadersRef = useRef<HTMLDivElement>(null);
   const horizontalScrollContainerRef = useRef<HTMLDivElement>(null);
@@ -3452,10 +3524,23 @@ export const FilePane: React.FC<FilePaneProps> = ({
         onDoubleClick={handleTabStripDoubleClick}
         onContextMenu={handleTabStripContextMenu}
       >
+        {tabStripScroll.overflowing && (
+          <Tooltip label={t.pane.tabStripScrollBack} placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
+            <button
+              type="button"
+              aria-label={t.pane.tabStripScrollBack}
+              disabled={!tabStripScroll.canScrollLeft}
+              onClick={() => scrollTabStrip(-1)}
+              className="mr-0.5 inline-flex h-7 w-7 shrink-0 self-center items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300 disabled:pointer-events-none disabled:opacity-30"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          </Tooltip>
+        )}
         <div
           ref={horizontalTabListRef}
           data-tab-strip-space="true"
-          className={`cyberfiles-tab-scroll flex h-full min-w-0 flex-1 ${tabStripPosition === 'bottom' ? 'items-center' : 'items-end'} gap-0.5 overflow-x-auto overflow-y-hidden scroll-smooth`}
+          className={`cyberfiles-tab-scroll relative flex h-full min-w-0 flex-1 ${tabStripPosition === 'bottom' ? 'items-center' : 'items-end'} gap-0.5 overflow-x-auto overflow-y-hidden scroll-smooth`}
           onWheel={event => {
             if (event.currentTarget.scrollWidth <= event.currentTarget.clientWidth + 1 || event.deltaY === 0 || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
             event.preventDefault();
@@ -3464,21 +3549,107 @@ export const FilePane: React.FC<FilePaneProps> = ({
           }}
         >
           {tabs.map((tabItem, idx) => renderFolderTab(tabItem, idx, false))}
+          {showNewTabButton && !tabStripScroll.overflowing && <Tooltip label={t.pane.addTab} shortcut="Ctrl+T" placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
+            <button
+              type="button"
+              aria-label={t.pane.addTab}
+              onClick={(event) => {
+                event.stopPropagation();
+                onActivate();
+                onAddTab('button');
+              }}
+              className={`${tabStripPosition === 'bottom' ? 'self-center' : 'self-end'} ml-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300`}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </Tooltip>}
         </div>
-        {showNewTabButton && <Tooltip label={t.pane.addTab} shortcut="Ctrl+T" placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
-          <button
-            type="button"
-            aria-label={t.pane.addTab}
-            onClick={(event) => {
-              event.stopPropagation();
-              onActivate();
-              onAddTab('button');
-            }}
-            className="ml-1 inline-flex h-7 w-7 shrink-0 self-center items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300"
+        {tabStripScroll.overflowing && (
+          <>
+            <Tooltip label={t.pane.tabStripScrollForward} placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
+              <button
+                type="button"
+                aria-label={t.pane.tabStripScrollForward}
+                disabled={!tabStripScroll.canScrollRight}
+                onClick={() => scrollTabStrip(1)}
+                className="ml-0.5 inline-flex h-7 w-7 shrink-0 self-center items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300 disabled:pointer-events-none disabled:opacity-30"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </Tooltip>
+            {showNewTabButton && <Tooltip label={t.pane.addTab} shortcut="Ctrl+T" placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
+              <button
+                type="button"
+                aria-label={t.pane.addTab}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onActivate();
+                  onAddTab('button');
+                }}
+                className="ml-0.5 inline-flex h-7 w-7 shrink-0 self-center items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>}
+            <Tooltip label={t.pane.tabStripList} placement="bottom">
+              <button
+                ref={tabsListButtonRef}
+                type="button"
+                data-tabs-list-button="true"
+                aria-label={t.pane.tabStripList}
+                aria-haspopup="menu"
+                aria-expanded={tabsListOpen}
+                onClick={toggleTabsList}
+                className="ml-1 inline-flex h-7 shrink-0 items-center gap-1 rounded border border-neutral-700/80 bg-neutral-900 px-1.5 text-neutral-300 transition-colors hover:border-neutral-600 hover:bg-neutral-800 hover:text-cyan-200"
+              >
+                <span className="text-[11px] font-bold leading-none">{tabs.length}</span>
+                <ChevronDown className="h-3 w-3" />
+              </button>
+            </Tooltip>
+          </>
+        )}
+        {tabsListOpen && createPortal(
+          <div
+            data-tabs-list-root="true"
+            role="menu"
+            aria-label={t.tabMenu.tabsLabel}
+            style={{ top: tabsListPosition.top, left: tabsListPosition.left }}
+            className="fixed z-[90] w-64 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-2xl"
           >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
-        </Tooltip>}
+            <div className="max-h-80 overflow-y-auto">
+              {tabs.map((tabItem, idx) => {
+                const tabName = tabItem.customTitle || tabItem.title || t.pane.noFolderOpen;
+                const active = idx === activeTabIndex;
+                return (
+                  <div key={tabItem.id} className="group flex items-center gap-1 px-2 py-0.5">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      aria-current={active ? 'true' : undefined}
+                      onClick={event => { event.stopPropagation(); onActivate(); onSelectTab(idx); setTabsListOpen(false); }}
+                      className="flex min-w-0 flex-1 items-center gap-2 rounded px-1.5 py-1 text-left text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+                    >
+                      <Folder className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-cyan-400' : 'text-neutral-500'}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined} />
+                      <span className={`min-w-0 flex-1 truncate ${active ? 'font-semibold text-cyan-200' : ''}`}>{tabName}</span>
+                      {active && <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />}
+                    </button>
+                    {tabs.length > 1 && !tabItem.lockClose && (
+                      <button
+                        type="button"
+                        aria-label={`${t.pane.closeTab}: ${tabName}`}
+                        onClick={event => { event.stopPropagation(); onCloseTab(idx); }}
+                        className="rounded p-1 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-700 hover:text-neutral-100 focus-visible:opacity-100 group-hover:opacity-100"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>,
+          document.body,
+        )}
       </div>
   );
 
