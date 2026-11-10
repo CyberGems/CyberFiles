@@ -1468,8 +1468,10 @@ export default function App() {
   const shouldMountUpdateModal = useKeepModalMountedAfterFirstOpen(isUpdateOpen);
   /* The close dialog chunk loads while the changes dialog is up, so resolving the
      changes swaps straight to it without flashing the bare interface between the
-     two modals (the wrapper mounts and fetches its module before it is shown). */
-  const shouldMountCloseWindowModal = isUnsavedWorkspaceChangesOpen || useKeepModalMountedAfterFirstOpen(isCloseDialogOpen);
+     two modals (the wrapper mounts and fetches its module before it is shown).
+     The hook stays first: a hook call after a short-circuiting || would change
+     the render's hook order whenever the changes dialog is open. */
+  const shouldMountCloseWindowModal = useKeepModalMountedAfterFirstOpen(isCloseDialogOpen) || isUnsavedWorkspaceChangesOpen;
   const shouldMountOnboardingModal = useKeepModalMountedAfterFirstOpen(isOnboardingOpen);
   const shouldMountConfirmActionModal = useKeepModalMountedAfterFirstOpen(
     pendingDeleteItems.length > 0 || isEmptyRecycleBinConfirmOpen || isFlatViewConfirmOpen,
