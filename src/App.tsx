@@ -1075,22 +1075,39 @@ export default function App() {
   const [toastSequence, setToastSequence] = useState(0);
   const toastSequenceRef = useRef(0);
   const toastTimerRef = useRef<number | null>(null);
+  /* Optional clickable action attached to the current toast, e.g. "Back to
+     folder" after a removed drive reconnects. */
+  const [toastAction, setToastAction] = useState<{ label: string; run: () => void } | null>(null);
+  /* Last path per removed drive letter, captured at removal time before the
+     reconciliation rewrites the tab histories. Consumed when the drive
+     reconnects to offer returning to it. */
+  const reconnectPathsRef = useRef(new Map<string, { path: string; pane: 'left' | 'right' }>());
   /* Set while a drive change is being processed: folder listing failures in
      that window are the removal itself, not a real read error, so the generic
      "could not read this folder" toast stays quiet. */
   const suppressFolderErrorRef = useRef(false);
 
-  const showToast = useCallback((msg: string, detail?: string) => {
+  const clearToast = useCallback(() => {
+    if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = null;
+    setToastMessage(null);
+    setToastDetail(null);
+    setToastAction(null);
+  }, []);
+
+  const showToast = useCallback((msg: string, detail?: string, action?: { label: string; run: () => void }) => {
     if (!notificationBannersEnabled) return;
     const sequence = ++toastSequenceRef.current;
     setToastMessage(msg);
     setToastDetail(detail ?? null);
+    setToastAction(action ?? null);
     setToastSequence(sequence);
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = window.setTimeout(() => {
       if (toastSequenceRef.current === sequence) {
         setToastMessage(null);
         setToastDetail(null);
+        setToastAction(null);
       }
       toastTimerRef.current = null;
     }, TOAST_DURATION_MS);
@@ -1100,6 +1117,7 @@ export default function App() {
     if (notificationBannersEnabled) return;
     setToastMessage(null);
     setToastDetail(null);
+    setToastAction(null);
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
     toastTimerRef.current = null;
   }, [notificationBannersEnabled]);
@@ -2322,7 +2340,7 @@ export default function App() {
       return previous.filter(item => !isPathOnUnavailableDrive(item.path, availableLetters));
     });
 
-    const redirectTabs = (tabs: TabState[]) => {
+    const redirectTabs = (tabs: TabState[], pane: 'left' | 'right') => {
       if (!tabs.some(tab => isPathOnUnavailableDrive(tab.currentPath, availableLetters))) {
         return tabs;
       }
@@ -2330,6 +2348,16 @@ export default function App() {
       nativeRootPath.current = SYSTEM_HOME_PATH;
       return tabs.map(tab => {
         if (!isPathOnUnavailableDrive(tab.currentPath, availableLetters)) return tab;
+        /* Capture the last path on the removed drive before the history is
+           rewritten, so reconnecting can offer to go back to it. */
+        const match = tab.currentPath.match(/^([A-Z]):/i);
+        if (match) {
+          const key = match[1].toUpperCase();
+          const existing = reconnectPathsRef.current.get(key);
+          if (!existing || isSameOrDescendantPath(existing.path, tab.currentPath)) {
+            reconnectPathsRef.current.set(key, { path: tab.currentPath, pane });
+          }
+        }
         const rememberedStyle = getNavigationFolderStyle(tab, folderStyleLockedRef.current, savedFolderStylesRef.current);
         const targetStyle = displayedStyleForPath(SYSTEM_HOME_PATH, rememberedStyle, savedFolderStylesRef.current, folderStyleLockedRef.current);
         const retainedHistory = resetHistory
@@ -2357,8 +2385,8 @@ export default function App() {
       });
     };
 
-    setLeftTabs(redirectTabs);
-    setRightTabs(redirectTabs);
+    setLeftTabs(tabs => redirectTabs(tabs, 'left'));
+    setRightTabs(tabs => redirectTabs(tabs, 'right'));
   }, [invalidateFlatDirectories]);
 
   const refreshSystemHome = useCallback(async (notifyDriveChanges = false): Promise<DriveInfo[]> => {
@@ -2381,7 +2409,27 @@ export default function App() {
         const added = [...nextLetters].filter(letter => !previousLetters.has(letter)).map(letter => `${letter}:`);
         const removed = [...previousLetters].filter(letter => !nextLetters.has(letter)).map(letter => `${letter}:`);
         if (added.length > 0) {
-          showToast(currentLanguage === 'es' ? `Unidad conectada: ${added.join(', ')}` : `Drive connected: ${added.join(', ')}`);
+          /* If a tab was inside one of the reconnected drives when it was
+             removed, offer to return to that folder with one click. */
+          for (const letter of added) {
+            const key = letter.replace(/:$/, '');
+            const remembered = reconnectPathsRef.current.get(key);
+            if (remembered) {
+              reconnectPathsRef.current.delete(key);
+              showToast(
+                currentLanguage === 'es' ? `Unidad conectada: ${letter}` : `Drive connected: ${letter}`,
+                undefined,
+                {
+                  label: currentLanguage === 'es' ? 'Volver a la carpeta' : 'Back to folder',
+                  run: () => {
+                    void handleNavigateRef.current(remembered.path, remembered.pane, true);
+                  },
+                },
+              );
+              continue;
+            }
+            showToast(currentLanguage === 'es' ? `Unidad conectada: ${letter}` : `Drive connected: ${letter}`);
+          }
         }
         if (removed.length > 0) {
           showToast(currentLanguage === 'es' ? `Unidad retirada: ${removed.join(', ')}` : `Drive removed: ${removed.join(', ')}`);
@@ -6938,6 +6986,19 @@ export default function App() {
             <span className="block break-words">{toastMessage}</span>
             {toastDetail && (
               <span className="truncate-start mt-0.5 font-mono text-[10.5px] font-normal text-cyan-300/70">{toastDetail}</span>
+            )}
+            {toastAction && (
+              <button
+                type="button"
+                onClick={() => {
+                  const action = toastAction;
+                  clearToast();
+                  action.run();
+                }}
+                className="mt-1 block rounded border border-cyan-500/60 px-2 py-0.5 text-[11px] font-semibold text-cyan-200 transition-colors hover:bg-cyan-500/15 hover:text-cyan-100"
+              >
+                {toastAction.label}
+              </button>
             )}
           </div>
           <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[2px] bg-cyan-950/70">
