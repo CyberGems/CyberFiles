@@ -4,6 +4,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Globe, Info, Keyboard, Minus, MoreHorizontal, Search, Settings, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { dismissAllTooltips, Tooltip } from './Tooltip';
+import { TitleBarUpdateButton } from './TitleBarUpdateButton';
 
 interface WindowTitleBarProps {
   showWindowControls: boolean;
@@ -13,9 +14,12 @@ interface WindowTitleBarProps {
   onOpenShortcuts: () => void;
   onOpenAbout: () => void;
   onWindowControlError: () => void;
+  /** Version offered by the updater, when one is pending: shows the titlebar notice. */
+  updateVersion?: string | null;
+  onOpenUpdate?: () => void;
 }
 
-export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearch, onOpenCommandPalette, onOpenShortcuts, onOpenAbout, onWindowControlError }: WindowTitleBarProps) {
+export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearch, onOpenCommandPalette, onOpenShortcuts, onOpenAbout, onWindowControlError, updateVersion, onOpenUpdate }: WindowTitleBarProps) {
   const { t, language, toggleLanguage } = useLanguage();
   const [appWindow, setAppWindow] = useState<ReturnType<typeof getCurrentWindow> | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -338,6 +342,10 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
               </div>
             )}
           </div>
+
+          {updateVersion && onOpenUpdate && (
+            <TitleBarUpdateButton version={updateVersion} onClick={onOpenUpdate} />
+          )}
 
           {appWindow && (
             <>

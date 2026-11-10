@@ -6512,6 +6512,8 @@ export default function App() {
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onOpenAbout={() => setIsAboutOpen(true)}
         onWindowControlError={() => showToast(t.core.windowControlFailed)}
+        updateVersion={pendingUpdate?.version ?? null}
+        onOpenUpdate={() => setIsUpdateOpen(true)}
       />
 
       {/* 2. Top Command Bar */}

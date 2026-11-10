@@ -1464,6 +1464,13 @@ html[data-theme='light'] [data-system-home-icon='network'] {
 .theme-preview-light span:nth-child(2) { background: linear-gradient(135deg, #ffffff, #e8eef5); }
 .theme-preview-light span:last-child { background: #f1f5f9; border-color: rgba(15, 23, 42, 0.12); border-top: 2px solid #2787c8; }
 
+/* The titlebar update notice breathes instead of flashing, so it is noticeable
+   without competing with the active-operation animations. */
+@keyframes cyberfiles-update-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 @keyframes cyberfiles-tooltip-in {
   from {
     opacity: 0;
