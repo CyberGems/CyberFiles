@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Eye, EyeOff, File, Folder, HardDrive, Keyboard, Link2, List, ListChecks, Network, PanelLeft, PanelRight } from 'lucide-react';
+import { CheckCircle2, Clock, Eye, EyeOff, File, Folder, HardDrive, Keyboard, Link2, List, ListChecks, Network, PanelLeft, PanelRight } from 'lucide-react';
 import { DriveInfo, FileItem, TabState, ViewLayout, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize } from '../utils/fileSystem';
 import { useLanguage } from '../locales/LanguageContext';
@@ -329,12 +329,14 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
               ? 'border-rose-700/60 bg-rose-950/60 text-rose-300'
               : pendingCount > 0
                 ? 'border-amber-700/60 bg-amber-950/60 text-amber-300'
-                : isOperationsOpen
-                  ? 'border-neutral-600 bg-neutral-800 text-neutral-100'
-                  : 'border-neutral-800 bg-neutral-950 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-900 hover:text-neutral-200'
+                : recentCompleted.length > 0
+                  ? 'border-emerald-600/60 bg-emerald-950/50 text-emerald-300'
+                  : isOperationsOpen
+                    ? 'border-neutral-600 bg-neutral-800 text-neutral-100'
+                    : 'border-neutral-800 bg-neutral-950 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-900 hover:text-neutral-200'
         }`}
       >
-        <ListChecks className={`h-3.5 w-3.5 flex-shrink-0 ${activeOperation ? 'animate-pulse text-cyan-400' : 'text-neutral-400'}`} />
+        <ListChecks className={`h-3.5 w-3.5 flex-shrink-0 ${activeOperation ? 'animate-pulse text-cyan-400' : recentCompleted.length > 0 && pendingCount === 0 ? 'text-emerald-400' : 'text-neutral-400'}`} />
         {activeOperation ? (
           <span className="flex items-center gap-1">
             <span className="font-bold text-cyan-300">{activePercent}%</span>
@@ -344,6 +346,11 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
           <span className="font-bold text-amber-300">{pendingCount} {language === 'es' ? 'en cola' : 'queued'}</span>
         ) : failedCount > 0 ? (
           <span className="font-bold text-rose-400">! {failedCount}</span>
+        ) : recentCompleted.length > 0 ? (
+          <span className="flex items-center gap-1">
+            <CheckCircle2 className="h-3 w-3 flex-shrink-0 text-emerald-400" />
+            <span className="font-bold text-emerald-300">{recentCompleted.length} {language === 'es' ? 'completada' + (recentCompleted.length === 1 ? '' : 's') : recentCompleted.length === 1 ? 'done' : 'done'}</span>
+          </span>
         ) : (
           <span className="hidden sm:inline">{language === 'es' ? 'Operaciones' : 'Operations'}</span>
         )}

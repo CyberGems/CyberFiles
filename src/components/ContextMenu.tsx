@@ -177,6 +177,9 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
      Escape, and a flag so only keyboard-opened flyouts steal focus on mount. */
   const flyoutTriggerRef = useRef<HTMLButtonElement | null>(null);
   const focusFlyoutOnOpenRef = useRef(false);
+  /* Which quick-action header button the keyboard left when dropping into the
+     list, so ArrowUp from the first list row returns to that same button. */
+  const headerReturnRef = useRef<number | null>(null);
   const openFlyoutRef = useRef<{ id: string; rect: DOMRect } | null>(null);
   openFlyoutRef.current = openFlyout;
   const flyoutTimersRef = useRef<{ open: number | null; close: number | null }>({ open: null, close: null });
@@ -261,6 +264,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   useEffect(() => {
     setOpenFlyout(null);
     cancelFlyoutTimers();
+    headerReturnRef.current = null;
   }, [position]);
 
   /* Keyboard-opened menus start on their first row, like native Windows menus.
@@ -397,8 +401,10 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 
       /* The quick-action header bar and the vertical list navigate separately,
          like native menus: Left/Right walk the header row, Up/Down walk the
-         list, and the arrows cross between the two bands. */
-      const allItems = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)') ?? []);
+         list, and the arrows cross between the two bands. The selector keeps
+         the role prefix so menuitemradio rows (view modes, sort options) are
+         part of the list too. */
+      const allItems = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('button[role^="menuitem"]:not(:disabled)') ?? []);
       const headerItems = allItems.filter(element => Boolean(element.closest('[role="group"]')));
       const listItems = allItems.filter(element => !element.closest('[role="group"]'));
       const activeElement = document.activeElement as HTMLButtonElement | null;
@@ -421,14 +427,15 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
         event.stopPropagation();
-        /* From the header row, Down drops straight into the list below; from
-           the list, Up at the top returns to the header row when it exists. */
+        /* From the header row, Down drops straight into the list below and
+           remembers which header button it left, so Up comes back to it. */
         if (inHeader && event.key === 'ArrowDown') {
+          headerReturnRef.current = headerItems.indexOf(activeElement as HTMLButtonElement);
           listItems[0]?.focus();
           return;
         }
         if (!inHeader && headerItems.length && event.key === 'ArrowUp' && listItems.indexOf(activeElement as HTMLButtonElement) === 0) {
-          headerItems[headerItems.length - 1]?.focus();
+          headerItems[Math.max(0, headerReturnRef.current ?? headerItems.length - 1)]?.focus();
           return;
         }
         moveIn(band, event.key);
