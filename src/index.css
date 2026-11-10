@@ -804,7 +804,7 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-pane-status 
   }
 }
 
-@container cyberfiles-file-content (min-width: 960px) {
+@container cyberfiles-file-content (min-width: 880px) {
   .cyberfiles-system-home-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
