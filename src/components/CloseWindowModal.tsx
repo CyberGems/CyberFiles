@@ -137,10 +137,13 @@ export function CloseWindowModal({
 
         <div className="space-y-3 px-5 py-5 sm:px-7 sm:py-6">
           {hasWorkspaceChanges && (
-            <div className="flex items-start gap-3 rounded-xl border border-cyan-900/70 bg-cyan-950/25 px-4 py-3">
-              <Save className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" />
-              <div>
-                <div className="text-sm font-semibold text-cyan-100">{t.closeWindow.changesPending}</div>
+            /* A note, not an option: the amber callout tone (the suite's warning color)
+               plus a bare icon and no hover, box or shortcut chip keep it from reading
+               as a third choice beside the tray and exit actions. */
+            <div role="note" className="flex items-start gap-3 rounded-xl border border-amber-900/50 bg-amber-950/15 px-4 py-3">
+              <Save className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-amber-100">{t.closeWindow.changesPending}</div>
                 <p className="mt-1 text-xs leading-5 text-neutral-300">{changesDescription}</p>
               </div>
             </div>
