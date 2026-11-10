@@ -166,6 +166,20 @@ const RECENT_ITEMS_STYLE_KEY = 'cyberfiles_recent_items_style_v1';
 const HIDDEN_ITEMS_STYLE_KEY = 'cyberfiles_hidden_items_style_v1';
 const IMAGE_TOOLTIP_THUMBNAILS_KEY = 'cyberfiles_image_tooltip_thumbnails_v1';
 const NOTIFICATION_BANNERS_KEY = 'cyberfiles_notification_banners_v1';
+const TOAST_DURATION_KEY = 'cyberfiles_toast_duration_v1';
+const TOAST_DURATION_MIN_MS = 1500;
+const TOAST_DURATION_MAX_MS = 15000;
+function readToastDurationPreference(): number {
+  try {
+    const saved = window.localStorage.getItem(TOAST_DURATION_KEY);
+    if (saved === null) return TOAST_DURATION_MS;
+    const parsed = Number.parseInt(saved, 10);
+    if (!Number.isFinite(parsed)) return TOAST_DURATION_MS;
+    return Math.min(TOAST_DURATION_MAX_MS, Math.max(TOAST_DURATION_MIN_MS, parsed));
+  } catch {
+    return TOAST_DURATION_MS;
+  }
+}
 const TOOLTIPS_ENABLED_KEY = 'cyberfiles_tooltips_enabled_v1';
 const RELATIVE_GRAPHS_ENABLED_KEY = 'cyberfiles_relative_graphs_enabled_v1';
 const DATE_FORMAT_KEY = 'cyberfiles_date_format_v1';
@@ -886,6 +900,7 @@ export default function App() {
   const [hiddenItemStyle, setHiddenItemStyle] = useState<HiddenItemStyle>(readHiddenItemStyle);
   const [imageTooltipThumbnailsEnabled, setImageTooltipThumbnailsEnabled] = useState(() => readBooleanPreference(IMAGE_TOOLTIP_THUMBNAILS_KEY, true));
   const [notificationBannersEnabled, setNotificationBannersEnabled] = useState(() => readBooleanPreference(NOTIFICATION_BANNERS_KEY, true));
+  const [toastDurationMs, setToastDurationMs] = useState(() => readToastDurationPreference());
   const [tooltipsEnabled, setTooltipsEnabled] = useState(() => readBooleanPreference(TOOLTIPS_ENABLED_KEY, true));
   const [relativeGraphsEnabled, setRelativeGraphsEnabled] = useState(() => readBooleanPreference(RELATIVE_GRAPHS_ENABLED_KEY, true));
   const [showHiddenFiles, setShowHiddenFiles] = useState(() => readBooleanPreference(SHOW_HIDDEN_FILES_KEY, true));
@@ -1110,8 +1125,33 @@ export default function App() {
         setToastAction(null);
       }
       toastTimerRef.current = null;
-    }, TOAST_DURATION_MS);
-  }, [notificationBannersEnabled]);
+    }, toastDurationMs);
+  }, [notificationBannersEnabled, toastDurationMs]);
+
+  /* Hovering over a toast pauses its auto-dismiss so a clickable action can be
+     read and used without racing the timer; leaving resumes the countdown. */
+  const [toastHovered, setToastHovered] = useState(false);
+  const toastRemainingRef = useRef<{ total: number; at: number } | null>(null);
+  const pauseToast = useCallback(() => {
+    if (toastTimerRef.current === null) return;
+    window.clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = null;
+    toastRemainingRef.current = { total: toastDurationMs, at: Date.now() };
+    setToastHovered(true);
+  }, [toastDurationMs]);
+  const resumeToast = useCallback(() => {
+    setToastHovered(false);
+    const remaining = toastRemainingRef.current;
+    toastRemainingRef.current = null;
+    if (!remaining || toastTimerRef.current !== null) return;
+    const left = Math.max(400, remaining.total - (Date.now() - remaining.at));
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+      setToastDetail(null);
+      setToastAction(null);
+      toastTimerRef.current = null;
+    }, left);
+  }, []);
 
   useEffect(() => {
     if (notificationBannersEnabled) return;
@@ -2089,6 +2129,14 @@ export default function App() {
 
   useEffect(() => {
     try {
+      window.localStorage.setItem(TOAST_DURATION_KEY, String(toastDurationMs));
+    } catch {
+      // Keep the selected behavior for the current session when storage is unavailable.
+    }
+  }, [toastDurationMs]);
+
+  useEffect(() => {
+    try {
       window.localStorage.setItem(TOOLTIPS_ENABLED_KEY, String(tooltipsEnabled));
     } catch {
       // Keep the selected behavior for the current session when storage is unavailable.
@@ -2418,7 +2466,7 @@ export default function App() {
               reconnectPathsRef.current.delete(key);
               showToast(
                 currentLanguage === 'es' ? `Unidad conectada: ${letter}` : `Drive connected: ${letter}`,
-                undefined,
+                remembered.path,
                 {
                   label: currentLanguage === 'es' ? 'Volver a la carpeta' : 'Back to folder',
                   run: () => {
@@ -6980,7 +7028,14 @@ export default function App() {
 
       {/* Floating Action Toast */}
       {toastMessage && (
-        <div key={toastSequence} role="status" aria-live="polite" className="fixed bottom-10 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-start gap-2 overflow-hidden rounded-lg border border-cyan-500/50 bg-neutral-900/95 px-4 py-2 pb-2.5 text-xs font-medium text-cyan-200 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-150">
+        <div
+          key={toastSequence}
+          role="status"
+          aria-live="polite"
+          onMouseEnter={pauseToast}
+          onMouseLeave={resumeToast}
+          className="fixed bottom-10 left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-start gap-2 overflow-hidden rounded-lg border border-cyan-500/50 bg-neutral-900/95 px-4 py-2 pb-2.5 text-xs font-medium text-cyan-200 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-150"
+        >
           <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-cyan-400 animate-pulse" />
           <div className="min-w-0 max-w-[42rem]">
             <span className="block break-words">{toastMessage}</span>
@@ -7001,8 +7056,18 @@ export default function App() {
               </button>
             )}
           </div>
+          <button
+            type="button"
+            aria-label={t.settings.close}
+            onClick={clearToast}
+            className="mt-0.5 flex-shrink-0 rounded p-0.5 text-cyan-300/60 transition-colors hover:bg-cyan-500/10 hover:text-cyan-100"
+          >
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" className="h-3.5 w-3.5" aria-hidden="true">
+              <path d="M4 4l8 8M12 4l-8 8" />
+            </svg>
+          </button>
           <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[2px] bg-cyan-950/70">
-            <div className="cyberfiles-toast-progress h-full w-full origin-left bg-gradient-to-r from-cyan-600 via-cyan-300 to-white shadow-[0_0_8px_rgba(34,211,238,0.8)]" style={{ animationDuration: `${TOAST_DURATION_MS}ms` }} />
+            <div className="cyberfiles-toast-progress h-full w-full origin-left bg-gradient-to-r from-cyan-600 via-cyan-300 to-white shadow-[0_0_8px_rgba(34,211,238,0.8)]" style={{ animationDuration: `${toastDurationMs}ms`, animationPlayState: toastHovered ? 'paused' : 'running' }} />
           </div>
         </div>
       )}
@@ -7385,6 +7450,8 @@ export default function App() {
             onImageTooltipThumbnailsEnabledChange={setImageTooltipThumbnailsEnabled}
             notificationBannersEnabled={notificationBannersEnabled}
             onNotificationBannersEnabledChange={setNotificationBannersEnabled}
+            toastDurationMs={toastDurationMs}
+            onToastDurationMsChange={setToastDurationMs}
             tooltipsEnabled={tooltipsEnabled}
             onTooltipsEnabledChange={setTooltipsEnabled}
             dateFormat={dateFormat}

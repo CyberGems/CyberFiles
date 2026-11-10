@@ -67,6 +67,8 @@ interface SettingsModalProps {
   onImageTooltipThumbnailsEnabledChange: (enabled: boolean) => void;
   notificationBannersEnabled: boolean;
   onNotificationBannersEnabledChange: (enabled: boolean) => void;
+  toastDurationMs: number;
+  onToastDurationMsChange: (duration: number) => void;
   tooltipsEnabled: boolean;
   onTooltipsEnabledChange: (enabled: boolean) => void;
   dateFormat: DateFormatMode;
@@ -181,6 +183,8 @@ export function SettingsModal({
   onImageTooltipThumbnailsEnabledChange,
   notificationBannersEnabled,
   onNotificationBannersEnabledChange,
+  toastDurationMs,
+  onToastDurationMsChange,
   tooltipsEnabled,
   onTooltipsEnabledChange,
   dateFormat,
@@ -965,6 +969,25 @@ export function SettingsModal({
                     </span>
                   </label>
               </div>
+              {notificationBannersEnabled && (
+                <div data-settings-search-unit className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                  <label className="block font-medium text-neutral-200" htmlFor="toast-duration-range">{t.settings.toastDuration}</label>
+                  <p className="mt-1">{t.settings.toastDurationDescription}</p>
+                  <div className="mt-2 flex items-center gap-3">
+                    <input
+                      id="toast-duration-range"
+                      type="range"
+                      min={1500}
+                      max={15000}
+                      step={500}
+                      value={toastDurationMs}
+                      onChange={event => onToastDurationMsChange(Number(event.target.value))}
+                      className="h-1.5 flex-1 cursor-pointer accent-cyan-400"
+                    />
+                    <span className="w-14 text-right font-mono text-[11px] text-cyan-200">{t.settings.toastDurationSeconds.replace('{seconds}', String(toastDurationMs / 1000))}</span>
+                  </div>
+                </div>
+              )}
               <div data-settings-search-unit className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
                 <label className="flex cursor-pointer items-start gap-2.5">
                     <input
