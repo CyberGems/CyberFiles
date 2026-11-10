@@ -119,9 +119,9 @@ export function UnsavedWorkspaceChangesModal({
       >
         <header className="flex items-start justify-between gap-4 border-b border-neutral-800/90 px-5 py-4 sm:px-6">
           <div className="flex min-w-0 items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-700/60 bg-amber-950/40 text-amber-300">
-              <AlertTriangle className="h-5 w-5" />
-            </div>
+            {/* A bare neutral glyph instead of the boxed accent icons the rows below use:
+                it marks the header as the dialog's subject, not as one more choice. */}
+            <AlertTriangle className="h-7 w-7 shrink-0 text-neutral-300" />
             <div className="min-w-0 pt-0.5">
               <h2 id="unsaved-workspace-title" className="text-base font-semibold tracking-tight text-neutral-100 sm:text-lg">
                 {copy.saveChangesTitle}
