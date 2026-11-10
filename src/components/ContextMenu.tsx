@@ -414,13 +414,16 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       const moveIn = (items: HTMLButtonElement[], key: string) => {
         if (!items.length) return;
         const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+        /* Right and Down advance, Left and Up go back; the header row is
+           horizontal, so its arrows must follow reading order. */
+        const step = key === 'ArrowDown' || key === 'ArrowRight' ? 1 : -1;
         const nextIndex = key === 'Home'
           ? 0
           : key === 'End'
             ? items.length - 1
             : currentIndex === -1
-              ? (key === 'ArrowUp' ? items.length - 1 : 0)
-              : (currentIndex + (key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+              ? (step === -1 ? items.length - 1 : 0)
+              : (currentIndex + step + items.length) % items.length;
         items[nextIndex]?.focus();
       };
 

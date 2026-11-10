@@ -5861,10 +5861,15 @@ export default function App() {
         return;
       }
 
-      // F3 or Space: Toggle Preview
+      // F3 or Space: Toggle Preview. Space yields to a focused menu item: the
+      // context menus use Space to activate the focused row, and the preview
+      // toggle would swallow the key before the button can fire.
       if (e.key === 'F3' || (e.key === ' ' && !e.repeat)) {
-        e.preventDefault();
-        setPreviewOpen(prev => !prev);
+        const activeElement = document.activeElement;
+        if (!(e.key === ' ' && activeElement instanceof HTMLElement && activeElement.closest('[role="menu"]'))) {
+          e.preventDefault();
+          setPreviewOpen(prev => !prev);
+        }
         return;
       }
 
