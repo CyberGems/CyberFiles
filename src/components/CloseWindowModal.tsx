@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { CornerDownLeft, Download, Power, Save, X } from 'lucide-react';
+import { CornerDownLeft, Download, Power, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 
@@ -7,8 +7,6 @@ interface CloseWindowModalProps {
   isOpen: boolean;
   rememberChoice: boolean;
   isBusy: boolean;
-  sessionHasChanges: boolean;
-  layoutHasChanges: boolean;
   onRememberChoiceChange: (remember: boolean) => void;
   onCancel: () => void;
   onExit: () => void;
@@ -19,8 +17,6 @@ export function CloseWindowModal({
   isOpen,
   rememberChoice,
   isBusy,
-  sessionHasChanges,
-  layoutHasChanges,
   onRememberChoiceChange,
   onCancel,
   onExit,
@@ -90,13 +86,6 @@ export function CloseWindowModal({
 
   if (!isOpen) return null;
 
-  const hasWorkspaceChanges = sessionHasChanges || layoutHasChanges;
-  const changesDescription = sessionHasChanges && layoutHasChanges
-    ? t.closeWindow.sessionAndLayoutChanges
-    : sessionHasChanges
-      ? t.closeWindow.sessionChanges
-      : t.closeWindow.layoutChanges;
-
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-[#05070c]/80 p-4 backdrop-blur-md sm:p-6"
@@ -136,19 +125,6 @@ export function CloseWindowModal({
         </header>
 
         <div className="space-y-3 px-5 py-5 sm:px-7 sm:py-6">
-          {hasWorkspaceChanges && (
-            /* A note, not an option: the amber callout tone (the suite's warning color)
-               plus a bare icon and no hover, box or shortcut chip keep it from reading
-               as a third choice beside the tray and exit actions. */
-            <div role="note" className="flex items-start gap-3 rounded-xl border border-amber-900/50 bg-amber-950/15 px-4 py-3">
-              <Save className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-amber-100">{t.closeWindow.changesPending}</div>
-                <p className="mt-1 text-xs leading-5 text-neutral-300">{changesDescription}</p>
-              </div>
-            </div>
-          )}
-
           <button
             ref={hideButtonRef}
             type="button"

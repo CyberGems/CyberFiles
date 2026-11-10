@@ -251,6 +251,7 @@ interface PanelViewPreferences {
 
 type PendingWorkspaceAction =
   | { type: 'quit'; remember: boolean }
+  | { type: 'close' }
   | { type: 'layout'; id: string }
   | { type: 'session'; id: string }
   | { type: 'workspace'; id: string };
@@ -1411,6 +1412,10 @@ export default function App() {
   const [pendingWorkspaceAction, setPendingWorkspaceAction] = useState<PendingWorkspaceAction | null>(null);
   const closeActionInProgress = useRef(false);
   const requestQuitWithUnsavedChangesRef = useRef<(remember: boolean) => void>(() => {});
+  /* X with no remembered choice: resolves pending changes first (the data decision
+     gates everything), then opens the tray-or-quit dialog. The ref bridges the
+     onCloseRequested listener to callbacks defined later in the render. */
+  const requestCloseDialogGateRef = useRef<() => void>(() => {});
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(() => {
     try {
       return window.localStorage.getItem(ONBOARDING_STORAGE_KEY) !== 'true';
@@ -1585,7 +1590,7 @@ export default function App() {
       } else {
         setIsCloseActionBusy(false);
         setRememberCloseChoice(false);
-        setIsCloseDialogOpen(true);
+        requestCloseDialogGateRef.current();
       }
     }).then(stopListening => {
       if (disposed) stopListening();
@@ -1868,6 +1873,16 @@ export default function App() {
       return;
     }
 
+    if (action.type === 'close') {
+      /* The window close was requested while changes were pending; once they are
+         resolved, the usual tray-or-quit question takes over. The remember checkbox
+         is left alone: the close-request listener already resets it on a fresh open. */
+      setPendingWorkspaceAction(null);
+      setIsUnsavedWorkspaceChangesOpen(false);
+      setIsCloseDialogOpen(true);
+      return;
+    }
+
     if (action.type === 'layout') {
       const profile = sourceStore.layouts.find(candidate => candidate.id === action.id);
       applyLayoutSnapshot(profile?.snapshot ?? DEFAULT_LAYOUT_SNAPSHOT);
@@ -1895,12 +1910,12 @@ export default function App() {
   }, [workspaceStore, applyLayoutSnapshot, applySessionSnapshot, startsAtSystemHome, t.sidebar.thisPc, runCloseAction]);
 
   const requestWorkspaceAction = useCallback((action: PendingWorkspaceAction) => {
-    const checkLayout = action.type === 'quit' || action.type === 'workspace' || action.type === 'layout';
-    const checkSession = action.type === 'quit' || action.type === 'workspace' || action.type === 'session';
+    const checkLayout = action.type === 'quit' || action.type === 'close' || action.type === 'workspace' || action.type === 'layout';
+    const checkSession = action.type === 'quit' || action.type === 'close' || action.type === 'workspace' || action.type === 'session';
     if ((checkLayout && layoutDirty) || (checkSession && sessionDirty)) {
       setPendingWorkspaceAction(action);
       setIsUnsavedWorkspaceChangesOpen(true);
-      if (action.type === 'quit') setIsCloseDialogOpen(false);
+      if (action.type === 'quit' || action.type === 'close') setIsCloseDialogOpen(false);
       return;
     }
     executeWorkspaceAction(action);
@@ -1909,8 +1924,8 @@ export default function App() {
   const savePendingWorkspaceChanges = useCallback((names: WorkspaceChangesSaveNames) => {
     const action = pendingWorkspaceAction;
     if (!action) return;
-    const saveLayout = action.type === 'quit' || action.type === 'workspace' || action.type === 'layout';
-    const saveSession = action.type === 'quit' || action.type === 'workspace' || action.type === 'session';
+    const saveLayout = action.type === 'quit' || action.type === 'close' || action.type === 'workspace' || action.type === 'layout';
+    const saveSession = action.type === 'quit' || action.type === 'close' || action.type === 'workspace' || action.type === 'session';
     let nextStore = workspaceStore;
     let nextLayoutId = activeLayoutId;
     let nextSessionId = activeSessionId;
@@ -1965,17 +1980,18 @@ export default function App() {
   const discardPendingWorkspaceChanges = useCallback(() => {
     const action = pendingWorkspaceAction;
     if (!action) return;
-    const discardLayout = action.type === 'quit' || action.type === 'workspace' || action.type === 'layout';
-    const discardSession = action.type === 'quit' || action.type === 'workspace' || action.type === 'session';
+    const discardLayout = action.type === 'quit' || action.type === 'close' || action.type === 'workspace' || action.type === 'layout';
+    const discardSession = action.type === 'quit' || action.type === 'close' || action.type === 'workspace' || action.type === 'session';
     if (discardLayout) applyLayoutSnapshot(activeLayoutProfile?.snapshot ?? DEFAULT_LAYOUT_SNAPSHOT);
     if (discardSession) applySessionSnapshot(activeSessionProfile?.snapshot ?? defaultSessionSnapshot(startsAtSystemHome ? SYSTEM_HOME_PATH : '', t.sidebar.thisPc));
     executeWorkspaceAction(action);
   }, [pendingWorkspaceAction, activeLayoutProfile, activeSessionProfile, applyLayoutSnapshot, applySessionSnapshot, startsAtSystemHome, t.sidebar.thisPc, executeWorkspaceAction]);
 
   requestQuitWithUnsavedChangesRef.current = remember => requestWorkspaceAction({ type: 'quit', remember });
+  requestCloseDialogGateRef.current = () => requestWorkspaceAction({ type: 'close' });
 
-  const pendingLayoutChanged = Boolean(pendingWorkspaceAction && (pendingWorkspaceAction.type === 'quit' || pendingWorkspaceAction.type === 'workspace' || pendingWorkspaceAction.type === 'layout') && layoutDirty);
-  const pendingSessionChanged = Boolean(pendingWorkspaceAction && (pendingWorkspaceAction.type === 'quit' || pendingWorkspaceAction.type === 'workspace' || pendingWorkspaceAction.type === 'session') && sessionDirty);
+  const pendingLayoutChanged = Boolean(pendingWorkspaceAction && (pendingWorkspaceAction.type === 'quit' || pendingWorkspaceAction.type === 'close' || pendingWorkspaceAction.type === 'workspace' || pendingWorkspaceAction.type === 'layout') && layoutDirty);
+  const pendingSessionChanged = Boolean(pendingWorkspaceAction && (pendingWorkspaceAction.type === 'quit' || pendingWorkspaceAction.type === 'close' || pendingWorkspaceAction.type === 'workspace' || pendingWorkspaceAction.type === 'session') && sessionDirty);
 
   useEffect(() => {
     try {
@@ -7467,8 +7483,6 @@ export default function App() {
             isOpen={isCloseDialogOpen}
             rememberChoice={rememberCloseChoice}
             isBusy={isCloseActionBusy}
-            sessionHasChanges={sessionDirty}
-            layoutHasChanges={layoutDirty}
             onRememberChoiceChange={setRememberCloseChoice}
             onCancel={cancelCloseDialog}
             onExit={handleExitFromCloseDialog}
