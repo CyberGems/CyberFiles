@@ -1,15 +1,15 @@
 {
-  "version": "0.6.3",
-  "notes": "Accelerates file search with zero typing latency and windowed results, introduces persistent search preferences, integrates Operations Center into the status bar with Ctrl+J tracking, and modernizes context menus with Windows 11 quick-action header buttons.",
-  "pub_date": "2026-10-29T22:25:55Z",
+  "version": "0.7.0",
+  "notes": "Network drives arrive: browse LAN shares, map SMB drives, and use environment variable paths. Menus are fully keyboard navigable, the toolbar is compact, and operation badges count results until you review them.",
+  "pub_date": "2026-11-10T16:14:42Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSmNmOTFONDVjZ3NIWWlqZTk2dHVVYzJRWU5WaG9aYlZhUllINnhuWVhKRWo0VzFmZ0NTa0RyZElDb1B2eDBLYnZYVitLUmFWSm5kMitrTVg1TEczT3dYY2JlS2ZHL2dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMzEyNzM2CWZpbGU6Q3liZXJGaWxlc18wLjYuM194NjQtc2V0dXAuZXhlCXZlcnNpb246MC42LjMKVGdKc2xnZTNBYk9HTG1raWwvQWtGbks0RitQYWprTkxKVTFxeEVmQ3JkdHBWTjJ1US9MS3pTdk51TWs3SXFVS2V6YktFQ3QwR3lvR3Q3Z2cwQXRmRFE9PQo=",
-      "url": "https://github.com/CyberGems/CyberFiles/releases/download/v0.6.3/CyberFiles_0.6.3_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSmNmOTFONDVjZ3FOZ3Y4bk1yTlhwZVZMS0NDQlZuampsNEVnMjAvTmZHZTlMdUVNWThQd3RVUXpwNml0OTJTaUJTNEFKU2tiYmw5Z2NKV3lqZkpkN0lPdmFGQTQvTUFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MzI3Mjc4CWZpbGU6Q3liZXJGaWxlc18wLjcuMF94NjQtc2V0dXAuZXhlCXZlcnNpb246MC43LjAKelpNOGRrdDQzaUFtbnR4c09ybEl1UEUyRk5yUmNqRC85bFJnMDlPNGFkbGxvWFh2eGg3T0lvcytsU3N1V095QzVJWW5OV3ZvQUwzNHY2cjBkS3VBQnc9PQo=",
+      "url": "https://github.com/CyberGems/CyberFiles/releases/download/v0.7.0/CyberFiles_0.7.0_x64-setup.exe"
     },
     "windows-x86_64-nsis": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSmNmOTFONDVjZ3NIWWlqZTk2dHVVYzJRWU5WaG9aYlZhUllINnhuWVhKRWo0VzFmZ0NTa0RyZElDb1B2eDBLYnZYVitLUmFWSm5kMitrTVg1TEczT3dYY2JlS2ZHL2dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkzMzEyNzM2CWZpbGU6Q3liZXJGaWxlc18wLjYuM194NjQtc2V0dXAuZXhlCXZlcnNpb246MC42LjMKVGdKc2xnZTNBYk9HTG1raWwvQWtGbks0RitQYWprTkxKVTFxeEVmQ3JkdHBWTjJ1US9MS3pTdk51TWs3SXFVS2V6YktFQ3QwR3lvR3Q3Z2cwQXRmRFE9PQo=",
-      "url": "https://github.com/CyberGems/CyberFiles/releases/download/v0.6.3/CyberFiles_0.6.3_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUSmNmOTFONDVjZ3FOZ3Y4bk1yTlhwZVZMS0NDQlZuampsNEVnMjAvTmZHZTlMdUVNWThQd3RVUXpwNml0OTJTaUJTNEFKU2tiYmw5Z2NKV3lqZkpkN0lPdmFGQTQvTUFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0MzI3Mjc4CWZpbGU6Q3liZXJGaWxlc18wLjcuMF94NjQtc2V0dXAuZXhlCXZlcnNpb246MC43LjAKelpNOGRrdDQzaUFtbnR4c09ybEl1UEUyRk5yUmNqRC85bFJnMDlPNGFkbGxvWFh2eGg3T0lvcytsU3N1V095QzVJWW5OV3ZvQUwzNHY2cjBkS3VBQnc9PQo=",
+      "url": "https://github.com/CyberGems/CyberFiles/releases/download/v0.7.0/CyberFiles_0.7.0_x64-setup.exe"
     }
   }
 }
