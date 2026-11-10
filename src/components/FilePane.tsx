@@ -2516,6 +2516,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
       }));
       return;
     }
+    /* Space selects or toggles the focused item, like Ctrl+Space in Explorer:
+       it is a selection key, not a preview key (F3 owns the preview). Alt+Space
+       still belongs to the window, and keys only belong to the active pane. */
+    if (event.key === ' ' && !event.repeat && !event.altKey && !event.metaKey && isActive && navigableFiles.length > 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      const targetId = tab.focusedId ?? tab.selectedIds[tab.selectedIds.length - 1];
+      const targetItem = navigableFiles.find(candidate => candidate.id === targetId) ?? navigableFiles[0];
+      if (!targetItem) return;
+      if (tab.selectedIds.includes(targetItem.id)) {
+        onSelectItems(tab.selectedIds.filter(id => id !== targetItem.id), false, false, true, targetItem.id);
+      } else {
+        onSelectItems([...tab.selectedIds, targetItem.id], false, false, true, targetItem.id);
+      }
+      return;
+    }
     if (event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing || !isActive || navigableFiles.length === 0) {
       handleTypeAhead(event);
       return;
@@ -3431,7 +3447,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         role="group"
         aria-label={t.tabMenu.tabsLabel}
         tabIndex={0}
-        className={`cyberfiles-tab-strip flex h-10 min-w-0 shrink-0 items-center overflow-hidden border-neutral-800 bg-neutral-950/90 px-1 py-1 select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400 ${tabStripPosition === 'bottom' ? 'border-t' : 'border-b'}`}
+        className={`cyberfiles-tab-strip flex h-10 min-w-0 shrink-0 ${tabStripPosition === 'bottom' ? 'items-center border-t px-1 py-1' : 'items-end border-b px-1 pt-1 pb-0'} overflow-hidden border-neutral-800 bg-neutral-950/90 select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400`}
         onKeyDown={handleTabStripKeyDown}
         onDoubleClick={handleTabStripDoubleClick}
         onContextMenu={handleTabStripContextMenu}
@@ -3439,7 +3455,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         <div
           ref={horizontalTabListRef}
           data-tab-strip-space="true"
-          className="cyberfiles-tab-scroll flex h-full min-w-0 flex-1 items-center gap-0.5 overflow-x-auto overflow-y-hidden scroll-smooth"
+          className={`cyberfiles-tab-scroll flex h-full min-w-0 flex-1 ${tabStripPosition === 'bottom' ? 'items-center' : 'items-end'} gap-0.5 overflow-x-auto overflow-y-hidden scroll-smooth`}
           onWheel={event => {
             if (event.currentTarget.scrollWidth <= event.currentTarget.clientWidth + 1 || event.deltaY === 0 || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
             event.preventDefault();
@@ -3458,7 +3474,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               onActivate();
               onAddTab('button');
             }}
-            className="ml-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300"
+            className="ml-1 inline-flex h-7 w-7 shrink-0 self-center items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>

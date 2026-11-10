@@ -166,6 +166,7 @@ const RECENT_ITEMS_STYLE_KEY = 'cyberfiles_recent_items_style_v1';
 const HIDDEN_ITEMS_STYLE_KEY = 'cyberfiles_hidden_items_style_v1';
 const IMAGE_TOOLTIP_THUMBNAILS_KEY = 'cyberfiles_image_tooltip_thumbnails_v1';
 const NOTIFICATION_BANNERS_KEY = 'cyberfiles_notification_banners_v1';
+const OPERATIONS_COMPLETION_BADGE_KEY = 'cyberfiles_operations_completion_badge_v1';
 const TOAST_DURATION_KEY = 'cyberfiles_toast_duration_v1';
 const TOAST_DURATION_MIN_MS = 1500;
 const TOAST_DURATION_MAX_MS = 15000;
@@ -900,6 +901,10 @@ export default function App() {
   const [hiddenItemStyle, setHiddenItemStyle] = useState<HiddenItemStyle>(readHiddenItemStyle);
   const [imageTooltipThumbnailsEnabled, setImageTooltipThumbnailsEnabled] = useState(() => readBooleanPreference(IMAGE_TOOLTIP_THUMBNAILS_KEY, true));
   const [notificationBannersEnabled, setNotificationBannersEnabled] = useState(() => readBooleanPreference(NOTIFICATION_BANNERS_KEY, true));
+  /* Completion badge on the status-bar operations button: unlimited count of
+     finished operations until the user opens the panel to review them. */
+  const [operationsBadgeEnabled, setOperationsBadgeEnabled] = useState(() => readBooleanPreference(OPERATIONS_COMPLETION_BADGE_KEY, true));
+  const [unreviewedCompletedCount, setUnreviewedCompletedCount] = useState(0);
   const [toastDurationMs, setToastDurationMs] = useState(() => readToastDurationPreference());
   const [tooltipsEnabled, setTooltipsEnabled] = useState(() => readBooleanPreference(TOOLTIPS_ENABLED_KEY, true));
   const [relativeGraphsEnabled, setRelativeGraphsEnabled] = useState(() => readBooleanPreference(RELATIVE_GRAPHS_ENABLED_KEY, true));
@@ -1419,6 +1424,20 @@ export default function App() {
   const [transferOperations, setTransferOperations] = useState<TransferOperationView[]>([]);
   const transferOperationsRef = useRef<TransferOperationView[]>([]);
   const [isOperationsCenterOpen, setIsOperationsCenterOpen] = useState(false);
+  /* Opening the center through a user action counts as reviewing it, so the
+     completion badge resets; automatic opens (password prompts, new transfers)
+     do not, because the user has not seen it yet. */
+  const openOperationsCenterFromUser = useCallback(() => {
+    setUnreviewedCompletedCount(0);
+    setIsOperationsCenterOpen(true);
+  }, []);
+  const toggleOperationsCenterFromUser = useCallback(() => {
+    if (isOperationsCenterOpen) {
+      setIsOperationsCenterOpen(false);
+    } else {
+      openOperationsCenterFromUser();
+    }
+  }, [isOperationsCenterOpen, openOperationsCenterFromUser]);
   const [undoHistory, setUndoHistory] = useState<UndoRecord[]>([]);
   const undoHistoryRef = useRef<UndoRecord[]>([]);
   const undoPendingIdsRef = useRef(new Set<string>());
@@ -2126,6 +2145,14 @@ export default function App() {
       // Keep the selected behavior for the current session when storage is unavailable.
     }
   }, [notificationBannersEnabled]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(OPERATIONS_COMPLETION_BADGE_KEY, String(operationsBadgeEnabled));
+    } catch {
+      // Keep the selected behavior for the current session when storage is unavailable.
+    }
+  }, [operationsBadgeEnabled]);
 
   useEffect(() => {
     try {
@@ -3787,8 +3814,12 @@ export default function App() {
     const current = transferOperationsRef.current;
     const index = current.findIndex(operation => operation.jobId === jobId);
     if (index < 0) return;
+    const updated = update(current[index]);
+    if (updated.status === 'completed' && current[index].status !== 'completed') {
+      setUnreviewedCompletedCount(count => count + 1);
+    }
     const next = current.slice();
-    next[index] = update(current[index]);
+    next[index] = updated;
     transferOperationsRef.current = next;
     setTransferOperations(next);
   }, []);
@@ -3832,6 +3863,9 @@ export default function App() {
       failures: entry.failures,
       error: entry.error,
     };
+    if (entry.status === 'completed') {
+      setUnreviewedCompletedCount(count => count + 1);
+    }
     const next = [...transferOperationsRef.current, operation];
     transferOperationsRef.current = next;
     setTransferOperations(next);
@@ -3842,6 +3876,8 @@ export default function App() {
     const next = transferOperationsRef.current.filter(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status));
     transferOperationsRef.current = next;
     setTransferOperations(next);
+    /* Clearing the history is also a review: the badge has nothing left to point at. */
+    setUnreviewedCompletedCount(0);
   }, []);
 
   const transferCompletionActionsRef = useRef({ refreshChangedDirectories, updatePaneTab, showToast, t, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, pushUndoAction, updateUndoAction, removeUndoAction });
@@ -5768,7 +5804,7 @@ export default function App() {
           isUnsavedWorkspaceChangesOpen || isOnboardingOpen || isEmptyRecycleBinConfirmOpen ||
           pendingDeleteItems.length > 0 || pendingCreateItem || pendingZipCreation || pendingNetworkAuth || pendingMapNetworkDrive || renameRequest || contextMenuPos
         ) return;
-        setIsOperationsCenterOpen(true);
+        openOperationsCenterFromUser();
         return;
       }
 
@@ -5861,15 +5897,11 @@ export default function App() {
         return;
       }
 
-      // F3 or Space: Toggle Preview. Space yields to a focused menu item: the
-      // context menus use Space to activate the focused row, and the preview
-      // toggle would swallow the key before the button can fire.
-      if (e.key === 'F3' || (e.key === ' ' && !e.repeat)) {
-        const activeElement = document.activeElement;
-        if (!(e.key === ' ' && activeElement instanceof HTMLElement && activeElement.closest('[role="menu"]'))) {
-          e.preventDefault();
-          setPreviewOpen(prev => !prev);
-        }
+      // F3: Toggle Preview. Space no longer toggles it: the lister uses Space
+      // to select the focused item, and the preview already has F3.
+      if (e.key === 'F3') {
+        e.preventDefault();
+        setPreviewOpen(prev => !prev);
         return;
       }
 
@@ -6250,7 +6282,7 @@ export default function App() {
 
   const paletteActions: CommandPaletteCommand[] = [
     { id: 'search-files', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.searchFiles, shortcut: 'Ctrl+F', keywords: 'find search files folders', onSelect: () => setIsSearchOpen(true) },
-    { id: 'operations-center', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.operationsCenter, shortcut: 'Ctrl+J', keywords: 'operations transfers activity copy move compress queue centro operaciones', onSelect: () => setIsOperationsCenterOpen(value => !value) },
+    { id: 'operations-center', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.operationsCenter, shortcut: 'Ctrl+J', keywords: 'operations transfers activity copy move compress queue centro operaciones', onSelect: () => toggleOperationsCenterFromUser() },
     { id: 'shortcuts', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.shortcuts, shortcut: 'F1', keywords: 'keyboard help keys', onSelect: () => setIsShortcutsOpen(true) },
     { id: 'settings', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.settings, keywords: 'preferences options', onSelect: () => setIsSettingsOpen(true) },
     { id: 'workspaces', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.workspaces, keywords: 'workspace profiles sessions layouts', onSelect: () => setIsWorkspaceManagerOpen(true) },
@@ -7031,7 +7063,9 @@ export default function App() {
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         operations={transferOperations}
         isOperationsOpen={isOperationsCenterOpen}
-        onToggleOperations={() => setIsOperationsCenterOpen(value => !value)}
+        onToggleOperations={toggleOperationsCenterFromUser}
+        operationsBadgeEnabled={operationsBadgeEnabled}
+        unreviewedCompletedCount={unreviewedCompletedCount}
       />
 
       {/* Floating Action Toast */}
@@ -7458,6 +7492,8 @@ export default function App() {
             onImageTooltipThumbnailsEnabledChange={setImageTooltipThumbnailsEnabled}
             notificationBannersEnabled={notificationBannersEnabled}
             onNotificationBannersEnabledChange={setNotificationBannersEnabled}
+            operationsBadgeEnabled={operationsBadgeEnabled}
+            onOperationsBadgeEnabledChange={setOperationsBadgeEnabled}
             toastDurationMs={toastDurationMs}
             onToastDurationMsChange={setToastDurationMs}
             tooltipsEnabled={tooltipsEnabled}
