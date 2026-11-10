@@ -1466,12 +1466,21 @@ export default function App() {
   const shouldMountSettingsModal = useKeepModalMountedAfterFirstOpen(isSettingsOpen);
   const shouldMountAboutModal = useKeepModalMountedAfterFirstOpen(isAboutOpen);
   const shouldMountUpdateModal = useKeepModalMountedAfterFirstOpen(isUpdateOpen);
-  /* The close dialog chunk loads while the changes dialog is up, so resolving the
-     changes swaps straight to it without flashing the bare interface between the
-     two modals (the wrapper mounts and fetches its module before it is shown).
-     The hook stays first: a hook call after a short-circuiting || would change
-     the render's hook order whenever the changes dialog is open. */
-  const shouldMountCloseWindowModal = useKeepModalMountedAfterFirstOpen(isCloseDialogOpen) || isUnsavedWorkspaceChangesOpen;
+  /* After the first idle beat the close dialog stays mounted for the rest of the
+     session, so every close path (direct, remembered, changes-first) swaps into it
+     with no lazy flash at all. Before that beat the changes-first path still warms
+     it through the sticky hook, whose input covers both dialogs so the wrapper
+     never unmounts in the transition render. The hook call stays first: a hook
+     after a short-circuiting || would change the render's hook order. */
+  const [closeDialogWarmedUp, setCloseDialogWarmedUp] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setCloseDialogWarmedUp(true), 4000);
+    return () => window.clearTimeout(timer);
+  }, []);
+  const shouldMountCloseWindowModal =
+    useKeepModalMountedAfterFirstOpen(isCloseDialogOpen || isUnsavedWorkspaceChangesOpen)
+    || isUnsavedWorkspaceChangesOpen
+    || closeDialogWarmedUp;
   const shouldMountOnboardingModal = useKeepModalMountedAfterFirstOpen(isOnboardingOpen);
   const shouldMountConfirmActionModal = useKeepModalMountedAfterFirstOpen(
     pendingDeleteItems.length > 0 || isEmptyRecycleBinConfirmOpen || isFlatViewConfirmOpen,
