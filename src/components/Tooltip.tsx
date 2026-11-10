@@ -100,6 +100,10 @@ interface TooltipProps {
   children: ReactElement;
   disabled?: boolean;
   followPointer?: boolean;
+  /* When set, the tooltip only answers the pointer: keyboard focus moves the
+     trigger without summoning the card, which menus use so arrow-key navigation
+     does not rain tooltips over every row. */
+  pointerOnly?: boolean;
   /* Selector for the element the card must stay inside — the visible list band of a pane.
      Without it the window is the only limit, and a row near the top of a pane covers the
      pane's own bars: breadcrumb, filter field, column headers. */
@@ -262,7 +266,7 @@ function getArrowStyle(position: TooltipPosition): CSSProperties {
 }
 
 /** A viewport-aware tooltip that does not alter the layout of its trigger. */
-export function Tooltip({ label, shortcut, placement = 'bottom', children, disabled = false, followPointer = false, boundary }: TooltipProps) {
+export function Tooltip({ label, shortcut, placement = 'bottom', children, disabled = false, followPointer = false, pointerOnly = false, boundary }: TooltipProps) {
   const preferenceEnabled = useContext(TooltipPreferenceContext);
   const isDisabled = disabled || !preferenceEnabled;
   const [anchorElement, setAnchorElement] = useState<HTMLElement | null>(null);
@@ -413,6 +417,7 @@ export function Tooltip({ label, shortcut, placement = 'bottom', children, disab
   };
   const onFocus = (event: ReactFocusEvent<HTMLElement>) => {
     child.props.onFocus?.(event);
+    if (pointerOnly) return;
     scheduleShow(event.currentTarget);
   };
   const onBlur = (event: ReactFocusEvent<HTMLElement>) => {

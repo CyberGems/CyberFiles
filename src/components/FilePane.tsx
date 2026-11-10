@@ -2492,18 +2492,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
       onSelectItems([], false, false, true);
       return;
     }
-    /* Shift+F10 / Menu key opens the item menu for the focused row. The event is
-       dispatched on the row so the whole existing context-menu pipeline runs,
-       and detail 0 marks it as keyboard-opened for the menu's initial focus. */
+    /* Shift+F10 / Menu key opens the item menu for the focused row, or the
+       background menu when nothing is focused. The event is dispatched so the
+       whole existing context-menu pipeline runs, and detail 0 marks it as
+       keyboard-opened for the menu's initial focus. */
     if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
       event.preventDefault();
       event.stopPropagation();
       const targetId = tab.focusedId ?? tab.selectedIds[tab.selectedIds.length - 1];
-      if (!targetId) return;
-      const row = viewportRef.current?.querySelector<HTMLElement>(`[data-file-item][data-file-id="${CSS.escape(targetId)}"]`);
-      if (!row) return;
-      const bounds = row.getBoundingClientRect();
-      row.dispatchEvent(new MouseEvent('contextmenu', {
+      const row = targetId
+        ? viewportRef.current?.querySelector<HTMLElement>(`[data-file-item][data-file-id="${CSS.escape(targetId)}"]`)
+        : null;
+      const anchor = row ?? viewportRef.current;
+      if (!anchor) return;
+      const bounds = anchor.getBoundingClientRect();
+      anchor.dispatchEvent(new MouseEvent('contextmenu', {
         bubbles: true,
         cancelable: true,
         detail: 0,

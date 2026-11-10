@@ -240,8 +240,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     flyoutTriggerRef.current = event.currentTarget;
     focusFlyoutOnOpenRef.current = true;
     openFlyoutFor(id, event.currentTarget.getBoundingClientRect());
-  };
-  /* ArrowRight opens the submenu and focuses its first row, mirroring native
+  };  /* ArrowRight opens the submenu and focuses its first row, mirroring native
      Windows menus. Arrow keys are owned by the window-level handler below so
      they reach the menu before the file list handles them. */
   const handleSubmenuTriggerKeyDown = (id: string, enabled: boolean, event: React.KeyboardEvent<HTMLButtonElement>) => {
@@ -390,6 +389,31 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         event.preventDefault();
         event.stopPropagation();
         moveFocusWithin(getMenuItems(), event.shiftKey ? 'ArrowUp' : 'ArrowDown');
+        return;
+      }
+
+      /* Horizontal navigation: the quick-action header bar is a row of its own,
+         so ArrowLeft/ArrowRight walk it. Everywhere else they open the hovered
+         submenu trigger or fall back to vertical movement. */
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        event.stopPropagation();
+        const horizontalItems = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)') ?? [])
+          .filter(element => element.closest('[role="group"]'));
+        const activeElement = document.activeElement as HTMLButtonElement | null;
+        if (horizontalItems.length > 1 && (!activeElement || activeElement.closest('[role="group"]'))) {
+          const currentIndex = horizontalItems.indexOf(activeElement as HTMLButtonElement);
+          const nextIndex = currentIndex === -1
+            ? 0
+            : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + horizontalItems.length) % horizontalItems.length;
+          horizontalItems[nextIndex]?.focus();
+          return;
+        }
+        if (activeElement?.getAttribute('aria-haspopup') === 'menu') {
+          openFlyoutFromKeyboard(activeElement.dataset.flyoutId ?? '', event as unknown as React.KeyboardEvent<HTMLButtonElement>);
+          return;
+        }
+        moveFocusWithin(getMenuItems(), event.key === 'ArrowRight' ? 'ArrowDown' : 'ArrowUp');
         return;
       }
 
@@ -802,6 +826,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               expanded={openFlyout?.id === 'new'}
               trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
               onClick={event => toggleFlyout('new', event)}
+              flyoutId="new"
               onMouseEnter={canModifyFolder ? event => scheduleFlyoutOpen('new', event) : undefined}
               onMouseLeave={scheduleFlyoutClose}
               onKeyDown={event => handleSubmenuTriggerKeyDown('new', canModifyFolder, event)}
@@ -814,6 +839,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                 expanded={openFlyout?.id === 'select'}
                 trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
                 onClick={event => toggleFlyout('select', event)}
+              flyoutId="select"
                 onMouseEnter={hasFolder ? event => scheduleFlyoutOpen('select', event) : undefined}
                 onMouseLeave={scheduleFlyoutClose}
                 onKeyDown={event => handleSubmenuTriggerKeyDown('select', hasFolder, event)}
@@ -844,6 +870,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               expanded={openFlyout?.id === 'sort'}
               trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
               onClick={event => toggleFlyout('sort', event)}
+              flyoutId="sort"
               onMouseEnter={event => scheduleFlyoutOpen('sort', event)}
               onMouseLeave={scheduleFlyoutClose}
               onKeyDown={event => handleSubmenuTriggerKeyDown('sort', true, event)}
@@ -855,6 +882,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               expanded={openFlyout?.id === 'group'}
               trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
               onClick={event => toggleFlyout('group', event)}
+              flyoutId="group"
               onMouseEnter={supportsGrouping ? event => scheduleFlyoutOpen('group', event) : undefined}
               onMouseLeave={scheduleFlyoutClose}
               onKeyDown={event => handleSubmenuTriggerKeyDown('group', supportsGrouping, event)}
@@ -904,7 +932,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         onMouseEnter={cancelFlyoutTimers}
         onMouseLeave={scheduleFlyoutClose}
         onContextMenu={event => event.preventDefault()}
-        className="fixed z-[110] min-w-[232px] w-max max-w-[340px] max-h-[calc(100vh-20px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-1 text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
+        className="fixed z-[110] min-w-[232px] w-max max-w-[340px] max-h-[calc(100vh-20px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
       >
         {flyoutContent()}
       </div>
@@ -944,7 +972,7 @@ const HeaderActionButton: React.FC<{
   );
 
   return shortcut ? (
-    <Tooltip label={shortcut} placement="top">
+    <Tooltip label={shortcut} placement="top" pointerOnly>
       {button}
     </Tooltip>
   ) : (
@@ -964,14 +992,15 @@ const MenuButton: React.FC<{
   danger?: boolean;
   trailing?: React.ReactNode;
   expanded?: boolean;
-}> = ({ icon, label, shortcut, onClick, onMouseEnter, onMouseLeave, onKeyDown, disabled = false, danger = false, trailing, expanded }) => (
-  <div className="px-1.5">
-    <button
+  flyoutId?: string;
+}> = ({ icon, label, shortcut, onClick, onMouseEnter, onMouseLeave, onKeyDown, disabled = false, danger = false, trailing, expanded, flyoutId }) => (
+  <button
       type="button"
       role="menuitem"
       disabled={disabled}
       aria-haspopup={expanded === undefined ? undefined : 'menu'}
       aria-expanded={expanded}
+      data-flyout-id={flyoutId}
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
@@ -999,7 +1028,6 @@ const MenuButton: React.FC<{
       )}
       {trailing}
     </button>
-  </div>
 );
 
 const ViewMenuButton: React.FC<{
@@ -1008,8 +1036,7 @@ const ViewMenuButton: React.FC<{
   selected: boolean;
   onClick: () => void;
 }> = ({ icon, label, selected, onClick }) => (
-  <div className="px-1.5">
-    <button
+  <button
       type="button"
       role="menuitemradio"
       aria-checked={selected}
@@ -1022,5 +1049,4 @@ const ViewMenuButton: React.FC<{
       </span>
       {selected && <Check className="h-3.5 w-3.5 text-cyan-300" />}
     </button>
-  </div>
 );

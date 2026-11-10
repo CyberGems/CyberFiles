@@ -50,6 +50,15 @@ export function TabContextMenu({ x, y, tab, canOpenParent, canReopen, closableLe
   }, [section]);
 
   useEffect(() => {
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    return () => {
+      /* The menu hands focus back to the element that had it before opening,
+         so a full keyboard pass never falls to the background. */
+      previousFocus?.focus();
+    };
+  }, []);
+
+  useEffect(() => {
     const outside = (event: PointerEvent) => {
       if (!menuRef.current?.contains(event.target as Node)) onClose();
     };
@@ -103,6 +112,19 @@ export function TabContextMenu({ x, y, tab, canOpenParent, canReopen, closableLe
       onContextMenu={event => event.preventDefault()}
       onKeyDown={event => {
         event.stopPropagation();
+        /* Tab cycles inside the menu; the unmount effect hands focus back to
+           the element that had it before the menu opened. */
+        if (event.key === 'Tab' && section === 'main') {
+          event.preventDefault();
+          const enabled = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)') ?? []);
+          if (!enabled.length) return;
+          const current = enabled.indexOf(document.activeElement as HTMLButtonElement);
+          const next = current === -1
+            ? (event.shiftKey ? enabled.length - 1 : 0)
+            : (current + (event.shiftKey ? -1 : 1) + enabled.length) % enabled.length;
+          enabled[next].focus();
+          return;
+        }
         if (section !== 'main' || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
         const enabled = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)') ?? []);
         if (!enabled.length) return;
