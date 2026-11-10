@@ -173,6 +173,12 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const [openFlyout, setOpenFlyout] = useState<{ id: string; rect: DOMRect } | null>(null);
   const flyoutRef = useRef<HTMLDivElement>(null);
   const [flyoutPos, setFlyoutPos] = useState<{ left: number; top: number } | null>(null);
+  /* Keyboard flow needs the trigger to hand focus back to after ArrowLeft or
+     Escape, and a flag so only keyboard-opened flyouts steal focus on mount. */
+  const flyoutTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const focusFlyoutOnOpenRef = useRef(false);
+  const openFlyoutRef = useRef<{ id: string; rect: DOMRect } | null>(null);
+  openFlyoutRef.current = openFlyout;
   const flyoutTimersRef = useRef<{ open: number | null; close: number | null }>({ open: null, close: null });
   const cancelFlyoutTimers = () => {
     if (flyoutTimersRef.current.open !== null) window.clearTimeout(flyoutTimersRef.current.open);
@@ -185,6 +191,10 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   };
   const toggleFlyout = (id: string, event: React.MouseEvent) => {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    flyoutTriggerRef.current = event.currentTarget as HTMLButtonElement;
+    /* Keyboard activation produces a click with detail 0; only then should the
+       panel move focus to its first row. */
+    focusFlyoutOnOpenRef.current = event.detail === 0;
     if (openFlyout?.id === id) {
       cancelFlyoutTimers();
       setOpenFlyout(null);
@@ -197,12 +207,63 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
      grace period so small pointer detours do not dismiss it. */
   const scheduleFlyoutOpen = (id: string, event: React.MouseEvent) => {
     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    flyoutTriggerRef.current = event.currentTarget as HTMLButtonElement;
+    focusFlyoutOnOpenRef.current = false;
     cancelFlyoutTimers();
     flyoutTimersRef.current.open = window.setTimeout(() => openFlyoutFor(id, rect), 150);
   };
   const scheduleFlyoutClose = () => {
     cancelFlyoutTimers();
     flyoutTimersRef.current.close = window.setTimeout(() => setOpenFlyout(null), 250);
+  };
+  const focusFirstFlyoutItem = () => {
+    flyoutRef.current?.querySelector<HTMLButtonElement>('button[role^="menuitem"]:not(:disabled)')?.focus({ preventScroll: true });
+  };
+  const openFlyoutFromKeyboard = (id: string, event: React.KeyboardEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    flyoutTriggerRef.current = event.currentTarget;
+    focusFlyoutOnOpenRef.current = true;
+    openFlyoutFor(id, event.currentTarget.getBoundingClientRect());
+  };
+  /* ArrowRight opens the submenu and focuses its first row, mirroring native
+     Windows menus; ArrowDown enters a panel that hover already opened. */
+  const handleSubmenuTriggerKeyDown = (id: string, enabled: boolean, event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!enabled) return;
+    if (event.key === 'ArrowRight') {
+      openFlyoutFromKeyboard(id, event);
+    } else if (event.key === 'ArrowDown' && openFlyout?.id === id) {
+      event.preventDefault();
+      focusFirstFlyoutItem();
+    }
+  };
+  const closeFlyoutAndRestoreFocus = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    cancelFlyoutTimers();
+    setOpenFlyout(null);
+    flyoutTriggerRef.current?.focus({ preventScroll: true });
+  };
+  const handleFlyoutKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const panel = flyoutRef.current;
+    if (!panel) return;
+    if (event.key === 'Escape' || event.key === 'ArrowLeft') {
+      closeFlyoutAndRestoreFocus(event);
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const items = Array.from(panel.querySelectorAll<HTMLButtonElement>('button[role^="menuitem"]:not(:disabled)'));
+    if (items.length === 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? items.length - 1
+        : currentIndex === -1
+          ? (event.key === 'ArrowUp' ? items.length - 1 : 0)
+          : (currentIndex + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[nextIndex]?.focus({ preventScroll: true });
   };
   const [screenPos, setScreenPos] = useState<{ left: number; top: number }>({
     left: position?.x ?? 0,
@@ -257,6 +318,14 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     setFlyoutPos(current => (current && current.left === left && current.top === top ? current : { left, top }));
   }, [openFlyout]);
 
+  /* Focus moves only once the panel is positioned; a hidden panel cannot take
+     focus, so this waits for flyoutPos instead of running in the effect above. */
+  useEffect(() => {
+    if (!openFlyout || !flyoutPos || !focusFlyoutOnOpenRef.current) return;
+    focusFlyoutOnOpenRef.current = false;
+    focusFirstFlyoutItem();
+  }, [openFlyout, flyoutPos]);
+
   useEffect(() => () => cancelFlyoutTimers(), []);
 
   useEffect(() => {
@@ -267,7 +336,17 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       onClose();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        /* Esc closes one level: the open flyout first, the whole menu next. */
+        if (openFlyoutRef.current) {
+          cancelFlyoutTimers();
+          setOpenFlyout(null);
+          flyoutTriggerRef.current?.focus({ preventScroll: true });
+        } else {
+          onClose();
+        }
+      }
     };
     window.addEventListener('mousedown', handleClickOutside);
     window.addEventListener('keydown', handleKeyDown);
@@ -673,6 +752,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               onClick={event => toggleFlyout('new', event)}
               onMouseEnter={canModifyFolder ? event => scheduleFlyoutOpen('new', event) : undefined}
               onMouseLeave={scheduleFlyoutClose}
+              onKeyDown={event => handleSubmenuTriggerKeyDown('new', canModifyFolder, event)}
             />
             {onSelectAll && (
               <MenuButton
@@ -684,6 +764,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                 onClick={event => toggleFlyout('select', event)}
                 onMouseEnter={hasFolder ? event => scheduleFlyoutOpen('select', event) : undefined}
                 onMouseLeave={scheduleFlyoutClose}
+                onKeyDown={event => handleSubmenuTriggerKeyDown('select', hasFolder, event)}
               />
             )}
             {hasFilter && (
@@ -713,6 +794,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               onClick={event => toggleFlyout('sort', event)}
               onMouseEnter={event => scheduleFlyoutOpen('sort', event)}
               onMouseLeave={scheduleFlyoutClose}
+              onKeyDown={event => handleSubmenuTriggerKeyDown('sort', true, event)}
             />
             <MenuButton
               icon={<Layers className="h-4 w-4 text-violet-300" />}
@@ -723,6 +805,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               onClick={event => toggleFlyout('group', event)}
               onMouseEnter={supportsGrouping ? event => scheduleFlyoutOpen('group', event) : undefined}
               onMouseLeave={scheduleFlyoutClose}
+              onKeyDown={event => handleSubmenuTriggerKeyDown('group', supportsGrouping, event)}
             />
           </div>
 
@@ -768,6 +851,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         }}
         onMouseEnter={cancelFlyoutTimers}
         onMouseLeave={scheduleFlyoutClose}
+        onKeyDown={handleFlyoutKeyDown}
         onContextMenu={event => event.preventDefault()}
         className="fixed z-[110] min-w-[232px] w-max max-w-[340px] max-h-[calc(100vh-20px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-1 pb-1.5 text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
       >
@@ -824,11 +908,12 @@ const MenuButton: React.FC<{
   onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onMouseEnter?: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onMouseLeave?: () => void;
+  onKeyDown?: (event: React.KeyboardEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
   danger?: boolean;
   trailing?: React.ReactNode;
   expanded?: boolean;
-}> = ({ icon, label, shortcut, onClick, onMouseEnter, onMouseLeave, disabled = false, danger = false, trailing, expanded }) => (
+}> = ({ icon, label, shortcut, onClick, onMouseEnter, onMouseLeave, onKeyDown, disabled = false, danger = false, trailing, expanded }) => (
   <div className="px-1.5">
     <button
       type="button"
@@ -839,6 +924,7 @@ const MenuButton: React.FC<{
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
+      onKeyDown={onKeyDown}
       className={
         'flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left transition-colors outline-none disabled:cursor-not-allowed disabled:opacity-40 ' +
         (danger
