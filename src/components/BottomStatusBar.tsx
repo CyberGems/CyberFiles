@@ -282,6 +282,21 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
         label: `${activePercent}%`,
       } : undefined}
       rows={[
+        {
+          label: language === 'es' ? 'Estado' : 'Status',
+          value: activeOperation
+            ? (activeOperation.status === 'paused'
+              ? (language === 'es' ? 'En pausa' : 'Paused')
+              : activeOperation.status === 'cancelling'
+                ? (language === 'es' ? 'Cancelando' : 'Cancelling')
+                : (language === 'es' ? 'En curso' : 'In progress'))
+            : pendingCount > 0
+              ? (language === 'es' ? 'En cola' : 'Queued')
+              : recentCompleted.length > 0
+                ? (language === 'es' ? 'Finalizada' : 'Completed')
+                : (language === 'es' ? 'Sin operaciones' : 'Idle'),
+          tone: activeOperation ? 'cyan' : failedCount > 0 ? 'rose' : 'default',
+        },
         ...(activeOperation ? [
           { label: language === 'es' ? 'Elemento actual' : 'Current item', value: activeOperation.currentItem || activeOperation.sourcePaths[0] || '—' },
           { label: language === 'es' ? 'Progreso' : 'Progress', value: activeOperation.totalItems ? `${activeOperation.itemsCompleted} / ${activeOperation.totalItems}` : `${activePercent}%`, tone: 'cyan' as const },

@@ -12,6 +12,7 @@ import {
   FolderPlus,
   Gauge,
   ListChecks,
+  Minus,
   MoveRight,
   Pause,
   Pencil,
@@ -376,10 +377,10 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
   return createPortal(
     <aside
       ref={panelRef}
-      className="pointer-events-none fixed bottom-9 right-3 z-[120] flex max-h-[min(82vh,780px)] w-[min(720px,calc(100vw-1.5rem))] flex-col items-end"
+      className="pointer-events-none fixed inset-0 z-[120] flex items-center justify-center p-3"
       aria-label={title}
     >
-      <section className="cyberfiles-transfer-panel pointer-events-auto flex max-h-[min(82vh,780px)] w-full flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900/98 text-neutral-100 shadow-2xl shadow-black/80 backdrop-blur-md">
+      <section className="cyberfiles-transfer-panel pointer-events-auto flex max-h-[min(82vh,780px)] w-[min(720px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900/98 text-neutral-100 shadow-2xl shadow-black/80 backdrop-blur-md">
         <header className="flex items-center gap-3 border-b border-neutral-700/80 bg-neutral-900/90 px-4 py-3">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-cyan-800/40 bg-cyan-950/70 text-cyan-300">
             <ListChecks className="h-5 w-5" />
@@ -425,6 +426,17 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
               </button>
             </Tooltip>
           )}
+
+          <Tooltip label={isSpanish ? 'Minimizar a la barra de estado' : 'Minimize to the status bar'} placement="top">
+            <button
+              type="button"
+              aria-label={isSpanish ? 'Minimizar' : 'Minimize'}
+              onClick={onClose}
+              className="grid h-8 w-8 place-items-center rounded-md text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-100"
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+          </Tooltip>
 
           <Tooltip label={isSpanish ? 'Cerrar (Esc)' : 'Close (Esc)'} placement="top">
             <button

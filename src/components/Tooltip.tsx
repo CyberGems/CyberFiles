@@ -138,6 +138,11 @@ let dismissActiveTooltip: (() => void) | null = null;
 let pendingTooltipOwner: symbol | null = null;
 let cancelPendingTooltip: (() => void) | null = null;
 let mountedTooltipInstances = 0;
+/* Restoring a minimized window makes the OS replay the pointer position over
+   whatever control sits under the cursor, which would summon a tooltip the
+   user never asked for. Tooltips stay suppressed briefly after regaining
+   focus; a real pointer move afterwards shows them again. */
+let tooltipSuppressUntil = 0;
 
 export const dismissAllTooltips = () => {
   const cancelPending = cancelPendingTooltip;
@@ -151,13 +156,18 @@ export const dismissAllTooltips = () => {
   dismissActive?.();
 };
 
+const suppressTooltipsAfterWindowFocus = () => {
+  dismissAllTooltips();
+  tooltipSuppressUntil = Date.now() + 700;
+};
+
 const dismissTooltipWhenHidden = () => {
   if (document.visibilityState === 'hidden') dismissAllTooltips();
 };
 
 const attachTooltipWindowListeners = () => {
   window.addEventListener('blur', dismissAllTooltips);
-  window.addEventListener('focus', dismissAllTooltips);
+  window.addEventListener('focus', suppressTooltipsAfterWindowFocus);
   window.addEventListener('pagehide', dismissAllTooltips);
   document.addEventListener('visibilitychange', dismissTooltipWhenHidden);
   document.addEventListener('pointerdown', dismissAllTooltips, true);
@@ -165,7 +175,7 @@ const attachTooltipWindowListeners = () => {
 
 const detachTooltipWindowListeners = () => {
   window.removeEventListener('blur', dismissAllTooltips);
-  window.removeEventListener('focus', dismissAllTooltips);
+  window.removeEventListener('focus', suppressTooltipsAfterWindowFocus);
   window.removeEventListener('pagehide', dismissAllTooltips);
   document.removeEventListener('visibilitychange', dismissTooltipWhenHidden);
   document.removeEventListener('pointerdown', dismissAllTooltips, true);
@@ -301,6 +311,12 @@ export function Tooltip({ label, shortcut, placement = 'bottom', children, disab
   const scheduleShow = (element: HTMLElement, point: PointerPoint | null = null) => {
     clearDelay();
     const owner = tooltipOwnerRef.current;
+
+    if (Date.now() < tooltipSuppressUntil && point === null) {
+      /* Suppressed after a window restore: only pointer-driven tooltips are
+         blocked here, keyboard focus should never have shown one anyway. */
+      return;
+    }
 
     if (pendingTooltipOwner && pendingTooltipOwner !== owner) {
       const cancelPending = cancelPendingTooltip;

@@ -235,7 +235,10 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     /* Plain focus() so a long menu scrolls the focused row into view. */
     items[nextIndex]?.focus();
   };
-  const openFlyoutFromKeyboard = (id: string, event: React.KeyboardEvent<HTMLButtonElement>) => {
+  /* Opens the flyout for a trigger and moves focus to its first row. The
+     synthetic call from the window-level arrow handler passes the trigger
+     element directly, since that event's currentTarget is the window. */
+  const openFlyoutFromKeyboard = (id: string, event: React.KeyboardEvent<HTMLButtonElement> | { preventDefault: () => void; currentTarget: HTMLButtonElement }) => {
     event.preventDefault();
     flyoutTriggerRef.current = event.currentTarget;
     focusFlyoutOnOpenRef.current = true;
@@ -392,28 +395,67 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         return;
       }
 
-      /* Horizontal navigation: the quick-action header bar is a row of its own,
-         so ArrowLeft/ArrowRight walk it. Everywhere else they open the hovered
-         submenu trigger or fall back to vertical movement. */
+      /* The quick-action header bar and the vertical list navigate separately,
+         like native menus: Left/Right walk the header row, Up/Down walk the
+         list, and the arrows cross between the two bands. */
+      const allItems = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)') ?? []);
+      const headerItems = allItems.filter(element => Boolean(element.closest('[role="group"]')));
+      const listItems = allItems.filter(element => !element.closest('[role="group"]'));
+      const activeElement = document.activeElement as HTMLButtonElement | null;
+      const inHeader = Boolean(activeElement?.closest('[role="group"]'));
+      const band = inHeader ? headerItems : listItems;
+
+      const moveIn = (items: HTMLButtonElement[], key: string) => {
+        if (!items.length) return;
+        const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+        const nextIndex = key === 'Home'
+          ? 0
+          : key === 'End'
+            ? items.length - 1
+            : currentIndex === -1
+              ? (key === 'ArrowUp' ? items.length - 1 : 0)
+              : (currentIndex + (key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+        items[nextIndex]?.focus();
+      };
+
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        event.stopPropagation();
+        /* From the header row, Down drops straight into the list below; from
+           the list, Up at the top returns to the header row when it exists. */
+        if (inHeader && event.key === 'ArrowDown') {
+          listItems[0]?.focus();
+          return;
+        }
+        if (!inHeader && headerItems.length && event.key === 'ArrowUp' && listItems.indexOf(activeElement as HTMLButtonElement) === 0) {
+          headerItems[headerItems.length - 1]?.focus();
+          return;
+        }
+        moveIn(band, event.key);
+        return;
+      }
+
       if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         event.preventDefault();
         event.stopPropagation();
-        const horizontalItems = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)') ?? [])
-          .filter(element => element.closest('[role="group"]'));
-        const activeElement = document.activeElement as HTMLButtonElement | null;
-        if (horizontalItems.length > 1 && (!activeElement || activeElement.closest('[role="group"]'))) {
-          const currentIndex = horizontalItems.indexOf(activeElement as HTMLButtonElement);
-          const nextIndex = currentIndex === -1
-            ? 0
-            : (currentIndex + (event.key === 'ArrowRight' ? 1 : -1) + horizontalItems.length) % horizontalItems.length;
-          horizontalItems[nextIndex]?.focus();
+        /* Inside the header row the arrows stay in that row. */
+        if (inHeader) {
+          moveIn(headerItems, event.key);
           return;
         }
-        if (activeElement?.getAttribute('aria-haspopup') === 'menu') {
-          openFlyoutFromKeyboard(activeElement.dataset.flyoutId ?? '', event as unknown as React.KeyboardEvent<HTMLButtonElement>);
+        /* On a submenu trigger, Right opens the flyout. */
+        if (event.key === 'ArrowRight' && activeElement?.getAttribute('aria-haspopup') === 'menu' && activeElement.dataset.flyoutId) {
+          openFlyoutFromKeyboard(activeElement.dataset.flyoutId, {
+            preventDefault: () => {},
+            currentTarget: activeElement,
+          } as unknown as React.KeyboardEvent<HTMLButtonElement>);
           return;
         }
-        moveFocusWithin(getMenuItems(), event.key === 'ArrowRight' ? 'ArrowDown' : 'ArrowUp');
+        /* In a plain list, Left steps back up to the header row when present. */
+        if (event.key === 'ArrowLeft' && headerItems.length && listItems.indexOf(activeElement as HTMLButtonElement) === 0) {
+          headerItems[0]?.focus();
+          return;
+        }
         return;
       }
 
