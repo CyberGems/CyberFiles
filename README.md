@@ -108,6 +108,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 
 ### 📁 Browsing & Views
 - **This PC view**: drives, common Windows folders, network locations and advanced Windows folders in one place
+- **Network drives**: browse LAN devices and SMB shares, navigate UNC paths, map and disconnect network drives, and sign in with the native credentials dialog; addresses accept environment variables such as `%APPDATA%`
 - **Address bar**: the current folder path with clickable segments; click a parent to jump back, click the current segment to refresh the listing, and open recent folders from the chevron at the right edge. Type or paste a path with environment variables such as `%APPDATA%\CyberSnap\logs` and CyberFiles resolves the tokens automatically
 - **Sidebar**: locations only, so the tree never leaves the screen: quick access with a lazy-loaded folder tree, drives with capacity bars, advanced Windows folders and Recycle Bin status
 - **Collapsible locations panel**: hide the sidebar with Ctrl+L, the button beside the properties toggle or the command palette, and both panes take the full width; the choice is part of saved layouts
@@ -125,7 +126,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 ### 🚚 File Operations
 - **Two-pane transfers**: copy with F5 or move with F6, or drag items between panes with the intended action shown before you drop
 - **Clipboard**: cut, copy and paste with Windows keyboard shortcuts
-- **Operations center**: copy, move, extraction and ZIP creation run through a queue with progress, pause, resume, cancel and per-item errors
+- **Operations center**: copy, move, extraction and ZIP creation run through a queue with progress, pause, resume, cancel and per-item errors; the status bar button counts completed and failed operations since your last review, so nothing is missed between checks
 - **Undo history**: the last ten supported actions can be reversed from the toolbar or from the pane context menu, with clear reasons when an action cannot be undone
 - **Create and rename**: new folder, new text document, new shortcut, single rename and a batch rename studio with search and replace, prefix, suffix, sequential numbering and case changes; rename and copy path sit in the pane action bar, the name field fills the row, and clicking the name of a selected item starts an inline rename
 - **Copy path**: Ctrl+Shift+C copies the path of the selection, or of the current folder when nothing is selected, from the action bar, the context menu or the command palette
@@ -165,6 +166,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Bilingual UI**: complete English and Spanish interface
 - **Date formats**: application style, system locale or ISO
 - **Display options**: recent-item highlighting and hidden-item styling with your own colors, image thumbnails in tooltips, optional notification banners and tooltips
+- **Interface scale and toasts**: lister text size with scaled rows and headers, and a toast duration from 1.5 to 15 seconds with hover pause and a close button
 - **Toolbar labels**: show the name of each action beside its icon on the right, left, top or bottom, or keep icons only; keyboard shortcuts stay in the button tooltips
 - **Typing behavior**: choose whether the first letter typed in a pane fills the filter or jumps to the first matching name
 - **Settings search**: filter settings across every tab from a single field
@@ -313,7 +315,8 @@ Each release also writes `latest.json` (version, notes, installer URL and signat
 | `F1` | Open the keyboard shortcuts cheat sheet |
 | `F2` | Rename the selected item |
 | `Ctrl+Shift+C` | Copy the path of the selection, or of the folder when nothing is selected |
-| `F3` or `Space` | Show or hide the properties panel |
+| `F3` | Show or hide the properties panel |
+| `Space` | Select or deselect the focused item |
 | `Ctrl+L` | Show or hide the locations panel |
 | `F5` | Copy the selection to the opposite pane |
 | `F6` | Move the selection to the opposite pane |
@@ -332,7 +335,7 @@ Each release also writes `latest.json` (version, notes, installer URL and signat
 | `Esc` | Close dialogs and leave the filter |
 | `Alt+Shift+F` | Show or hide CyberFiles (global, configurable) |
 
-With the file list focused, typing letters fills the filter by default, or jumps to a matching name when that option is turned off in Settings › Navigation; in the jump mode, repeating the letter cycles through matches. In Manual Quick Access ordering, Alt+Up and Alt+Down move the focused shortcut.
+With the file list focused, typing letters fills the filter by default, or jumps to a matching name when that option is turned off in Settings › Navigation; in the jump mode, repeating the letter cycles through matches. In Manual Quick Access ordering, Alt+Up and Alt+Down move the focused shortcut. Context menus and tab menus are fully keyboard navigable: arrow keys move between items and bands, Enter or Space activates the focused item, and submenus open as anchored flyouts next to their trigger.
 
 ---
 

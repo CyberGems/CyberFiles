@@ -108,6 +108,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 
 ### 📁 Navegación y vistas
 - **Vista Este equipo**: unidades, carpetas habituales de Windows, ubicaciones de red y carpetas avanzadas de Windows en un solo lugar
+- **Unidades de red**: explora dispositivos LAN y recursos SMB, navega rutas UNC, conecta y desconecta unidades de red e inicia sesión con el diálogo nativo de credenciales; las direcciones aceptan variables de entorno como `%APPDATA%`
 - **Barra de direcciones**: la ruta de la carpeta actual con segmentos en los que puedes hacer clic; pulsa un nivel superior para volver, pulsa el segmento actual para actualizar la lista y abre carpetas recientes desde el chevron del borde derecho. Escribe o pega una ruta con variables de entorno como `%APPDATA%\CyberSnap\logs` y CyberFiles resuelve los tokens automáticamente
 - **Barra lateral**: solo ubicaciones, para que el árbol no salga nunca de la pantalla: acceso rápido con árbol de carpetas de carga diferida, unidades con barras de capacidad, carpetas avanzadas de Windows y estado de la Papelera de reciclaje
 - **Panel de ubicaciones plegable**: oculta la barra lateral con Ctrl+L, con el botón junto al de propiedades o desde la paleta de comandos, y ambos paneles ocupan todo el ancho; la elección forma parte de los diseños guardados
@@ -125,7 +126,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 ### 🚚 Operaciones con archivos
 - **Transferencias entre paneles**: copia con F5 o mueve con F6, o arrastra elementos entre paneles con la acción prevista visible antes de soltar
 - **Portapapeles**: cortar, copiar y pegar con los atajos de Windows
-- **Centro de operaciones**: copia, movimiento, extracción y creación de ZIP pasan por una cola con progreso, pausa, reanudación, cancelación y errores por elemento
+- **Centro de operaciones**: copia, movimiento, extracción y creación de ZIP pasan por una cola con progreso, pausa, reanudación, cancelación y errores por elemento; el botón de la barra de estado cuenta las operaciones completadas y fallidas desde tu última revisión, para que no se pase nada entre revisiones
 - **Historial de deshacer**: las últimas diez acciones compatibles se revierten desde la barra de herramientas o desde el menú contextual del panel, con el motivo indicado cuando una acción no se puede deshacer
 - **Crear y renombrar**: carpeta nueva, documento de texto nuevo, acceso directo nuevo, renombrado individual y un estudio de renombrado múltiple con buscar y reemplazar, prefijo, sufijo, numeración secuencial y cambios de mayúsculas; renombrar y copiar ruta están en la barra de acciones del panel, el campo de nombre ocupa la fila y un clic en el nombre de un elemento seleccionado inicia el renombrado en línea
 - **Copiar ruta**: Ctrl+Shift+C copia la ruta de la selección, o la de la carpeta actual si no hay selección, desde la barra de acciones, el menú contextual o la paleta de comandos
@@ -163,6 +164,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Interfaz bilingüe**: interfaz completa en inglés y español
 - **Formatos de fecha**: estilo de la aplicación, configuración regional del sistema o ISO
 - **Opciones de visualización**: resaltado de elementos recientes y estilo de elementos ocultos con tus propios colores, miniaturas de imágenes en tooltips, avisos y tooltips opcionales
+- **Escala de la interfaz y avisos**: tamaño de texto del listador con filas y cabeceras escaladas, y duración de los avisos de 1,5 a 15 segundos con pausa al pasar el cursor y botón de cierre
 - **Etiquetas de la barra**: muestra el nombre de cada acción junto a su icono a la derecha, izquierda, arriba o abajo, o deja solo los iconos; los atajos de teclado siguen en el tooltip de cada botón
 - **Comportamiento al escribir**: elige si la primera letra escrita en un panel rellena el filtro o salta al primer nombre que coincide
 - **Búsqueda en la configuración**: filtra los ajustes de todas las pestañas desde un solo campo
@@ -311,7 +313,8 @@ Cada versión escribe además `latest.json` (versión, notas, URL del instalador
 | `F1` | Abrir la chuleta de atajos de teclado |
 | `F2` | Renombrar el elemento seleccionado |
 | `Ctrl+Shift+C` | Copiar la ruta de la selección, o la de la carpeta si no hay selección |
-| `F3` o `Espacio` | Mostrar u ocultar el panel de propiedades |
+| `F3` | Mostrar u ocultar el panel de propiedades |
+| `Espacio` | Seleccionar o quitar el elemento enfocado |
 | `Ctrl+L` | Mostrar u ocultar el panel de ubicaciones |
 | `F5` | Copiar la selección al panel opuesto |
 | `F6` | Mover la selección al panel opuesto |
@@ -330,7 +333,7 @@ Cada versión escribe además `latest.json` (versión, notas, URL del instalador
 | `Esc` | Cerrar diálogos y salir del filtro |
 | `Alt+Shift+F` | Mostrar u ocultar CyberFiles (global, configurable) |
 
-Con la lista de archivos enfocada, escribir letras rellena el filtro de forma predeterminada, o salta a un nombre coincidente si desactivas esa opción en Configuración › Navegación; en el modo de salto, repetir la letra recorre las coincidencias. Con el orden manual del Acceso rápido, Alt+Arriba y Alt+Abajo mueven el acceso enfocado.
+Con la lista de archivos enfocada, escribir letras rellena el filtro de forma predeterminada, o salta a un nombre coincidente si desactivas esa opción en Configuración › Navegación; en el modo de salto, repetir la letra recorre las coincidencias. Con el orden manual del Acceso rápido, Alt+Arriba y Alt+Abajo mueven el acceso enfocado. Los menús contextuales y de pestañas se navegan por completo con el teclado: las flechas mueven entre elementos y bandas, Enter o Espacio activan el elemento enfocado y los submenús se abren como ventanas ancladas junto a su origen.
 
 ---
 
