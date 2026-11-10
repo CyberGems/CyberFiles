@@ -168,10 +168,42 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onRefresh,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
-  const [newMenuOpen, setNewMenuOpen] = useState(false);
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
-  const [groupMenuOpen, setGroupMenuOpen] = useState(false);
-  const [selectMenuOpen, setSelectMenuOpen] = useState(false);
+  /* Submenus render as flyout panels anchored to their trigger, like native
+     Windows menus, instead of expanding inline. One open flyout at a time. */
+  const [openFlyout, setOpenFlyout] = useState<{ id: string; rect: DOMRect } | null>(null);
+  const flyoutRef = useRef<HTMLDivElement>(null);
+  const [flyoutPos, setFlyoutPos] = useState<{ left: number; top: number } | null>(null);
+  const flyoutTimersRef = useRef<{ open: number | null; close: number | null }>({ open: null, close: null });
+  const cancelFlyoutTimers = () => {
+    if (flyoutTimersRef.current.open !== null) window.clearTimeout(flyoutTimersRef.current.open);
+    if (flyoutTimersRef.current.close !== null) window.clearTimeout(flyoutTimersRef.current.close);
+    flyoutTimersRef.current = { open: null, close: null };
+  };
+  const openFlyoutFor = (id: string, rect: DOMRect) => {
+    cancelFlyoutTimers();
+    setOpenFlyout({ id, rect });
+  };
+  const toggleFlyout = (id: string, event: React.MouseEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    if (openFlyout?.id === id) {
+      cancelFlyoutTimers();
+      setOpenFlyout(null);
+    } else {
+      openFlyoutFor(id, rect);
+    }
+  };
+  /* Hover opens after a short dwell so scanning the menu vertically does not
+     flash panels; leaving either the trigger or the panel closes after a
+     grace period so small pointer detours do not dismiss it. */
+  const scheduleFlyoutOpen = (id: string, event: React.MouseEvent) => {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    cancelFlyoutTimers();
+    flyoutTimersRef.current.open = window.setTimeout(() => openFlyoutFor(id, rect), 150);
+  };
+  const scheduleFlyoutClose = () => {
+    cancelFlyoutTimers();
+    flyoutTimersRef.current.close = window.setTimeout(() => setOpenFlyout(null), 250);
+  };
   const [screenPos, setScreenPos] = useState<{ left: number; top: number }>({
     left: position?.x ?? 0,
     top: position?.y ?? 0,
@@ -179,10 +211,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const { t } = useLanguage();
 
   useEffect(() => {
-    setNewMenuOpen(false);
-    setSortMenuOpen(false);
-    setGroupMenuOpen(false);
-    setSelectMenuOpen(false);
+    setOpenFlyout(null);
+    cancelFlyoutTimers();
   }, [position]);
 
   useLayoutEffect(() => {
@@ -206,12 +236,35 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
       observer.disconnect();
       window.removeEventListener('resize', updatePosition);
     };
-  }, [position, newMenuOpen, sortMenuOpen, groupMenuOpen, selectMenuOpen]);
+  }, [position]);
+
+  /* Flyouts are fixed panels portalled next to the main menu, so their
+     placement is measured after mount and flipped to the left when they would
+     overflow the viewport. */
+  useLayoutEffect(() => {
+    if (!openFlyout || !flyoutRef.current) {
+      setFlyoutPos(null);
+      return;
+    }
+    const panel = flyoutRef.current.getBoundingClientRect();
+    const anchor = openFlyout.rect;
+    const margin = 10;
+    const gap = 2;
+    let left = anchor.right + gap;
+    if (left + panel.width + margin > window.innerWidth) left = anchor.left - panel.width - gap;
+    left = Math.max(margin, Math.min(left, window.innerWidth - panel.width - margin));
+    const top = Math.max(margin, Math.min(anchor.top - 4, window.innerHeight - panel.height - margin));
+    setFlyoutPos(current => (current && current.left === left && current.top === top ? current : { left, top }));
+  }, [openFlyout]);
+
+  useEffect(() => () => cancelFlyoutTimers(), []);
 
   useEffect(() => {
     if (!position) return;
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) onClose();
+      const target = event.target as Node;
+      if (menuRef.current?.contains(target) || flyoutRef.current?.contains(target)) return;
+      onClose();
     };
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -247,11 +300,78 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     </>
   ) : null;
 
+  const flyoutLabels: Record<string, string> = {
+    new: t.contextMenu.new,
+    select: t.contextMenu.select,
+    sort: t.contextMenu.sortBy,
+    group: t.contextMenu.groupBy,
+  };
+  const flyoutLabel = openFlyout ? flyoutLabels[openFlyout.id] : undefined;
+
+  /* Content of the open submenu. Kept inline so each row still closes the whole
+     menu after running its action, exactly like the inline panels did. */
+  const flyoutContent = () => {
+    if (!openFlyout) return null;
+    switch (openFlyout.id) {
+      case 'new':
+        return (
+          <>
+            <MenuButton icon={<FolderPlus className="h-4 w-4 text-emerald-400" />} label={t.contextMenu.newFolder} shortcut="F7" disabled={!canModifyFolder} onClick={() => { onCreateItem('folder'); onClose(); }} />
+            <MenuButton icon={<FilePlus2 className="h-4 w-4 text-cyan-300" />} label={t.contextMenu.newTextFile} disabled={!canModifyFolder} onClick={() => { onCreateItem('text-file'); onClose(); }} />
+            <MenuButton icon={<Link2 className="h-4 w-4 text-violet-300" />} label={t.contextMenu.newShortcut} disabled={!canModifyFolder} onClick={() => { onCreateItem('shortcut'); onClose(); }} />
+          </>
+        );
+      case 'select':
+        return (
+          <>
+            <MenuButton icon={<BoxSelect className="h-4 w-4 text-cyan-300" />} label={t.sidebar.selectAll} shortcut="Ctrl+A" disabled={!hasSelectableItems} onClick={() => { onSelectAll?.(); onClose(); }} />
+            <MenuButton icon={<Square className="h-4 w-4 text-neutral-400" />} label={t.sidebar.unselectAll} onClick={() => { onSelectNone?.(); onClose(); }} />
+            <MenuButton icon={<ArrowLeftRight className="h-4 w-4 text-amber-300" />} label={t.sidebar.invertSelection} disabled={!hasSelectableItems} onClick={() => { onInvertSelection?.(); onClose(); }} />
+            <MenuDivider />
+            <MenuButton icon={<FileText className="h-4 w-4 text-cyan-300" />} label={t.contextMenu.selectOnlyFiles} onClick={() => { onSelectOnlyFiles?.(); onClose(); }} />
+            <MenuButton icon={<FolderOpen className="h-4 w-4 text-amber-300" />} label={t.contextMenu.selectOnlyFolders} disabled={!hasFoldersInFolder} onClick={() => { onSelectOnlyFolders?.(); onClose(); }} />
+          </>
+        );
+      case 'sort':
+        return (
+          <>
+            <ViewMenuButton icon={<span />} label={t.pane.columns.name} selected={sortField === 'name'} onClick={() => { onSortFieldChange('name'); onClose(); }} />
+            <ViewMenuButton icon={<span />} label={t.pane.columns.modified} selected={sortField === 'modifiedDate'} onClick={() => { onSortFieldChange('modifiedDate'); onClose(); }} />
+            <ViewMenuButton icon={<span />} label={t.pane.columns.created} selected={sortField === 'createdDate'} onClick={() => { onSortFieldChange('createdDate'); onClose(); }} />
+            <ViewMenuButton icon={<span />} label={t.pane.columns.type} selected={sortField === 'type'} onClick={() => { onSortFieldChange('type'); onClose(); }} />
+            <ViewMenuButton icon={<span />} label={t.pane.columns.size} selected={sortField === 'size'} onClick={() => { onSortFieldChange('size'); onClose(); }} />
+            <MenuDivider />
+            <ViewMenuButton icon={<ArrowUp className="h-3.5 w-3.5" />} label={t.contextMenu.ascending} selected={sortOrder === 'asc'} onClick={() => { onSortOrderChange('asc'); onClose(); }} />
+            <ViewMenuButton icon={<ArrowDown className="h-3.5 w-3.5" />} label={t.contextMenu.descending} selected={sortOrder === 'desc'} onClick={() => { onSortOrderChange('desc'); onClose(); }} />
+          </>
+        );
+      case 'group':
+        return (
+          <>
+            <ViewMenuButton icon={<span />} label={t.contextMenu.groupNone} selected={groupBy === 'none'} onClick={() => { onGroupByChange('none'); onClose(); }} />
+            <ViewMenuButton icon={<span />} label={t.pane.columns.name} selected={groupBy === 'name'} onClick={() => { onGroupByChange('name'); onClose(); }} />
+            <ViewMenuButton icon={<span />} label={t.pane.columns.modified} selected={groupBy === 'modifiedDate'} onClick={() => { onGroupByChange('modifiedDate'); onClose(); }} />
+            <ViewMenuButton icon={<span />} label={t.pane.columns.type} selected={groupBy === 'type'} onClick={() => { onGroupByChange('type'); onClose(); }} />
+            <ViewMenuButton icon={<span />} label={t.pane.columns.size} selected={groupBy === 'size'} onClick={() => { onGroupByChange('size'); onClose(); }} />
+          </>
+        );
+      default:
+        return null;
+    }
+  };
+
   return createPortal(
+    <>
     <div
       ref={menuRef}
       role="menu"
       onContextMenu={event => event.preventDefault()}
+      onScroll={() => {
+        /* A flyout is pinned to a trigger position captured on open; scrolling
+           the menu would detach it, so dismiss it instead. */
+        cancelFlyoutTimers();
+        setOpenFlyout(null);
+      }}
       style={{ left: screenPos.left, top: screenPos.top }}
       className="fixed z-[100] min-w-[304px] w-max max-w-[420px] max-h-[calc(100vh-20px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 pb-1.5 text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
     >
@@ -548,38 +668,23 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               icon={<FolderPlus className="h-4 w-4 text-emerald-400" />}
               label={t.contextMenu.new}
               disabled={!canModifyFolder}
-              expanded={newMenuOpen}
-              trailing={<ChevronRight className={`h-3.5 w-3.5 text-neutral-400 transition-transform ${newMenuOpen ? 'rotate-90' : ''}`} />}
-              onClick={() => { setSortMenuOpen(false); setGroupMenuOpen(false); setSelectMenuOpen(false); setNewMenuOpen(open => !open); }}
+              expanded={openFlyout?.id === 'new'}
+              trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
+              onClick={event => toggleFlyout('new', event)}
+              onMouseEnter={canModifyFolder ? event => scheduleFlyoutOpen('new', event) : undefined}
+              onMouseLeave={scheduleFlyoutClose}
             />
-            {newMenuOpen && (
-              <div role="menu" aria-label={t.contextMenu.new} className="ml-4 mr-1.5 my-0.5 border-l border-neutral-700/80 py-0.5 pl-1">
-                <MenuButton icon={<FolderPlus className="h-4 w-4 text-emerald-400" />} label={t.contextMenu.newFolder} shortcut="F7" disabled={!canModifyFolder} onClick={() => { onCreateItem('folder'); onClose(); }} />
-                <MenuButton icon={<FilePlus2 className="h-4 w-4 text-cyan-300" />} label={t.contextMenu.newTextFile} disabled={!canModifyFolder} onClick={() => { onCreateItem('text-file'); onClose(); }} />
-                <MenuButton icon={<Link2 className="h-4 w-4 text-violet-300" />} label={t.contextMenu.newShortcut} disabled={!canModifyFolder} onClick={() => { onCreateItem('shortcut'); onClose(); }} />
-              </div>
-            )}
             {onSelectAll && (
-              <>
-                <MenuButton
-                  icon={<ListChecks className="h-4 w-4 text-cyan-300" />}
-                  label={t.contextMenu.select}
-                  disabled={!hasFolder}
-                  expanded={selectMenuOpen}
-                  trailing={<ChevronRight className={`h-3.5 w-3.5 text-neutral-400 transition-transform ${selectMenuOpen ? 'rotate-90' : ''}`} />}
-                  onClick={() => { setNewMenuOpen(false); setSortMenuOpen(false); setGroupMenuOpen(false); setSelectMenuOpen(open => !open); }}
-                />
-                {selectMenuOpen && (
-                  <div role="menu" aria-label={t.contextMenu.select} className="ml-4 mr-1.5 my-0.5 border-l border-neutral-700/80 py-0.5 pl-1">
-                    <MenuButton icon={<BoxSelect className="h-4 w-4 text-cyan-300" />} label={t.sidebar.selectAll} shortcut="Ctrl+A" disabled={!hasSelectableItems} onClick={() => { onSelectAll(); onClose(); }} />
-                    <MenuButton icon={<Square className="h-4 w-4 text-neutral-400" />} label={t.sidebar.unselectAll} onClick={() => { onSelectNone?.(); onClose(); }} />
-                    <MenuButton icon={<ArrowLeftRight className="h-4 w-4 text-amber-300" />} label={t.sidebar.invertSelection} disabled={!hasSelectableItems} onClick={() => { onInvertSelection?.(); onClose(); }} />
-                    <MenuDivider />
-                    <MenuButton icon={<FileText className="h-4 w-4 text-cyan-300" />} label={t.contextMenu.selectOnlyFiles} onClick={() => { onSelectOnlyFiles?.(); onClose(); }} />
-                    <MenuButton icon={<FolderOpen className="h-4 w-4 text-amber-300" />} label={t.contextMenu.selectOnlyFolders} disabled={!hasFoldersInFolder} onClick={() => { onSelectOnlyFolders?.(); onClose(); }} />
-                  </div>
-                )}
-              </>
+              <MenuButton
+                icon={<ListChecks className="h-4 w-4 text-cyan-300" />}
+                label={t.contextMenu.select}
+                disabled={!hasFolder}
+                expanded={openFlyout?.id === 'select'}
+                trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
+                onClick={event => toggleFlyout('select', event)}
+                onMouseEnter={hasFolder ? event => scheduleFlyoutOpen('select', event) : undefined}
+                onMouseLeave={scheduleFlyoutClose}
+              />
             )}
             {hasFilter && (
               <MenuButton
@@ -603,39 +708,22 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             <MenuButton
               icon={<List className="h-4 w-4 text-cyan-300" />}
               label={t.contextMenu.sortBy}
-              expanded={sortMenuOpen}
-              trailing={<ChevronRight className={`h-3.5 w-3.5 text-neutral-400 transition-transform ${sortMenuOpen ? 'rotate-90' : ''}`} />}
-              onClick={() => { setNewMenuOpen(false); setGroupMenuOpen(false); setSelectMenuOpen(false); setSortMenuOpen(open => !open); }}
+              expanded={openFlyout?.id === 'sort'}
+              trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
+              onClick={event => toggleFlyout('sort', event)}
+              onMouseEnter={event => scheduleFlyoutOpen('sort', event)}
+              onMouseLeave={scheduleFlyoutClose}
             />
-            {sortMenuOpen && (
-              <div role="menu" aria-label={t.contextMenu.sortBy} className="ml-4 mr-1.5 my-0.5 border-l border-neutral-700/80 py-0.5 pl-1">
-                <ViewMenuButton icon={<span />} label={t.pane.columns.name} selected={sortField === 'name'} onClick={() => { onSortFieldChange('name'); onClose(); }} />
-                <ViewMenuButton icon={<span />} label={t.pane.columns.modified} selected={sortField === 'modifiedDate'} onClick={() => { onSortFieldChange('modifiedDate'); onClose(); }} />
-                <ViewMenuButton icon={<span />} label={t.pane.columns.created} selected={sortField === 'createdDate'} onClick={() => { onSortFieldChange('createdDate'); onClose(); }} />
-                <ViewMenuButton icon={<span />} label={t.pane.columns.type} selected={sortField === 'type'} onClick={() => { onSortFieldChange('type'); onClose(); }} />
-                <ViewMenuButton icon={<span />} label={t.pane.columns.size} selected={sortField === 'size'} onClick={() => { onSortFieldChange('size'); onClose(); }} />
-                <MenuDivider />
-                <ViewMenuButton icon={<ArrowUp className="h-3.5 w-3.5" />} label={t.contextMenu.ascending} selected={sortOrder === 'asc'} onClick={() => { onSortOrderChange('asc'); onClose(); }} />
-                <ViewMenuButton icon={<ArrowDown className="h-3.5 w-3.5" />} label={t.contextMenu.descending} selected={sortOrder === 'desc'} onClick={() => { onSortOrderChange('desc'); onClose(); }} />
-              </div>
-            )}
             <MenuButton
               icon={<Layers className="h-4 w-4 text-violet-300" />}
               label={t.contextMenu.groupBy}
               disabled={!supportsGrouping}
-              expanded={groupMenuOpen}
-              trailing={<ChevronRight className={`h-3.5 w-3.5 text-neutral-400 transition-transform ${groupMenuOpen ? 'rotate-90' : ''}`} />}
-              onClick={() => { setNewMenuOpen(false); setSortMenuOpen(false); setSelectMenuOpen(false); setGroupMenuOpen(open => !open); }}
+              expanded={openFlyout?.id === 'group'}
+              trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
+              onClick={event => toggleFlyout('group', event)}
+              onMouseEnter={supportsGrouping ? event => scheduleFlyoutOpen('group', event) : undefined}
+              onMouseLeave={scheduleFlyoutClose}
             />
-            {groupMenuOpen && (
-              <div role="menu" aria-label={t.contextMenu.groupBy} className="ml-4 mr-1.5 my-0.5 border-l border-neutral-700/80 py-0.5 pl-1">
-                <ViewMenuButton icon={<span />} label={t.contextMenu.groupNone} selected={groupBy === 'none'} onClick={() => { onGroupByChange('none'); onClose(); }} />
-                <ViewMenuButton icon={<span />} label={t.pane.columns.name} selected={groupBy === 'name'} onClick={() => { onGroupByChange('name'); onClose(); }} />
-                <ViewMenuButton icon={<span />} label={t.pane.columns.modified} selected={groupBy === 'modifiedDate'} onClick={() => { onGroupByChange('modifiedDate'); onClose(); }} />
-                <ViewMenuButton icon={<span />} label={t.pane.columns.type} selected={groupBy === 'type'} onClick={() => { onGroupByChange('type'); onClose(); }} />
-                <ViewMenuButton icon={<span />} label={t.pane.columns.size} selected={groupBy === 'size'} onClick={() => { onGroupByChange('size'); onClose(); }} />
-              </div>
-            )}
           </div>
 
           <MenuDivider />
@@ -667,7 +755,26 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           )}
         </>
       )}
-    </div>,
+    </div>
+    {openFlyout && (
+      <div
+        ref={flyoutRef}
+        role="menu"
+        aria-label={flyoutLabel}
+        style={{
+          left: flyoutPos?.left ?? 0,
+          top: flyoutPos?.top ?? 0,
+          visibility: flyoutPos ? 'visible' : 'hidden',
+        }}
+        onMouseEnter={cancelFlyoutTimers}
+        onMouseLeave={scheduleFlyoutClose}
+        onContextMenu={event => event.preventDefault()}
+        className="fixed z-[110] min-w-[232px] w-max max-w-[340px] max-h-[calc(100vh-20px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-1 pb-1.5 text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
+      >
+        {flyoutContent()}
+      </div>
+    )}
+    </>,
     document.body
   );
 };
@@ -714,12 +821,14 @@ const MenuButton: React.FC<{
   icon: React.ReactNode;
   label: string;
   shortcut?: string;
-  onClick: () => void;
+  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onMouseEnter?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onMouseLeave?: () => void;
   disabled?: boolean;
   danger?: boolean;
   trailing?: React.ReactNode;
   expanded?: boolean;
-}> = ({ icon, label, shortcut, onClick, disabled = false, danger = false, trailing, expanded }) => (
+}> = ({ icon, label, shortcut, onClick, onMouseEnter, onMouseLeave, disabled = false, danger = false, trailing, expanded }) => (
   <div className="px-1.5">
     <button
       type="button"
@@ -728,6 +837,8 @@ const MenuButton: React.FC<{
       aria-haspopup={expanded === undefined ? undefined : 'menu'}
       aria-expanded={expanded}
       onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       className={
         'flex w-full items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-left transition-colors outline-none disabled:cursor-not-allowed disabled:opacity-40 ' +
         (danger
