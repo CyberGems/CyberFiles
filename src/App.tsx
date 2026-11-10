@@ -6053,6 +6053,9 @@ export default function App() {
       y: e.clientY,
       targetItem: item,
       paneId: pane,
+      /* A keyboard-opened menu (Shift+F10 / Menu key) reports detail 0 and
+         button 0; a real right-click reports detail 2 and button 2. */
+      openedViaKeyboard: e.detail === 0 && e.button === 0,
     });
   };
 
@@ -6060,7 +6063,7 @@ export default function App() {
     event.preventDefault();
     setActivePane(pane);
     handleSelectItems(pane, []);
-    setContextMenuPos({ x: event.clientX, y: event.clientY, targetItem: null, paneId: pane });
+    setContextMenuPos({ x: event.clientX, y: event.clientY, targetItem: null, paneId: pane, openedViaKeyboard: event.detail === 0 && event.button === 0 });
   };
 
   const handleBackgroundDoubleClick = (_event: React.MouseEvent, pane: 'left' | 'right') => {

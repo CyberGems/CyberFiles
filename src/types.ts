@@ -178,6 +178,10 @@ export interface ContextMenuPosition {
   y: number;
   targetItem: FileItem | null;
   paneId: 'left' | 'right';
+  /* True when the menu was opened with the keyboard (Shift+F10 / Menu key),
+     which produces a contextmenu event with detail 0 and button 0. The menu
+     then moves focus to its first row instead of waiting for an arrow key. */
+  openedViaKeyboard?: boolean;
 }
 
 export interface SearchMatch {

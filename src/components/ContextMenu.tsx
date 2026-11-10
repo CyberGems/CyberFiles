@@ -261,6 +261,25 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     cancelFlyoutTimers();
   }, [position]);
 
+  /* Keyboard-opened menus start on their first row, like native Windows menus.
+     The row is focused once the portal has painted; a hidden element cannot
+     take focus. When the menu closes, focus returns to the element that had it
+     before the menu opened, so a full keyboard pass never falls to the background. */
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!position) return;
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (position.openedViaKeyboard) {
+      requestAnimationFrame(() => {
+        getMenuItems()[0]?.focus();
+      });
+    }
+    return () => {
+      previousFocusRef.current?.focus();
+      previousFocusRef.current = null;
+    };
+  }, [position]);
+
   useLayoutEffect(() => {
     if (!position || !menuRef.current) return;
     const menuEl = menuRef.current;
@@ -348,12 +367,29 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           flyoutTriggerRef.current?.focus();
           return;
         }
+        /* Tab cycles inside the open flyout instead of escaping to the UI
+           behind the menu. */
+        if (event.key === 'Tab') {
+          event.preventDefault();
+          event.stopPropagation();
+          moveFocusWithin(getFlyoutItems(), event.shiftKey ? 'ArrowUp' : 'ArrowDown');
+          return;
+        }
         if (!navigationKey) return;
         event.preventDefault();
         event.stopPropagation();
         /* Enters the panel at the top or bottom depending on the arrow key
            when focus was not already inside it. */
         moveFocusWithin(getFlyoutItems(), event.key);
+        return;
+      }
+
+      /* Tab cycles inside the menu itself; the close effect hands focus back
+         to the element that had it before the menu opened. */
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        event.stopPropagation();
+        moveFocusWithin(getMenuItems(), event.shiftKey ? 'ArrowUp' : 'ArrowDown');
         return;
       }
 
@@ -383,7 +419,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const undoGroup = onUndo ? (
     <>
       <MenuDivider />
-      <div className="py-0.5">
+      <div>
         <MenuButton
           icon={<Undo2 className={`h-4 w-4 ${undoAvailable ? 'text-cyan-300' : 'text-neutral-500'}`} />}
           label={undoAvailable ? t.contextMenu.undoLast : t.contextMenu.undoNothing}
@@ -468,7 +504,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         setOpenFlyout(null);
       }}
       style={{ left: screenPos.left, top: screenPos.top }}
-      className="fixed z-[100] min-w-[304px] w-max max-w-[420px] max-h-[calc(100vh-20px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 pb-1.5 text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
+      className="fixed z-[100] min-w-[304px] w-max max-w-[420px] max-h-[calc(100vh-20px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
     >
       {item ? (
         item.recycleBinId ? (
@@ -564,7 +600,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             </div>
 
             {/* Primary Open & Preview section */}
-            <div className="pt-1 pb-0.5">
+            <div className="pt-0.5">
               <MenuButton
                 icon={item.isFolder ? <FolderOpen className="h-4 w-4 text-cyan-400" /> : <ExternalLink className="h-4 w-4 text-cyan-400" />}
                 label={t.contextMenu.open}
@@ -602,7 +638,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             {((archiveItem && supportsArchiveExtraction) || supportsArchiveCreation) && (
               <>
                 <MenuDivider />
-                <div className="py-0.5">
+                <div>
                   {archiveItem && supportsArchiveExtraction && (
                     <>
                       <MenuButton
@@ -632,7 +668,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             {(item.isFolder || canRemoveFromRecent) && (
               <>
                 <MenuDivider />
-                <div className="py-0.5">
+                <div>
                   {item.isFolder && (
                     <>
                       <MenuButton
@@ -676,7 +712,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 
             {/* Dual-Pane & Batch Operations */}
             <MenuDivider />
-            <div className="py-0.5">
+            <div>
               <MenuButton
                 icon={<Copy className="h-4 w-4 text-cyan-400" />}
                 label={t.contextMenu.copyToOpposite}
@@ -701,7 +737,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             {onOpenProperties && (
               <>
                 <MenuDivider />
-                <div className="py-0.5">
+                <div>
                   <MenuButton
                     icon={<Wrench className="h-4 w-4 text-neutral-300" />}
                     label={t.contextMenu.properties}
@@ -758,7 +794,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             />
           </div>
 
-          <div className="pt-1 pb-0.5">
+          <div className="pt-0.5">
             <MenuButton
               icon={<FolderPlus className="h-4 w-4 text-emerald-400" />}
               label={t.contextMenu.new}
@@ -801,7 +837,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           </div>
 
           <MenuDivider />
-          <div className="py-0.5">
+          <div>
             <MenuButton
               icon={<List className="h-4 w-4 text-cyan-300" />}
               label={t.contextMenu.sortBy}
@@ -827,7 +863,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 
           <MenuDivider />
           <div className="px-3.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.toolbar.viewModes}</div>
-          <div className="py-0.5">
+          <div>
             <ViewMenuButton icon={<List className="h-4 w-4" />} label={t.toolbar.viewDetails} selected={viewMode === 'details'} onClick={() => { onViewModeChange('details'); onClose(); }} />
             <ViewMenuButton icon={<StretchHorizontal className="h-4 w-4" />} label={t.toolbar.viewCompact} selected={viewMode === 'compact'} onClick={() => { onViewModeChange('compact'); onClose(); }} />
             <ViewMenuButton icon={<LayoutGrid className="h-4 w-4" />} label={t.toolbar.viewIcons} selected={viewMode === 'icons'} onClick={() => { onViewModeChange('icons'); onClose(); }} />
@@ -836,7 +872,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           {canModifyFolder && (
             <>
               <MenuDivider />
-              <div className="py-0.5">
+              <div>
                 <MenuButton
                   icon={<BookmarkPlus className="h-4 w-4 text-cyan-300" />}
                   label={hasSavedFolderStyle ? t.contextMenu.updateFolderStyle : t.contextMenu.saveFolderStyle}
@@ -868,7 +904,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         onMouseEnter={cancelFlyoutTimers}
         onMouseLeave={scheduleFlyoutClose}
         onContextMenu={event => event.preventDefault()}
-        className="fixed z-[110] min-w-[232px] w-max max-w-[340px] max-h-[calc(100vh-20px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-1 pb-1.5 text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
+        className="fixed z-[110] min-w-[232px] w-max max-w-[340px] max-h-[calc(100vh-20px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-1 text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
       >
         {flyoutContent()}
       </div>

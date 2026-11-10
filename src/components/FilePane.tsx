@@ -2492,6 +2492,27 @@ export const FilePane: React.FC<FilePaneProps> = ({
       onSelectItems([], false, false, true);
       return;
     }
+    /* Shift+F10 / Menu key opens the item menu for the focused row. The event is
+       dispatched on the row so the whole existing context-menu pipeline runs,
+       and detail 0 marks it as keyboard-opened for the menu's initial focus. */
+    if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+      event.preventDefault();
+      event.stopPropagation();
+      const targetId = tab.focusedId ?? tab.selectedIds[tab.selectedIds.length - 1];
+      if (!targetId) return;
+      const row = viewportRef.current?.querySelector<HTMLElement>(`[data-file-item][data-file-id="${CSS.escape(targetId)}"]`);
+      if (!row) return;
+      const bounds = row.getBoundingClientRect();
+      row.dispatchEvent(new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        detail: 0,
+        button: 0,
+        clientX: bounds.left + bounds.width / 2,
+        clientY: bounds.top + bounds.height / 2,
+      }));
+      return;
+    }
     if (event.altKey || event.ctrlKey || event.metaKey || event.nativeEvent.isComposing || !isActive || navigableFiles.length === 0) {
       handleTypeAhead(event);
       return;
@@ -3271,6 +3292,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
     { key: 'F6', label: t.pane.listerShortcutMove },
     { key: 'F7', label: t.pane.listerShortcutNewFolder },
     { key: 'Delete', label: t.pane.listerShortcutDelete },
+    { key: 'Shift + F10', label: t.pane.listerShortcutContextMenu },
+    { key: 'Ctrl + X', label: t.pane.listerShortcutCut },
+    { key: 'Ctrl + C', label: t.pane.listerShortcutCopyClipboard },
+    { key: 'Ctrl + V', label: t.pane.listerShortcutPaste },
+    { key: 'Ctrl + Z', label: t.pane.listerShortcutUndo },
+    { key: 'Ctrl + R', label: t.pane.listerShortcutBatchRename },
+    { key: 'Alt + Enter', label: t.pane.listerShortcutProperties },
+    { key: 'Ctrl + Shift + C', label: t.pane.listerShortcutCopyPath },
+    { key: 'Shift + Delete', label: t.pane.listerShortcutDeletePermanent },
   ];
   const renderFolderTab = (tabItem: TabState, idx: number, vertical: boolean) => {
     const isTabActive = idx === activeTabIndex;
