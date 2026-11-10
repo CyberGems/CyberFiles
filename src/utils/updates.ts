@@ -175,15 +175,41 @@ export function isUpdaterNetworkError(message: string): boolean {
 }
 
 /**
- * The manifest carries the tag message as its notes, which is already plain text. This only
- * removes what a markdown body can drag along (HTML comments, a stray logo paragraph) and
- * collapses the blank lines a stripped section leaves behind.
+ * The release body ships English notes plus a Spanish `<details>` block, and the
+ * updater manifest carries the same body. This picks the section matching the
+ * interface language: Spanish users read only the Spanish notes, everyone else
+ * reads the English notes with the Spanish block removed.
+ */
+export function extractLocalizedReleaseNotes(body: string | null | undefined, language: 'es' | 'en'): string {
+  if (!body) return '';
+
+  if (language === 'es') {
+    const esBlock = body.match(/<details>[\s\S]*?<summary>[\s\S]*?(?:español|spanish)[\s\S]*?<\/summary>([\s\S]*?)<\/details>/i);
+    if (esBlock?.[1]?.trim()) return sanitizeReleaseNotes(esBlock[1]);
+  }
+
+  const cleaned = body.replace(
+    /<details>[\s\S]*?<summary>[\s\S]*?(?:español|spanish)[\s\S]*?<\/summary>[\s\S]*?<\/details>/gi,
+    '',
+  );
+  return sanitizeReleaseNotes(cleaned);
+}
+
+/**
+ * The manifest carries the full release notes body. This removes what the modal
+ * does not want to render: the HTML comments from the template, the centered logo
+ * paragraph, the release title (the modal header already shows version chips), the
+ * download and checksum furniture, and the footer.
  */
 export function sanitizeReleaseNotes(body: string | null | undefined): string {
   if (!body) return '';
   return body
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/<p\s+align=["']center["'][\s\S]*?<\/p>/gi, '')
+    .replace(/^#{1,2}\s*.*Release Notes\s*$/gim, '')
+    .replace(/^#{2,4}\s*📦\s*Downloads[\s\S]*/i, '')
+    .replace(/^>.*Windows-first file manager.*(?:\r?\n|$)/gim, '')
+    .replace(/\*Crafted with precision[\s\S]*/i, '')
     .replace(/\r\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();

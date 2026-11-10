@@ -171,10 +171,11 @@ jobs:
           Write-Host "Portable package: $($portable.Name)"
           Write-Host "Portable SHA-256: $portableHash"
 
-          # Updater manifest. Written here rather than left to the bundler so the notes are the
-          # tag summary (what the user reads in the app) and the URL is the published asset.
-          # Both Windows keys are listed because the updater asks for windows-x86_64-nsis when
-          # it detects an NSIS installation and windows-x86_64 otherwise.
+          # Updater manifest. Written here rather than left to the bundler so the notes are
+          # the full release body (the update modal picks the user's language section from
+          # it) and the URL is the published asset. Both Windows keys are listed because
+          # the updater asks for windows-x86_64-nsis when it detects an NSIS installation
+          # and windows-x86_64 otherwise.
           $signaturePath = "$installerPath.sig"
           if (-not (Test-Path -LiteralPath $signaturePath)) {
             throw "The updater signature is missing: $signaturePath. The build was not signed."
@@ -186,7 +187,7 @@ jobs:
           $downloadUrl = "https://github.com/$($env:GITHUB_REPOSITORY)/releases/download/$($env:RELEASE_TAG)/$($installer.Name)"
           $manifest = [ordered]@{
             version   = $versionNumber
-            notes     = $releaseSummary
+            notes     = $notes
             pub_date  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
             platforms = [ordered]@{
               'windows-x86_64'      = [ordered]@{ signature = $signature; url = $downloadUrl }

@@ -15,7 +15,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 import { DialogButton } from './DialogButton';
-import { formatUpdaterError, releasePageUrl, sanitizeReleaseNotes, type AvailableUpdate } from '../utils/updates';
+import { formatUpdaterError, extractLocalizedReleaseNotes, releasePageUrl, type AvailableUpdate } from '../utils/updates';
 
 type UpdateStatus = 'prompt' | 'downloading' | 'error';
 
@@ -36,7 +36,7 @@ function formatMegabytes(bytes: number): string {
 }
 
 export function UpdateModal({ isOpen, update, currentVersion, onClose, onSkipVersion, onNotify }: UpdateModalProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [status, setStatus] = useState<UpdateStatus>('prompt');
   const [progress, setProgress] = useState(0);
   const [downloaded, setDownloaded] = useState(0);
@@ -44,7 +44,7 @@ export function UpdateModal({ isOpen, update, currentVersion, onClose, onSkipVer
   const [errorMessage, setErrorMessage] = useState('');
   const notesRef = useRef<HTMLDivElement>(null);
 
-  const notes = useMemo(() => sanitizeReleaseNotes(update?.body), [update?.body]);
+  const notes = useMemo(() => extractLocalizedReleaseNotes(update?.body, language), [update?.body, language]);
   const downloading = status === 'downloading';
 
   useEffect(() => {
@@ -133,7 +133,7 @@ export function UpdateModal({ isOpen, update, currentVersion, onClose, onSkipVer
         role="dialog"
         aria-modal="true"
         aria-labelledby="update-title"
-        className="cyberfiles-update-panel relative flex max-h-[min(90vh,620px)] w-[520px] max-w-full flex-col overflow-hidden rounded-2xl border border-cyan-500/25 bg-gradient-to-br from-neutral-950 to-neutral-900 shadow-[0_24px_80px_rgba(0,0,0,0.65),0_0_32px_rgba(34,211,238,0.08)]"
+        className="cyberfiles-update-panel relative flex max-h-[min(90vh,620px)] w-[540px] max-w-full flex-col overflow-hidden rounded-2xl border border-cyan-500/25 bg-gradient-to-br from-neutral-950 to-neutral-900 shadow-[0_24px_80px_rgba(0,0,0,0.65),0_0_32px_rgba(34,211,238,0.08)]"
         onMouseDown={event => event.stopPropagation()}
       >
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
@@ -233,9 +233,11 @@ export function UpdateModal({ isOpen, update, currentVersion, onClose, onSkipVer
                 </span>
               </Tooltip>
               <DialogButton size="compact" onClick={onClose}>{t.updates.later}</DialogButton>
-              <DialogButton size="compact" variant="primary" onClick={() => void install()}>
-                <Download className="h-3.5 w-3.5" />
-                {t.updates.updateNow}
+              <DialogButton size="compact" variant="primary" className="whitespace-nowrap" onClick={() => void install()}>
+                <span className="inline-flex items-center gap-1.5">
+                  <Download className="h-3.5 w-3.5" />
+                  {t.updates.updateNow}
+                </span>
               </DialogButton>
             </>
           )}
@@ -252,7 +254,9 @@ export function UpdateModal({ isOpen, update, currentVersion, onClose, onSkipVer
               <span className="flex-1" />
               <DialogButton size="compact" onClick={onClose}>{t.about.close}</DialogButton>
               <DialogButton size="compact" onClick={openReleasePage}>{t.updates.openReleasePage}</DialogButton>
-              <DialogButton size="compact" variant="primary" onClick={() => void install()}>{t.updates.retry}</DialogButton>
+              <DialogButton size="compact" variant="primary" className="whitespace-nowrap" onClick={() => void install()}>
+                <span className="inline-flex items-center gap-1.5">{t.updates.retry}</span>
+              </DialogButton>
             </>
           )}
         </footer>
