@@ -905,6 +905,7 @@ export default function App() {
      finished operations until the user opens the panel to review them. */
   const [operationsBadgeEnabled, setOperationsBadgeEnabled] = useState(() => readBooleanPreference(OPERATIONS_COMPLETION_BADGE_KEY, true));
   const [unreviewedCompletedCount, setUnreviewedCompletedCount] = useState(0);
+  const [unreviewedFailedCount, setUnreviewedFailedCount] = useState(0);
   const [toastDurationMs, setToastDurationMs] = useState(() => readToastDurationPreference());
   const [tooltipsEnabled, setTooltipsEnabled] = useState(() => readBooleanPreference(TOOLTIPS_ENABLED_KEY, true));
   const [relativeGraphsEnabled, setRelativeGraphsEnabled] = useState(() => readBooleanPreference(RELATIVE_GRAPHS_ENABLED_KEY, true));
@@ -1429,6 +1430,7 @@ export default function App() {
      do not, because the user has not seen it yet. */
   const openOperationsCenterFromUser = useCallback(() => {
     setUnreviewedCompletedCount(0);
+    setUnreviewedFailedCount(0);
     setIsOperationsCenterOpen(true);
   }, []);
   const toggleOperationsCenterFromUser = useCallback(() => {
@@ -3818,6 +3820,9 @@ export default function App() {
     if (updated.status === 'completed' && current[index].status !== 'completed') {
       setUnreviewedCompletedCount(count => count + 1);
     }
+    if (updated.status === 'failed' && current[index].status !== 'failed') {
+      setUnreviewedFailedCount(count => count + 1);
+    }
     const next = current.slice();
     next[index] = updated;
     transferOperationsRef.current = next;
@@ -3866,6 +3871,9 @@ export default function App() {
     if (entry.status === 'completed') {
       setUnreviewedCompletedCount(count => count + 1);
     }
+    if (entry.status === 'failed') {
+      setUnreviewedFailedCount(count => count + 1);
+    }
     const next = [...transferOperationsRef.current, operation];
     transferOperationsRef.current = next;
     setTransferOperations(next);
@@ -3876,8 +3884,9 @@ export default function App() {
     const next = transferOperationsRef.current.filter(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status));
     transferOperationsRef.current = next;
     setTransferOperations(next);
-    /* Clearing the history is also a review: the badge has nothing left to point at. */
+    /* Clearing the history is also a review: the badges have nothing left to point at. */
     setUnreviewedCompletedCount(0);
+    setUnreviewedFailedCount(0);
   }, []);
 
   const transferCompletionActionsRef = useRef({ refreshChangedDirectories, updatePaneTab, showToast, t, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, pushUndoAction, updateUndoAction, removeUndoAction });
@@ -7066,6 +7075,7 @@ export default function App() {
         onToggleOperations={toggleOperationsCenterFromUser}
         operationsBadgeEnabled={operationsBadgeEnabled}
         unreviewedCompletedCount={unreviewedCompletedCount}
+        unreviewedFailedCount={unreviewedFailedCount}
       />
 
       {/* Floating Action Toast */}

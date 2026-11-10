@@ -22,9 +22,11 @@ interface BottomStatusBarProps {
   operations?: TransferOperationView[];
   isOperationsOpen?: boolean;
   /* Completed-operations badge on the operations button: an unlimited counter
-     that only resets when the user reviews the panel (optional in settings). */
+     that only resets when the user reviews the panel (optional in settings).
+     Failed operations use the same unreviewed counter, always visible. */
   operationsBadgeEnabled?: boolean;
   unreviewedCompletedCount?: number;
+  unreviewedFailedCount?: number;
   onToggleOperations?: () => void;
 }
 
@@ -134,6 +136,7 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
   isOperationsOpen,
   operationsBadgeEnabled = true,
   unreviewedCompletedCount = 0,
+  unreviewedFailedCount = 0,
   onToggleOperations,
 }) => {
   const { language, t } = useLanguage();
@@ -240,12 +243,13 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
   const pendingCount = pendingOperations.length;
   const queuedCount = operations?.filter(op => op.status === 'queued').length ?? 0;
   const recentCompleted = operations?.filter(op => op.status === 'completed') ?? [];
-  const recentFailed = operations?.filter(op => op.status === 'failed') ?? [];
-  const failedCount = recentFailed.length;
   /* The badge counts every finished operation since the last review, not just the
-     ones still in the list; when the badge is off, the list keeps the tooltips honest. */
+     ones still in the list; when the badge is off, the list keeps the tooltips honest.
+     Failures ignore the setting: errors stay visible until they are reviewed. */
   const completedIndicatorCount = operationsBadgeEnabled ? unreviewedCompletedCount : recentCompleted.length;
+  const failedIndicatorCount = unreviewedFailedCount;
   const showCompletedIndicator = completedIndicatorCount > 0 && !isOperationsOpen;
+  const showFailedIndicator = failedIndicatorCount > 0 && !isOperationsOpen;
   const activeProgress = activeOperation?.totalBytes
     ? Math.min(1, activeOperation.bytesCopied / activeOperation.totalBytes)
     : activeOperation?.totalItems
@@ -305,7 +309,7 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
               : completedIndicatorCount > 0
                 ? (language === 'es' ? 'Finalizada' : 'Completed')
                 : (language === 'es' ? 'Sin operaciones' : 'Idle'),
-          tone: activeOperation ? 'cyan' : failedCount > 0 ? 'rose' : 'default',
+          tone: activeOperation ? 'cyan' : failedIndicatorCount > 0 ? 'rose' : 'default',
         },
         ...(activeOperation ? [
           { label: language === 'es' ? 'Elemento actual' : 'Current item', value: activeOperation.currentItem || activeOperation.sourcePaths[0] || '—' },
@@ -317,8 +321,8 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
         ...(completedIndicatorCount > 0 ? [
           { label: language === 'es' ? 'Completadas' : 'Completed', value: String(completedIndicatorCount) },
         ] : []),
-        ...(failedCount > 0 ? [
-          { label: language === 'es' ? 'Con errores' : 'With errors', value: String(failedCount), tone: 'rose' as const },
+        ...(failedIndicatorCount > 0 ? [
+          { label: language === 'es' ? 'Con errores' : 'With errors', value: String(failedIndicatorCount), tone: 'rose' as const },
         ] : []),
       ]}
     />
@@ -335,7 +339,7 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
         className={`flex select-none items-center gap-1.5 rounded border px-2 py-0.5 text-[10px] whitespace-nowrap transition-colors ${
           activeOperation
             ? 'border-cyan-500/80 bg-cyan-950/80 font-semibold text-cyan-200 shadow-[0_0_8px_rgba(34,211,238,0.25)]'
-            : failedCount > 0
+            : showFailedIndicator
               ? 'border-rose-700/60 bg-rose-950/60 text-rose-300'
               : pendingCount > 0
                 ? 'border-amber-700/60 bg-amber-950/60 text-amber-300'
@@ -354,8 +358,8 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
           </span>
         ) : pendingCount > 0 ? (
           <span className="font-bold text-amber-300">{pendingCount} {language === 'es' ? 'en cola' : 'queued'}</span>
-        ) : failedCount > 0 ? (
-          <span className="font-bold text-rose-400">! {failedCount}</span>
+        ) : showFailedIndicator ? (
+          <span className="font-bold text-rose-400">! {failedIndicatorCount}</span>
         ) : showCompletedIndicator ? (
           <span className="flex items-center gap-1">
             <CheckCircle2 className="h-3 w-3 flex-shrink-0 text-emerald-400" />
