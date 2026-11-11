@@ -169,6 +169,21 @@ function getDisplayItemName(item: FileItem, showFileExtensions: boolean): string
   const extensionSeparator = item.name.lastIndexOf('.');
   return extensionSeparator > 0 ? item.name.slice(0, extensionSeparator) : item.name;
 }
+/* Titles that do not fit their tab sweep through the overflow once the pointer or
+   the keyboard focus arrives. The overflow is measured here, once per arrival, and
+   handed to the CSS animation through a custom property; titles that fit never get
+   the flag, so they never animate. */
+function setTabTitleMarquee(tabElement: Element) {
+  const title = tabElement.querySelector('.cyberfiles-tab-title');
+  if (!(title instanceof HTMLElement)) return;
+  const shift = title.clientWidth - title.scrollWidth;
+  if (shift < 0) {
+    title.setAttribute('data-title-marquee', 'true');
+    title.style.setProperty('--cyberfiles-tab-title-shift', `${shift}px`);
+  } else {
+    title.removeAttribute('data-title-marquee');
+  }
+}
 
 interface ColumnPointerDrag {
   pointerId: number;
@@ -3574,13 +3589,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
           event.stopPropagation();
           onTabContextMenu(idx, event.clientX, event.clientY);
         }}
+        onMouseEnter={event => setTabTitleMarquee(event.currentTarget)}
+        onFocus={event => setTabTitleMarquee(event.currentTarget)}
         style={horizontalTabStyle}
         className={vertical
           ? `cyberfiles-folder-tab group flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition-colors outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 ${isTabActive ? 'border-cyan-600/65 bg-cyan-950/45 text-cyan-100 shadow-sm shadow-cyan-950/30' : 'border-transparent bg-neutral-900/35 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-800/70 hover:text-neutral-100'}`
           : `cyberfiles-folder-tab group flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium cursor-pointer border-x transition-colors ${tabStripPosition === 'bottom' ? 'rounded-b-md border-b' : 'rounded-t-md border-t'} ${isTabActive ? 'bg-neutral-900 border-neutral-700 text-neutral-100 relative z-10' : 'bg-neutral-950/40 border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/40'}`}
       >
         <Folder className={`h-3.5 w-3.5 shrink-0 ${isTabActive ? 'text-cyan-400' : 'text-neutral-500'}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined} />
-        <span className={`truncate text-[11px] ${vertical ? 'min-w-0 flex-1' : ''}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined}>{tabName}</span>
+        <span className={`cyberfiles-tab-title truncate text-[11px] ${vertical ? 'min-w-0 flex-1' : ''}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined}>{tabName}</span>
         {tabItem.lockClose && <LockKeyhole aria-label={t.tabMenu.lock} className="ml-auto h-3 w-3 shrink-0 text-amber-300/80" />}
         {tabs.length > 1 && !tabItem.lockClose && (
           <Tooltip label={t.pane.closeTab} placement={tooltipPlacement}>
