@@ -101,6 +101,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Three layouts**: dual vertical, dual horizontal and single pane, with a draggable divider between panes
 - **Independent tabs**: each pane keeps its own tabs, navigation history, filter and selection
 - **Tab control**: duplicate, rename, color, lock or reopen tabs from the tab menu; place the tab bar above, below, left or right; choose horizontal or vertical tabs with automatic, fixed or equal widths
+- **Tabs list**: a button on the tab bar opens every open tab with search by name or path, letting you jump to any of them or close them one by one or all at once; when the bar fills up, scroll arrows keep every tab reachable
 - **New tab content**: choose whether a new tab opens the default folder, the current folder, a duplicate of the tab, your home folder, an empty tab or a specific location
 - **Layouts, sessions and workspaces**: save the current layout, save a tab session, and combine both into a workspace that restores in one step
 - **Startup behavior**: continue where you left off, open This PC, or load a saved session, chosen in Settings or the welcome screen

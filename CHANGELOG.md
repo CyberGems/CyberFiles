@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-11-11
+
+### Added
+- Adaptive tab strip: the add-tab button sits next to the last tab when there is room, and once the tabs outgrow the bar it anchors to the edge with scroll arrows that support press-and-hold.
+- Tabs list button on the tab strip, always available: search tabs by name or path, jump to any tab, close individual tabs, or close everything except the active one behind an inline confirmation.
+- Titlebar update notice button that opens the update dialog directly while an update is pending.
+- Rich folder tooltips for custom quick access cards in This PC, with the same contents box and size scan as the default folders.
+
+### Changed
+- Update notes now show in the interface language, with the full release body shipped in the updater manifest.
+- Unsaved changes are asked about before the close dialog, so the tray-or-quit question only appears once the changes are resolved.
+- The unsaved-changes dialog header uses a bare neutral icon, and the close dialog opens without a flash by preloading its module.
+- This PC sections form three columns from 880px of list width, covering common 150% scaled displays.
+- The active tab is kept in view while the tab strip settles at startup, and the tab strip no longer flashes the add button's hover after adding a tab.
+
+### Fixed
+- Fixed a hook order crash that could stop the app while opening the changes dialog.
+- The tabs list toggle, the inline close-all behavior, and the active tab's close glyph color were corrected after user feedback.
+
 ## [0.7.0] - 2026-11-10
 
 ### Added

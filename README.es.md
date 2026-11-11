@@ -101,6 +101,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Tres diseños**: doble vertical, doble horizontal y panel único, con un divisor arrastrable entre paneles
 - **Pestañas independientes**: cada panel conserva sus pestañas, historial de navegación, filtro y selección
 - **Control de pestañas**: duplicar, renombrar, colorear, bloquear o reabrir desde el menú de la pestaña; colocar la barra de pestañas arriba, abajo, a la izquierda o a la derecha; elegir pestañas horizontales o verticales con ancho automático, fijo o uniforme
+- **Lista de pestañas**: un botón en la barra abre todas las pestañas abiertas con búsqueda por nombre o ruta, para saltar a cualquiera o cerrarlas una a una o todas de golpe; cuando la barra se llena, unas flechas de desplazamiento mantienen todas las pestañas al alcance
 - **Contenido de la pestaña nueva**: elige si una pestaña nueva abre la carpeta predeterminada, la carpeta actual, un duplicado de la pestaña, tu carpeta personal, una pestaña vacía o una ubicación concreta
 - **Diseños, sesiones y espacios de trabajo**: guarda el diseño actual, guarda una sesión de pestañas y combina ambos en un espacio de trabajo que se restaura en un paso
 - **Comportamiento al iniciar**: continuar donde lo dejaste, abrir Este equipo o cargar una sesión guardada, desde Configuración o la pantalla de bienvenida

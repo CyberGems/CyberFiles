@@ -15,26 +15,22 @@
 
 ### ✨ Key Features & Highlights
 
-- **Network drives:** Browse LAN devices and SMB shares, navigate UNC paths, map and disconnect network drives, and sign in with the native credentials dialog.
-- **Environment variable paths:** Use Windows variables like %APPDATA% in folder paths; they resolve at navigation time.
-- **Keyboard everywhere:** Full arrow-key navigation for context and tab menus with anchored submenu flyouts, and Space to select the focused file instead of opening the properties panel.
-- **Disconnected drive resilience:** Logical drives are watched automatically, tabs on removed drives recover or return to This PC, and Quick Access or recent folders are marked offline.
-- **Compact toolbar:** Merged view controls in a dropdown, overflow menu portal, and group collapsing measured from the window size.
-- **Operations badges:** The status bar button counts completed and failed operations since the last review and resets when you open the operations center; the completed count can be turned off in Settings.
-- **More settings:** Lister text size with scaled rows and headers, plus configurable toast duration with hover pause and a close button.
+- **Adaptive tab strip:** The add button sits right next to the last tab while there is room, and once the tabs outgrow the bar it anchors to the edge with scroll arrows that glide under press-and-hold.
+- **Tabs list at your fingertips:** A list button on the strip, always available: search tabs by name or path, jump to any tab, close them one by one, or close everything except the active tab behind an inline confirmation.
+- **Updates in your language:** The update dialog shows the release notes in the interface language, and a pulsing titlebar button takes you straight to the update while one is pending.
+- **Smarter close flow:** Unsaved changes are asked about first; the tray-or-quit question only appears once they are resolved, without flashes between dialogs.
+- **This PC in three columns:** Sections spread into three columns on common displays, and custom quick access cards now show the same rich folder tooltips as the defaults.
 
 <details>
 <summary><b>🌐 Ver notas de la versión en Español</b></summary>
 
 ### 🚀 Novedades de esta versión
 
-- **Unidades de red:** Explora dispositivos LAN y recursos SMB, navega rutas UNC, conecta y desconecta unidades de red e inicia sesión con el diálogo nativo de credenciales.
-- **Rutas con variables de entorno:** Usa variables de Windows como %APPDATA% en las rutas de carpetas; se resuelven al navegar.
-- **Teclado en todas partes:** Navegación completa con flechas en los menús contextuales y de pestañas con submenús anclados, y Espacio para seleccionar el elemento enfocado en lugar de abrir el panel de propiedades.
-- **Resiliencia ante unidades desconectadas:** Las unidades lógicas se vigilan automáticamente, las pestañas de unidades retiradas se recuperan o vuelven a Este equipo, y las carpetas recientes o de acceso rápido se marcan como sin conexión.
-- **Barra de herramientas compacta:** Controles de vista combinados en un menú desplegable, menú de desbordamiento y colapso de grupos según el tamaño de la ventana.
-- **Insignias de operaciones:** El botón de la barra de estado cuenta las operaciones completadas y fallidas desde la última revisión y se reinicia al abrir el centro de operaciones; el conteo de completadas se puede desactivar en Configuración.
-- **Más ajustes:** Tamaño de texto del listador con filas y cabeceras escaladas, y duración configurable de los avisos con pausa al pasar el cursor y botón de cierre.
+- **Tira de pestañas adaptativa:** El botón de añadir se sitúa junto a la última pestaña mientras haya espacio, y cuando las pestañas desbordan se ancla al borde con flechas de desplazamiento que se deslizan al mantenerlas pulsadas.
+- **Lista de pestañas siempre a mano:** Un botón en la tira, siempre disponible: busca pestañas por nombre o ruta, salta a cualquiera, ciérralas una a una o ciérralas todas menos la activa tras una confirmación inline.
+- **Actualizaciones en tu idioma:** El diálogo de actualización muestra las notas en el idioma de la interfaz, y un botón pulsante en la barra de título te lleva directo a la actualización pendiente.
+- **Cierre más inteligente:** Los cambios sin guardar se preguntan primero; la elección entre bandeja y salida aparece solo cuando ya están resueltos, sin destellos entre diálogos.
+- **Este equipo en tres columnas:** Las secciones se reparten en tres columnas en pantallas habituales, y los accesos rápidos personalizados ya muestran el mismo tooltip rico que las carpetas por defecto.
 
 </details>
 
