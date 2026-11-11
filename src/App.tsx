@@ -158,6 +158,7 @@ const SHOW_NEW_TAB_BUTTON_KEY = 'cyberfiles_show_new_tab_button_v1';
 const DOUBLE_CLICK_TAB_BAR_KEY = 'cyberfiles_double_click_tab_bar_v2';
 const NEW_TAB_BUTTON_ACTION_KEY = 'cyberfiles_new_tab_button_action_v1';
 const DOUBLE_CLICK_TAB_ACTION_KEY = 'cyberfiles_double_click_tab_action_v1';
+const TAB_TITLE_MARQUEE_KEY = 'cyberfiles_tab_title_marquee_v1';
 const DEFAULT_NEW_TAB_FOLDER_KEY = 'cyberfiles_default_new_tab_folder_v1';
 const TAB_SIZE_PREFERENCES_KEY = 'cyberfiles_tab_size_preferences_v1';
 const TAB_CLOSE_BUTTON_MODE_KEY = 'cyberfiles_tab_close_button_mode_v1';
@@ -891,6 +892,7 @@ export default function App() {
   const [doubleClickTabBar, setDoubleClickTabBar] = useState(() => readBooleanPreference(DOUBLE_CLICK_TAB_BAR_KEY, true));
   const [newTabButtonAction, setNewTabButtonAction] = useState(() => readNewTabActionPreference(NEW_TAB_BUTTON_ACTION_KEY));
   const [doubleClickTabAction, setDoubleClickTabAction] = useState(() => readNewTabActionPreference(DOUBLE_CLICK_TAB_ACTION_KEY));
+  const [tabTitleMarquee, setTabTitleMarquee] = useState(() => readBooleanPreference(TAB_TITLE_MARQUEE_KEY, true));
   const [defaultNewTabPath, setDefaultNewTabPath] = useState(() => readStringPreference(DEFAULT_NEW_TAB_FOLDER_KEY));
   const [userHomePath, setUserHomePath] = useState('');
   const [tabSizePreferences, setTabSizePreferences] = useState<TabSizePreferences>(readTabSizePreferences);
@@ -2125,10 +2127,11 @@ export default function App() {
       window.localStorage.setItem(DEFAULT_NEW_TAB_FOLDER_KEY, defaultNewTabPath);
       window.localStorage.setItem(TAB_SIZE_PREFERENCES_KEY, JSON.stringify(tabSizePreferences));
       window.localStorage.setItem(TAB_CLOSE_BUTTON_MODE_KEY, tabCloseButtonMode);
+      window.localStorage.setItem(TAB_TITLE_MARQUEE_KEY, String(tabTitleMarquee));
     } catch {
       // Keep tab bar preferences in memory when storage is unavailable.
     }
-  }, [showNewTabButton, doubleClickTabBar, newTabButtonAction, doubleClickTabAction, defaultNewTabPath, tabSizePreferences, tabCloseButtonMode]);
+  }, [showNewTabButton, doubleClickTabBar, newTabButtonAction, doubleClickTabAction, defaultNewTabPath, tabSizePreferences, tabCloseButtonMode, tabTitleMarquee]);
 
   useEffect(() => {
     if (!isTauriDesktop()) return;
@@ -6646,6 +6649,7 @@ export default function App() {
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
                   tabCloseButtonMode={tabCloseButtonMode}
+                  tabTitleMarquee={tabTitleMarquee}
                   tabSizePreferences={tabSizePreferences}
                   columnPreferences={paneColumnPreferences.left}
                   isActive={activePane === 'left'}
@@ -6734,6 +6738,7 @@ export default function App() {
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
                   tabCloseButtonMode={tabCloseButtonMode}
+                  tabTitleMarquee={tabTitleMarquee}
                   tabSizePreferences={tabSizePreferences}
                   columnPreferences={paneColumnPreferences.right}
                   isActive={activePane === 'right'}
@@ -6823,6 +6828,7 @@ export default function App() {
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
                   tabCloseButtonMode={tabCloseButtonMode}
+                  tabTitleMarquee={tabTitleMarquee}
                   tabSizePreferences={tabSizePreferences}
                   columnPreferences={paneColumnPreferences.left}
                   isActive={activePane === 'left'}
@@ -6907,6 +6913,7 @@ export default function App() {
                   showNewTabButton={showNewTabButton}
                   doubleClickTabBar={doubleClickTabBar}
                   tabCloseButtonMode={tabCloseButtonMode}
+                  tabTitleMarquee={tabTitleMarquee}
                   tabSizePreferences={tabSizePreferences}
                   columnPreferences={paneColumnPreferences.right}
                   isActive={activePane === 'right'}
@@ -6996,6 +7003,7 @@ export default function App() {
                 showNewTabButton={showNewTabButton}
                 doubleClickTabBar={doubleClickTabBar}
                 tabCloseButtonMode={tabCloseButtonMode}
+                tabTitleMarquee={tabTitleMarquee}
                 tabSizePreferences={tabSizePreferences}
                 columnPreferences={paneColumnPreferences[activePane]}
                 isActive={true}
@@ -7586,6 +7594,8 @@ export default function App() {
             }}
             tabCloseButtonMode={tabCloseButtonMode}
             onTabCloseButtonModeChange={setTabCloseButtonMode}
+            tabTitleMarquee={tabTitleMarquee}
+            onTabTitleMarqueeChange={setTabTitleMarquee}
             tabSizePreferences={tabSizePreferences}
             onTabSizePreferencesChange={setTabSizePreferences}
             onShowAbout={() => {

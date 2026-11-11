@@ -111,6 +111,8 @@ interface SettingsModalProps {
   onChooseNewTabFolder: () => Promise<string | null>;
   tabCloseButtonMode: TabCloseButtonMode;
   onTabCloseButtonModeChange: (mode: TabCloseButtonMode) => void;
+  tabTitleMarquee: boolean;
+  onTabTitleMarqueeChange: (enabled: boolean) => void;
   tabSizePreferences: TabSizePreferences;
   onTabSizePreferencesChange: (preferences: TabSizePreferences) => void;
 }
@@ -227,6 +229,8 @@ export function SettingsModal({
   onChooseNewTabFolder,
   tabCloseButtonMode,
   onTabCloseButtonModeChange,
+  tabTitleMarquee,
+  onTabTitleMarqueeChange,
   tabSizePreferences,
   onTabSizePreferencesChange,
 }: SettingsModalProps) {
@@ -1402,6 +1406,19 @@ export function SettingsModal({
                     </label>
                   ))}
                 </div>
+              </fieldset>
+              <fieldset data-settings-search-unit className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-3 text-xs text-neutral-400">
+                <legend className="px-1 font-medium text-neutral-200">{t.settings.tabTitleMarqueeTitle}</legend>
+                <label className="flex cursor-pointer items-center gap-2 text-neutral-200">
+                  <input
+                    type="checkbox"
+                    checked={tabTitleMarquee}
+                    onChange={event => onTabTitleMarqueeChange(event.target.checked)}
+                    className="h-4 w-4 accent-cyan-400"
+                  />
+                  <span>{t.settings.tabTitleMarqueeEnabled}</span>
+                </label>
+                <p className="mt-1 pl-6 leading-relaxed">{t.settings.tabTitleMarqueeDescription}</p>
               </fieldset>
               {renderNewTabActionSetting(
                 t.settings.showNewTabButton,

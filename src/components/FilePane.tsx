@@ -69,6 +69,7 @@ interface FilePaneProps {
   showNewTabButton: boolean;
   doubleClickTabBar: boolean;
   tabCloseButtonMode?: TabCloseButtonMode;
+  tabTitleMarquee: boolean;
   tabSizePreferences: TabSizePreferences;
   isActive: boolean;
   styleLocked: boolean;
@@ -172,10 +173,15 @@ function getDisplayItemName(item: FileItem, showFileExtensions: boolean): string
 /* Titles that do not fit their tab sweep through the overflow once the pointer or
    the keyboard focus arrives. The overflow is measured here, once per arrival, and
    handed to the CSS animation through a custom property; titles that fit never get
-   the flag, so they never animate. */
-function setTabTitleMarquee(tabElement: Element) {
+   the flag, so they never animate. With the setting off, a lingering flag is
+   removed so a hover that started before the change cannot keep sweeping. */
+function setTabTitleMarquee(tabElement: Element, enabled: boolean) {
   const title = tabElement.querySelector('.cyberfiles-tab-title');
   if (!(title instanceof HTMLElement)) return;
+  if (!enabled) {
+    title.removeAttribute('data-title-marquee');
+    return;
+  }
   const shift = title.clientWidth - title.scrollWidth;
   if (shift < 0) {
     title.setAttribute('data-title-marquee', 'true');
@@ -737,6 +743,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   showNewTabButton,
   doubleClickTabBar,
   tabCloseButtonMode = 'hover',
+  tabTitleMarquee,
   tabSizePreferences,
   isActive,
   styleLocked,
@@ -3589,8 +3596,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
           event.stopPropagation();
           onTabContextMenu(idx, event.clientX, event.clientY);
         }}
-        onMouseEnter={event => setTabTitleMarquee(event.currentTarget)}
-        onFocus={event => setTabTitleMarquee(event.currentTarget)}
+        onMouseEnter={event => setTabTitleMarquee(event.currentTarget, tabTitleMarquee)}
+        onFocus={event => setTabTitleMarquee(event.currentTarget, tabTitleMarquee)}
         style={horizontalTabStyle}
         className={vertical
           ? `cyberfiles-folder-tab group flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs font-medium transition-colors outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 ${isTabActive ? 'border-cyan-600/65 bg-cyan-950/45 text-cyan-100 shadow-sm shadow-cyan-950/30' : 'border-transparent bg-neutral-900/35 text-neutral-400 hover:border-neutral-700 hover:bg-neutral-800/70 hover:text-neutral-100'}`
