@@ -971,7 +971,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }
     const rect = tabsListButtonRef.current?.getBoundingClientRect();
     if (rect) setTabsListPosition({ top: rect.bottom + 6, left: Math.max(8, rect.right - 320) });
-    setTabsListQuery('');
     setTabsListOpen(true);
   };
   const closeAllOtherTabs = () => {
@@ -1024,8 +1023,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
       closeTabsList();
       tabsListButtonRef.current?.focus();
     };
-    /* Closing tabs from the menu reflows the strip; instead of closing, the menu
-       follows its anchored button. */
+    /* The menu follows its anchored button whenever the strip reflows, including
+       while tabs are being closed from the menu itself. */
     const repositionTabsList = () => {
       const rect = tabsListButtonRef.current?.getBoundingClientRect();
       if (rect && rect.width > 0) setTabsListPosition({ top: rect.bottom + 6, left: Math.max(8, rect.right - 320) });
@@ -1034,16 +1033,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
     document.addEventListener('keydown', onKeyDown);
     horizontalTabListRef.current?.addEventListener('scroll', repositionTabsList);
     window.addEventListener('resize', repositionTabsList);
-    /* The menu lives on the overflow controls: when the strip stops overflowing
-       (or the last-but-one tab closes) the anchor is gone and the menu closes. */
-    if (!tabStripScroll.overflowing || tabs.length <= 1) closeTabsList();
+    repositionTabsList();
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
       horizontalTabListRef.current?.removeEventListener('scroll', repositionTabsList);
       window.removeEventListener('resize', repositionTabsList);
     };
-  }, [tabsListOpen, tabStripScroll.overflowing, tabs.length]);
+  }, [tabsListOpen, tabStripScroll.overflowing]);
   const lastScrolledFocusedIdRef = useRef<string | null>(null);
   const columnHeadersRef = useRef<HTMLDivElement>(null);
   const horizontalScrollContainerRef = useRef<HTMLDivElement>(null);
@@ -3663,23 +3660,23 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 <Plus className="h-3.5 w-3.5" />
               </button>
             </Tooltip>}
-            <Tooltip label={t.pane.tabStripList} placement="bottom">
-              <button
-                ref={tabsListButtonRef}
-                type="button"
-                data-tabs-list-button="true"
-                aria-label={t.pane.tabStripList}
-                aria-haspopup="menu"
-                aria-expanded={tabsListOpen}
-                onClick={toggleTabsList}
-                className={`ml-1 inline-flex h-7 shrink-0 ${stripControlAlignment} items-center gap-1 rounded border border-neutral-700/80 bg-neutral-900 px-1.5 text-neutral-300 transition-colors hover:border-neutral-600 hover:bg-neutral-800 hover:text-cyan-200`}
-              >
-                <span className="text-[11px] font-bold leading-none">{tabs.length}</span>
-                <ChevronDown className="h-3 w-3" />
-              </button>
-            </Tooltip>
           </>
         )}
+        <Tooltip label={t.pane.tabStripList} placement="bottom">
+          <button
+            ref={tabsListButtonRef}
+            type="button"
+            data-tabs-list-button="true"
+            aria-label={t.pane.tabStripList}
+            aria-haspopup="menu"
+            aria-expanded={tabsListOpen}
+            onClick={toggleTabsList}
+            className={`ml-1 inline-flex h-7 shrink-0 ${stripControlAlignment} items-center gap-1 rounded border border-neutral-700/80 bg-neutral-900 px-1.5 text-neutral-300 transition-colors hover:border-neutral-600 hover:bg-neutral-800 hover:text-cyan-200`}
+          >
+            <span className="text-[11px] font-bold leading-none">{tabs.length}</span>
+            <ChevronDown className="h-3 w-3" />
+          </button>
+        </Tooltip>
         {tabsListOpen && createPortal(
           <div
             data-tabs-list-root="true"
