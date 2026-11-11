@@ -3,7 +3,7 @@ import { X, FileText, Folder, Image as ImageIcon, Code2, Copy, Check, Info, Musi
 import { FileItem } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, isTextPreviewableFile } from '../utils/fileSystem';
-import { isTauriDesktop, loadNativeImageThumbnail, loadNativePdfPreviewUrl, loadNativeArchivePreview, calculateNativeFolderSizeBounded, MAX_PDF_PREVIEW_BYTES, type NativeArchivePreview } from '../utils/nativeFileSystem';
+import { isTauriDesktop, loadNativeImageThumbnail, loadNativePdfPreviewUrl, loadNativeMediaPreviewUrl, loadNativeArchivePreview, calculateNativeFolderSizeBounded, MAX_PDF_PREVIEW_BYTES, type NativeArchivePreview } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
@@ -150,6 +150,8 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
   const [imagePreviewState, setImagePreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
   const [pdfPreviewSource, setPdfPreviewSource] = useState<{ itemId: string; url: string } | null>(null);
   const [pdfPreviewState, setPdfPreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable' | 'too-large'>('idle');
+  const [mediaPreview, setMediaPreview] = useState<{ itemId: string; url: string; kind: 'video' | 'audio' } | null>(null);
+  const [mediaPreviewState, setMediaPreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable' | 'desktop-only'>('idle');
   const [archivePreview, setArchivePreview] = useState<{ itemId: string; data: NativeArchivePreview } | null>(null);
   const [archivePreviewState, setArchivePreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable' | 'password-required' | 'desktop-only' | 'too-many-entries'>('idle');
   const [archivePassword, setArchivePassword] = useState('');
@@ -258,6 +260,57 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
 
     return () => { cancelled = true; };
   }, [item?.id, item?.path, item?.extension, item?.isFolder, item?.size]);
+
+  /* Audio/video playback: the desktop app authorizes the file through the asset protocol and
+     the player streams it from disk; the browser build plays straight from the picked File.
+     A codec the webview lacks surfaces as an error on the element, which falls back to the
+     message plus the open-with-default-app escape hatch. */
+  useEffect(() => {
+    if (!item || item.isFolder || (item.type !== 'video' && item.type !== 'audio')) {
+      setMediaPreview(null);
+      setMediaPreviewState('idle');
+      return;
+    }
+    const kind: 'video' | 'audio' = item.type === 'video' ? 'video' : 'audio';
+
+    if (item.handle && 'getFile' in item.handle) {
+      let cancelled = false;
+      let objectUrl: string | null = null;
+      setMediaPreview(null);
+      setMediaPreviewState('loading');
+      void (item.handle as FileSystemFileHandle).getFile().then(file => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(file);
+        setMediaPreview({ itemId: item.id, url: objectUrl, kind });
+        setMediaPreviewState('ready');
+      }).catch(() => {
+        if (!cancelled) setMediaPreviewState('unavailable');
+      });
+      return () => {
+        cancelled = true;
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+      };
+    }
+
+    if (!isTauriDesktop()) {
+      setMediaPreview(null);
+      setMediaPreviewState('desktop-only');
+      return;
+    }
+
+    let cancelled = false;
+    setMediaPreview(null);
+    setMediaPreviewState('loading');
+    void loadNativeMediaPreviewUrl(item.path).then(url => {
+      if (!cancelled) {
+        setMediaPreview({ itemId: item.id, url, kind });
+        setMediaPreviewState('ready');
+      }
+    }).catch(() => {
+      if (!cancelled) setMediaPreviewState('unavailable');
+    });
+    return () => { cancelled = true; };
+  }, [item?.id, item?.path, item?.handle, item?.type, item?.isFolder]);
 
   useEffect(() => {
     if (!item || item.isFolder || item.type !== 'archive') {
@@ -433,7 +486,30 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
 
     if (item.type === 'audio' || item.type === 'video') {
       const Icon = item.type === 'audio' ? Music : Video;
-      return <div className="p-6 flex flex-col items-center justify-center text-neutral-400 gap-3"><Icon className="w-10 h-10 text-cyan-400" /><span className="text-[11px] text-center">{t.preview.mediaUnavailable}</span></div>;
+      if (mediaPreview?.itemId === item.id && mediaPreviewState !== 'unavailable' && mediaPreviewState !== 'desktop-only') {
+        return (
+          <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-3 p-3">
+            {item.type === 'audio' && <Music className="h-10 w-10 flex-shrink-0 text-cyan-400" />}
+            {item.type === 'video'
+              ? <video key={mediaPreview.url} src={mediaPreview.url} controls preload="metadata" aria-label={item.name} onError={() => setMediaPreviewState('unavailable')} className="max-h-full min-h-0 max-w-full rounded bg-black shadow" />
+              : <audio key={mediaPreview.url} src={mediaPreview.url} controls preload="metadata" aria-label={item.name} onError={() => setMediaPreviewState('unavailable')} className="w-full max-w-xs" />}
+          </div>
+        );
+      }
+      const status = mediaPreviewState === 'loading'
+        ? t.preview.mediaLoading
+        : mediaPreviewState === 'desktop-only'
+          ? t.preview.mediaDesktopOnly
+          : mediaPreviewState === 'unavailable'
+            ? t.preview.mediaFormatUnsupported
+            : t.preview.mediaUnavailable;
+      return (
+        <div className="p-6 flex flex-col items-center justify-center text-neutral-400 gap-3">
+          <Icon className="w-10 h-10 text-cyan-400" />
+          <span className="text-[11px] text-center">{status}</span>
+          {mediaPreviewState === 'unavailable' && nativePropertiesSupported && <button type="button" onClick={onOpenWithDefaultApp} className="rounded border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-[11px] text-neutral-200 transition-colors hover:border-cyan-600 hover:text-cyan-200">{t.preview.openWithDefaultApp}</button>}
+        </div>
+      );
     }
 
     return <div className="p-6 flex flex-col items-center justify-center text-neutral-500 gap-2"><FileText className="w-10 h-10 text-neutral-600 stroke-[1.5]" /><span className="text-[11px] font-sans uppercase">{item.extension || t.preview.noExtension}</span><span className="text-[10px] text-neutral-400">{formatFileSize(item.size)}</span></div>;
@@ -462,7 +538,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
               </Tooltip>
             </h2>
           </div>
-          {!previewCollapsed && <div className={'flex min-h-0 flex-1 justify-center ' + (item.extension.toLowerCase() === 'pdf' ? 'items-stretch overflow-hidden p-0' : 'items-center overflow-y-auto p-2')}>{renderContent()}</div>}
+          {!previewCollapsed && <div className={'flex min-h-0 flex-1 justify-center ' + (item.extension.toLowerCase() === 'pdf' || item.type === 'video' || item.type === 'audio' ? 'items-stretch overflow-hidden p-0' : 'items-center overflow-y-auto p-2')}>{renderContent()}</div>}
         </section>
 
         <section className={'flex min-h-0 flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900/30 ' + (propertiesCollapsed ? 'flex-none' : 'flex-1')}>

@@ -4296,6 +4296,46 @@ fn svg_thumbnail_data_url(file_path: &Path) -> Option<String> {
 }
 
 #[tauri::command]
+async fn prepare_media_preview(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    /// Audio/video containers the webview or the installed codecs can usually play. The
+    /// frontend plays the file in place through the asset protocol, so nothing is copied.
+    const MEDIA_PREVIEW_EXTENSIONS: &[&str] = &[
+        "mp3", "wav", "flac", "ogg", "aac", "m4a", "opus", "wma", "aif", "aiff", "alac", "ape",
+        "mp4", "mkv", "mov", "avi", "webm", "wmv", "mpeg", "mpg", "m4v", "flv", "3gp", "ogv",
+    ];
+    tauri::async_runtime::spawn_blocking(move || {
+        let source = Path::new(&path);
+        if !source.is_absolute() {
+            return Err("Only fully qualified media paths can be previewed.".to_string());
+        }
+        let metadata = fs::symlink_metadata(source)
+            .map_err(|error| format!("Cannot inspect media preview file: {error}"))?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err("Only regular media files can be previewed.".to_string());
+        }
+        if source
+            .extension()
+            .and_then(|value| value.to_str())
+            .map_or(true, |extension| {
+                !MEDIA_PREVIEW_EXTENSIONS.iter().any(|allowed| extension.eq_ignore_ascii_case(allowed))
+            })
+        {
+            return Err("Only audio and video files can be previewed here.".to_string());
+        }
+
+        let resolved = source
+            .canonicalize()
+            .map_err(|error| format!("Could not resolve media preview file: {error}"))?;
+        app.asset_protocol_scope()
+            .allow_file(&resolved)
+            .map_err(|error| format!("Could not authorize media preview file: {error}"))?;
+        Ok(resolved.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|error| format!("Media preview worker failed: {error}"))?
+}
+
+#[tauri::command]
 async fn image_thumbnail(path: String) -> Option<String> {
     tauri::async_runtime::spawn_blocking(move || {
         let file_path = Path::new(&path);
@@ -7963,6 +8003,7 @@ fn main() {
             start_archive_extraction,
             start_zip_compression,
             prepare_pdf_preview,
+            prepare_media_preview,
             create_directory,
             create_text_file,
             create_shortcut,

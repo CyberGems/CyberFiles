@@ -213,6 +213,14 @@ export async function loadNativePdfPreviewUrl(path: string): Promise<string> {
   return convertFileSrc(authorizedPath);
 }
 
+/// Authorizes an audio/video file for in-place playback through the asset protocol: the file
+/// streams from disk, nothing is copied or buffered whole.
+export async function loadNativeMediaPreviewUrl(path: string): Promise<string> {
+  if (!isTauriDesktop()) throw new Error('Native media playback is unavailable.');
+  const authorizedPath = await invoke<string>('prepare_media_preview', { path });
+  return convertFileSrc(authorizedPath);
+}
+
 export async function chooseNativeFolder(title = 'Open a folder in CyberFiles'): Promise<string | null> {
   if (!isTauriDesktop()) return null;
   const selected = await open({ directory: true, multiple: false, title });
