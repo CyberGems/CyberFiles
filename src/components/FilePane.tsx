@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useLayoutEffect, useContext } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useContext, useCallback } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { 
   Folder, 
@@ -928,20 +928,55 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [tabStripScroll, setTabStripScroll] = useState({ overflowing: false, canScrollLeft: false, canScrollRight: false });
   const [tabsListOpen, setTabsListOpen] = useState(false);
   const [tabsListPosition, setTabsListPosition] = useState({ top: 0, left: 0 });
+  const [tabsListQuery, setTabsListQuery] = useState('');
   const tabsListButtonRef = useRef<HTMLButtonElement>(null);
+  const tabsListSearchRef = useRef<HTMLInputElement>(null);
+  const activeTabsListItemRef = useRef<HTMLButtonElement>(null);
+  const tabStripHoldFrameRef = useRef<number | null>(null);
+  const tabStripHoldTimerRef = useRef<number | null>(null);
   const scrollTabStrip = (direction: -1 | 1) => {
     const el = horizontalTabListRef.current;
     if (!el) return;
     el.scrollBy({ left: direction * Math.max(180, Math.round(el.clientWidth * 0.5)), behavior: 'smooth' });
   };
+  const stopTabStripHold = useCallback(() => {
+    if (tabStripHoldTimerRef.current !== null) {
+      window.clearTimeout(tabStripHoldTimerRef.current);
+      tabStripHoldTimerRef.current = null;
+    }
+    if (tabStripHoldFrameRef.current !== null) {
+      cancelAnimationFrame(tabStripHoldFrameRef.current);
+      tabStripHoldFrameRef.current = null;
+    }
+  }, []);
+  /* Press and hold: one smooth step right away, then a continuous glide until
+     the pointer leaves the button. */
+  const startTabStripHold = (direction: -1 | 1) => {
+    stopTabStripHold();
+    scrollTabStrip(direction);
+    tabStripHoldTimerRef.current = window.setTimeout(() => {
+      const step = () => {
+        const el = horizontalTabListRef.current;
+        if (el) el.scrollLeft += direction * 7;
+        tabStripHoldFrameRef.current = requestAnimationFrame(step);
+      };
+      tabStripHoldFrameRef.current = requestAnimationFrame(step);
+    }, 260);
+  };
+  useEffect(() => stopTabStripHold, [stopTabStripHold]);
   const toggleTabsList = () => {
     if (tabsListOpen) {
       setTabsListOpen(false);
       return;
     }
     const rect = tabsListButtonRef.current?.getBoundingClientRect();
-    if (rect) setTabsListPosition({ top: rect.bottom + 6, left: Math.max(8, rect.right - 256) });
+    if (rect) setTabsListPosition({ top: rect.bottom + 6, left: Math.max(8, rect.right - 320) });
+    setTabsListQuery('');
     setTabsListOpen(true);
+  };
+  const closeAllOtherTabs = () => {
+    tabs.map((_, idx) => idx).filter(idx => idx !== activeTabIndex).sort((a, b) => b - a).forEach(idx => onCloseTab(idx));
+    setTabsListOpen(false);
   };
   useEffect(() => {
     const el = horizontalTabListRef.current;
@@ -985,6 +1020,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
     document.addEventListener('keydown', onKeyDown);
     horizontalTabListRef.current?.addEventListener('scroll', closeTabsList);
     window.addEventListener('resize', closeTabsList);
+    /* The caret starts in the search field and the active tab is in view. */
+    tabsListSearchRef.current?.focus({ preventScroll: true });
+    activeTabsListItemRef.current?.scrollIntoView({ block: 'nearest' });
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
@@ -3514,12 +3552,24 @@ export const FilePane: React.FC<FilePaneProps> = ({
       onTabStripContextMenu(bounds.left + 16, bounds.top + 16);
     }
   };
+  const tabsListQueryNormalized = tabsListQuery.trim().toLocaleLowerCase(language);
+  const visibleTabsList = tabs
+    .map((tabItem, idx) => ({ tabItem, idx }))
+    .filter(({ tabItem }) => {
+      if (!tabsListQueryNormalized) return true;
+      const name = (tabItem.customTitle || tabItem.title || '').toLocaleLowerCase(language);
+      const path = (tabItem.currentPath || '').toLocaleLowerCase(language);
+      return name.includes(tabsListQueryNormalized) || path.includes(tabsListQueryNormalized);
+    });
+  /* Top strip: tabs are bottom-anchored, so the controls take the same seat with a
+     1.5px lift that centers them against the tab bodies; bottom strip centers all. */
+  const stripControlAlignment = tabStripPosition === 'bottom' ? 'self-center' : 'self-end mb-[1.5px]';
   const tabStrip = (
       <div
         role="group"
         aria-label={t.tabMenu.tabsLabel}
         tabIndex={0}
-        className={`cyberfiles-tab-strip flex h-10 min-w-0 shrink-0 ${tabStripPosition === 'bottom' ? 'items-center border-t px-1 py-1' : 'items-end border-b px-1 pt-1 pb-0'} overflow-hidden border-neutral-800 bg-neutral-950/90 select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400`}
+        className={`cyberfiles-tab-strip flex h-10 min-w-0 shrink-0 ${tabStripPosition === 'bottom' ? 'items-center border-t px-1 py-1' : 'items-end border-b px-1 pt-0.5 pb-0'} overflow-hidden border-neutral-800 bg-neutral-950/90 select-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-cyan-400`}
         onKeyDown={handleTabStripKeyDown}
         onDoubleClick={handleTabStripDoubleClick}
         onContextMenu={handleTabStripContextMenu}
@@ -3530,8 +3580,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
               type="button"
               aria-label={t.pane.tabStripScrollBack}
               disabled={!tabStripScroll.canScrollLeft}
-              onClick={() => scrollTabStrip(-1)}
-              className="mr-0.5 inline-flex h-7 w-7 shrink-0 self-center items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300 disabled:pointer-events-none disabled:opacity-30"
+              onPointerDown={() => startTabStripHold(-1)}
+              onPointerUp={stopTabStripHold}
+              onPointerLeave={stopTabStripHold}
+              onPointerCancel={stopTabStripHold}
+              onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); scrollTabStrip(-1); } }}
+              className={`mr-0.5 inline-flex h-7 w-7 shrink-0 ${stripControlAlignment} items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300 disabled:pointer-events-none disabled:opacity-30`}
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -3571,8 +3625,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 type="button"
                 aria-label={t.pane.tabStripScrollForward}
                 disabled={!tabStripScroll.canScrollRight}
-                onClick={() => scrollTabStrip(1)}
-                className="ml-0.5 inline-flex h-7 w-7 shrink-0 self-center items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300 disabled:pointer-events-none disabled:opacity-30"
+                onPointerDown={() => startTabStripHold(1)}
+                onPointerUp={stopTabStripHold}
+                onPointerLeave={stopTabStripHold}
+                onPointerCancel={stopTabStripHold}
+                onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); scrollTabStrip(1); } }}
+                className={`ml-0.5 inline-flex h-7 w-7 shrink-0 ${stripControlAlignment} items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300 disabled:pointer-events-none disabled:opacity-30`}
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -3586,7 +3644,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onActivate();
                   onAddTab('button');
                 }}
-                className="ml-0.5 inline-flex h-7 w-7 shrink-0 self-center items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300"
+                className={`ml-0.5 inline-flex h-7 w-7 shrink-0 ${stripControlAlignment} items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300`}
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
@@ -3600,7 +3658,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 aria-haspopup="menu"
                 aria-expanded={tabsListOpen}
                 onClick={toggleTabsList}
-                className="ml-1 inline-flex h-7 shrink-0 items-center gap-1 rounded border border-neutral-700/80 bg-neutral-900 px-1.5 text-neutral-300 transition-colors hover:border-neutral-600 hover:bg-neutral-800 hover:text-cyan-200"
+                className={`ml-1 inline-flex h-7 shrink-0 ${stripControlAlignment} items-center gap-1 rounded border border-neutral-700/80 bg-neutral-900 px-1.5 text-neutral-300 transition-colors hover:border-neutral-600 hover:bg-neutral-800 hover:text-cyan-200`}
               >
                 <span className="text-[11px] font-bold leading-none">{tabs.length}</span>
                 <ChevronDown className="h-3 w-3" />
@@ -3612,41 +3670,77 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <div
             data-tabs-list-root="true"
             role="menu"
-            aria-label={t.tabMenu.tabsLabel}
+            aria-label={t.pane.tabStripList}
             style={{ top: tabsListPosition.top, left: tabsListPosition.left }}
-            className="fixed z-[90] w-64 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-2xl"
+            className="fixed z-[90] w-80 overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 shadow-2xl"
           >
-            <div className="max-h-80 overflow-y-auto">
-              {tabs.map((tabItem, idx) => {
+            <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">{t.pane.tabsListTitle}</span>
+              <span className="text-[11px] font-bold text-cyan-300">{tabs.length}</span>
+            </div>
+            <div className="border-b border-neutral-800 px-3 py-2">
+              <input
+                ref={tabsListSearchRef}
+                type="text"
+                value={tabsListQuery}
+                onChange={event => setTabsListQuery(event.target.value)}
+                placeholder={t.pane.tabsListSearch}
+                aria-label={t.pane.tabsListSearch}
+                className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 text-xs text-neutral-200 outline-none transition-colors placeholder:text-neutral-500 focus:border-cyan-600"
+              />
+            </div>
+            <div className="max-h-72 overflow-y-auto py-1">
+              {visibleTabsList.map(({ tabItem, idx }) => {
                 const tabName = tabItem.customTitle || tabItem.title || t.pane.noFolderOpen;
                 const active = idx === activeTabIndex;
+                const showPath = Boolean(tabItem.currentPath) && !tabItem.currentPath.startsWith('::');
                 return (
-                  <div key={tabItem.id} className="group flex items-center gap-1 px-2 py-0.5">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      aria-current={active ? 'true' : undefined}
-                      onClick={event => { event.stopPropagation(); onActivate(); onSelectTab(idx); setTabsListOpen(false); }}
-                      className="flex min-w-0 flex-1 items-center gap-2 rounded px-1.5 py-1 text-left text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
-                    >
-                      <Folder className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-cyan-400' : 'text-neutral-500'}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined} />
-                      <span className={`min-w-0 flex-1 truncate ${active ? 'font-semibold text-cyan-200' : ''}`}>{tabName}</span>
-                      {active && <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />}
-                    </button>
-                    {tabs.length > 1 && !tabItem.lockClose && (
+                    <div key={tabItem.id} className="group flex items-center gap-1 px-2 py-0.5">
                       <button
                         type="button"
-                        aria-label={`${t.pane.closeTab}: ${tabName}`}
-                        onClick={event => { event.stopPropagation(); onCloseTab(idx); }}
-                        className="rounded p-1 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-700 hover:text-neutral-100 focus-visible:opacity-100 group-hover:opacity-100"
+                        role="menuitem"
+                        aria-current={active ? 'true' : undefined}
+                        ref={active ? activeTabsListItemRef : undefined}
+                        onClick={event => { event.stopPropagation(); onActivate(); onSelectTab(idx); setTabsListOpen(false); }}
+                        className="flex min-w-0 flex-1 items-start gap-2 rounded px-1.5 py-1 text-left text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
                       >
-                        <X className="h-3 w-3" />
+                        <Folder className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${active ? 'text-cyan-400' : 'text-neutral-500'}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined} />
+                        <span className="min-w-0 flex-1">
+                          <span className={`block truncate ${active ? 'font-semibold text-cyan-200' : ''}`}>{tabName}</span>
+                          {showPath && <span className="block truncate text-[10px] leading-4 text-neutral-500">{tabItem.currentPath}</span>}
+                        </span>
+                        {active && <span aria-hidden="true" className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />}
                       </button>
-                    )}
-                  </div>
+                      {tabs.length > 1 && !tabItem.lockClose && (
+                        <button
+                          type="button"
+                          aria-label={`${t.pane.closeTab}: ${tabName}`}
+                          onClick={event => { event.stopPropagation(); onCloseTab(idx); }}
+                          className="rounded p-1 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-700 hover:text-neutral-100 focus-visible:opacity-100 group-hover:opacity-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
                 );
               })}
+              {visibleTabsList.length === 0 && (
+                <p className="px-3 py-3 text-xs text-neutral-500">{t.pane.tabsListEmpty}</p>
+              )}
             </div>
+            {tabs.length > 1 && (
+              <div className="border-t border-neutral-800 px-2 py-1.5">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={closeAllOtherTabs}
+                  className="flex w-full items-center justify-center gap-2 rounded px-2 py-1.5 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-rose-300"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  {t.pane.tabsListCloseAll}
+                </button>
+              </div>
+            )}
           </div>,
           document.body,
         )}
