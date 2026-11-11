@@ -4395,7 +4395,7 @@ async fn image_thumbnail(path: String) -> Option<String> {
 #[tauri::command]
 async fn get_file_icons(
     items: Vec<NativeFileIconRequest>,
-    large: bool,
+    size: windows_file_icons::ShellIconSize,
 ) -> Result<Vec<NativeFileIconGroup>, String> {
     const MAX_ICON_BATCH_SIZE: usize = 48;
     if items.len() > MAX_ICON_BATCH_SIZE {
@@ -4411,7 +4411,7 @@ async fn get_file_icons(
             if item.path.len() > 32_767 || item.id.len() > 32_767 {
                 continue;
             }
-            if let Some(data_url) = windows_file_icons::get_associated_file_icon(&item.path, large) {
+            if let Some(data_url) = windows_file_icons::get_associated_file_icon(&item.path, size) {
                 grouped_icons.entry(data_url).or_default().push(item.id);
             }
         }

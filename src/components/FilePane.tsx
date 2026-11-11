@@ -891,7 +891,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
     shares: false,
   });
   const effectiveViewMode = tab.viewMode;
-  const nativeFileIconSize = effectiveViewMode === 'icons' ? 'large' : 'small';
+  /* Grid and Tiles draw preview-sized cells, so they need the 256px jumbo icons; the small
+     16px icons belong to the row views. */
+  const nativeFileIconSize = effectiveViewMode === 'icons' || effectiveViewMode === 'tiles' ? 'jumbo' as const : 'small' as const;
   const nativeFileIconScope = `${tab.currentPath}\u0000${nativeFileIconSize}`;
   const [currentTime, setCurrentTime] = useState(() => Date.now());
   const [isEditingPath, setIsEditingPath] = useState(false);
@@ -1429,6 +1431,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const virtualizeFiles = !isSystemHome && effectiveViewMode !== 'compact' && files.length > 300;
   const iconZoomLevel: IconZoomLevel = tab.folderStyle?.iconZoom ?? 'medium';
   const iconZoomPreset = ICON_ZOOM_PRESETS[iconZoomLevel];
+  /* Vector fallback glyphs scale up with the zoom level so an unavailable preview never
+     leaves a postage-stamp icon floating in a large cell. */
+  const iconGlyphScale = iconZoomLevel === 'xlarge' ? 4 : iconZoomLevel === 'large' ? 3 : 2;
   const compactRowCount = Math.max(1, Math.floor(
     (viewportWindow.height - 12 - (tab.groupBy && tab.groupBy !== 'none' ? 32 : 0) + 4) / (34 * listerTextScaleFactorValue),
   ));
@@ -1513,7 +1518,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       const batch = iconRequests.slice(nextIndex, nextIndex + 48);
       nextIndex += batch.length;
       try {
-        const groups = await getNativeFileIcons(batch, nativeFileIconSize === 'large');
+        const groups = await getNativeFileIcons(batch, nativeFileIconSize);
         if (cancelled || generation !== nativeFileIconGenerationRef.current) return;
         setNativeFileIconState(previous => {
           if (generation !== nativeFileIconGenerationRef.current) return previous;
@@ -2371,7 +2376,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     </form>
   );
 
-  const getDisplayFileIcon = (item: FileItem, size: 'small' | 'large' = 'small') => {
+  const getDisplayFileIcon = (item: FileItem, size: 'small' | 'large' = 'small', largeGlyphScale = 2) => {
     if (item.isFolder) {
       const customConfig = getCustomFolderIcon(item.path, customFolderIcons ?? {});
       if (customConfig) {
@@ -2393,7 +2398,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       );
     }
     const fallback = fileTypeGlyph(item.type, item.isFolder);
-    return size === 'large' ? <span className="scale-[2]">{fallback}</span> : fallback;
+    return size === 'large' ? <span className="inline-block" style={{ transform: `scale(${largeGlyphScale})` }}>{fallback}</span> : fallback;
   };
 
   const renderFolderStatusBadge = (item: FileItem) => {
@@ -5128,12 +5133,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       <ShellItemThumbnail
                         item={item}
                         thumbnail={nativeThumbnailState.scope === nativeThumbnailScope ? nativeThumbnailState.byItemId[item.id] : undefined}
-                        fallback={getDisplayFileIcon(item, 'large')}
+                        fallback={getDisplayFileIcon(item, 'large', iconGlyphScale)}
                         className={`${iconZoomPreset.thumbHeight} w-full`}
                       />
                     ) : (
                       <div className={`flex ${iconZoomPreset.thumbHeight} w-full items-center justify-center rounded-md border border-neutral-700/70 bg-neutral-900/80`}>
-                        {getDisplayFileIcon(item, 'large')}
+                        {getDisplayFileIcon(item, 'large', iconGlyphScale)}
                       </div>
                     )}
                   </div>

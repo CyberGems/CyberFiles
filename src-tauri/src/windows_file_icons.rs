@@ -1,5 +1,19 @@
+use serde::Deserialize;
+
+/// The system icon sizes CyberFiles requests. Small and Large go through SHGetFileInfoW
+/// (16px and 32px); Jumbo pulls the 256px icon from the system image list, the same source
+/// Explorer's extra-large view uses, so scaled-up icons stay crisp instead of blurry.
+#[derive(Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ShellIconSize {
+    Small,
+    Large,
+    Jumbo,
+}
+
 #[cfg(target_os = "windows")]
 mod windows_impl {
+    use super::ShellIconSize;
     use std::{
         collections::HashMap,
         io::Cursor,
@@ -21,9 +35,10 @@ mod windows_impl {
             Storage::FileSystem::FILE_ATTRIBUTE_NORMAL,
             System::Com::{CoInitializeEx, CoUninitialize, COINIT, COINIT_APARTMENTTHREADED, COINIT_MULTITHREADED},
             UI::{
+                Controls::{IImageList, ILD_TRANSPARENT},
                 Shell::{
-                    SHGetFileInfoW, SHFILEINFOW, SHGFI_FLAGS, SHGFI_ICON, SHGFI_SMALLICON,
-                    SHGFI_USEFILEATTRIBUTES,
+                    SHGetFileInfoW, SHGetImageList, SHFILEINFOW, SHGFI_FLAGS, SHGFI_ICON,
+                    SHGFI_SMALLICON, SHGFI_SYSICONINDEX, SHGFI_USEFILEATTRIBUTES, SHIL_JUMBO,
                 },
                 WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICON, ICONINFO},
             },
@@ -218,15 +233,15 @@ mod windows_impl {
         ))
     }
 
-    fn load_shell_icon(path: &Path, use_file_attributes: bool, large: bool) -> Option<String> {
+    fn load_shell_icon(path: &Path, use_file_attributes: bool, size: ShellIconSize) -> Option<String> {
         let wide_path: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
         let mut shell_info = SHFILEINFOW::default();
         let mut flags: SHGFI_FLAGS = SHGFI_ICON;
-        if !large {
-            flags = flags | SHGFI_SMALLICON;
+        if size == ShellIconSize::Small {
+            flags |= SHGFI_SMALLICON;
         }
         if use_file_attributes {
-            flags = flags | SHGFI_USEFILEATTRIBUTES;
+            flags |= SHGFI_USEFILEATTRIBUTES;
         }
         let result = unsafe {
             SHGetFileInfoW(
@@ -244,7 +259,45 @@ mod windows_impl {
         icon_to_data_url(icon.0)
     }
 
-    pub fn get_associated_file_icon(path: &str, large: bool) -> Option<String> {
+    /// Pulls the 256px icon from the system image list, the source Explorer uses for its
+    /// extra-large view. Returns None when the system has no jumbo variant, in which case the
+    /// frontend keeps the 32px icon.
+    fn load_jumbo_icon(path: &Path, use_file_attributes: bool) -> Option<String> {
+        let wide_path: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let mut shell_info = SHFILEINFOW::default();
+        let mut flags: SHGFI_FLAGS = SHGFI_SYSICONINDEX;
+        if use_file_attributes {
+            flags |= SHGFI_USEFILEATTRIBUTES;
+        }
+        let result = unsafe {
+            SHGetFileInfoW(
+                PCWSTR(wide_path.as_ptr()),
+                FILE_ATTRIBUTE_NORMAL,
+                Some(&mut shell_info),
+                size_of::<SHFILEINFOW>() as u32,
+                flags,
+            )
+        };
+        if result == 0 {
+            return None;
+        }
+        let image_list: IImageList = unsafe { SHGetImageList(SHIL_JUMBO as i32) }.ok()?;
+        let icon = unsafe { image_list.GetIcon(shell_info.iIcon, ILD_TRANSPARENT.0) }.ok()?;
+        let owned = OwnedIcon(icon);
+        icon_to_data_url(owned.0)
+    }
+
+    impl ShellIconSize {
+        fn key(self) -> &'static str {
+            match self {
+                ShellIconSize::Small => "small",
+                ShellIconSize::Large => "large",
+                ShellIconSize::Jumbo => "jumbo",
+            }
+        }
+    }
+
+    pub fn get_associated_file_icon(path: &str, size: ShellIconSize) -> Option<String> {
         let file_path = Path::new(path);
         if !file_path.is_absolute() {
             return None;
@@ -258,7 +311,6 @@ mod windows_impl {
             extension.as_str(),
             "com" | "dll" | "exe" | "ico" | "lnk" | "ocx" | "scr"
         );
-        let size_key = if large { "large" } else { "small" };
         let (cache_key, icon_path, use_file_attributes) = if path_specific {
             let metadata = std::fs::symlink_metadata(file_path).ok()?;
             if !metadata.is_file() || metadata.file_type().is_symlink() {
@@ -273,7 +325,7 @@ mod windows_impl {
                 .unwrap_or_default();
             let canonical_text = canonical_path.to_string_lossy().to_lowercase();
             (
-                format!("{size_key}:path:{canonical_text}:{modified}"),
+                format!("{}:path:{canonical_text}:{modified}", size.key()),
                 file_path.to_path_buf(),
                 false,
             )
@@ -284,7 +336,7 @@ mod windows_impl {
                 format!("CyberFilesIcon.{extension}")
             };
             (
-                format!("{size_key}:extension:{extension}"),
+                format!("{}:extension:{extension}", size.key()),
                 icon_path.into(),
                 true,
             )
@@ -300,7 +352,10 @@ mod windows_impl {
             return Some(icon);
         }
 
-        let icon = load_shell_icon(&icon_path, use_file_attributes, large)?;
+        let icon = match size {
+            ShellIconSize::Jumbo => load_jumbo_icon(&icon_path, use_file_attributes)?,
+            _ => load_shell_icon(&icon_path, use_file_attributes, size)?,
+        };
         let mut cache = cache
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -334,7 +389,7 @@ impl ShellApartment {
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn get_associated_file_icon(path: &str, large: bool) -> Option<String> {
-    let _ = (path, large);
+pub fn get_associated_file_icon(path: &str, size: ShellIconSize) -> Option<String> {
+    let _ = (path, size);
     None
 }

@@ -269,9 +269,11 @@ export async function countNativeFolderChildren(path: string): Promise<NativeFol
   return invoke<NativeFolderChildCounts>('count_folder_children', { path });
 }
 
-export async function getNativeFileIcons(items: NativeFileIconRequest[], large: boolean): Promise<NativeFileIconGroup[]> {
+export type NativeFileIconSize = 'small' | 'large' | 'jumbo';
+
+export async function getNativeFileIcons(items: NativeFileIconRequest[], size: NativeFileIconSize): Promise<NativeFileIconGroup[]> {
   if (!isTauriDesktop() || items.length === 0) return [];
-  return invoke<NativeFileIconGroup[]>('get_file_icons', { items, large });
+  return invoke<NativeFileIconGroup[]>('get_file_icons', { items, size });
 }
 
 /// Shell thumbnails (Explorer-style previews) for items the Shell has a provider for:
