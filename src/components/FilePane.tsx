@@ -405,6 +405,10 @@ function isShellThumbnailCandidate(item: FileItem): boolean {
   if (item.isFolder) return true;
   if (item.type === 'video' || item.type === 'document') return true;
   if (item.type === 'image') return SHELL_PREVIEW_IMAGE_EXTENSIONS.has(getFileExtension(item.name));
+  // Album art for audio files, and provider-dependent previews for formats the type detector
+  // does not know (PSD, camera RAW, STL...). The Shell fails fast when no provider exists and
+  // the row falls back to its icon, so the wide net costs little.
+  if (item.type === 'audio' || item.type === 'unknown') return true;
   return false;
 }
 
