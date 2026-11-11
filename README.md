@@ -63,7 +63,7 @@
 
 ## 👋 Introduction
 
-Windows Explorer gives you one pane, one tab and a dialog for everything. CyberFiles keeps two folders side by side, each with its own tabs and history, and lets the keyboard do most of the work: queued copy and move operations you can pause, cancel or undo, ZIP and RAR tools, a Recents list of what you just opened, and a properties panel that previews text, images, PDFs and archives. Drive discovery, native file icons, the Recycle Bin and the Windows properties dialog go through the real Windows Shell rather than an imitation. Built with **Tauri 2**, **Rust**, **React** and **TypeScript**.
+Windows Explorer gives you one pane, one tab and a dialog for everything. CyberFiles keeps two folders side by side, each with its own tabs and history, and lets the keyboard do most of the work: queued copy and move operations you can pause, cancel or undo, ZIP and RAR tools, a Recents list of what you just opened, and a properties panel that previews text, images, PDFs, media and archives. Drive discovery, native file icons, the Recycle Bin and the Windows properties dialog go through the real Windows Shell rather than an imitation. Built with **Tauri 2**, **Rust**, **React** and **TypeScript**.
 
 *Free and open source (GPLv3): no ads, no tracking, no telemetry, no account. Everything runs on your PC.*
 
@@ -87,7 +87,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 | Keep a workflow across restarts | Saved layouts, tab sessions and workspaces, restored at startup if you want |
 | Get back to the file you just previewed | A Recents location fed by CyberFiles' own access log, with a last-opened column |
 | Move a lot of files safely | Queued operations with progress, pause, cancel, per-item errors and undo history |
-| See inside a file without opening it | Properties panel with text, code, Markdown, HTML, image, PDF and archive previews |
+| See inside a file without opening it | Properties panel with text, code, Markdown, HTML, image, PDF, media playback and archive previews |
 | Handle archives in place | Preview and extract ZIP and RAR, including password-protected archives, and create ZIP files |
 | Find things fast | Command palette, in-pane filter, global file finder with patterns and regular expressions |
 | Tame a messy folder tree | Quick Access, folder tree, flat view, saved per-folder styles, custom folder icons |
@@ -115,7 +115,9 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Collapsible locations panel**: hide the sidebar with Ctrl+L, the button beside the properties toggle or the command palette, and both panes take the full width; the choice is part of saved layouts
 - **Recents**: a virtual location listing the files you opened or previewed in CyberFiles, sorted by last opened, with a last-opened column, per-item removal and a clear action
 - **Quick Access**: pin up to 100 folders, rename or remove shortcuts, and sort them A–Z, Z–A or manually by dragging (Alt+Up and Alt+Down also work)
-- **Views**: Details, List and Large Icons, with resizable columns, add or hide columns, sortable headers, and grouping by date or size
+- **Views**: Details, List, Grid and Tiles, each with resizable columns, add or hide columns, sortable headers, and grouping by date or size; every folder remembers its own view, sorting and grouping, and Ctrl+1 to Ctrl+4 switch between the four views
+- **Explorer-style thumbnails**: the Grid and Tiles views draw the same previews Windows File Explorer shows, through the Shell's own thumbnail pipeline: video frames, PDF and Office first pages, audio album art, photo stacks for folders that contain images, and HEIC or AVIF when Windows has a codec for them; formats without a preview provider fall back to the file icon, and a Settings toggle turns item thumbnails off
+- **Grid zoom**: Ctrl+mouse wheel, or Ctrl+= / Ctrl+- , steps the Grid preview cells through four sizes from small to extra large, remembered per folder; the view menus in the pane, the context menu and the header offer the same sizes
 - **Relative graphs**: optional bars behind sizes and dates that make the shape of a folder visible at a glance
 - **Progressive loading**: large folders load as you scroll while the status bar keeps accurate file, folder and item totals
 - **Flat view**: recursively list every subfolder in one list, with a confirmation when the tree is large
@@ -138,8 +140,8 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Archive preview**: list the contents of ZIP and RAR files, with a password prompt for protected archives
 - **Extract**: extract here or into a folder named after the archive, with unsafe paths rejected
 - **Create ZIP**: compress the selection or the current folder into a new archive
-- **Properties panel**: text, code, Markdown, HTML, image and PDF previews, plus encoding, line count and full metadata; selecting a folder adds a contents block with its files, folders, content type and total size
-- **Image previews**: PNG, JPEG, GIF, WebP, BMP, TIFF, ICO and SVG, with the same thumbnail in the file tooltip and in icon view
+- **Properties panel**: text, code, Markdown, HTML, image and PDF previews, plus encoding, line count and full metadata; audio and video files play right in the panel with player controls, streaming from disk without copying the file, and formats the player cannot handle offer to open the file with its application; selecting a folder adds a contents block with its files, folders, content type and total size
+- **Image previews**: PNG, JPEG, GIF, WebP, BMP, TIFF, ICO and SVG in the panel, with the same thumbnail in the file tooltip and in the item views
 - **Quick actions**: copy file content, copy the full path, or open the original Windows properties dialog
 
 ### 🔎 Search & Tools
@@ -326,6 +328,8 @@ Each release also writes `latest.json` (version, notes, installer URL and signat
 | `Ctrl+F` | Search by name, path or available content |
 | `Ctrl+K` | Open the command palette for commands and locations |
 | `Ctrl+T` / `Ctrl+W` | Open a tab / close the active tab |
+| `Ctrl+1` to `Ctrl+4` | Switch between the Details, List, Grid and Tiles views |
+| `Ctrl+=` / `Ctrl+-` | Zoom the Grid view preview cells in or out |
 | `Ctrl+A` | Select all visible items |
 | `Shift+Arrow keys` | Extend or shrink the selection |
 | `Shift+Home` / `Shift+End` | Select to the beginning or end of the list |
@@ -336,7 +340,7 @@ Each release also writes `latest.json` (version, notes, installer URL and signat
 | `Esc` | Close dialogs and leave the filter |
 | `Alt+Shift+F` | Show or hide CyberFiles (global, configurable) |
 
-With the file list focused, typing letters fills the filter by default, or jumps to a matching name when that option is turned off in Settings › Navigation; in the jump mode, repeating the letter cycles through matches. In Manual Quick Access ordering, Alt+Up and Alt+Down move the focused shortcut. Context menus and tab menus are fully keyboard navigable: arrow keys move between items and bands, Enter or Space activates the focused item, and submenus open as anchored flyouts next to their trigger.
+With the file list focused, typing letters fills the filter by default, or jumps to a matching name when that option is turned off in Settings › Navigation; in the jump mode, repeating the letter cycles through matches. In Manual Quick Access ordering, Alt+Up and Alt+Down move the focused shortcut. Context menus and tab menus are fully keyboard navigable: arrow keys move between items and bands, Enter or Space activates the focused item, and submenus open as anchored flyouts next to their trigger. In the Grid view, holding Ctrl while spinning the mouse wheel steps the preview cells through the same four sizes as the Ctrl+= and Ctrl+- shortcuts, including pinch gestures on precision touchpads.
 
 ---
 
