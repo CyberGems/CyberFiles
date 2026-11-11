@@ -4437,7 +4437,7 @@ async fn get_thumbnails(
     let size = size.clamp(32, 512);
 
     tauri::async_runtime::spawn_blocking(move || {
-        let Some(_shell_apartment) = windows_file_icons::ShellApartment::initialize() else {
+        let Some(_shell_apartment) = windows_file_icons::ShellApartment::initialize_background() else {
             return Ok(Vec::new());
         };
         let mut groups: Vec<NativeFileIconGroup> = Vec::new();

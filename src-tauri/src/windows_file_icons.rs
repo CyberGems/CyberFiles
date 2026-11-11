@@ -13,12 +13,13 @@ mod windows_impl {
     use windows::{
         core::PCWSTR,
         Win32::{
+            Foundation::RPC_E_CHANGED_MODE,
             Graphics::Gdi::{
                 DeleteObject, GetDC, GetDIBits, GetObjectW, ReleaseDC, BITMAP, BITMAPINFO,
                 BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HGDIOBJ,
             },
             Storage::FileSystem::FILE_ATTRIBUTE_NORMAL,
-            System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED},
+            System::Com::{CoInitializeEx, CoUninitialize, COINIT, COINIT_APARTMENTTHREADED, COINIT_MULTITHREADED},
             UI::{
                 Shell::{
                     SHGetFileInfoW, SHFILEINFOW, SHGFI_FLAGS, SHGFI_ICON, SHGFI_SMALLICON,
@@ -32,19 +33,41 @@ mod windows_impl {
     const MAX_CACHED_ICONS: usize = 1024;
     static FILE_ICON_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
 
-    pub struct ShellApartment;
+    pub struct ShellApartment {
+        initialized_here: bool,
+    }
 
     impl ShellApartment {
+        /// Initializes COM for the calling worker thread. `CoInitializeEx` answers
+        /// RPC_E_CHANGED_MODE when a pooled thread already runs the other apartment type; COM
+        /// is still usable there, so the guard is kept without owning a reference count.
+        pub fn initialize_with(coinit: COINIT) -> Option<Self> {
+            let result = unsafe { CoInitializeEx(None, coinit) };
+            if result.is_ok() {
+                Some(Self { initialized_here: true })
+            } else if result == RPC_E_CHANGED_MODE {
+                Some(Self { initialized_here: false })
+            } else {
+                None
+            }
+        }
+
         pub fn initialize() -> Option<Self> {
-            unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }
-                .is_ok()
-                .then_some(Self)
+            Self::initialize_with(COINIT_APARTMENTTHREADED)
+        }
+
+        /// Background-thumbnail workers run on the multi-threaded COM apartment, matching how
+        /// Windows itself extracts thumbnails outside the UI thread.
+        pub fn initialize_background() -> Option<Self> {
+            Self::initialize_with(COINIT_MULTITHREADED)
         }
     }
 
     impl Drop for ShellApartment {
         fn drop(&mut self) {
-            unsafe { CoUninitialize() };
+            if self.initialized_here {
+                unsafe { CoUninitialize() };
+            }
         }
     }
 
@@ -98,7 +121,9 @@ mod windows_impl {
 
         let width = bitmap.bmWidth as u32;
         let height = bitmap.bmHeight.unsigned_abs();
-        if width > 512 || height > 512 {
+        // 2048 covers the largest entries Windows keeps in its thumbnail cache; anything
+        // beyond that would not be a shell-provided bitmap worth decoding.
+        if width > 2048 || height > 2048 {
             return None;
         }
         let byte_count = width.checked_mul(height)?.checked_mul(4)?;
@@ -300,6 +325,10 @@ pub struct ShellApartment;
 #[cfg(not(target_os = "windows"))]
 impl ShellApartment {
     pub fn initialize() -> Option<Self> {
+        Some(Self)
+    }
+
+    pub fn initialize_background() -> Option<Self> {
         Some(Self)
     }
 }

@@ -21,7 +21,7 @@ mod windows_impl {
         Win32::{
             Foundation::SIZE,
             System::Com::IBindCtx,
-            UI::Shell::{IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_BIGGERSIZEOK, SIIGBF_THUMBNAILONLY},
+            UI::Shell::{IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_THUMBNAILONLY},
         },
     };
 
@@ -32,13 +32,18 @@ mod windows_impl {
 
     /// Encodes RGBA pixels as a data URL: JPEG for fully opaque pixels (photos, video frames,
     /// most previews; roughly a quarter of the PNG payload), PNG when transparency survives.
-    fn encode_bgra_data_url(width: u32, height: u32, bgra: Vec<u8>) -> Option<String> {
+    /// Oversized Shell bitmaps (a provider may hand back a larger cached image) are downscaled
+    /// to the requested square, never upscaled.
+    fn encode_bgra_data_url(width: u32, height: u32, bgra: Vec<u8>, size: u32) -> Option<String> {
         let mut rgba = Vec::with_capacity(bgra.len());
         for pixel in bgra.chunks_exact(4) {
             rgba.extend_from_slice(&[pixel[2], pixel[1], pixel[0], pixel[3]]);
         }
         let image = image::RgbaImage::from_raw(width, height, rgba)?;
-        let dynamic = image::DynamicImage::ImageRgba8(image);
+        let mut dynamic = image::DynamicImage::ImageRgba8(image);
+        if width > size || height > size {
+            dynamic = dynamic.thumbnail(size, size);
+        }
         let has_alpha = bgra.chunks_exact(4).any(|pixel| pixel[3] != 255);
         let mut encoded = Cursor::new(Vec::new());
         if has_alpha {
@@ -62,16 +67,16 @@ mod windows_impl {
         let factory: IShellItemImageFactory = unsafe {
             SHCreateItemFromParsingName(PCWSTR(wide_path.as_ptr()), None::<&IBindCtx>).ok()?
         };
+        // SIIGBF_THUMBNAILONLY keeps icons out of the pipeline; without SIIGBF_BIGGERSIZEOK the
+        // Shell resizes its answer to the requested square, which keeps provider quirks from
+        // handing back bitmap sizes the caller did not plan for.
         let bitmap = OwnedBitmap::from_handle(unsafe {
             factory
-                .GetImage(
-                    SIZE { cx: size as i32, cy: size as i32 },
-                    SIIGBF_THUMBNAILONLY | SIIGBF_BIGGERSIZEOK,
-                )
+                .GetImage(SIZE { cx: size as i32, cy: size as i32 }, SIIGBF_THUMBNAILONLY)
                 .ok()?
         });
         let (width, height, bgra) = read_bitmap_bgra(bitmap.handle())?;
-        encode_bgra_data_url(width, height, bgra)
+        encode_bgra_data_url(width, height, bgra, size)
     }
 
     /// Returns the Shell thumbnail for `path` rendered to fit a `size`-pixel square, as a data
