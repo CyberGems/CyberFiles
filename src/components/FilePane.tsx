@@ -1002,11 +1002,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
       el.removeEventListener('scroll', measure);
     };
   }, [tabs, tabStripPosition, tabStripScroll.overflowing]);
+  /* The caret starts in the search field and the active tab is in view: once per open. */
+  useEffect(() => {
+    if (!tabsListOpen) return;
+    tabsListSearchRef.current?.focus({ preventScroll: true });
+    activeTabsListItemRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [tabsListOpen]);
   useEffect(() => {
     if (!tabsListOpen) return;
     const closeTabsList = () => setTabsListOpen(false);
+    /* Clicking the list button again must close the menu, so the button is exempt
+       from the outside-pointerdown close; the click's own toggle does it. */
     const onPointerDown = (event: PointerEvent) => {
-      if (event.target instanceof Element && event.target.closest('[data-tabs-list-root="true"]')) return;
+      if (event.target instanceof Element && (event.target.closest('[data-tabs-list-root="true"]') || event.target.closest('[data-tabs-list-button="true"]'))) return;
       closeTabsList();
     };
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1016,20 +1024,26 @@ export const FilePane: React.FC<FilePaneProps> = ({
       closeTabsList();
       tabsListButtonRef.current?.focus();
     };
+    /* Closing tabs from the menu reflows the strip; instead of closing, the menu
+       follows its anchored button. */
+    const repositionTabsList = () => {
+      const rect = tabsListButtonRef.current?.getBoundingClientRect();
+      if (rect && rect.width > 0) setTabsListPosition({ top: rect.bottom + 6, left: Math.max(8, rect.right - 320) });
+    };
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
-    horizontalTabListRef.current?.addEventListener('scroll', closeTabsList);
-    window.addEventListener('resize', closeTabsList);
-    /* The caret starts in the search field and the active tab is in view. */
-    tabsListSearchRef.current?.focus({ preventScroll: true });
-    activeTabsListItemRef.current?.scrollIntoView({ block: 'nearest' });
+    horizontalTabListRef.current?.addEventListener('scroll', repositionTabsList);
+    window.addEventListener('resize', repositionTabsList);
+    /* The menu lives on the overflow controls: when the strip stops overflowing
+       (or the last-but-one tab closes) the anchor is gone and the menu closes. */
+    if (!tabStripScroll.overflowing || tabs.length <= 1) closeTabsList();
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
-      horizontalTabListRef.current?.removeEventListener('scroll', closeTabsList);
-      window.removeEventListener('resize', closeTabsList);
+      horizontalTabListRef.current?.removeEventListener('scroll', repositionTabsList);
+      window.removeEventListener('resize', repositionTabsList);
     };
-  }, [tabsListOpen]);
+  }, [tabsListOpen, tabStripScroll.overflowing, tabs.length]);
   const lastScrolledFocusedIdRef = useRef<string | null>(null);
   const columnHeadersRef = useRef<HTMLDivElement>(null);
   const horizontalScrollContainerRef = useRef<HTMLDivElement>(null);
