@@ -166,6 +166,7 @@ const RECENT_ITEMS_BOLD_KEY = 'cyberfiles_bold_recent_items_v1';
 const RECENT_ITEMS_STYLE_KEY = 'cyberfiles_recent_items_style_v1';
 const HIDDEN_ITEMS_STYLE_KEY = 'cyberfiles_hidden_items_style_v1';
 const IMAGE_TOOLTIP_THUMBNAILS_KEY = 'cyberfiles_image_tooltip_thumbnails_v1';
+const THUMBNAILS_ENABLED_KEY = 'cyberfiles_thumbnails_enabled_v1';
 const NOTIFICATION_BANNERS_KEY = 'cyberfiles_notification_banners_v1';
 const OPERATIONS_COMPLETION_BADGE_KEY = 'cyberfiles_operations_completion_badge_v1';
 const TOAST_DURATION_KEY = 'cyberfiles_toast_duration_v1';
@@ -903,6 +904,7 @@ export default function App() {
   const [recentItemStyle, setRecentItemStyle] = useState<RecentItemStyle>(readRecentItemStyle);
   const [hiddenItemStyle, setHiddenItemStyle] = useState<HiddenItemStyle>(readHiddenItemStyle);
   const [imageTooltipThumbnailsEnabled, setImageTooltipThumbnailsEnabled] = useState(() => readBooleanPreference(IMAGE_TOOLTIP_THUMBNAILS_KEY, true));
+  const [thumbnailsEnabled, setThumbnailsEnabled] = useState(() => readBooleanPreference(THUMBNAILS_ENABLED_KEY, true));
   const [notificationBannersEnabled, setNotificationBannersEnabled] = useState(() => readBooleanPreference(NOTIFICATION_BANNERS_KEY, true));
   /* Completion badge on the status-bar operations button: unlimited count of
      finished operations until the user opens the panel to review them. */
@@ -2172,6 +2174,14 @@ export default function App() {
       // Keep the selected behavior for the current session when storage is unavailable.
     }
   }, [imageTooltipThumbnailsEnabled]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(THUMBNAILS_ENABLED_KEY, String(thumbnailsEnabled));
+    } catch {
+      // Keep the selected behavior for the current session when storage is unavailable.
+    }
+  }, [thumbnailsEnabled]);
 
   useEffect(() => {
     try {
@@ -6657,6 +6667,7 @@ export default function App() {
                   recentItemStyle={recentItemStyle}
                   hiddenItemStyle={hiddenItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  thumbnailsEnabled={thumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
                   listerTextScale={listerTextScale}
                   singleClickOpens={singleClickOpen}
@@ -6746,6 +6757,7 @@ export default function App() {
                   recentItemStyle={recentItemStyle}
                   hiddenItemStyle={hiddenItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  thumbnailsEnabled={thumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
                   listerTextScale={listerTextScale}
                   singleClickOpens={singleClickOpen}
@@ -6836,6 +6848,7 @@ export default function App() {
                   recentItemStyle={recentItemStyle}
                   hiddenItemStyle={hiddenItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  thumbnailsEnabled={thumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
                   listerTextScale={listerTextScale}
                   singleClickOpens={singleClickOpen}
@@ -6921,6 +6934,7 @@ export default function App() {
                   recentItemStyle={recentItemStyle}
                   hiddenItemStyle={hiddenItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  thumbnailsEnabled={thumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
                   listerTextScale={listerTextScale}
                   singleClickOpens={singleClickOpen}
@@ -7011,6 +7025,7 @@ export default function App() {
                   recentItemStyle={recentItemStyle}
                   hiddenItemStyle={hiddenItemStyle}
                   imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
+                  thumbnailsEnabled={thumbnailsEnabled}
                   showFileExtensions={showFileExtensions}
                   listerTextScale={listerTextScale}
                   singleClickOpens={singleClickOpen}
@@ -7543,6 +7558,8 @@ export default function App() {
             onRecentItemStyleReset={() => setRecentItemStyle({ ...DEFAULT_RECENT_ITEM_STYLE, enabled: recentItemStyle.enabled })}
             imageTooltipThumbnailsEnabled={imageTooltipThumbnailsEnabled}
             onImageTooltipThumbnailsEnabledChange={setImageTooltipThumbnailsEnabled}
+            thumbnailsEnabled={thumbnailsEnabled}
+            onThumbnailsEnabledChange={setThumbnailsEnabled}
             notificationBannersEnabled={notificationBannersEnabled}
             onNotificationBannersEnabledChange={setNotificationBannersEnabled}
             operationsBadgeEnabled={operationsBadgeEnabled}

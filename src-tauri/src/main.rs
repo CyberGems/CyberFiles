@@ -24,6 +24,7 @@ use zip::{
 };
 
 mod windows_file_icons;
+mod windows_thumbnails;
 
 #[derive(Serialize)]
 struct RuntimeInfo {
@@ -4383,6 +4384,37 @@ async fn get_file_icons(
     .map_err(|error| format!("File icon worker failed: {error}"))?
 }
 
+#[tauri::command]
+async fn get_thumbnails(
+    items: Vec<NativeFileIconRequest>,
+    size: u32,
+) -> Result<Vec<NativeFileIconGroup>, String> {
+    const MAX_THUMBNAIL_BATCH_SIZE: usize = 48;
+    if items.len() > MAX_THUMBNAIL_BATCH_SIZE {
+        return Err("Too many thumbnails were requested at once.".to_string());
+    }
+    // Matched to the preview cell the frontend draws today; larger views ask for a larger square.
+    let size = size.clamp(32, 512);
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(_shell_apartment) = windows_file_icons::ShellApartment::initialize() else {
+            return Ok(Vec::new());
+        };
+        let mut groups: Vec<NativeFileIconGroup> = Vec::new();
+        for item in items {
+            if item.path.len() > 32_767 || item.id.len() > 32_767 {
+                continue;
+            }
+            if let Some(data_url) = windows_thumbnails::get_shell_thumbnail(&item.path, size) {
+                groups.push(NativeFileIconGroup { item_ids: vec![item.id], data_url });
+            }
+        }
+        Ok(groups)
+    })
+    .await
+    .map_err(|error| format!("Thumbnail worker failed: {error}"))?
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StoredWindowState {
@@ -7919,6 +7951,7 @@ fn main() {
             count_hidden_items,
             count_folder_children,
             get_file_icons,
+            get_thumbnails,
             calculate_folder_size,
             calculate_folder_size_bounded,
             start_folder_size_calculation,

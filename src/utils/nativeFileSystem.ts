@@ -265,6 +265,14 @@ export async function getNativeFileIcons(items: NativeFileIconRequest[], large: 
   if (!isTauriDesktop() || items.length === 0) return [];
   return invoke<NativeFileIconGroup[]>('get_file_icons', { items, large });
 }
+
+/// Shell thumbnails (Explorer-style previews) for items the Shell has a provider for:
+/// videos, documents, folders with images inside, and image formats the bundled decoder
+/// cannot read. Returns only the items that produced a thumbnail.
+export async function getNativeFileThumbnails(items: NativeFileIconRequest[], size: number): Promise<NativeFileIconGroup[]> {
+  if (!isTauriDesktop() || items.length === 0) return [];
+  return invoke<NativeFileIconGroup[]>('get_thumbnails', { items, size });
+}
 export async function openFolderInWindowsExplorer(path: string): Promise<void> {
   if (!isTauriDesktop()) throw new Error('Windows File Explorer is available only in the desktop app.');
   await invoke('open_folder_in_windows_explorer', { path });

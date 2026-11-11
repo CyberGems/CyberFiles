@@ -45,8 +45,8 @@ import {
 import { DriveInfo, FileItem, FileType, HiddenItemStyle, NETWORK_PATH, NetworkResource, SortField, TabState, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { listerTextScaleFactor, LISTER_TEXT_SCALE_CSS_VAR, type ListerTextScale } from '../utils/listerTextScale';
-import { formatFileSize, getParentPath, isPathOnUnavailableDrive, isSameOrDescendantPath, isUncPath, isUncServerRoot, normalizeDriveLetter, normalizeWindowsPath } from '../utils/fileSystem';
-import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
+import { formatFileSize, getFileExtension, getParentPath, isPathOnUnavailableDrive, isSameOrDescendantPath, isUncPath, isUncServerRoot, normalizeDriveLetter, normalizeWindowsPath } from '../utils/fileSystem';
+import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, getNativeFileThumbnails, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { advanceMouseGesturePath, MOUSE_GESTURE_MIN_DISTANCE, type MouseGesturePath } from '../utils/mouseGesture';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
@@ -81,6 +81,9 @@ interface FilePaneProps {
   typingActivatesFilter: boolean;
   mouseGesturesEnabled: boolean;
   imageTooltipThumbnailsEnabled: boolean;
+  /* Explorer-style shell thumbnails (video frames, document previews, folder photo stacks) in
+     the item views. Image files keep their own bundled-decoder thumbnails regardless. */
+  thumbnailsEnabled: boolean;
   showFileExtensions: boolean;
   singleClickOpens: boolean;
   onStyleLockToggle: () => void;
@@ -367,6 +370,41 @@ function ImageFileThumbnail({
         : <div className="scale-150">{fallback}</div>}
     </div>
   );
+}
+
+/* Shell previews arrive in batches from the pane (byItemId), so this component only picks the
+   right rendering: the thumbnail while one exists, the boxed fallback glyph while it loads or
+   when the Shell has no provider for the type. */
+function ShellItemThumbnail({
+  item,
+  thumbnail,
+  fallback,
+  className = 'h-20 w-full',
+}: {
+  item: FileItem;
+  thumbnail: string | undefined;
+  fallback: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={`flex ${className} items-center justify-center overflow-hidden rounded-md border border-neutral-700/70 bg-neutral-900/80`}>
+      {thumbnail
+        ? <img src={thumbnail} alt={item.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+        : <div className="scale-150">{fallback}</div>}
+    </div>
+  );
+}
+
+/* Image formats the bundled decoder cannot read but Windows usually has a thumbnail provider
+   for; they go to the Shell pipeline instead of the local image decoder. */
+const SHELL_PREVIEW_IMAGE_EXTENSIONS = new Set(['avif', 'heic', 'heif']);
+
+function isShellThumbnailCandidate(item: FileItem): boolean {
+  if (item.recycleBinId || !item.path) return false;
+  if (item.isFolder) return true;
+  if (item.type === 'video' || item.type === 'document') return true;
+  if (item.type === 'image') return SHELL_PREVIEW_IMAGE_EXTENSIONS.has(getFileExtension(item.name));
+  return false;
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -753,6 +791,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   typingActivatesFilter,
   mouseGesturesEnabled,
   imageTooltipThumbnailsEnabled,
+  thumbnailsEnabled,
   showFileExtensions,
   singleClickOpens,
   onStyleLockToggle,
@@ -885,6 +924,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [columnDropTarget, setColumnDropTarget] = useState<FileColumn | null>(null);
   const [columnDragActive, setColumnDragActive] = useState(false);
   const [nativeFileIconState, setNativeFileIconState] = useState<{ scope: string; byItemId: Record<string, string> }>({ scope: '', byItemId: {} });
+  const [nativeThumbnailState, setNativeThumbnailState] = useState<{ scope: string; byItemId: Record<string, string> }>({ scope: '', byItemId: {} });
+  /* Preview square requested from the Shell: roomy enough for the 80px icons cell and the tiles
+     card while staying cheap to decode and to keep around in memory. */
+  const SHELL_THUMBNAIL_SIZE = 256;
   const lastSingleClickOpenRef = useRef<{ itemId: string; timestamp: number } | null>(null);
   const typeAheadRef = useRef({ query: '', at: 0 });
   const filterInputRef = useRef<HTMLInputElement | null>(null);
@@ -937,7 +980,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const columnResizeDragRef = useRef<ColumnResizeDrag | null>(null);
   const columnResizeFrameRef = useRef<number | null>(null);
   const nativeFileIconGenerationRef = useRef(0);
+  const nativeThumbnailGenerationRef = useRef(0);
   const nativeFileIconRequestsRef = useRef<NativeFileIconRequest[]>([]);
+  const nativeThumbnailRequestsRef = useRef<NativeFileIconRequest[]>([]);
   const columnWidthsSaveTimeoutRef = useRef<number | null>(null);
   const columnPointerDragRef = useRef<ColumnPointerDrag | null>(null);
   const lastColumnPreferencesRevision = useRef(columnPreferencesRevision);
@@ -1475,6 +1520,69 @@ export const FilePane: React.FC<FilePaneProps> = ({
       if (scheduledBatch !== null) window.clearTimeout(scheduledBatch);
     };
   }, [isRecycleBin, nativeFileIconRequestKey, nativeFileIconScope, nativeFileIconSize]);
+
+  /* Shell thumbnails ride the same queue shape as the Shell icons above: only the items that
+     made it onto the screen (virtualization-aware), 48 at a time, generation-guarded so a
+     folder change drops stale work. Folders carrying a custom icon are skipped: the assigned
+     icon is the owner's statement of what the folder looks like. */
+  const nativeThumbnailScope = `${tab.currentPath}\u0000thumb`;
+  const { requests: nativeThumbnailRequests, key: nativeThumbnailRequestKey } = React.useMemo(() => {
+    const requests: NativeFileIconRequest[] = [];
+    const keyParts: string[] = [];
+    if (thumbnailsEnabled) {
+      renderedFiles.forEach(item => {
+        if (!isShellThumbnailCandidate(item)) return;
+        if (item.isFolder && getCustomFolderIcon(item.path, customFolderIcons ?? {})) return;
+        requests.push({ id: item.id, path: item.path });
+        keyParts.push(`${item.id}\u0000${item.path}\u0000${item.modifiedAtMs ?? ''}`);
+      });
+    }
+    keyParts.sort();
+    return { requests, key: keyParts.join('\u0001') };
+  }, [customFolderIcons, renderedFiles, thumbnailsEnabled]);
+  nativeThumbnailRequestsRef.current = nativeThumbnailRequests;
+
+  useEffect(() => {
+    const generation = ++nativeThumbnailGenerationRef.current;
+    const scope = nativeThumbnailScope;
+    const thumbnailRequests = nativeThumbnailRequestsRef.current;
+    let cancelled = false;
+    let scheduledBatch: number | null = null;
+
+    setNativeThumbnailState(previous => previous.scope === scope ? previous : { scope, byItemId: {} });
+    if (!isTauriDesktop() || isRecycleBin || thumbnailRequests.length === 0) {
+      return () => { cancelled = true; };
+    }
+
+    let nextIndex = 0;
+    const loadNextThumbnailBatch = async () => {
+      const batch = thumbnailRequests.slice(nextIndex, nextIndex + 48);
+      nextIndex += batch.length;
+      try {
+        const groups = await getNativeFileThumbnails(batch, SHELL_THUMBNAIL_SIZE);
+        if (cancelled || generation !== nativeFileIconGenerationRef.current) return;
+        setNativeThumbnailState(previous => {
+          if (generation !== nativeThumbnailGenerationRef.current) return previous;
+          const byItemId = previous.scope === scope ? previous.byItemId : {};
+          const nextByItemId = { ...byItemId };
+          groups.forEach(group => group.itemIds.forEach(id => { nextByItemId[id] = group.dataUrl; }));
+          return { scope, byItemId: nextByItemId };
+        });
+      } catch {
+        // Shell thumbnails are an enhancement. Keep the boxed icons when a lookup fails.
+      }
+
+      if (!cancelled && generation === nativeThumbnailGenerationRef.current && nextIndex < thumbnailRequests.length) {
+        scheduledBatch = window.setTimeout(() => { void loadNextThumbnailBatch(); }, 24);
+      }
+    };
+
+    scheduledBatch = window.setTimeout(() => { void loadNextThumbnailBatch(); }, 96);
+    return () => {
+      cancelled = true;
+      if (scheduledBatch !== null) window.clearTimeout(scheduledBatch);
+    };
+  }, [isRecycleBin, nativeThumbnailRequestKey, nativeThumbnailScope, SHELL_THUMBNAIL_SIZE]);
 
   const renderFileGroupHeading = (group: { id: string; label: string }) => {
     if (!group.label) return null;
@@ -4894,8 +5002,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   }`}
                 >
                   <div className="flex w-full items-center justify-center">
-                    {item.type === 'image' ? (
+                    {thumbnailsEnabled && item.type === 'image' && !SHELL_PREVIEW_IMAGE_EXTENSIONS.has(getFileExtension(item.name)) ? (
                       <ImageFileThumbnail item={item} fallback={fileTypeGlyph(item.type, item.isFolder)} />
+                    ) : thumbnailsEnabled && isShellThumbnailCandidate(item) && !(item.isFolder && getCustomFolderIcon(item.path, customFolderIcons ?? {})) ? (
+                      <ShellItemThumbnail
+                        item={item}
+                        thumbnail={nativeThumbnailState.scope === nativeThumbnailScope ? nativeThumbnailState.byItemId[item.id] : undefined}
+                        fallback={getDisplayFileIcon(item, 'large')}
+                      />
                     ) : (
                       <div className="flex h-20 w-full items-center justify-center rounded-md border border-neutral-700/70 bg-neutral-900/80">
                         {getDisplayFileIcon(item, 'large')}

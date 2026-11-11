@@ -56,7 +56,17 @@ mod windows_impl {
         }
     }
 
-    struct OwnedBitmap(windows::Win32::Graphics::Gdi::HBITMAP);
+    pub(crate) struct OwnedBitmap(windows::Win32::Graphics::Gdi::HBITMAP);
+
+    impl OwnedBitmap {
+        pub(crate) fn from_handle(value: windows::Win32::Graphics::Gdi::HBITMAP) -> Self {
+            Self(value)
+        }
+
+        pub(crate) fn handle(&self) -> windows::Win32::Graphics::Gdi::HBITMAP {
+            self.0
+        }
+    }
 
     impl Drop for OwnedBitmap {
         fn drop(&mut self) {
@@ -66,7 +76,9 @@ mod windows_impl {
         }
     }
 
-    fn read_bitmap_bgra(
+    /// Reads a 32-bit top-down DIB out of an HBITMAP. Shared with the shell thumbnail
+    /// extractor, which receives its bitmaps through the same GDI path.
+    pub(crate) fn read_bitmap_bgra(
         handle: windows::Win32::Graphics::Gdi::HBITMAP,
     ) -> Option<(u32, u32, Vec<u8>)> {
         if handle.0.is_null() {
@@ -279,6 +291,8 @@ mod windows_impl {
 
 #[cfg(target_os = "windows")]
 pub use windows_impl::{get_associated_file_icon, ShellApartment};
+#[cfg(target_os = "windows")]
+pub(crate) use windows_impl::{read_bitmap_bgra, OwnedBitmap};
 
 #[cfg(not(target_os = "windows"))]
 pub struct ShellApartment;

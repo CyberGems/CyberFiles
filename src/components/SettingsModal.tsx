@@ -65,6 +65,8 @@ interface SettingsModalProps {
   onHiddenItemStyleReset: () => void;
   imageTooltipThumbnailsEnabled: boolean;
   onImageTooltipThumbnailsEnabledChange: (enabled: boolean) => void;
+  thumbnailsEnabled: boolean;
+  onThumbnailsEnabledChange: (enabled: boolean) => void;
   notificationBannersEnabled: boolean;
   onNotificationBannersEnabledChange: (enabled: boolean) => void;
   operationsBadgeEnabled: boolean;
@@ -185,6 +187,8 @@ export function SettingsModal({
   onHiddenItemStyleReset,
   imageTooltipThumbnailsEnabled,
   onImageTooltipThumbnailsEnabledChange,
+  thumbnailsEnabled,
+  onThumbnailsEnabledChange,
   notificationBannersEnabled,
   onNotificationBannersEnabledChange,
   operationsBadgeEnabled,
@@ -1729,6 +1733,20 @@ export function SettingsModal({
                   <span className="mt-1 block">{t.settings.imageTooltipThumbnailsDescription}</span>
                 </span>
               </label>
+          </div>
+          <div data-settings-search-unit className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+            <label className="flex cursor-pointer items-start gap-2.5">
+              <input
+                type="checkbox"
+                checked={thumbnailsEnabled}
+                onChange={event => onThumbnailsEnabledChange(event.target.checked)}
+                className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+              />
+              <span>
+                <span className="block font-medium text-neutral-200">{t.settings.thumbnails}</span>
+                <span className="mt-1 block">{t.settings.thumbnailsDescription}</span>
+              </span>
+            </label>
           </div>
 
           </div>
