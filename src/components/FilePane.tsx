@@ -3588,7 +3588,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               type="button"
               aria-label={`${t.pane.closeTab}: ${tabName}`}
               onClick={event => { event.stopPropagation(); onCloseTab(idx); }}
-              className={`ml-auto shrink-0 rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 focus-visible:opacity-100 ${
+              className={`cyberfiles-tab-close ml-auto shrink-0 rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 focus-visible:opacity-100 ${
                 tabCloseButtonMode === 'always'
                   ? 'opacity-60 hover:opacity-100'
                   : tabCloseButtonMode === 'active'
@@ -3643,25 +3643,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
      1.5px lift that centers them against the tab bodies; bottom strip centers all. */
   const stripControlAlignment = tabStripPosition === 'bottom' ? 'self-center' : 'self-end mb-[1.5px]';
   /* The inline add button jumps sideways next to the new tab, and Chromium keeps
-     the stale hover highlight on it until the next mouse move; taking it out of
-     hit-testing clears the highlight the moment the click lands. The anchored
-     button never moves, so it keeps its ordinary hover behavior. */
-  const inlineAddButtonRef = useRef<HTMLButtonElement>(null);
+     the stale hover highlight on it until the next mouse move. Its hover is
+     therefore driven from here instead of CSS :hover: the click clears it in the
+     same breath, and no stale stylesheet state can bring it back. */
+  const [inlineAddHovered, setInlineAddHovered] = useState(false);
   const addTabFromInlineButton = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     onActivate();
+    setInlineAddHovered(false);
     onAddTab('button');
-    const button = inlineAddButtonRef.current;
-    if (!button) return;
-    button.style.pointerEvents = 'none';
-    const restore = () => {
-      button.style.pointerEvents = '';
-      window.removeEventListener('pointermove', restore);
-      window.removeEventListener('pointerdown', restore, true);
-    };
-    window.addEventListener('pointermove', restore);
-    window.addEventListener('pointerdown', restore, true);
-    window.setTimeout(restore, 450);
   };
   const tabStrip = (
       <div
@@ -3705,11 +3695,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
           {tabs.map((tabItem, idx) => renderFolderTab(tabItem, idx, false))}
           {showNewTabButton && !tabStripScroll.overflowing && <Tooltip label={t.pane.addTab} shortcut="Ctrl+T" placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
             <button
-              ref={inlineAddButtonRef}
               type="button"
               aria-label={t.pane.addTab}
+              onMouseEnter={() => setInlineAddHovered(true)}
+              onMouseLeave={() => setInlineAddHovered(false)}
               onClick={addTabFromInlineButton}
-              className={`${tabStripPosition === 'bottom' ? 'self-center' : 'self-end'} ml-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300`}
+              className={`${tabStripPosition === 'bottom' ? 'self-center' : 'self-end'} ml-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-neutral-400 transition-colors ${inlineAddHovered ? 'bg-neutral-800 text-cyan-300' : ''}`}
             >
               <Plus className="h-3.5 w-3.5" />
             </button>
@@ -3813,7 +3804,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                           type="button"
                           aria-label={`${t.pane.closeTab}: ${tabName}`}
                           onClick={event => { event.stopPropagation(); onCloseTab(idx); }}
-                          className="rounded p-1 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-700 hover:text-neutral-100 focus-visible:opacity-100 group-hover:opacity-100"
+                          className="cyberfiles-tab-close rounded p-1 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-700 hover:text-neutral-100 focus-visible:opacity-100 group-hover:opacity-100"
                         >
                           <X className="h-3 w-3" />
                         </button>

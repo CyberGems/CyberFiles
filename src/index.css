@@ -545,6 +545,12 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-folder-tab[d
   color: #38bdf8;
 }
 
+/* The close X keeps its neutral glyph on the active tab, matching how it looks
+   on every other tab. */
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-folder-tab[data-active-folder-tab='true'] .cyberfiles-tab-close svg {
+  color: inherit;
+}
+
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-pane-navigation {
   border-bottom-color: #22506a;
   background: linear-gradient(180deg, #0b2a3d 0%, #081e2e 100%);
