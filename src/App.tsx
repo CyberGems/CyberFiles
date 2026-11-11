@@ -6667,6 +6667,7 @@ export default function App() {
                   onSelectTab={(idx) => setActiveLeftTabIndex(idx)}
                   onAddTab={trigger => handleAddTab('left', undefined, trigger)}
                   onCloseTab={(idx) => handleCloseTab('left', idx)}
+                  onCloseTabIndices={(indices) => closeTabIndices('left', indices)}
                   onTabStripContextMenu={(x, y) => { setContextMenuPos(null); setTabMenuTarget(null); setTabStripMenuTarget({ pane: 'left', x, y }); }}
                   onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabStripMenuTarget(null); setTabMenuTarget({ pane: 'left', tabId: leftTabs[idx].id, x, y }); }}
                   files={leftDisplayFiles}
@@ -6754,6 +6755,7 @@ export default function App() {
                   onSelectTab={(idx) => setActiveRightTabIndex(idx)}
                   onAddTab={trigger => handleAddTab('right', undefined, trigger)}
                   onCloseTab={(idx) => handleCloseTab('right', idx)}
+                  onCloseTabIndices={(indices) => closeTabIndices('right', indices)}
                   onTabStripContextMenu={(x, y) => { setContextMenuPos(null); setTabMenuTarget(null); setTabStripMenuTarget({ pane: 'right', x, y }); }}
                   onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabStripMenuTarget(null); setTabMenuTarget({ pane: 'right', tabId: rightTabs[idx].id, x, y }); }}
                   files={rightDisplayFiles}
@@ -6842,6 +6844,7 @@ export default function App() {
                   onSelectTab={(idx) => setActiveLeftTabIndex(idx)}
                   onAddTab={trigger => handleAddTab('left', undefined, trigger)}
                   onCloseTab={(idx) => handleCloseTab('left', idx)}
+                  onCloseTabIndices={(indices) => closeTabIndices('left', indices)}
                   onTabStripContextMenu={(x, y) => { setContextMenuPos(null); setTabMenuTarget(null); setTabStripMenuTarget({ pane: 'left', x, y }); }}
                   onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabStripMenuTarget(null); setTabMenuTarget({ pane: 'left', tabId: leftTabs[idx].id, x, y }); }}
                   files={leftDisplayFiles}
@@ -6925,6 +6928,7 @@ export default function App() {
                   onSelectTab={(idx) => setActiveRightTabIndex(idx)}
                   onAddTab={trigger => handleAddTab('right', undefined, trigger)}
                   onCloseTab={(idx) => handleCloseTab('right', idx)}
+                  onCloseTabIndices={(indices) => closeTabIndices('right', indices)}
                   onTabStripContextMenu={(x, y) => { setContextMenuPos(null); setTabMenuTarget(null); setTabStripMenuTarget({ pane: 'right', x, y }); }}
                   onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabStripMenuTarget(null); setTabMenuTarget({ pane: 'right', tabId: rightTabs[idx].id, x, y }); }}
                   files={rightDisplayFiles}
@@ -7013,6 +7017,7 @@ export default function App() {
                 onSelectTab={(idx) => (activePane === 'left' ? setActiveLeftTabIndex(idx) : setActiveRightTabIndex(idx))}
                 onAddTab={trigger => handleAddTab(activePane, undefined, trigger)}
                 onCloseTab={(idx) => handleCloseTab(activePane, idx)}
+                onCloseTabIndices={(indices) => closeTabIndices(activePane, indices)}
                 onTabStripContextMenu={(x, y) => { setContextMenuPos(null); setTabMenuTarget(null); setTabStripMenuTarget({ pane: activePane, x, y }); }}
                 onTabContextMenu={(idx, x, y) => { setContextMenuPos(null); setTabStripMenuTarget(null); setTabMenuTarget({ pane: activePane, tabId: activeTabs[idx].id, x, y }); }}
                   files={activeDisplayFiles}

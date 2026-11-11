@@ -90,6 +90,8 @@ interface FilePaneProps {
   onSelectTab: (index: number) => void;
   onAddTab: (trigger: NewTabTrigger) => void;
   onCloseTab: (index: number) => void;
+  /** Bulk close used by the tabs list: one atomic update, honoring locks and the last-tab guard. */
+  onCloseTabIndices: (indices: number[]) => void;
   onTabContextMenu: (index: number, x: number, y: number) => void;
   onTabStripContextMenu: (x: number, y: number) => void;
   files: FileItem[];
@@ -739,6 +741,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onSelectTab,
   onAddTab,
   onCloseTab,
+  onCloseTabIndices,
   onTabContextMenu,
   onTabStripContextMenu,
   files,
@@ -974,9 +977,36 @@ export const FilePane: React.FC<FilePaneProps> = ({
     setTabsListOpen(true);
   };
   const closeAllOtherTabs = () => {
-    tabs.map((_, idx) => idx).filter(idx => idx !== activeTabIndex).sort((a, b) => b - a).forEach(idx => onCloseTab(idx));
+    /* One bulk close: onCloseTab per index would race the stale tab snapshot and
+       only remove a single tab. closeTabIndices honors locks, keeps the active
+       tab and records the reopen history in a single update. */
+    onCloseTabIndices(tabs.map((_, idx) => idx).filter(idx => idx !== activeTabIndex));
     setTabsListOpen(false);
   };
+  const [closeAllArmed, setCloseAllArmed] = useState(false);
+  const closeAllArmTimerRef = useRef<number | null>(null);
+  const armCloseAll = () => {
+    if (closeAllArmed) {
+      if (closeAllArmTimerRef.current !== null) {
+        window.clearTimeout(closeAllArmTimerRef.current);
+        closeAllArmTimerRef.current = null;
+      }
+      setCloseAllArmed(false);
+      closeAllOtherTabs();
+      return;
+    }
+    setCloseAllArmed(true);
+    closeAllArmTimerRef.current = window.setTimeout(() => setCloseAllArmed(false), 4000);
+  };
+  useEffect(() => {
+    if (tabsListOpen) return;
+    /* A closed menu always forgets an armed confirmation. */
+    setCloseAllArmed(false);
+    if (closeAllArmTimerRef.current !== null) {
+      window.clearTimeout(closeAllArmTimerRef.current);
+      closeAllArmTimerRef.current = null;
+    }
+  }, [tabsListOpen]);
   useEffect(() => {
     const el = horizontalTabListRef.current;
     if (!el) return;
@@ -3706,14 +3736,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 const active = idx === activeTabIndex;
                 const showPath = Boolean(tabItem.currentPath) && !tabItem.currentPath.startsWith('::');
                 return (
-                    <div key={tabItem.id} className="group flex items-center gap-1 px-2 py-0.5">
+                    <div key={tabItem.id} className="group flex items-center gap-1 rounded px-2 py-0.5 transition-colors hover:bg-neutral-800">
                       <button
                         type="button"
                         role="menuitem"
                         aria-current={active ? 'true' : undefined}
                         ref={active ? activeTabsListItemRef : undefined}
                         onClick={event => { event.stopPropagation(); onActivate(); onSelectTab(idx); setTabsListOpen(false); }}
-                        className="flex min-w-0 flex-1 items-start gap-2 rounded px-1.5 py-1 text-left text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-neutral-100"
+                        className="flex min-w-0 flex-1 items-start gap-2 rounded px-1.5 py-1 text-left text-xs text-neutral-300 transition-colors group-hover:text-neutral-100"
                       >
                         <Folder className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${active ? 'text-cyan-400' : 'text-neutral-500'}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined} />
                         <span className="min-w-0 flex-1">
@@ -3744,11 +3774,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 <button
                   type="button"
                   role="menuitem"
-                  onClick={closeAllOtherTabs}
-                  className="flex w-full items-center justify-center gap-2 rounded px-2 py-1.5 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-rose-300"
+                  onClick={armCloseAll}
+                  className={closeAllArmed
+                    ? 'flex w-full items-center justify-center gap-2 rounded border border-rose-600/70 bg-rose-950/40 px-2 py-1.5 text-xs font-semibold text-rose-300 transition-colors hover:bg-rose-900/50'
+                    : 'flex w-full items-center justify-center gap-2 rounded px-2 py-1.5 text-xs text-neutral-300 transition-colors hover:bg-neutral-800 hover:text-rose-300'}
                 >
                   <X className="h-3.5 w-3.5" />
-                  {t.pane.tabsListCloseAll}
+                  {closeAllArmed ? t.pane.tabsListCloseAllConfirm : t.pane.tabsListCloseAll}
                 </button>
               </div>
             )}
