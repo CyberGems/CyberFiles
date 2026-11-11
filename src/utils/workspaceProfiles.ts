@@ -1,4 +1,4 @@
-import type { GroupByField, SortField, SortOrder, TabState, ViewLayout, ViewMode } from '../types';
+import type { GroupByField, IconZoomLevel, SortField, SortOrder, TabState, ViewLayout, ViewMode } from '../types';
 
 export const WORKSPACE_PROFILES_STORAGE_KEY = 'cyberfiles_workspace_profiles_v1';
 export const DEFAULT_LAYOUT_PROFILE_ID = 'builtin-default-layout';
@@ -171,6 +171,10 @@ function normalizeViewMode(value: unknown): ViewMode {
   return value === 'compact' || value === 'icons' || value === 'tiles' ? value : 'details';
 }
 
+function normalizeIconZoom(value: unknown): IconZoomLevel | undefined {
+  return value === 'small' || value === 'medium' || value === 'large' || value === 'xlarge' ? value : undefined;
+}
+
 function normalizeSavedTab(value: unknown, pane: WorkspacePaneId, index: number): SavedTabState {
   const raw = value && typeof value === 'object' ? value as Partial<SavedTabState> : {};
   const history = Array.isArray(raw.history) ? raw.history.filter(path => typeof path === 'string') : [];
@@ -179,11 +183,13 @@ function normalizeSavedTab(value: unknown, pane: WorkspacePaneId, index: number)
   const viewMode = normalizeViewMode(raw.viewMode);
   const groupBy = normalizeGroupBy(raw.groupBy);
   const rawFolderStyle = raw.folderStyle && typeof raw.folderStyle === 'object' ? raw.folderStyle : undefined;
+  const folderStyleIconZoom = normalizeIconZoom(rawFolderStyle?.iconZoom);
   const folderStyle = rawFolderStyle ? {
     sortField: normalizeSortField(rawFolderStyle.sortField),
     sortOrder: rawFolderStyle.sortOrder === 'desc' ? 'desc' as const : 'asc' as const,
     groupBy: normalizeGroupBy(rawFolderStyle.groupBy ?? raw.groupBy),
     viewMode: normalizeViewMode(rawFolderStyle.viewMode),
+    ...(folderStyleIconZoom ? { iconZoom: folderStyleIconZoom } : {}),
   } : { sortField, sortOrder, groupBy, viewMode };
   const rawStyleOnEntry = raw.folderStyleOnEntry && typeof raw.folderStyleOnEntry === 'object' ? raw.folderStyleOnEntry : undefined;
   const folderStyleOnEntry = rawStyleOnEntry ? {

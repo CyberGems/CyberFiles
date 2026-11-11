@@ -1,4 +1,4 @@
-import type { GroupByField, SortField, SortOrder, ViewMode } from '../types';
+import type { GroupByField, IconZoomLevel, SortField, SortOrder, ViewMode } from '../types';
 import { isMediaPreviewPath, normalizeWindowsPath } from './fileSystem';
 
 export interface FolderStylePreference {
@@ -6,6 +6,8 @@ export interface FolderStylePreference {
   sortField: SortField;
   sortOrder: SortOrder;
   groupBy: GroupByField;
+  /* Preview cell size for the icons (grid) view. Absent means the medium default. */
+  iconZoom?: IconZoomLevel;
 }
 
 export type SavedFolderStyles = Record<string, FolderStylePreference & { displayPath?: string }>;
@@ -21,7 +23,13 @@ export function folderStylePathKey(path: string): string {
 export function savedFolderStyleForPath(path: string, savedStyles: SavedFolderStyles): FolderStylePreference | undefined {
   const saved = savedStyles[folderStylePathKey(path)];
   if (!saved) return undefined;
-  return { viewMode: saved.viewMode, sortField: saved.sortField, sortOrder: saved.sortOrder, groupBy: saved.groupBy };
+  return {
+    viewMode: saved.viewMode,
+    sortField: saved.sortField,
+    sortOrder: saved.sortOrder,
+    groupBy: saved.groupBy,
+    ...(saved.iconZoom ? { iconZoom: saved.iconZoom } : {}),
+  };
 }
 
 export function resolveFolderStyle(path: string, inherited: FolderStylePreference, savedStyles: SavedFolderStyles): FolderStylePreference {
@@ -46,10 +54,16 @@ export function folderStyleToCarry(
 function isFolderStylePreference(value: unknown): value is FolderStylePreference {
   if (!value || typeof value !== 'object') return false;
   const style = value as Partial<FolderStylePreference>;
+  const iconZoomIsValid = style.iconZoom === undefined
+    || style.iconZoom === 'small'
+    || style.iconZoom === 'medium'
+    || style.iconZoom === 'large'
+    || style.iconZoom === 'xlarge';
   return (style.viewMode === 'details' || style.viewMode === 'compact' || style.viewMode === 'icons' || style.viewMode === 'tiles')
     && SORT_FIELDS.includes(style.sortField as SortField)
     && (style.sortOrder === 'asc' || style.sortOrder === 'desc')
-    && GROUP_FIELDS.includes(style.groupBy as GroupByField);
+    && GROUP_FIELDS.includes(style.groupBy as GroupByField)
+    && iconZoomIsValid;
 }
 
 export function readSavedFolderStyles(): SavedFolderStyles {
@@ -68,6 +82,7 @@ export function readSavedFolderStyles(): SavedFolderStyles {
           sortField: style.sortField,
           sortOrder: style.sortOrder,
           groupBy: style.groupBy,
+          ...(style.iconZoom ? { iconZoom: style.iconZoom } : {}),
           ...(displayPath ? { displayPath } : {}),
         };
       }

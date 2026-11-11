@@ -23,6 +23,7 @@ import {
   GroupByField,
   ArchiveExtractionMode,
   TabCloseButtonMode,
+  type IconZoomLevel,
   type NetworkResource,
   type NewTabActionPreference,
   type NewTabActionMode,
@@ -650,7 +651,7 @@ function readQuickAccessOrder(): string[] {
     return [];
   }
 }
-type FolderStyle = { viewMode: ViewMode; sortField: SortField; sortOrder: SortOrder; groupBy: GroupByField };
+type FolderStyle = { viewMode: ViewMode; sortField: SortField; sortOrder: SortOrder; groupBy: GroupByField; iconZoom?: IconZoomLevel };
 
 function styleForPath(path: string, style: FolderStyle) {
   return { ...style, viewMode: isMediaPreviewPath(path) ? 'icons' as ViewMode : style.viewMode };
@@ -713,6 +714,7 @@ function getTabFolderStyle(tab: TabState): FolderStyle {
     sortField: tab.folderStyle?.sortField ?? tab.sortField,
     sortOrder: tab.folderStyle?.sortOrder ?? tab.sortOrder,
     groupBy: tab.folderStyle?.groupBy ?? tab.groupBy ?? 'none',
+    ...(tab.folderStyle?.iconZoom ? { iconZoom: tab.folderStyle.iconZoom } : {}),
   };
 }
 
@@ -726,6 +728,10 @@ function getNavigationFolderStyle(tab: TabState, locked: boolean, savedStyles: S
 
 function setTabViewMode(tab: TabState, viewMode: ViewMode): TabState {
   return { ...tab, viewMode, folderStyle: { ...getTabFolderStyle(tab), viewMode } };
+}
+
+function setTabIconZoom(tab: TabState, iconZoom: IconZoomLevel): TabState {
+  return { ...tab, folderStyle: { ...getTabFolderStyle(tab), iconZoom } };
 }
 
 function toggleTabSort(tab: TabState, sortField: SortField): TabState {
@@ -2354,6 +2360,10 @@ export default function App() {
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
     updateActiveTab(tab => setTabViewMode(tab, mode));
+  }, [updateActiveTab]);
+
+  const handleIconZoomChange = useCallback((zoom: IconZoomLevel) => {
+    updateActiveTab(tab => setTabIconZoom(tab, zoom));
   }, [updateActiveTab]);
 
   // Helper to update specific pane's active tab
@@ -6045,6 +6055,17 @@ export default function App() {
         return;
       }
 
+      // Ctrl + Plus / Minus: zoom the grid preview cells of the icons view
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '_')) {
+        e.preventDefault();
+        const zoomLevels: IconZoomLevel[] = ['small', 'medium', 'large', 'xlarge'];
+        const currentIndex = zoomLevels.indexOf(currentTab?.folderStyle?.iconZoom ?? 'medium');
+        const zoomingIn = e.key === '+' || e.key === '=';
+        const nextIndex = zoomingIn ? Math.min(zoomLevels.length - 1, currentIndex + 1) : Math.max(0, currentIndex - 1);
+        if (nextIndex !== currentIndex) handleIconZoomChange(zoomLevels[nextIndex]);
+        return;
+      }
+
       // Ctrl + G: Toggle Relative Graphs
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'g' || e.key === 'G')) {
         e.preventDefault();
@@ -6095,6 +6116,7 @@ export default function App() {
     setShowHiddenFiles,
     setShowFileExtensions,
     handleViewModeChange,
+    handleIconZoomChange,
     setRelativeGraphsEnabled,
     setLayout,
     handleCopySelected,
@@ -6721,6 +6743,7 @@ export default function App() {
                   onSelectItems={(ids, additive, range, replaceExactly, focusedId) => handleSelectItems('left', ids, additive, range, replaceExactly, focusedId)}
                   onSortChange={field => updatePaneTab('left', tab => toggleTabSort(tab, field))}
                   onViewModeChange={mode => updatePaneTab('left', tab => setTabViewMode(tab, mode))}
+                  onIconZoomChange={zoom => updatePaneTab('left', tab => setTabIconZoom(tab, zoom))}
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'left')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'left')}
                   onBackgroundContextMenu={handleBackgroundContextMenu}
@@ -6811,6 +6834,7 @@ export default function App() {
                   onSelectItems={(ids, additive, range, replaceExactly, focusedId) => handleSelectItems('right', ids, additive, range, replaceExactly, focusedId)}
                   onSortChange={field => updatePaneTab('right', tab => toggleTabSort(tab, field))}
                   onViewModeChange={mode => updatePaneTab('right', tab => setTabViewMode(tab, mode))}
+                  onIconZoomChange={zoom => updatePaneTab('right', tab => setTabIconZoom(tab, zoom))}
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'right')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'right')}
                   onBackgroundContextMenu={handleBackgroundContextMenu}
@@ -6902,6 +6926,7 @@ export default function App() {
                   onSelectItems={(ids, additive, range, replaceExactly, focusedId) => handleSelectItems('left', ids, additive, range, replaceExactly, focusedId)}
                   onSortChange={field => updatePaneTab('left', tab => toggleTabSort(tab, field))}
                   onViewModeChange={mode => updatePaneTab('left', tab => setTabViewMode(tab, mode))}
+                  onIconZoomChange={zoom => updatePaneTab('left', tab => setTabIconZoom(tab, zoom))}
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'left')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'left')}
                   onBackgroundContextMenu={handleBackgroundContextMenu}
@@ -6988,6 +7013,7 @@ export default function App() {
                   onSelectItems={(ids, additive, range, replaceExactly, focusedId) => handleSelectItems('right', ids, additive, range, replaceExactly, focusedId)}
                   onSortChange={field => updatePaneTab('right', tab => toggleTabSort(tab, field))}
                   onViewModeChange={mode => updatePaneTab('right', tab => setTabViewMode(tab, mode))}
+                  onIconZoomChange={zoom => updatePaneTab('right', tab => setTabIconZoom(tab, zoom))}
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'right')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'right')}
                   onBackgroundContextMenu={handleBackgroundContextMenu}
@@ -7079,6 +7105,7 @@ export default function App() {
                 onSelectItems={(ids, additive, range, replaceExactly, focusedId) => handleSelectItems(activePane, ids, additive, range, replaceExactly, focusedId)}
                 onSortChange={field => updateActiveTab(tab => toggleTabSort(tab, field))}
                 onViewModeChange={handleViewModeChange}
+                onIconZoomChange={handleIconZoomChange}
                 onItemDoubleClick={(item) => handleItemDoubleClick(item, activePane)}
                 onItemContextMenu={(e, item) => handleItemContextMenu(e, item, activePane)}
                 onBackgroundContextMenu={handleBackgroundContextMenu}

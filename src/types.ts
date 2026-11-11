@@ -95,6 +95,17 @@ export type ArchiveExtractionMode = 'here' | 'folder';
 
 export type ViewLayout = 'dual-vertical' | 'dual-horizontal' | 'single';
 export type ViewMode = 'details' | 'compact' | 'icons' | 'tiles';
+export type IconZoomLevel = 'small' | 'medium' | 'large' | 'xlarge';
+
+/* Geometry of the icons (grid) view per zoom level: minimum cell width for the column math,
+   the virtualized row stride (cell height plus the 12px gap), and the tailwind cell/preview
+   classes the cards render with. The medium row reproduces the original fixed-size grid. */
+export const ICON_ZOOM_PRESETS: Record<IconZoomLevel, { minWidth: number; rowStride: number; cellHeight: string; thumbHeight: string }> = {
+  small: { minWidth: 112, rowStride: 124, cellHeight: 'h-28', thumbHeight: 'h-12' },
+  medium: { minWidth: 140, rowStride: 156, cellHeight: 'h-36', thumbHeight: 'h-20' },
+  large: { minWidth: 184, rowStride: 204, cellHeight: 'h-48', thumbHeight: 'h-32' },
+  xlarge: { minWidth: 240, rowStride: 268, cellHeight: 'h-64', thumbHeight: 'h-48' },
+};
 
 export const SYSTEM_HOME_PATH = '::cyberfiles-this-pc::';
 export const RECYCLE_BIN_PATH = '::cyberfiles-recycle-bin::';
@@ -132,6 +143,7 @@ export interface TabState {
     sortOrder: SortOrder;
     groupBy?: GroupByField;
     viewMode: ViewMode;
+    iconZoom?: IconZoomLevel;
   };
   folderStyleOnEntry?: {
     sortField: SortField;

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { folderStylePathKey, folderStyleToCarry, readSavedFolderStyles, resolveFolderStyle, writeSavedFolderStyles, type FolderStylePreference } from './folderStylePreferences';
+import { folderStylePathKey, folderStyleToCarry, readSavedFolderStyles, resolveFolderStyle, savedFolderStyleForPath, writeSavedFolderStyles, type FolderStylePreference } from './folderStylePreferences';
 
 const defaultStyle: FolderStylePreference = { viewMode: 'details', sortField: 'name', sortOrder: 'asc', groupBy: 'none' };
 const downloadsStyle: FolderStylePreference = { viewMode: 'details', sortField: 'modifiedDate', sortOrder: 'desc', groupBy: 'modifiedDate' };
@@ -37,7 +37,10 @@ test('folder styles persist by path and invalid entries are ignored', () => {
     const restored = readSavedFolderStyles();
     assert.equal(restored[folderStylePathKey(downloadsPath)].displayPath, 'C:\\Users\\Carlos\\Downloads');
     assert.deepEqual(resolveFolderStyle(downloadsPath, defaultStyle, restored), downloadsStyle);
-    values.set('cyberfiles_saved_folder_styles_v1', JSON.stringify({ ...styles, 'C:/Invalid': { ...downloadsStyle, groupBy: 'unknown' } }));
+    const zoomedStyle = { ...downloadsStyle, iconZoom: 'xlarge' as const };
+    writeSavedFolderStyles({ [folderStylePathKey(downloadsPath)]: zoomedStyle });
+    assert.deepEqual(savedFolderStyleForPath(downloadsPath, readSavedFolderStyles()), zoomedStyle);
+    values.set('cyberfiles_saved_folder_styles_v1', JSON.stringify({ ...styles, 'C:/Invalid': { ...downloadsStyle, groupBy: 'unknown', iconZoom: 'huge' } }));
     assert.deepEqual(readSavedFolderStyles(), styles);
   } finally {
     globalThis.window = originalWindow;
