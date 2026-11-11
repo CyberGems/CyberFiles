@@ -42,8 +42,9 @@ import {
   CornerDownLeft,
   HardDrive,
   Unplug,
+  Scaling,
 } from 'lucide-react';
-import { ArchiveExtractionMode, ContextMenuPosition, FileItem, GroupByField, SortField, SortOrder, ViewMode } from '../types';
+import { ArchiveExtractionMode, ContextMenuPosition, FileItem, GroupByField, SortField, SortOrder, ViewMode, type IconZoomLevel } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
 import { isUncPath, isUncServerRoot } from '../utils/fileSystem';
 import type { NewItemKind } from './CreateItemModal';
@@ -52,6 +53,9 @@ import { Tooltip } from './Tooltip';
 interface ContextMenuProps {
   position: ContextMenuPosition | null;
   viewMode: ViewMode;
+  /* Grid preview zoom radios, mirroring the Ctrl+wheel shortcut; only offered in the icons view. */
+  iconZoom?: IconZoomLevel;
+  onIconZoomChange?: (zoom: IconZoomLevel) => void;
   sortField: SortField;
   sortOrder: SortOrder;
   groupBy: GroupByField;
@@ -113,6 +117,8 @@ interface ContextMenuProps {
 export const ContextMenu: React.FC<ContextMenuProps> = ({
   position,
   viewMode,
+  iconZoom,
+  onIconZoomChange,
   sortField,
   sortOrder,
   groupBy,
@@ -949,6 +955,15 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             <ViewMenuButton icon={<StretchHorizontal className="h-4 w-4" />} label={t.toolbar.viewCompact} selected={viewMode === 'compact'} onClick={() => { onViewModeChange('compact'); onClose(); }} />
             <ViewMenuButton icon={<LayoutGrid className="h-4 w-4" />} label={t.toolbar.viewIcons} selected={viewMode === 'icons'} onClick={() => { onViewModeChange('icons'); onClose(); }} />
             <ViewMenuButton icon={<LayoutDashboard className="h-4 w-4" />} label={t.toolbar.viewTiles} selected={viewMode === 'tiles'} onClick={() => { onViewModeChange('tiles'); onClose(); }} />
+            {viewMode === 'icons' && onIconZoomChange && (
+              <>
+                <MenuDivider />
+                <div className="px-3.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.toolbar.iconSize}</div>
+                {([['small', t.toolbar.iconZoomSmall], ['medium', t.toolbar.iconZoomMedium], ['large', t.toolbar.iconZoomLarge], ['xlarge', t.toolbar.iconZoomXlarge]] as [IconZoomLevel, string][]).map(([zoom, label]) => (
+                  <ViewMenuButton key={zoom} icon={<Scaling className="h-4 w-4" />} label={label} selected={(iconZoom ?? 'medium') === zoom} onClick={() => { onIconZoomChange(zoom); onClose(); }} />
+                ))}
+              </>
+            )}
           </div>
 
           {canModifyFolder && (

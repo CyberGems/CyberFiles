@@ -4370,6 +4370,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
         onClearRecentHistory={onClearRecentHistory}
         viewMode={tab.viewMode}
         onChangeViewMode={mode => onViewModeChange?.(mode)}
+        iconZoom={iconZoomLevel}
+        onIconZoomChange={zoom => onIconZoomChange?.(zoom)}
         actions={paneActions}
       />
 

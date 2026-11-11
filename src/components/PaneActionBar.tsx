@@ -23,12 +23,13 @@ import {
   RefreshCw,
   RotateCcw,
   Rows3,
+  Scaling,
   Search,
   Square,
   Trash2,
   X,
 } from 'lucide-react';
-import { ArchiveExtractionMode, FileItem, ViewMode } from '../types';
+import { ArchiveExtractionMode, FileItem, ViewMode, type IconZoomLevel } from '../types';
 import { KeyboardShortcutContent } from './KeyboardShortcut';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
@@ -86,6 +87,9 @@ interface PaneActionBarProps {
   /* The lister modes live in this menu too: they belong to the pane that shows the list. */
   viewMode: ViewMode;
   onChangeViewMode: (mode: ViewMode) => void;
+  /* Grid preview zoom, mirroring the Ctrl+wheel shortcut; only offered in the icons view. */
+  iconZoom?: IconZoomLevel;
+  onIconZoomChange?: (zoom: IconZoomLevel) => void;
   actions: PaneSelectionActions;
 }
 
@@ -125,6 +129,8 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
   onClearRecentHistory,
   viewMode,
   onChangeViewMode,
+  iconZoom,
+  onIconZoomChange,
   actions,
 }) => {
   const { t } = useLanguage();
@@ -296,6 +302,20 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
     },
   ];
 
+  /* Grid preview zoom radios, mirroring the Ctrl+wheel shortcut; only offered while the grid
+     (icons) view is the active one, since no other view reads the zoom level. */
+  const iconZoomMenuGroup: ActionEntry[] = viewMode === 'icons' && onIconZoomChange
+    ? ([['small', t.toolbar.iconZoomSmall], ['medium', t.toolbar.iconZoomMedium], ['large', t.toolbar.iconZoomLarge], ['xlarge', t.toolbar.iconZoomXlarge]] as [IconZoomLevel, string][])
+      .map(([zoom, label]) => ({
+        key: `icon-zoom-${zoom}`,
+        label,
+        tooltip: t.toolbar.iconSize,
+        icon: <Scaling className="h-3.5 w-3.5 text-cyan-300" />,
+        checked: (iconZoom ?? 'medium') === zoom,
+        onSelect: () => onIconZoomChange(zoom),
+      }))
+    : [];
+
   /* Always visible, always in its own section: with a selection the row only carries the
      actions on that selection and the filter field owns the rest of the space, so this menu is
      the one place where the three shortcuts sit together. Inverting an empty selection selects
@@ -398,7 +418,7 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
       onSelect: () => actions.onCopyPath(selectedItems),
     });
     selectionMenuGroups.push(contextGroup);
-    selectionMenuGroups.push(selectMenuGroup, viewMenuGroup, paneMenuGroup);
+    selectionMenuGroups.push(selectMenuGroup, viewMenuGroup, ...(iconZoomMenuGroup.length > 0 ? [iconZoomMenuGroup] : []), paneMenuGroup);
   }
 
   const folderMenuGroups: ActionEntry[][] = [
@@ -427,6 +447,7 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
     ],
     selectMenuGroup,
     viewMenuGroup,
+    ...(iconZoomMenuGroup.length > 0 ? [iconZoomMenuGroup] : []),
     paneMenuGroup,
     ...(isRecentLocation && onClearRecentHistory ? [[{
       key: 'clear-recent-history',

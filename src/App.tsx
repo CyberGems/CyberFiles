@@ -7246,6 +7246,8 @@ export default function App() {
       <ContextMenu
         position={contextMenuPos}
         viewMode={contextPaneTab.viewMode}
+        iconZoom={contextPaneTab.folderStyle?.iconZoom}
+        onIconZoomChange={zoom => updatePaneTab(contextPane, tab => setTabIconZoom(tab, zoom))}
         sortField={contextPaneTab.sortField}
         sortOrder={contextPaneTab.sortOrder}
         groupBy={contextPaneTab.groupBy ?? 'none'}
