@@ -3642,25 +3642,26 @@ export const FilePane: React.FC<FilePaneProps> = ({
   /* Top strip: tabs are bottom-anchored, so the controls take the same seat with a
      1.5px lift that centers them against the tab bodies; bottom strip centers all. */
   const stripControlAlignment = tabStripPosition === 'bottom' ? 'self-center' : 'self-end mb-[1.5px]';
-  /* After adding a tab the add button jumps sideways; Chromium keeps the stale
-     hover highlight on it until the next mouse move, which reads as a glitch.
-     The hover styling is dropped on click and restored on the next move. */
-  const [addButtonHoverSuppressed, setAddButtonHoverSuppressed] = useState(false);
-  useEffect(() => {
-    if (!addButtonHoverSuppressed) return;
-    const clear = () => setAddButtonHoverSuppressed(false);
-    window.addEventListener('pointermove', clear, { once: true });
-    const timer = window.setTimeout(clear, 600);
-    return () => {
-      window.removeEventListener('pointermove', clear);
-      window.clearTimeout(timer);
-    };
-  }, [addButtonHoverSuppressed]);
-  const addTabFromButton = (event: React.MouseEvent<HTMLButtonElement>) => {
+  /* The inline add button jumps sideways next to the new tab, and Chromium keeps
+     the stale hover highlight on it until the next mouse move; taking it out of
+     hit-testing clears the highlight the moment the click lands. The anchored
+     button never moves, so it keeps its ordinary hover behavior. */
+  const inlineAddButtonRef = useRef<HTMLButtonElement>(null);
+  const addTabFromInlineButton = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     onActivate();
-    setAddButtonHoverSuppressed(true);
     onAddTab('button');
+    const button = inlineAddButtonRef.current;
+    if (!button) return;
+    button.style.pointerEvents = 'none';
+    const restore = () => {
+      button.style.pointerEvents = '';
+      window.removeEventListener('pointermove', restore);
+      window.removeEventListener('pointerdown', restore, true);
+    };
+    window.addEventListener('pointermove', restore);
+    window.addEventListener('pointerdown', restore, true);
+    window.setTimeout(restore, 450);
   };
   const tabStrip = (
       <div
@@ -3704,10 +3705,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
           {tabs.map((tabItem, idx) => renderFolderTab(tabItem, idx, false))}
           {showNewTabButton && !tabStripScroll.overflowing && <Tooltip label={t.pane.addTab} shortcut="Ctrl+T" placement={tabStripPosition === 'bottom' ? 'top' : 'bottom'}>
             <button
+              ref={inlineAddButtonRef}
               type="button"
               aria-label={t.pane.addTab}
-              onClick={addTabFromButton}
-              className={`${tabStripPosition === 'bottom' ? 'self-center' : 'self-end'} ml-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-neutral-400 transition-colors ${addButtonHoverSuppressed ? '' : 'hover:bg-neutral-800 hover:text-cyan-300'}`}
+              onClick={addTabFromInlineButton}
+              className={`${tabStripPosition === 'bottom' ? 'self-center' : 'self-end'} ml-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300`}
             >
               <Plus className="h-3.5 w-3.5" />
             </button>
@@ -3734,8 +3736,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
               <button
                 type="button"
                 aria-label={t.pane.addTab}
-                onClick={addTabFromButton}
-                className={`ml-0.5 inline-flex h-7 w-7 shrink-0 ${stripControlAlignment} items-center justify-center rounded text-neutral-400 transition-colors ${addButtonHoverSuppressed ? '' : 'hover:bg-neutral-800 hover:text-cyan-300'}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onActivate();
+                  onAddTab('button');
+                }}
+                className={`ml-0.5 inline-flex h-7 w-7 shrink-0 ${stripControlAlignment} items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300`}
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
