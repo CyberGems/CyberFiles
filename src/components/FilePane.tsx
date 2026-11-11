@@ -1419,8 +1419,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   ));
   const virtualColumns = effectiveViewMode === 'details' ? 1
     : effectiveViewMode === 'compact' ? viewportWindow.width >= 1024 ? 3 : viewportWindow.width >= 640 ? 2 : 1
-      : Math.max(1, Math.min(5, Math.floor((viewportWindow.width + 12) / 140)));
-  const rowStride = effectiveViewMode === 'details' ? 32 * listerTextScaleFactorValue : effectiveViewMode === 'compact' ? 34 * listerTextScaleFactorValue : 156;
+      : effectiveViewMode === 'tiles' ? Math.max(1, Math.min(4, Math.floor((viewportWindow.width + 12) / 248)))
+        : Math.max(1, Math.min(5, Math.floor((viewportWindow.width + 12) / 140)));
+  /* Grid strides are cell height plus the 12px gap: icons cards are h-36, tiles cards h-28. */
+  const rowStride = effectiveViewMode === 'details' ? 32 * listerTextScaleFactorValue : effectiveViewMode === 'compact' ? 34 * listerTextScaleFactorValue : effectiveViewMode === 'tiles' ? 124 : 156;
   const headingStride = effectiveViewMode === 'details' ? 30 : effectiveViewMode === 'compact' ? 32 : 40;
   const focusedGroupPosition = React.useMemo(() => {
     if (!tab.focusedId) return null;
@@ -4965,6 +4967,81 @@ export const FilePane: React.FC<FilePaneProps> = ({
               })}
               </div>
               </section>;
+            })}
+          </div>
+        ) : effectiveViewMode === 'tiles' ? (
+          /* Tiles view: Explorer-style horizontal cards, preview on the left and the
+             metadata block on the right, riding the same virtualized grid machinery as
+             the icons view (fixed h-28 cells keep the row math exact). */
+          <div className="grid gap-3 py-2" style={{ gridTemplateColumns: `repeat(${virtualColumns}, minmax(0, 1fr))` }}>
+            {renderGroups.map(group => {
+              const groupCollapseKey = `${paneId}:${tab.id}:${tab.groupBy}:${group.id}`;
+              const groupCollapsed = collapsedGroups[groupCollapseKey] === true;
+              return <React.Fragment key={`tiles-group-${groupCollapseKey}`}>
+              {group.renderHeading && renderFileGroupHeading(group)}
+              {group.before > 0 && <div aria-hidden="true" className="col-span-full" style={{ height: group.before }} />}
+              {!groupCollapsed && group.visibleItems.map(item => {
+              const idx = fileIndexById.get(item.id) ?? 0;
+              const isSelected = visibleSelectedIdSet.has(item.id);
+              const showShellThumbnail = thumbnailsEnabled && isShellThumbnailCandidate(item) && !(item.isFolder && getCustomFolderIcon(item.path, customFolderIcons ?? {}));
+
+              return (
+                <Tooltip key={item.id} label={renderItemTooltip(item)} placement="top" boundary=".cyberfiles-file-viewport" disabled={editingItemId === item.id}>
+                <div
+                  data-file-item="true"
+                  data-file-id={item.id}
+                  data-selected={isSelected ? 'true' : undefined}
+                  data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
+                  data-file-drop-path={item.isFolder && !item.recycleBinId ? item.path : undefined}
+                  onPointerDown={event => beginFilePointerDrag(event, item)}
+                  onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
+                  onDoubleClick={() => handleConfiguredDoubleClick(item)}
+                  onContextMenu={event => handleFileItemContextMenu(event, item)}
+                  onMouseEnter={() => handleFolderTooltipMouseEnter(item)}
+                  onMouseLeave={() => handleFolderTooltipMouseLeave(item)}
+                  style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
+                  className={`cyberfiles-tile-file-item relative flex min-w-0 ${virtualizeFiles ? 'h-28' : ''} items-center gap-3 overflow-hidden rounded-lg border border-transparent p-2.5 text-left cursor-pointer ${
+                    isSelected
+                      ? 'text-neutral-100'
+                      : 'bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60'
+                  }`}
+                >
+                  <div className="h-20 w-24 flex-shrink-0">
+                    {thumbnailsEnabled && item.type === 'image' && !SHELL_PREVIEW_IMAGE_EXTENSIONS.has(getFileExtension(item.name)) ? (
+                      <ImageFileThumbnail item={item} fallback={fileTypeGlyph(item.type, item.isFolder)} className="h-20 w-24" />
+                    ) : showShellThumbnail ? (
+                      <ShellItemThumbnail
+                        item={item}
+                        thumbnail={nativeThumbnailState.scope === nativeThumbnailScope ? nativeThumbnailState.byItemId[item.id] : undefined}
+                        fallback={getDisplayFileIcon(item, 'large')}
+                        className="h-20 w-24"
+                      />
+                    ) : (
+                      <div className="flex h-20 w-24 items-center justify-center rounded-md border border-neutral-700/70 bg-neutral-900/80">
+                        {getDisplayFileIcon(item, 'large')}
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1 self-center">
+                    {editingItemId === item.id ? (
+                      renderInlineRenameInput(item, 'w-full min-w-0')
+                    ) : (
+                      <span data-file-name="true" onMouseEnter={() => handleFolderTooltipMouseEnter(item)} onMouseLeave={() => handleFolderTooltipMouseLeave(item)} className="block w-full break-words text-[calc(12px*var(--lister-text-scale,1))] font-medium leading-snug" style={getItemNameStyle(item, isSelected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+                    )}
+                    {flatParentLabel(item) && <span className="mt-0.5 block truncate font-sans text-[calc(9px*var(--lister-text-scale,1))] text-neutral-500">{flatParentLabel(item)}</span>}
+                    {renderFolderStatusBadge(item)}
+                    <span className="mt-1 block truncate font-sans text-[calc(10px*var(--lister-text-scale,1))] text-neutral-400">{getFileTypeLabel(item)}</span>
+                    <span className="block truncate font-sans text-[calc(10px*var(--lister-text-scale,1))] text-neutral-500">
+                      {!item.isFolder && formatFileSize(item.size)}
+                      {item.modifiedAtMs !== undefined || item.modifiedDate ? `${!item.isFolder ? ' · ' : ''}${formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language)}` : ''}
+                    </span>
+                  </div>
+                </div>
+                </Tooltip>
+              );
+              })}
+              {group.after > 0 && <div aria-hidden="true" className="col-span-full" style={{ height: group.after }} />}
+              </React.Fragment>;
             })}
           </div>
         ) : (

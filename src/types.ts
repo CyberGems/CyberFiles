@@ -94,7 +94,7 @@ export type QuickAccessSortMode = 'manual' | 'name' | 'name-desc';
 export type ArchiveExtractionMode = 'here' | 'folder';
 
 export type ViewLayout = 'dual-vertical' | 'dual-horizontal' | 'single';
-export type ViewMode = 'details' | 'compact' | 'icons';
+export type ViewMode = 'details' | 'compact' | 'icons' | 'tiles';
 
 export const SYSTEM_HOME_PATH = '::cyberfiles-this-pc::';
 export const RECYCLE_BIN_PATH = '::cyberfiles-recycle-bin::';

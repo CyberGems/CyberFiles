@@ -1798,6 +1798,7 @@ export function SettingsModal({
                             <option value="details">{t.toolbar.viewDetails}</option>
                             <option value="compact">{t.toolbar.viewCompact}</option>
                             <option value="icons">{t.toolbar.viewIcons}</option>
+                            <option value="tiles">{t.toolbar.viewTiles}</option>
                           </select>
                         </label>
                         <label className="text-[10px] font-medium text-neutral-400">

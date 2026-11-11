@@ -168,7 +168,7 @@ function normalizeGroupBy(value: unknown): GroupByField {
 }
 
 function normalizeViewMode(value: unknown): ViewMode {
-  return value === 'compact' || value === 'icons' ? value : 'details';
+  return value === 'compact' || value === 'icons' || value === 'tiles' ? value : 'details';
 }
 
 function normalizeSavedTab(value: unknown, pane: WorkspacePaneId, index: number): SavedTabState {

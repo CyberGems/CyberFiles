@@ -361,7 +361,7 @@ function initialWorkspaceProfileStore(): WorkspaceProfileStore {
 }
 
 function isViewMode(value: unknown): value is ViewMode {
-  return value === 'details' || value === 'compact' || value === 'icons';
+  return value === 'details' || value === 'compact' || value === 'icons' || value === 'tiles';
 }
 
 function isSortField(value: unknown): value is SortField {
@@ -6037,10 +6037,10 @@ export default function App() {
         return;
       }
 
-      // Ctrl + 1 / 2 / 3: View Modes (Details / Compact / Icons)
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === '1' || e.key === '2' || e.key === '3')) {
+      // Ctrl + 1 / 2 / 3 / 4: View Modes (Details / Compact / Icons / Tiles)
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === '1' || e.key === '2' || e.key === '3' || e.key === '4')) {
         e.preventDefault();
-        const mode = e.key === '1' ? 'details' : e.key === '2' ? 'compact' : 'icons';
+        const mode = e.key === '1' ? 'details' : e.key === '2' ? 'compact' : e.key === '3' ? 'icons' : 'tiles';
         handleViewModeChange(mode);
         return;
       }
@@ -6366,6 +6366,7 @@ export default function App() {
     { id: 'view-details', group: t.commandPalette.groups.view, label: t.commandPalette.commands.viewDetails, keywords: 'list table', onSelect: () => handleViewModeChange('details') },
     { id: 'view-compact', group: t.commandPalette.groups.view, label: t.commandPalette.commands.viewCompact, keywords: 'dense rows', onSelect: () => handleViewModeChange('compact') },
     { id: 'view-icons', group: t.commandPalette.groups.view, label: t.commandPalette.commands.viewIcons, keywords: 'large icons grid', onSelect: () => handleViewModeChange('icons') },
+    { id: 'view-tiles', group: t.commandPalette.groups.view, label: t.commandPalette.commands.viewTiles, keywords: 'tiles cards previews mosaicos', onSelect: () => handleViewModeChange('tiles') },
     { id: 'layout-dual-vertical', group: t.commandPalette.groups.view, label: t.commandPalette.commands.layoutDualVertical, keywords: 'two panes columns', onSelect: () => setLayout('dual-vertical') },
     { id: 'layout-dual-horizontal', group: t.commandPalette.groups.view, label: t.commandPalette.commands.layoutDualHorizontal, keywords: 'two panes rows', onSelect: () => setLayout('dual-horizontal') },
     { id: 'layout-single', group: t.commandPalette.groups.view, label: t.commandPalette.commands.layoutSingle, keywords: 'one pane', onSelect: () => setLayout('single') },

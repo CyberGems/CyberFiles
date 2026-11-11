@@ -14,6 +14,7 @@ import {
   FolderOpen,
   History,
   Info,
+  LayoutDashboard,
   LayoutGrid,
   List,
   MoreHorizontal,
@@ -284,6 +285,14 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
       shortcut: 'Ctrl+3',
       checked: viewMode === 'icons',
       onSelect: () => onChangeViewMode('icons'),
+    },
+    {
+      key: 'view-tiles',
+      label: t.toolbar.viewTiles,
+      icon: <LayoutDashboard className="h-3.5 w-3.5 text-cyan-300" />,
+      shortcut: 'Ctrl+4',
+      checked: viewMode === 'tiles',
+      onSelect: () => onChangeViewMode('tiles'),
     },
   ];
 

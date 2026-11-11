@@ -5,6 +5,7 @@ import {
   Square,
   FolderPlus,
   Info,
+  LayoutDashboard,
   LayoutGrid,
   List,
   StretchHorizontal,
@@ -294,6 +295,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         { id: 'view-details', label: t.toolbar.viewDetails, shortcut: 'Ctrl+1', icon: <List className="h-4 w-4" />, pressed: viewMode === 'details', onSelect: () => onViewModeChange('details') },
         { id: 'view-compact', label: t.toolbar.viewCompact, shortcut: 'Ctrl+2', icon: <StretchHorizontal className="h-4 w-4" />, pressed: viewMode === 'compact', onSelect: () => onViewModeChange('compact') },
         { id: 'view-icons', label: t.toolbar.viewIcons, shortcut: 'Ctrl+3', icon: <LayoutGrid className="h-4 w-4" />, pressed: viewMode === 'icons', onSelect: () => onViewModeChange('icons') },
+        { id: 'view-tiles', label: t.toolbar.viewTiles, shortcut: 'Ctrl+4', icon: <LayoutDashboard className="h-4 w-4" />, pressed: viewMode === 'tiles', onSelect: () => onViewModeChange('tiles') },
         ...(!isCompactWindow ? [
           { id: 'layout-dual-vertical', label: t.header.layoutDualVertical, shortcut: 'Alt+1', icon: <Columns2 className="h-4 w-4" />, pressed: layout === 'dual-vertical', onSelect: () => onLayoutChange('dual-vertical') },
           { id: 'layout-dual-horizontal', label: t.header.layoutDualHorizontal, shortcut: 'Alt+2', icon: <Rows2 className="h-4 w-4" />, pressed: layout === 'dual-horizontal', onSelect: () => onLayoutChange('dual-horizontal') },
@@ -471,6 +473,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                 ['details', t.toolbar.viewDetails, t.toolbar.viewDetails, 'Ctrl+1', <List className="h-4 w-4" />],
                 ['compact', t.toolbar.viewCompact, t.toolbar.viewCompact, 'Ctrl+2', <StretchHorizontal className="h-4 w-4" />],
                 ['icons', t.toolbar.viewIcons, t.toolbar.viewIcons, 'Ctrl+3', <LayoutGrid className="h-4 w-4" />],
+                ['tiles', t.toolbar.viewTiles, t.toolbar.viewTiles, 'Ctrl+4', <LayoutDashboard className="h-4 w-4" />],
               ] as [ViewMode, string, string, string, React.ReactNode][]).map(([mode, label, ariaLabel, shortcut, icon]) => (
                 <CommandBarDropdownItem
                   key={mode}

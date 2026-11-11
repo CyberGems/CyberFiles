@@ -46,7 +46,7 @@ export function folderStyleToCarry(
 function isFolderStylePreference(value: unknown): value is FolderStylePreference {
   if (!value || typeof value !== 'object') return false;
   const style = value as Partial<FolderStylePreference>;
-  return (style.viewMode === 'details' || style.viewMode === 'compact' || style.viewMode === 'icons')
+  return (style.viewMode === 'details' || style.viewMode === 'compact' || style.viewMode === 'icons' || style.viewMode === 'tiles')
     && SORT_FIELDS.includes(style.sortField as SortField)
     && (style.sortOrder === 'asc' || style.sortOrder === 'desc')
     && GROUP_FIELDS.includes(style.groupBy as GroupByField);

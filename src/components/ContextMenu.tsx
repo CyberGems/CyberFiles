@@ -15,6 +15,7 @@ import {
   FolderPlus,
   FolderOpen,
   FilePlus2,
+  LayoutDashboard,
   LayoutGrid,
   List,
   Link2,
@@ -947,6 +948,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             <ViewMenuButton icon={<List className="h-4 w-4" />} label={t.toolbar.viewDetails} selected={viewMode === 'details'} onClick={() => { onViewModeChange('details'); onClose(); }} />
             <ViewMenuButton icon={<StretchHorizontal className="h-4 w-4" />} label={t.toolbar.viewCompact} selected={viewMode === 'compact'} onClick={() => { onViewModeChange('compact'); onClose(); }} />
             <ViewMenuButton icon={<LayoutGrid className="h-4 w-4" />} label={t.toolbar.viewIcons} selected={viewMode === 'icons'} onClick={() => { onViewModeChange('icons'); onClose(); }} />
+            <ViewMenuButton icon={<LayoutDashboard className="h-4 w-4" />} label={t.toolbar.viewTiles} selected={viewMode === 'tiles'} onClick={() => { onViewModeChange('tiles'); onClose(); }} />
           </div>
 
           {canModifyFolder && (
