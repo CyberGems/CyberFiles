@@ -3275,10 +3275,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const isOffline = availableDriveLetters.size > 0 && isPathOnUnavailableDrive(item.path, availableDriveLetters);
     const isCurrentLocation = !isOffline && tab.currentPath.toLowerCase() === item.path.toLowerCase();
     const isSelected = !isOffline && (selectedSystemHomeShortcutId === shortcutId || isCurrentLocation);
+    /* Same shape the default cards feed the rich tooltip and the hover scans,
+       so custom shortcuts get the usual folder details too. */
+    const quickAccessFileItem: FileItem = {
+      id: shortcutId,
+      name: item.name,
+      path: item.path,
+      isFolder: true,
+      type: 'folder',
+      size: 0,
+      modifiedDate: '',
+      extension: '',
+    };
     return (
       <Tooltip
         key={item.id}
-        label={isOffline ? t.sidebar.quickAccessDriveOfflineHint.replace('{path}', item.path) : item.path}
+        label={isOffline ? t.sidebar.quickAccessDriveOfflineHint.replace('{path}', item.path) : renderItemTooltip(quickAccessFileItem)}
         placement="top"
         boundary=".cyberfiles-file-viewport"
       >
@@ -3287,6 +3299,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
           disabled={isOffline}
           onClick={event => handleSystemHomeShortcutClick(event, shortcutId, () => onNavigate(item.path))}
           onDoubleClick={() => handleSystemHomeShortcutDoubleClick(() => onNavigate(item.path))}
+          onMouseEnter={() => { if (!isOffline) handleFolderTooltipMouseEnter(quickAccessFileItem); }}
+          onMouseLeave={() => { if (!isOffline) handleFolderTooltipMouseLeave(quickAccessFileItem); }}
           aria-label={`${item.name}: ${isOffline ? t.sidebar.quickAccessDriveOfflineHint.replace('{path}', item.path) : item.path}`}
           aria-current={isCurrentLocation ? 'location' : undefined}
           style={{ cursor: isOffline ? 'not-allowed' : singleClickOpens ? 'pointer' : 'default' }}
@@ -3605,6 +3619,26 @@ export const FilePane: React.FC<FilePaneProps> = ({
   /* Top strip: tabs are bottom-anchored, so the controls take the same seat with a
      1.5px lift that centers them against the tab bodies; bottom strip centers all. */
   const stripControlAlignment = tabStripPosition === 'bottom' ? 'self-center' : 'self-end mb-[1.5px]';
+  /* After adding a tab the add button jumps sideways; Chromium keeps the stale
+     hover highlight on it until the next mouse move, which reads as a glitch.
+     The hover styling is dropped on click and restored on the next move. */
+  const [addButtonHoverSuppressed, setAddButtonHoverSuppressed] = useState(false);
+  useEffect(() => {
+    if (!addButtonHoverSuppressed) return;
+    const clear = () => setAddButtonHoverSuppressed(false);
+    window.addEventListener('pointermove', clear, { once: true });
+    const timer = window.setTimeout(clear, 600);
+    return () => {
+      window.removeEventListener('pointermove', clear);
+      window.clearTimeout(timer);
+    };
+  }, [addButtonHoverSuppressed]);
+  const addTabFromButton = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onActivate();
+    setAddButtonHoverSuppressed(true);
+    onAddTab('button');
+  };
   const tabStrip = (
       <div
         role="group"
@@ -3648,12 +3682,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <button
               type="button"
               aria-label={t.pane.addTab}
-              onClick={(event) => {
-                event.stopPropagation();
-                onActivate();
-                onAddTab('button');
-              }}
-              className={`${tabStripPosition === 'bottom' ? 'self-center' : 'self-end'} ml-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300`}
+              onClick={addTabFromButton}
+              className={`${tabStripPosition === 'bottom' ? 'self-center' : 'self-end'} ml-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-neutral-400 transition-colors ${addButtonHoverSuppressed ? '' : 'hover:bg-neutral-800 hover:text-cyan-300'}`}
             >
               <Plus className="h-3.5 w-3.5" />
             </button>
@@ -3680,12 +3710,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
               <button
                 type="button"
                 aria-label={t.pane.addTab}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onActivate();
-                  onAddTab('button');
-                }}
-                className={`ml-0.5 inline-flex h-7 w-7 shrink-0 ${stripControlAlignment} items-center justify-center rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300`}
+                onClick={addTabFromButton}
+                className={`ml-0.5 inline-flex h-7 w-7 shrink-0 ${stripControlAlignment} items-center justify-center rounded text-neutral-400 transition-colors ${addButtonHoverSuppressed ? '' : 'hover:bg-neutral-800 hover:text-cyan-300'}`}
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
