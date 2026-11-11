@@ -938,6 +938,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const tabStripHoldFrameRef = useRef<number | null>(null);
   const tabStripHoldTimerRef = useRef<number | null>(null);
   const scrollTabStrip = (direction: -1 | 1) => {
+    stripStartupAlignRef.current = false;
     const el = horizontalTabListRef.current;
     if (!el) return;
     el.scrollBy({ left: direction * Math.max(180, Math.round(el.clientWidth * 0.5)), behavior: 'smooth' });
@@ -967,6 +968,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }, 260);
   };
   useEffect(() => stopTabStripHold, [stopTabStripHold]);
+  /* While this flag is armed the strip keeps pulling the active tab back into
+     view as its width settles (startup, session restore, splitter drag); it
+     clears once the tab is fully visible or when the user scrolls the strip. */
+  const stripStartupAlignRef = useRef(true);
+  const alignActiveTabIntoView = useCallback((instant: boolean) => {
+    const list = horizontalTabListRef.current;
+    const active = list?.querySelector<HTMLElement>('[data-active-folder-tab="true"]');
+    if (!list || !active) return;
+    const listBounds = list.getBoundingClientRect();
+    const activeBounds = active.getBoundingClientRect();
+    if (activeBounds.left < listBounds.left) list.scrollBy({ left: activeBounds.left - listBounds.left, behavior: instant ? 'auto' : 'smooth' });
+    else if (activeBounds.right > listBounds.right) list.scrollBy({ left: activeBounds.right - listBounds.right, behavior: instant ? 'auto' : 'smooth' });
+  }, []);
   const toggleTabsList = () => {
     if (tabsListOpen) {
       setTabsListOpen(false);
@@ -1021,6 +1035,18 @@ export const FilePane: React.FC<FilePaneProps> = ({
         canScrollLeft: el.scrollLeft > 1,
         canScrollRight: overflowing && el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
       });
+      /* Startup settle: keep pulling the active tab into view while the pane
+         width is still finding its final size, then stop once it is in view. */
+      if (stripStartupAlignRef.current && (tabStripPosition === 'top' || tabStripPosition === 'bottom')) {
+        const active = el.querySelector<HTMLElement>('[data-active-folder-tab="true"]');
+        if (active) {
+          const listBounds = el.getBoundingClientRect();
+          const activeBounds = active.getBoundingClientRect();
+          const fullyVisible = activeBounds.left >= listBounds.left - 1 && activeBounds.right <= listBounds.right + 1;
+          if (fullyVisible) stripStartupAlignRef.current = false;
+          else alignActiveTabIntoView(true);
+        }
+      }
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -1030,7 +1056,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       observer.disconnect();
       el.removeEventListener('scroll', measure);
     };
-  }, [tabs, tabStripPosition, tabStripScroll.overflowing]);
+  }, [tabs, tabStripPosition, tabStripScroll.overflowing, alignActiveTabIntoView]);
   /* The caret starts in the search field and the active tab is in view: once per open. */
   useEffect(() => {
     if (!tabsListOpen) return;
@@ -1123,14 +1149,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, [activeTabIndex, tabStripPosition, tabSizePreferences, tabs[activeTabIndex]?.id]);
   useLayoutEffect(() => {
     if (tabStripPosition !== 'top' && tabStripPosition !== 'bottom') return;
-    const list = horizontalTabListRef.current;
-    const active = list?.querySelector<HTMLElement>('[data-active-folder-tab="true"]');
-    if (!list || !active) return;
-    const listBounds = list.getBoundingClientRect();
-    const activeBounds = active.getBoundingClientRect();
-    if (activeBounds.left < listBounds.left) list.scrollBy({ left: activeBounds.left - listBounds.left, behavior: 'smooth' });
-    else if (activeBounds.right > listBounds.right) list.scrollBy({ left: activeBounds.right - listBounds.right, behavior: 'smooth' });
-  }, [activeTabIndex, tabStripPosition, tabSizePreferences, tabs[activeTabIndex]?.id]);
+    /* A new active tab re-arms the startup alignment in case the pane width is
+       still settling around the switch. */
+    stripStartupAlignRef.current = true;
+    alignActiveTabIntoView(false);
+  }, [activeTabIndex, tabStripPosition, tabSizePreferences, tabs[activeTabIndex]?.id, alignActiveTabIntoView]);
 
   const visibleFileColumns = React.useMemo(() => columnLayout.order.filter(column =>
     columnLayout.visible.includes(column) || (editingItemId !== null && column === 'name'),
@@ -3671,6 +3694,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           data-tab-strip-space="true"
           className={`cyberfiles-tab-scroll relative flex h-full min-w-0 flex-1 ${tabStripPosition === 'bottom' ? 'items-center' : 'items-end'} gap-0.5 overflow-x-auto overflow-y-hidden scroll-smooth`}
           onWheel={event => {
+            stripStartupAlignRef.current = false;
             if (event.currentTarget.scrollWidth <= event.currentTarget.clientWidth + 1 || event.deltaY === 0 || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
             event.preventDefault();
             const deltaScale = event.deltaMode === 1 ? 24 : event.deltaMode === 2 ? event.currentTarget.clientWidth : 1;
