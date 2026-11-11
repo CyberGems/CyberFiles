@@ -428,6 +428,7 @@ interface DetailsRowConfig {
   isTauri: boolean;
   autoFolderSizeEnabled: boolean;
   imageTooltipThumbnailsEnabled: boolean;
+  thumbnailsEnabled: boolean;
   flatView: boolean;
   currentPath: string;
   dateFormat: DateFormatMode;
@@ -457,6 +458,7 @@ interface DetailsFileRowProps {
   folderSizeState: FolderSizeState | undefined;
   folderChildCountState: FolderChildCountState | undefined;
   nativeIcon: string | undefined;
+  nativeThumbnail: string | undefined;
   columns: FileColumn[];
   gridTemplateColumns: string;
   rowWidth: string;
@@ -668,6 +670,7 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
   folderSizeState,
   folderChildCountState,
   nativeIcon,
+  nativeThumbnail,
   columns,
   gridTemplateColumns,
   rowWidth,
@@ -687,9 +690,13 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
     : null;
   const fileIcon = item.isFolder && customFolderConfig
     ? <FolderIconRenderer config={customFolderConfig} size="small" />
-    : nativeIcon
-      ? <img src={nativeIcon} alt="" aria-hidden="true" draggable={false} className="h-4 w-4 flex-shrink-0 object-contain" />
-      : fileTypeGlyph(item.type, item.isFolder);
+    : config.thumbnailsEnabled && item.type === 'image' && !SHELL_PREVIEW_IMAGE_EXTENSIONS.has(getFileExtension(item.name))
+      ? <ImageFileThumbnail item={item} fallback={fileTypeGlyph(item.type, item.isFolder)} className="h-7 w-9" fit="cover" />
+      : config.thumbnailsEnabled && isShellThumbnailCandidate(item) && nativeThumbnail
+        ? <img src={nativeThumbnail} alt="" aria-hidden="true" draggable={false} className="h-7 w-9 flex-shrink-0 rounded border border-neutral-700/70 bg-neutral-900/80 object-cover" />
+        : nativeIcon
+          ? <img src={nativeIcon} alt="" aria-hidden="true" draggable={false} className="h-4 w-4 flex-shrink-0 object-contain" />
+          : fileTypeGlyph(item.type, item.isFolder);
 
   return (
     <div
@@ -1531,7 +1538,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const { requests: nativeThumbnailRequests, key: nativeThumbnailRequestKey } = React.useMemo(() => {
     const requests: NativeFileIconRequest[] = [];
     const keyParts: string[] = [];
-    if (thumbnailsEnabled) {
+    // Compact rows never draw thumbnails, so the Shell queue stays parked there; the cached
+    // results come straight back when another view asks for them again.
+    if (thumbnailsEnabled && effectiveViewMode !== 'compact') {
       renderedFiles.forEach(item => {
         if (!isShellThumbnailCandidate(item)) return;
         if (item.isFolder && getCustomFolderIcon(item.path, customFolderIcons ?? {})) return;
@@ -1541,7 +1550,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }
     keyParts.sort();
     return { requests, key: keyParts.join('\u0001') };
-  }, [customFolderIcons, renderedFiles, thumbnailsEnabled]);
+  }, [customFolderIcons, effectiveViewMode, renderedFiles, thumbnailsEnabled]);
   nativeThumbnailRequestsRef.current = nativeThumbnailRequests;
 
   useEffect(() => {
@@ -3154,10 +3163,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
     isTauri: isTauriDesktop(),
     autoFolderSizeEnabled,
     imageTooltipThumbnailsEnabled,
+    thumbnailsEnabled,
     flatView: tab.flatView === true,
     currentPath: tab.currentPath,
     dateFormat,
-  }), [customFolderIcons, recentItemStyle, hiddenItemStyle, showFileExtensions, singleClickOpens, isRecycleBin, isRecentLocation, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, tab.flatView, tab.currentPath, dateFormat]);
+  }), [customFolderIcons, recentItemStyle, hiddenItemStyle, showFileExtensions, singleClickOpens, isRecycleBin, isRecentLocation, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, thumbnailsEnabled, tab.flatView, tab.currentPath, dateFormat]);
 
   /* The marquee is a fixed-position overlay, so it is not clipped by the pane and would otherwise be
      painted on top of the neighbouring pane while the pointer is held over it. A details viewport is
@@ -4900,6 +4910,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   folderSizeState={folderSizeStates[item.id]}
                   folderChildCountState={folderChildCounts[item.id]}
                   nativeIcon={!item.isFolder && nativeFileIconState.scope === nativeFileIconScope ? nativeFileIconState.byItemId[item.id] : undefined}
+                  nativeThumbnail={nativeThumbnailState.scope === nativeThumbnailScope ? nativeThumbnailState.byItemId[item.id] : undefined}
                   columns={visibleFileColumns}
                   gridTemplateColumns={fileGridTemplateColumns}
                   rowWidth={detailsContentWidth}
