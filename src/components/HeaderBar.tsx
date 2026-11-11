@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   List,
+  Scaling,
   StretchHorizontal,
   ListTree,
   LoaderCircle,
@@ -25,7 +26,7 @@ import {
   Pencil,
   ClipboardCopy,
 } from 'lucide-react';
-import { ViewLayout, ViewMode } from '../types';
+import { ViewLayout, ViewMode, type IconZoomLevel } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 import type { WindowsTerminalOption } from '../utils/nativeFileSystem';
@@ -51,6 +52,9 @@ interface HeaderBarProps {
   toolbarLabelPosition: ToolbarLabelPosition;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
+  /* Grid preview zoom, mirroring the Ctrl+wheel shortcut; only offered in the icons view. */
+  iconZoom?: IconZoomLevel;
+  onIconZoomChange?: (zoom: IconZoomLevel) => void;
   relativeGraphsEnabled: boolean;
   onToggleRelativeGraphs: () => void;
   showHiddenFiles: boolean;
@@ -97,6 +101,8 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   toolbarLabelPosition,
   viewMode,
   onViewModeChange,
+  iconZoom,
+  onIconZoomChange,
   relativeGraphsEnabled,
   onToggleRelativeGraphs,
   showHiddenFiles,
@@ -296,6 +302,12 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         { id: 'view-compact', label: t.toolbar.viewCompact, shortcut: 'Ctrl+2', icon: <StretchHorizontal className="h-4 w-4" />, pressed: viewMode === 'compact', onSelect: () => onViewModeChange('compact') },
         { id: 'view-icons', label: t.toolbar.viewIcons, shortcut: 'Ctrl+3', icon: <LayoutGrid className="h-4 w-4" />, pressed: viewMode === 'icons', onSelect: () => onViewModeChange('icons') },
         { id: 'view-tiles', label: t.toolbar.viewTiles, shortcut: 'Ctrl+4', icon: <LayoutDashboard className="h-4 w-4" />, pressed: viewMode === 'tiles', onSelect: () => onViewModeChange('tiles') },
+        ...(viewMode === 'icons' && onIconZoomChange ? [
+          { id: 'zoom-small', label: t.toolbar.iconZoomSmall, icon: <Scaling className="h-4 w-4" />, pressed: (iconZoom ?? 'medium') === 'small', onSelect: () => onIconZoomChange('small') },
+          { id: 'zoom-medium', label: t.toolbar.iconZoomMedium, icon: <Scaling className="h-4 w-4" />, pressed: (iconZoom ?? 'medium') === 'medium', onSelect: () => onIconZoomChange('medium') },
+          { id: 'zoom-large', label: t.toolbar.iconZoomLarge, icon: <Scaling className="h-4 w-4" />, pressed: (iconZoom ?? 'medium') === 'large', onSelect: () => onIconZoomChange('large') },
+          { id: 'zoom-xlarge', label: t.toolbar.iconZoomXlarge, icon: <Scaling className="h-4 w-4" />, pressed: (iconZoom ?? 'medium') === 'xlarge', onSelect: () => onIconZoomChange('xlarge') },
+        ] : []),
         ...(!isCompactWindow ? [
           { id: 'layout-dual-vertical', label: t.header.layoutDualVertical, shortcut: 'Alt+1', icon: <Columns2 className="h-4 w-4" />, pressed: layout === 'dual-vertical', onSelect: () => onLayoutChange('dual-vertical') },
           { id: 'layout-dual-horizontal', label: t.header.layoutDualHorizontal, shortcut: 'Alt+2', icon: <Rows2 className="h-4 w-4" />, pressed: layout === 'dual-horizontal', onSelect: () => onLayoutChange('dual-horizontal') },
@@ -484,6 +496,20 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                   onSelect={() => { setOpenToolbarMenu(null); onViewModeChange(mode); }}
                 />
               ))}
+              {viewMode === 'icons' && onIconZoomChange && (
+                <>
+                  <CommandBarDropdownHeading label={t.toolbar.iconSize} />
+                  {([['small', t.toolbar.iconZoomSmall], ['medium', t.toolbar.iconZoomMedium], ['large', t.toolbar.iconZoomLarge], ['xlarge', t.toolbar.iconZoomXlarge]] as [IconZoomLevel, string][]).map(([zoom, label]) => (
+                    <CommandBarDropdownItem
+                      key={zoom}
+                      label={label}
+                      icon={<Scaling className="h-4 w-4" />}
+                      checked={(iconZoom ?? 'medium') === zoom}
+                      onSelect={() => { setOpenToolbarMenu(null); onIconZoomChange(zoom); }}
+                    />
+                  ))}
+                </>
+              )}
               {!isCompactWindow && (
                 <>
                   <CommandBarDropdownHeading label={t.header.layoutModes} />

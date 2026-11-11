@@ -6598,6 +6598,8 @@ export default function App() {
         workspaceChangesPending={layoutDirty || sessionDirty}
         viewMode={currentTab.viewMode}
         onViewModeChange={handleViewModeChange}
+        iconZoom={currentTab.folderStyle?.iconZoom}
+        onIconZoomChange={handleIconZoomChange}
         relativeGraphsEnabled={relativeGraphsEnabled}
         onToggleRelativeGraphs={() => setRelativeGraphsEnabled(enabled => !enabled)}
         showHiddenFiles={showHiddenFiles}
