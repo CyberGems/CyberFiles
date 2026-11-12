@@ -126,7 +126,7 @@ import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expand
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { normalizeListerTextScale, type ListerTextScale } from './utils/listerTextScale';
 import { fetchLaunchContext, getLaunchTargetPath } from './utils/systemIntegration';
-import { clearRecoverySnapshot, compareSnapshots, hasBootSessionMarker, markBootSession, readRecoverySnapshot, writeRecoverySnapshot, type RecoverySnapshot } from './utils/recoverySnapshot';
+import { clearRecoverySnapshot, claimWebviewBoot, compareSnapshots, readRecoverySnapshot, writeRecoverySnapshot, type RecoverySnapshot } from './utils/recoverySnapshot';
 import { recentFileActions, recordRecentEntry, removeRecentEntry, renameRecentEntries, toRecentFileItem, type RecentEntry } from './utils/recentFiles';
 import { AUTO_CHECK_INTERVAL_MS, checkForUpdate, getAutoCheckUpdates, getNotifiedVersion, isSkippedVersion, setNotifiedVersion, setSkippedVersion, type AvailableUpdate } from './utils/updates';
 
@@ -2020,15 +2020,15 @@ export default function App() {
   /* Crash recovery. The live session snapshot is written to an atomically updated file every
      1.5 seconds, so a forced close or a power cut loses at most that window of work. A clean
      quit deletes the file inside quit_app; finding it at boot means the previous run died.
-     sessionStorage survives a reload but not a process kill, which is what keeps F5 from
-     raising the recovery dialog. */
+     The boot claim lives in Rust (process-lifetime flag) because sessionStorage is backed to
+     disk by WebView2 and could survive the very kill this dialog exists for. */
   const [pendingRecovery, setPendingRecovery] = useState<RecoverySnapshot | null>(null);
 
   useEffect(() => {
-    if (hasBootSessionMarker()) return;
-    markBootSession();
     let cancelled = false;
     void (async () => {
+      const isFreshProcess = await claimWebviewBoot();
+      if (cancelled || !isFreshProcess) return;
       const recovered = await readRecoverySnapshot();
       if (cancelled) return;
       if (!recovered || compareSnapshots(recovered, initialSessionSnapshot).identical) {

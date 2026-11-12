@@ -433,6 +433,18 @@ fn startup_instance_preferences_path() -> Result<PathBuf, String> {
 
 const RECOVERY_SNAPSHOT_FILE: &str = "cyberfiles-recovery.json";
 
+/// Set by the first webview boot of this process. sessionStorage would be the natural place
+/// for this distinction, but WebView2 backs it to disk, so it can survive an unclean kill and
+/// would silence the recovery dialog after a crash. A process-lifetime flag cannot lie.
+static WEBVIEW_BOOT_CLAIMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Claims the webview boot for this process run: true on the first call (fresh process), false
+/// afterwards (a reload inside the same process).
+#[tauri::command]
+fn claim_webview_boot() -> bool {
+    !WEBVIEW_BOOT_CLAIMED.swap(true, std::sync::atomic::Ordering::SeqCst)
+}
+
 /// Writes a file atomically: the payload lands in a sibling `.tmp` file and is renamed over
 /// the destination, so a power cut can never leave a half-written recovery snapshot in place.
 fn atomic_write_file(path: &Path, contents: &[u8]) -> Result<(), String> {
@@ -8129,6 +8141,7 @@ fn main() {
             write_recovery_snapshot,
             read_recovery_snapshot,
             clear_recovery_snapshot,
+            claim_webview_boot,
             get_launch_context,
             get_autostart_status,
             set_autostart,

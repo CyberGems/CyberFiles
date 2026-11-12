@@ -4,8 +4,11 @@ import type { SavedTabState, TabSessionSnapshot } from './workspaceProfiles';
 /* Crash recovery keeps a continuously updated snapshot of the open tabs in a file written
    atomically by the Rust side. A clean quit deletes it, so finding the file at boot means the
    previous run died without saving, and the recovery modal can offer exactly what was in
-   flight compared against the session that would boot normally. */
+   flight compared against the session that would boot normally.
 
+   Known limitation: with multiple instances allowed (opt-in setting) the file is shared and
+   the last writer wins, so recovery offers whichever instance wrote last. Browser (non-Tauri)
+   mode has no recovery at all. */
 export interface RecoveryTab extends SavedTabState {
   filterQuery?: string;
 }
@@ -19,26 +22,16 @@ export interface RecoverySnapshot {
   rightTabs: RecoveryTab[];
 }
 
-const BOOT_SESSION_MARKER_KEY = 'cyberfiles_boot_session_v1';
-
-/// sessionStorage survives a webview reload but dies with the process, so its presence
-/// distinguishes a reload (F5, error-boundary retry) from a real fresh boot.
-export function hasBootSessionMarker(): boolean {
+/// Claims the webview boot for this process run: true on the first call (fresh process), false
+/// afterwards (a reload inside the same process). The flag lives in Rust because sessionStorage
+/// would be the natural home, but WebView2 backs it to disk and it can survive an unclean kill,
+/// which silences the recovery dialog exactly when it matters.
+export async function claimWebviewBoot(): Promise<boolean> {
+  if (!isTauriDesktop()) return true;
   try {
-    return window.sessionStorage.getItem(BOOT_SESSION_MARKER_KEY) === 'true';
+    return await invoke<boolean>('claim_webview_boot');
   } catch {
-    // Without sessionStorage we cannot tell a reload from a fresh boot; staying quiet
-    // avoids nagging the user with a recovery dialog after every reload.
     return true;
-  }
-}
-
-export function markBootSession(): void {
-  try {
-    window.sessionStorage.setItem(BOOT_SESSION_MARKER_KEY, 'true');
-  } catch {
-    // Storage unavailable: reload detection degrades and the modal may reappear after a
-    // reload, which still shows accurate data.
   }
 }
 
