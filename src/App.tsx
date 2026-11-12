@@ -113,6 +113,7 @@ import {
   type LayoutProfile,
   type LayoutSnapshot,
   type PaneColumnsSnapshot,
+  type SavedTabState,
   type StartupBehavior,
   type TabStripPosition,
   type TabSessionProfile,
@@ -125,6 +126,7 @@ import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expand
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { normalizeListerTextScale, type ListerTextScale } from './utils/listerTextScale';
 import { fetchLaunchContext, getLaunchTargetPath } from './utils/systemIntegration';
+import { clearRecoverySnapshot, compareSnapshots, hasBootSessionMarker, markBootSession, readRecoverySnapshot, writeRecoverySnapshot, type RecoverySnapshot } from './utils/recoverySnapshot';
 import { recentFileActions, recordRecentEntry, removeRecentEntry, renameRecentEntries, toRecentFileItem, type RecentEntry } from './utils/recentFiles';
 import { AUTO_CHECK_INTERVAL_MS, checkForUpdate, getAutoCheckUpdates, getNotifiedVersion, isSkippedVersion, setNotifiedVersion, setSkippedVersion, type AvailableUpdate } from './utils/updates';
 
@@ -138,6 +140,7 @@ const ConfirmActionModal = lazyWithRetry(() => import('./components/ConfirmActio
 const CloseWindowModal = lazyWithRetry(() => import('./components/CloseWindowModal').then(module => ({ default: module.CloseWindowModal })));
 const SettingsModal = lazyWithRetry(() => import('./components/SettingsModal').then(module => ({ default: module.SettingsModal })));
 const OnboardingWelcome = lazyWithRetry(() => import('./components/OnboardingWelcome').then(module => ({ default: module.OnboardingWelcome })));
+const RecoveryModal = lazyWithRetry(() => import('./components/RecoveryModal').then(module => ({ default: module.RecoveryModal })));
 const FilePane = lazyWithRetry(() => import('./components/FilePane').then(module => ({ default: module.FilePane })));
 const ONBOARDING_STORAGE_KEY = 'cyberfiles_onboarding_complete';
 const CLOSE_BEHAVIOR_STORAGE_KEY = 'cyberfiles_close_behavior';
@@ -2013,6 +2016,68 @@ export default function App() {
 
   requestQuitWithUnsavedChangesRef.current = remember => requestWorkspaceAction({ type: 'quit', remember });
   requestCloseDialogGateRef.current = () => requestWorkspaceAction({ type: 'close' });
+
+  /* Crash recovery. The live session snapshot is written to an atomically updated file every
+     1.5 seconds, so a forced close or a power cut loses at most that window of work. A clean
+     quit deletes the file inside quit_app; finding it at boot means the previous run died.
+     sessionStorage survives a reload but not a process kill, which is what keeps F5 from
+     raising the recovery dialog. */
+  const [pendingRecovery, setPendingRecovery] = useState<RecoverySnapshot | null>(null);
+
+  useEffect(() => {
+    if (hasBootSessionMarker()) return;
+    markBootSession();
+    let cancelled = false;
+    void (async () => {
+      const recovered = await readRecoverySnapshot();
+      if (cancelled) return;
+      if (!recovered || compareSnapshots(recovered, initialSessionSnapshot).identical) {
+        void clearRecoverySnapshot();
+        return;
+      }
+      setPendingRecovery(recovered);
+    })();
+    return () => { cancelled = true; };
+    // Boot-only check: the baseline is the snapshot the first render would restore.
+  }, []);
+
+  useEffect(() => {
+    // While the recovery dialog is pending, the crashed snapshot stays untouched on disk:
+    // overwriting it with the boot state would erase what the user is being asked to save.
+    if (pendingRecovery) return;
+    const timer = window.setTimeout(() => {
+      const withFilters = (tabs: TabState[], saved: SavedTabState[]) => saved.map((savedTab, index) => ({
+        ...savedTab,
+        filterQuery: tabs[index]?.filterQuery || undefined,
+      }));
+      void writeRecoverySnapshot({
+        savedAt: Date.now(),
+        activePane,
+        activeLeftTabIndex,
+        activeRightTabIndex,
+        leftTabs: withFilters(leftTabs, currentSessionSnapshot.leftTabs),
+        rightTabs: withFilters(rightTabs, currentSessionSnapshot.rightTabs),
+      });
+    }, 1500);
+    return () => window.clearTimeout(timer);
+    // The key encodes every field the snapshot carries; the closure matches it.
+  }, [JSON.stringify(currentSessionSnapshot), pendingRecovery]);
+
+  const handleRecoveryRecover = useCallback(() => {
+    const recovered = pendingRecovery;
+    setPendingRecovery(null);
+    void clearRecoverySnapshot();
+    if (!recovered) return;
+    applySessionSnapshot(recovered);
+    // restoreSessionTabs resets filters; the recovered ones go back per tab (index-aligned).
+    setLeftTabs(previous => previous.map((tab, index) => ({ ...tab, filterQuery: recovered.leftTabs[index]?.filterQuery ?? '' })));
+    setRightTabs(previous => previous.map((tab, index) => ({ ...tab, filterQuery: recovered.rightTabs[index]?.filterQuery ?? '' })));
+  }, [pendingRecovery, applySessionSnapshot]);
+
+  const handleRecoveryDiscard = useCallback(() => {
+    setPendingRecovery(null);
+    void clearRecoverySnapshot();
+  }, []);
 
   const pendingLayoutChanged = Boolean(pendingWorkspaceAction && (pendingWorkspaceAction.type === 'quit' || pendingWorkspaceAction.type === 'close' || pendingWorkspaceAction.type === 'workspace' || pendingWorkspaceAction.type === 'layout') && layoutDirty);
   const pendingSessionChanged = Boolean(pendingWorkspaceAction && (pendingWorkspaceAction.type === 'quit' || pendingWorkspaceAction.type === 'close' || pendingWorkspaceAction.type === 'workspace' || pendingWorkspaceAction.type === 'session') && sessionDirty);
@@ -7452,6 +7517,18 @@ export default function App() {
           setPendingWorkspaceAction(null);
         }}
       />
+
+      {pendingRecovery && (
+        <Suspense fallback={null}>
+          <RecoveryModal
+            isOpen={pendingRecovery !== null}
+            recovered={pendingRecovery}
+            baseline={initialSessionSnapshot}
+            onRecover={handleRecoveryRecover}
+            onDiscard={handleRecoveryDiscard}
+          />
+        </Suspense>
+      )}
 
       {/* Batch Rename Modal */}
       {shouldMountBatchRenameModal && (

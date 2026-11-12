@@ -293,6 +293,11 @@ fn quit_app(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<(), S
     if let Ok(path) = window_state_path(&app) {
         let _ = save_window_state(&window, &path);
     }
+    // A graceful quit means the recovery snapshot no longer applies: every exit path goes
+    // through here, including the tray menu, so nothing can leave a stale file behind.
+    if let Ok(path) = recovery_snapshot_path() {
+        let _ = fs::remove_file(&path);
+    }
     app.exit(0);
     Ok(())
 }
@@ -424,6 +429,55 @@ impl Drop for SingleInstanceGuard {
 
 fn startup_instance_preferences_path() -> Result<PathBuf, String> {
     resolve_app_config_directory().map(|directory| directory.join(INSTANCE_PREFERENCES_FILE))
+}
+
+const RECOVERY_SNAPSHOT_FILE: &str = "cyberfiles-recovery.json";
+
+/// Writes a file atomically: the payload lands in a sibling `.tmp` file and is renamed over
+/// the destination, so a power cut can never leave a half-written recovery snapshot in place.
+fn atomic_write_file(path: &Path, contents: &[u8]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "The target file has no parent directory".to_string())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| "The target file has no file name".to_string())?
+        .to_string_lossy();
+    let temp_path = parent.join(format!("{file_name}.tmp"));
+    fs::write(&temp_path, contents).map_err(|error| error.to_string())?;
+    fs::rename(&temp_path, path).map_err(|error| {
+        let _ = fs::remove_file(&temp_path);
+        error.to_string()
+    })
+}
+
+fn recovery_snapshot_path() -> Result<PathBuf, String> {
+    resolve_app_config_directory().map(|directory| directory.join(RECOVERY_SNAPSHOT_FILE))
+}
+
+#[tauri::command]
+fn write_recovery_snapshot(data: String) -> Result<(), String> {
+    if serde_json::from_str::<serde_json::Value>(&data).is_err() {
+        return Err("The recovery snapshot payload is not valid JSON.".to_string());
+    }
+    atomic_write_file(&recovery_snapshot_path()?, data.as_bytes())
+}
+
+#[tauri::command]
+fn read_recovery_snapshot() -> Option<String> {
+    fs::read_to_string(recovery_snapshot_path().ok()?).ok()
+}
+
+#[tauri::command]
+fn clear_recovery_snapshot() -> Result<(), String> {
+    let path = recovery_snapshot_path()?;
+    match fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        // A missing file is already the state the caller asked for.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -8072,6 +8126,9 @@ fn main() {
             set_global_shortcut_settings,
             get_instance_preferences,
             set_instance_preferences,
+            write_recovery_snapshot,
+            read_recovery_snapshot,
+            clear_recovery_snapshot,
             get_launch_context,
             get_autostart_status,
             set_autostart,
