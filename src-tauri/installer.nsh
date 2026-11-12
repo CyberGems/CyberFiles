@@ -27,11 +27,15 @@
     DeleteRegKey /ifempty HKLM "${MANUPRODUCTKEY}"
     DeleteRegKey /ifempty HKCU "${MANUPRODUCTKEY}"
     ; The Explorer menu entry is an app registration, not user data, so a
-    ; plain uninstall always removes it (the autostart Run entry is already
-    ; cleared by the template above). Updates keep everything, matching the
+    ; plain uninstall always removes it. The autostart Run entry points at the
+    ; executable being removed, so it is cleared here too: making the deletion
+    ; explicit keeps the uninstall correct no matter what the NSIS template's
+    ; own cleanup happens to cover. Updates keep everything, matching the
     ; template's own app-data guard.
     DeleteRegKey HKCU "Software\Classes\Directory\shell\OpenInCyberFiles"
     DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\OpenInCyberFiles"
+    ; Matches AUTOSTART_RUN_VALUE in src-tauri/src/main.rs ("CyberFiles").
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "CyberFiles"
   ${EndIf}
 !macroend
 
