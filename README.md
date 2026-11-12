@@ -38,7 +38,8 @@
 - [🖼️ Screenshots](#️-screenshots)
 - [🗂️ Why CyberFiles?](#️-why-cyberfiles)
 - [✨ Key Features](#-key-features)
-- [🚀 Getting Started](#-getting-started)
+- [🚀 Installation](#-installation)
+- [🧭 Using the App](#-using-the-app)
 - [🛠️ Tech Stack & Architecture](#️-tech-stack--architecture)
 - [⌨️ Keyboard Shortcuts](#️-keyboard-shortcuts)
 - [🧪 Project status](#-project-status)
@@ -178,7 +179,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Installation
 
 ### Install
 
@@ -220,6 +221,20 @@ Windows shows this warning for any installer without a paid code-signing certifi
 You can verify the file independently: compare the SHA with the GitHub release, scan it on VirusTotal, or build from source. More details: [SmartScreen guide on the website](https://cybergems.org/download#smartscreen).
 
 </details>
+
+---
+
+## 🧭 Using the App
+
+CyberFiles opens on **This PC**, showing drives and common Windows folders instead of asking you to pick a folder.
+
+1. Select a drive or folder to start browsing; the sidebar holds locations, not files.
+2. Use `Tab` to switch between panes and `F5` to copy the selection to the opposite one.
+3. Press `F1` for the full shortcut cheat sheet, or `Ctrl+L` to hide the locations panel.
+
+Layout choices are saved on this device and large folders load progressively as you scroll. Opening a sidebar location in a new tab is enabled by default and can be changed in **Settings**.
+
+See [How Do You Use CyberFiles?](https://github.com/CyberGems/CyberFiles/wiki/How-Do-You-Use) for everyday examples and the full guides.
 
 ---
 

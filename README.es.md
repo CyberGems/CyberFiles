@@ -38,7 +38,8 @@
 - [🖼️ Capturas](#️-capturas)
 - [🗂️ ¿Por qué CyberFiles?](#️-por-qué-cyberfiles)
 - [✨ Funciones principales](#-funciones-principales)
-- [🚀 Primeros pasos](#-primeros-pasos)
+- [🚀 Instalación](#-instalación)
+- [🧭 Cómo usar la app](#-cómo-usar-la-app)
 - [🛠️ Tecnologías y arquitectura](#️-tecnologías-y-arquitectura)
 - [⌨️ Atajos de teclado](#️-atajos-de-teclado)
 - [🧪 Estado del proyecto](#-estado-del-proyecto)
@@ -176,9 +177,9 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 
 ---
 
-## 🚀 Primeros pasos
+## 🚀 Instalación
 
-### Instalación
+### Instalar
 
 1. Descarga la [última versión](https://github.com/CyberGems/CyberFiles/releases/latest)
 2. Ejecuta el instalador NSIS, o extrae el ZIP portable y abre `CyberFiles.exe`
@@ -218,6 +219,20 @@ Windows muestra este aviso con cualquier instalador sin un certificado de firma 
 Puedes verificar el archivo de forma independiente: compara el SHA con el de la versión en GitHub, analízalo en VirusTotal o compílalo desde el código fuente. Más detalles: [guía de SmartScreen en el sitio web](https://cybergems.org/download#smartscreen).
 
 </details>
+
+---
+
+## 🧭 Cómo usar la app
+
+CyberFiles se abre en **Este equipo**, mostrando unidades y carpetas habituales de Windows en lugar de pedirte que elijas una carpeta.
+
+1. Selecciona una unidad o carpeta para empezar a navegar; la barra lateral contiene ubicaciones, no archivos.
+2. Usa `Tab` para cambiar entre paneles y `F5` para copiar la selección al panel opuesto.
+3. Pulsa `F1` para ver la hoja de atajos completa o `Ctrl+L` para ocultar el panel de ubicaciones.
+
+Las preferencias de diseño se guardan en este equipo y las carpetas grandes se cargan progresivamente al desplazarte. Abrir una ubicación de la barra lateral en una pestaña nueva está activado por defecto y se puede cambiar en **Configuración**.
+
+Consulta [¿Cómo se usa CyberFiles?](https://github.com/CyberGems/CyberFiles/wiki/How-Do-You-Use) para ver ejemplos cotidianos y las guías completas de la wiki (en inglés).
 
 ---
 
