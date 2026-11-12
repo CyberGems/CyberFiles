@@ -38,13 +38,10 @@
 - [🖼️ Capturas](#️-capturas)
 - [🗂️ ¿Por qué CyberFiles?](#️-por-qué-cyberfiles)
 - [✨ Funciones principales](#-funciones-principales)
-- [🚀 Instalación](#-instalación)
+- [⬇️ Instalación](#️-instalación)
 - [🧭 Cómo usar la app](#-cómo-usar-la-app)
-- [🛠️ Tecnologías y arquitectura](#️-tecnologías-y-arquitectura)
+- [🛠️ Stack tecnológico y arquitectura](#️-stack-tecnológico-y-arquitectura)
 - [⌨️ Atajos de teclado](#️-atajos-de-teclado)
-- [🧪 Estado del proyecto](#-estado-del-proyecto)
-- [🤝 Contribuir](#-contribuir)
-- [🙏 Agradecimientos](#-agradecimientos)
 - [❤️ Donar](#️-donar)
 - [📄 Licencia](#-licencia)
 - [❓ Preguntas frecuentes](#-preguntas-frecuentes)
@@ -177,7 +174,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 
 ---
 
-## 🚀 Instalación
+## ⬇️ Instalación
 
 ### Instalar
 
@@ -236,7 +233,7 @@ Consulta [¿Cómo se usa CyberFiles?](https://github.com/CyberGems/CyberFiles/wi
 
 ---
 
-## 🛠️ Tecnologías y arquitectura
+## 🛠️ Stack tecnológico y arquitectura
 
 - **Plataforma:** Windows 10 y 11 (x64)
 - **Shell de escritorio:** Tauri 2 con Rust
@@ -321,6 +318,27 @@ Las copias instaladas verifican cada actualización con una clave minisign. La c
 
 Cada versión escribe además `latest.json` (versión, notas, URL del instalador y firma) y lo publica en la rama `updater`. La app lee esa rama en lugar de `releases/latest/download/latest.json`, porque todas las versiones 0.x se marcan como pre-release y el endpoint `latest` de GitHub las ignora.
 
+### 🧪 Estado del proyecto
+
+CyberFiles es una versión preliminar temprana centrada en Windows. La versión actual valida el instalador empaquetado, la edición portable y los flujos ampliados de gestión de archivos. Otras plataformas de escritorio no se han validado.
+
+Dos limitaciones actuales son intencionadas y están documentadas:
+
+- **Las ubicaciones de red no se pueden usar como destino de borrado.** El borrado a la Papelera acepta solo rutas locales canónicas en unidades fijas o extraíbles; las rutas UNC, las unidades de red asignadas, los medios ópticos y las raíces del sistema de archivos se rechazan con un error por elemento. Usa el Explorador de Windows para borrar en red.
+- **Vaciar la Papelera sigue el comportamiento de Windows.** Pasa una ruta nula al Shell, que vacía las Papeleras de todas las unidades, así que su alcance puede ser mayor que el del indicador de estado. Es permanente y no se puede deshacer.
+
+Consulta [Operaciones de archivos y seguridad](https://github.com/CyberGems/CyberFiles/wiki/File-Operations-and-Safety) para la lista completa de comportamientos.
+
+### 🤝 Contribuir
+
+Las contribuciones son bienvenidas. Abre un issue describiendo el cambio antes de empezar un trabajo grande y envía pull requests contra la rama principal. Mantén los textos visibles para el usuario disponibles en inglés y en español.
+
+### 🙏 Agradecimientos
+
+CyberFiles se apoya en componentes de código abierto como [Tauri](https://tauri.app/), [React](https://react.dev/), [Vite](https://vite.dev/), [Tailwind CSS](https://tailwindcss.com/), [Lucide](https://lucide.dev/), el crate [`zip`](https://crates.io/crates/zip) y [`unrar-rs`](https://crates.io/crates/unrar-rs), gracias a sus autores y mantenedores.
+
+La compatibilidad con RAR incluye código fuente de UnRAR. Sus términos de licencia se reproducen en [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ---
 
 ## ⌨️ Atajos de teclado
@@ -354,31 +372,6 @@ Cada versión escribe además `latest.json` (versión, notas, URL del instalador
 | `Alt+Shift+F` | Mostrar u ocultar CyberFiles (global, configurable) |
 
 Con la lista de archivos enfocada, escribir letras rellena el filtro de forma predeterminada, o salta a un nombre coincidente si desactivas esa opción en Configuración › Navegación; en el modo de salto, repetir la letra recorre las coincidencias. Con el orden manual del Acceso rápido, Alt+Arriba y Alt+Abajo mueven el acceso enfocado. Los menús contextuales y de pestañas se navegan por completo con el teclado: las flechas mueven entre elementos y bandas, Enter o Espacio activan el elemento enfocado y los submenús se abren como ventanas ancladas junto a su origen. En las vistas Cuadrícula y Mosaicos, mantener Ctrl mientras giras la rueda del ratón recorre las celdas de vista previa por los mismos cuatro tamaños que los atajos Ctrl+= y Ctrl+- , incluidos los gestos de pellizco en touchpads de precisión.
-
----
-
-## 🧪 Estado del proyecto
-
-CyberFiles es una versión preliminar temprana centrada en Windows. La versión actual valida el instalador empaquetado, la edición portable y los flujos ampliados de gestión de archivos. Otras plataformas de escritorio no se han validado.
-
-Dos limitaciones actuales son intencionadas y están documentadas:
-
-- **Las ubicaciones de red no se pueden usar como destino de borrado.** El borrado a la Papelera acepta solo rutas locales canónicas en unidades fijas o extraíbles; las rutas UNC, las unidades de red asignadas, los medios ópticos y las raíces del sistema de archivos se rechazan con un error por elemento. Usa el Explorador de Windows para borrar en red.
-- **Vaciar la Papelera sigue el comportamiento de Windows.** Pasa una ruta nula al Shell, que vacía las Papeleras de todas las unidades, así que su alcance puede ser mayor que el del indicador de estado. Es permanente y no se puede deshacer.
-
-Consulta [Operaciones de archivos y seguridad](https://github.com/CyberGems/CyberFiles/wiki/File-Operations-and-Safety) para la lista completa de comportamientos.
-
----
-
-## 🤝 Contribuir
-
-Las contribuciones son bienvenidas. Abre un issue describiendo el cambio antes de empezar un trabajo grande y envía pull requests contra la rama principal. Mantén los textos visibles para el usuario disponibles en inglés y en español.
-
-## 🙏 Agradecimientos
-
-CyberFiles se apoya en componentes de código abierto como [Tauri](https://tauri.app/), [React](https://react.dev/), [Vite](https://vite.dev/), [Tailwind CSS](https://tailwindcss.com/), [Lucide](https://lucide.dev/), el crate [`zip`](https://crates.io/crates/zip) y [`unrar-rs`](https://crates.io/crates/unrar-rs), gracias a sus autores y mantenedores.
-
-La compatibilidad con RAR incluye código fuente de UnRAR. Sus términos de licencia se reproducen en [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 

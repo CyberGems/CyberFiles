@@ -38,13 +38,10 @@
 - [🖼️ Screenshots](#️-screenshots)
 - [🗂️ Why CyberFiles?](#️-why-cyberfiles)
 - [✨ Key Features](#-key-features)
-- [🚀 Installation](#-installation)
+- [⬇️ Installation](#️-installation)
 - [🧭 Using the App](#-using-the-app)
 - [🛠️ Tech Stack & Architecture](#️-tech-stack--architecture)
 - [⌨️ Keyboard Shortcuts](#️-keyboard-shortcuts)
-- [🧪 Project status](#-project-status)
-- [🤝 Contributing](#-contributing)
-- [🙏 Acknowledgments](#-acknowledgments)
 - [❤️ Donate](#️-donate)
 - [📄 License](#-license)
 - [❓ FAQ](#-faq)
@@ -179,7 +176,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 
 ---
 
-## 🚀 Installation
+## ⬇️ Installation
 
 ### Install
 
@@ -323,6 +320,27 @@ Installed builds verify every update against a minisign key. The public key live
 
 Each release also writes `latest.json` (version, notes, installer URL and signature) and publishes it to the `updater` branch. The app reads that branch instead of `releases/latest/download/latest.json`, because every 0.x release is marked as a pre-release and GitHub's `latest` endpoint skips those.
 
+### 🧪 Project status
+
+CyberFiles is an early Windows-first prerelease. The current release validates the packaged installer, the portable edition and the expanded file-management workflows. Other desktop platforms have not been validated.
+
+Two current limitations are intentional and documented:
+
+- **Network locations cannot be used as a delete target.** Recycle Bin deletion accepts only canonical local fixed and removable drives; UNC paths, mapped network drives, optical media and filesystem roots are rejected with a per-item error. Use Windows Explorer for network deletion.
+- **Empty Recycle Bin follows Windows behavior.** It passes a null path to the Shell, which empties the Recycle Bins of all drives, so its scope can be wider than the status indicator. It is permanent and cannot be undone.
+
+See [File Operations and Safety](https://github.com/CyberGems/CyberFiles/wiki/File-Operations-and-Safety) for the full list of behaviors.
+
+### 🤝 Contributing
+
+Contributions are welcome. Please open an issue describing the change before starting large work, and submit pull requests against the main branch. Keep user-facing text available in both English and Spanish.
+
+### 🙏 Acknowledgments
+
+CyberFiles builds on open-source components including [Tauri](https://tauri.app/), [React](https://react.dev/), [Vite](https://vite.dev/), [Tailwind CSS](https://tailwindcss.com/), [Lucide](https://lucide.dev/), the [`zip`](https://crates.io/crates/zip) crate, and [`unrar-rs`](https://crates.io/crates/unrar-rs), thanks to their authors and maintainers.
+
+The RAR support includes UnRAR source code. Its license terms are reproduced in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ---
 
 ## ⌨️ Keyboard Shortcuts
@@ -356,31 +374,6 @@ Each release also writes `latest.json` (version, notes, installer URL and signat
 | `Alt+Shift+F` | Show or hide CyberFiles (global, configurable) |
 
 With the file list focused, typing letters fills the filter by default, or jumps to a matching name when that option is turned off in Settings › Navigation; in the jump mode, repeating the letter cycles through matches. In Manual Quick Access ordering, Alt+Up and Alt+Down move the focused shortcut. Context menus and tab menus are fully keyboard navigable: arrow keys move between items and bands, Enter or Space activates the focused item, and submenus open as anchored flyouts next to their trigger. In the Grid and Tiles views, holding Ctrl while spinning the mouse wheel steps the preview cells through the same four sizes as the Ctrl+= and Ctrl+- shortcuts, including pinch gestures on precision touchpads.
-
----
-
-## 🧪 Project status
-
-CyberFiles is an early Windows-first prerelease. The current release validates the packaged installer, the portable edition and the expanded file-management workflows. Other desktop platforms have not been validated.
-
-Two current limitations are intentional and documented:
-
-- **Network locations cannot be used as a delete target.** Recycle Bin deletion accepts only canonical local fixed and removable drives; UNC paths, mapped network drives, optical media and filesystem roots are rejected with a per-item error. Use Windows Explorer for network deletion.
-- **Empty Recycle Bin follows Windows behavior.** It passes a null path to the Shell, which empties the Recycle Bins of all drives, so its scope can be wider than the status indicator. It is permanent and cannot be undone.
-
-See [File Operations and Safety](https://github.com/CyberGems/CyberFiles/wiki/File-Operations-and-Safety) for the full list of behaviors.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome. Please open an issue describing the change before starting large work, and submit pull requests against the main branch. Keep user-facing text available in both English and Spanish.
-
-## 🙏 Acknowledgments
-
-CyberFiles builds on open-source components including [Tauri](https://tauri.app/), [React](https://react.dev/), [Vite](https://vite.dev/), [Tailwind CSS](https://tailwindcss.com/), [Lucide](https://lucide.dev/), the [`zip`](https://crates.io/crates/zip) crate, and [`unrar-rs`](https://crates.io/crates/unrar-rs), thanks to their authors and maintainers.
-
-The RAR support includes UnRAR source code. Its license terms are reproduced in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ---
 
