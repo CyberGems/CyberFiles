@@ -377,29 +377,6 @@ function ImageFileThumbnail({
   );
 }
 
-/* Shell previews arrive in batches from the pane (byItemId), so this component only picks the
-   right rendering: the thumbnail while one exists, the boxed fallback glyph while it loads or
-   when the Shell has no provider for the type. */
-function ShellItemThumbnail({
-  item,
-  thumbnail,
-  fallback,
-  className = 'h-20 w-full',
-}: {
-  item: FileItem;
-  thumbnail: string | undefined;
-  fallback: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <div className={`flex ${className} items-center justify-center overflow-hidden rounded-md border border-neutral-700/70 bg-neutral-900/80`}>
-      {thumbnail
-        ? <img src={thumbnail} alt={item.name} loading="lazy" decoding="async" className="h-full w-full object-cover" />
-        : <div className="scale-150">{fallback}</div>}
-    </div>
-  );
-}
-
 /* Image formats the bundled decoder cannot read but Windows usually has a thumbnail provider
    for; they go to the Shell pipeline instead of the local image decoder. */
 const SHELL_PREVIEW_IMAGE_EXTENSIONS = new Set(['avif', 'heic', 'heif']);
@@ -5060,20 +5037,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       : 'bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60'
                   }`}
                 >
-                  <div className="h-20 w-24 flex-shrink-0">
+                  {/* Tiles previews stay unframed like the grid: folder photo stacks float
+                     whole, thumbnails fill the preview square, icons float unframed. */}
+                  <div className="flex h-20 w-24 flex-shrink-0 items-center justify-center">
                     {thumbnailsEnabled && item.type === 'image' && !SHELL_PREVIEW_IMAGE_EXTENSIONS.has(getFileExtension(item.name)) ? (
-                      <ImageFileThumbnail item={item} fallback={fileTypeGlyph(item.type, item.isFolder)} className="h-20 w-24" />
-                    ) : showShellThumbnail ? (
-                      <ShellItemThumbnail
-                        item={item}
-                        thumbnail={nativeThumbnailState.scope === nativeThumbnailScope ? nativeThumbnailState.byItemId[item.id] : undefined}
-                        fallback={getDisplayFileIcon(item, 'large')}
-                        className="h-20 w-24"
-                      />
+                      <ImageFileThumbnail item={item} fallback={fileTypeGlyph(item.type, item.isFolder)} className="h-full w-full" framed={false} />
+                    ) : thumbnailsEnabled && item.isFolder && !getCustomFolderIcon(item.path, customFolderIcons ?? {}) ? (
+                      nativeThumbnailState.scope === nativeThumbnailScope && nativeThumbnailState.byItemId[item.id]
+                        ? <img src={nativeThumbnailState.byItemId[item.id]} alt="" aria-hidden="true" draggable={false} className="max-h-full max-w-full object-contain" />
+                        : getDisplayFileIcon(item, 'large', 3.5)
+                    ) : showShellThumbnail && nativeThumbnailState.scope === nativeThumbnailScope && nativeThumbnailState.byItemId[item.id] ? (
+                      <img src={nativeThumbnailState.byItemId[item.id]} alt="" aria-hidden="true" draggable={false} className="h-full w-full rounded-lg object-cover" />
                     ) : (
-                      <div className="flex h-20 w-24 items-center justify-center rounded-md border border-neutral-700/70 bg-neutral-900/80">
-                        {getDisplayFileIcon(item, 'large')}
-                      </div>
+                      getDisplayFileIcon(item, 'large', item.isFolder ? 3.5 : 2)
                     )}
                   </div>
                   <div className="min-w-0 flex-1 self-center">
