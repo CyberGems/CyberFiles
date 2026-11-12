@@ -7845,6 +7845,12 @@ fn main() {
             if guard.is_none() {
                 let launch_ctx = LAUNCH_CONTEXT.get().cloned();
                 let target = launch_ctx.as_ref().and_then(|c| c.target_path.as_deref());
+                if launch_ctx.as_ref().is_some_and(|context| context.startup) && target.is_none() {
+                    // A logon launch that finds the app already running hands off silently.
+                    // The normal handoff restores and focuses the existing window, which would
+                    // defeat "start minimized" on a boot where the user has the app in the tray.
+                    return;
+                }
                 let message = target.unwrap_or("__FOCUS__");
                 send_message_to_existing_instance(portable, message);
                 focus_existing_main_window();
