@@ -697,7 +697,7 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
     ? <FolderIconRenderer config={customFolderConfig} size="small" />
     : config.thumbnailsEnabled && item.type === 'image' && !SHELL_PREVIEW_IMAGE_EXTENSIONS.has(getFileExtension(item.name))
       ? <ImageFileThumbnail item={item} fallback={fileTypeGlyph(item.type, item.isFolder)} className="h-7 w-9" fit="cover" />
-      : config.thumbnailsEnabled && isShellThumbnailCandidate(item) && nativeThumbnail
+      : config.thumbnailsEnabled && !item.isFolder && isShellThumbnailCandidate(item) && nativeThumbnail
         ? <img src={nativeThumbnail} alt="" aria-hidden="true" draggable={false} className="h-7 w-9 flex-shrink-0 rounded border border-neutral-700/70 bg-neutral-900/80 object-cover" />
         : nativeIcon
           ? <img src={nativeIcon} alt="" aria-hidden="true" draggable={false} className="h-4 w-4 flex-shrink-0 object-contain" />
