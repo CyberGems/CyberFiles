@@ -6,7 +6,7 @@
 
 ### 🚀 What's new in this release
 
-<!-- IMPORTANT FOR AGENTS & MAINTAINERS: Always rewrite this entire section and highlights with the ACTUAL release notes for this specific new version before tagging. NEVER leave or copy previous version notes! Use 25-45 words for the summary, lead with user-facing changes, and do not repeat the app name or version. -->
+<!-- IMPORTANT FOR AGENTS & MAINTAINERS: Always rewrite this entire section and highlights with the ACTUAL release notes for this specific new version before tagging. NEVER leave or copy previous version notes! The summary paragraph below is injected from the annotated tag message. Use 25-45 words for the tag summary, lead with user-facing changes, and do not repeat the app name or version. -->
 {{RELEASE_SUMMARY}}
 
 > CyberFiles is a Windows-first file manager by CyberGems.
@@ -15,22 +15,22 @@
 
 ### ✨ Key Features & Highlights
 
-- **Adaptive tab strip:** The add button sits right next to the last tab while there is room, and once the tabs outgrow the bar it anchors to the edge with scroll arrows that glide under press-and-hold.
-- **Tabs list at your fingertips:** A list button on the strip, always available: search tabs by name or path, jump to any tab, close them one by one, or close everything except the active tab behind an inline confirmation.
-- **Updates in your language:** The update dialog shows the release notes in the interface language, and a pulsing titlebar button takes you straight to the update while one is pending.
-- **Smarter close flow:** Unsaved changes are asked about first; the tray-or-quit question only appears once they are resolved, without flashes between dialogs.
-- **This PC in three columns:** Sections spread into three columns on common displays, and custom quick access cards now show the same rich folder tooltips as the defaults.
+- **Tiles view:** A fourth view lays items out as Explorer-style cards, preview on the left and type, size and modified date on the right. Ctrl+4 switches to it, and every folder remembers whether it prefers it.
+- **Explorer-style thumbnails:** Grid and Tiles draw the same previews Windows File Explorer shows, through the Shell's own pipeline: video frames, document first pages, audio album art and photo stacks for folders. A frame extracted by the app itself fills the gap for videos the Shell cannot thumbnail.
+- **Preview zoom:** Ctrl+mouse wheel or Ctrl+= / Ctrl+- steps the Grid and Tiles preview cells through four sizes, remembered per folder, with the same sizes offered in the pane, context and header view menus.
+- **Media in the properties panel:** Audio and video files play right in the preview pane, streaming from disk without copying the file; formats the player cannot handle offer to open the file with its application.
+- **Startup hardening:** A logon launch that finds the app already running stays in the tray, the uninstaller now removes the autostart entry, and Shell lookups stopped silently returning empty on machines where the COM apartment was already initialized.
 
 <details>
 <summary><b>🌐 Ver notas de la versión en Español</b></summary>
 
 ### 🚀 Novedades de esta versión
 
-- **Tira de pestañas adaptativa:** El botón de añadir se sitúa junto a la última pestaña mientras haya espacio, y cuando las pestañas desbordan se ancla al borde con flechas de desplazamiento que se deslizan al mantenerlas pulsadas.
-- **Lista de pestañas siempre a mano:** Un botón en la tira, siempre disponible: busca pestañas por nombre o ruta, salta a cualquiera, ciérralas una a una o ciérralas todas menos la activa tras una confirmación inline.
-- **Actualizaciones en tu idioma:** El diálogo de actualización muestra las notas en el idioma de la interfaz, y un botón pulsante en la barra de título te lleva directo a la actualización pendiente.
-- **Cierre más inteligente:** Los cambios sin guardar se preguntan primero; la elección entre bandeja y salida aparece solo cuando ya están resueltos, sin destellos entre diálogos.
-- **Este equipo en tres columnas:** Las secciones se reparten en tres columnas en pantallas habituales, y los accesos rápidos personalizados ya muestran el mismo tooltip rico que las carpetas por defecto.
+- **Vista Mosaicos:** Un cuarto modo presenta los elementos como tarjetas al estilo del Explorador, con la vista previa a la izquierda y tipo, tamaño y fecha de modificación a la derecha. Ctrl+4 activa la vista y cada carpeta recuerda si la prefiere.
+- **Miniaturas al estilo del Explorador:** Cuadrícula y Mosaicos dibujan las mismas vistas previas que muestra el Explorador de Windows, a través del propio pipeline del Shell: fotogramas de vídeo, primeras páginas de documentos, portadas de audio y pilas de fotos en carpetas. Un fotograma extraído por la propia app cubre los vídeos que el Shell no puede miniaturizar.
+- **Zoom de vista previa:** Ctrl+rueda del ratón o Ctrl+= / Ctrl+- recorre las celdas de Cuadrícula y Mosaicos por cuatro tamaños, recordado por carpeta; los menús de vistas del panel, del contexto y de la cabecera ofrecen los mismos tamaños.
+- **Medios en el panel de propiedades:** Los archivos de audio y vídeo se reproducen en el propio panel, transmitiendo desde el disco sin copiar el archivo; los formatos que el reproductor no puede manejar ofrecen abrirlos con su aplicación.
+- **Arranque reforzado:** Un inicio por sesión que encuentra la app ya abierta se queda en la bandeja, el desinstalador elimina ahora la entrada de autoarranque, y las consultas al Shell dejaron de devolver vacío en equipos con el apartment COM ya inicializado.
 
 </details>
 

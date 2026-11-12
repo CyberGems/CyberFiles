@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-11-12
+
+### Added
+- Tiles view: Explorer-style horizontal cards with the preview on the left and type, size and modified date on the right, reachable with Ctrl+4 from the action bar, context menu, header menu and command palette, and remembered per folder.
+- Explorer-style thumbnails in the Grid and Tiles views, drawn through the Windows Shell thumbnail pipeline: video frames, PDF and Office first pages, audio album art, photo stacks for folders that contain images, and HEIC or AVIF when Windows has a codec for them, with a Settings toggle to turn item thumbnails off.
+- Preview zoom for the Grid and Tiles views: Ctrl+mouse wheel or Ctrl+= / Ctrl+- steps the preview cells through four sizes from small to extra large, remembered per folder, with matching entries in the three view menus.
+- Audio and video playback in the properties panel, streaming the file from disk through the asset protocol without copying it; formats the player cannot handle offer to open the file with its application.
+- Small thumbnails in the Details view rows for files; folders keep their consistent icon.
+- A webview-extracted video frame as a fallback when the Windows Shell has no thumbnail for a video, cached per path and limited to four concurrent decoders.
+
+### Changed
+- Grid and Tiles previews draw unframed like Windows File Explorer: folder photo stacks float whole, thumbnails fill the cell edge to edge, and icons without a preview float unframed.
+- Shell thumbnail batches extract eight files at a time, so folders never opened in Explorer no longer crawl on their first pass.
+- Grid and Tiles request jumbo 256px Shell icons, keeping enlarged icons crisp instead of blurry.
+
+### Fixed
+- Shell icon and thumbnail lookups no longer silently return nothing on machines where the worker thread already had a COM apartment of another type, and larger cached thumbnail bitmaps are resized to the requested square instead of being discarded.
+- A logon launch that finds the app already running now hands off silently instead of revealing a window that start-minimized keeps in the tray.
+- The uninstaller explicitly removes the autostart Run entry so a removed install cannot leave a stale logon value behind.
+
 ## [0.8.0] - 2026-11-11
 
 ### Added

@@ -1,6 +1,6 @@
 [package]
 name = "cyberfiles"
-version = "0.8.0"
+version = "0.9.0"
 default-run = "CyberFiles"
 description = "CyberFiles desktop development shell"
 authors = ["CyberGems"]
