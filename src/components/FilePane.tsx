@@ -46,7 +46,7 @@ import { DriveInfo, FileItem, FileType, HiddenItemStyle, ICON_ZOOM_PRESETS, NETW
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { listerTextScaleFactor, LISTER_TEXT_SCALE_CSS_VAR, type ListerTextScale } from '../utils/listerTextScale';
 import { formatFileSize, getFileExtension, getParentPath, isPathOnUnavailableDrive, isSameOrDescendantPath, isUncPath, isUncServerRoot, normalizeDriveLetter, normalizeWindowsPath } from '../utils/fileSystem';
-import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, getNativeFileThumbnails, isTauriDesktop, loadNativeImageThumbnail, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
+import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, getNativeFileThumbnails, isTauriDesktop, loadNativeImageThumbnail, loadNativeMediaPreviewUrl, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { advanceMouseGesturePath, MOUSE_GESTURE_MIN_DISTANCE, type MouseGesturePath } from '../utils/mouseGesture';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
@@ -375,6 +375,125 @@ function ImageFileThumbnail({
         : <div className="scale-150">{fallback}</div>}
     </div>
   );
+}
+
+/* When the Shell has no thumbnail for a video (a codec Windows lacks, a provider error), the
+   webview's own decoder can still read the file: authorize it through the asset protocol,
+   seek near the start, and draw one frame to a canvas. The asset protocol answers with the
+   webview's exact origin in Access-Control-Allow-Origin, so the canvas stays readable. The
+   Shell thumbnail wins whenever one exists; this only fills the gap. */
+const VIDEO_FRAME_CACHE_LIMIT = 64;
+const videoFrameCache = new Map<string, string>();
+const VIDEO_FRAME_DECODERS = 4;
+let activeVideoFrameJobs = 0;
+const pendingVideoFrameJobs: Array<() => void> = [];
+
+function extractVideoFrame(url: string): Promise<string | null> {
+  return new Promise(resolve => {
+    const video = document.createElement('video');
+    video.muted = true;
+    video.preload = 'auto';
+    video.crossOrigin = 'anonymous';
+    let settled = false;
+    const finish = (result: string | null) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      video.removeAttribute('src');
+      video.load();
+      resolve(result);
+    };
+    const timeout = window.setTimeout(() => finish(null), 12_000);
+    video.addEventListener('error', () => finish(null));
+    video.addEventListener('loadedmetadata', () => {
+      const duration = video.duration;
+      const target = Number.isFinite(duration) && duration > 0 ? Math.min(duration * 0.1, 3) : 0.5;
+      try {
+        video.currentTime = target;
+      } catch {
+        finish(null);
+      }
+    });
+    video.addEventListener('seeked', () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const scale = Math.min(256 / video.videoWidth, 256 / video.videoHeight, 1);
+        canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+        canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+        const context = canvas.getContext('2d');
+        if (!context) return finish(null);
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        finish(canvas.toDataURL('image/jpeg', 0.85));
+      } catch {
+        finish(null);
+      }
+    });
+    video.src = url;
+  });
+}
+
+async function extractVideoFrameBounded(url: string): Promise<string | null> {
+  // Bound the burst: a large never-cached folder would otherwise decode dozens of videos at
+  // once in the webview.
+  if (activeVideoFrameJobs >= VIDEO_FRAME_DECODERS) {
+    await new Promise<void>(resolve => pendingVideoFrameJobs.push(resolve));
+  }
+  activeVideoFrameJobs += 1;
+  try {
+    return await extractVideoFrame(url);
+  } finally {
+    activeVideoFrameJobs -= 1;
+    pendingVideoFrameJobs.shift()?.();
+  }
+}
+
+function VideoFrameThumbnail({
+  item,
+  shellThumbnail,
+  fallback,
+  className,
+}: {
+  item: FileItem;
+  shellThumbnail: string | undefined;
+  fallback: React.ReactNode;
+  className?: string;
+}) {
+  const [frame, setFrame] = useState<string | null>(null);
+  useEffect(() => {
+    if (shellThumbnail || item.type !== 'video' || !item.path) return;
+    const cacheKey = `${item.path.toLowerCase()}\u0000${item.modifiedAtMs ?? ''}`;
+    const cached = videoFrameCache.get(cacheKey);
+    if (cached) {
+      setFrame(cached);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        if (!isTauriDesktop()) return;
+        const authorizedUrl = await loadNativeMediaPreviewUrl(item.path);
+        const extracted = await extractVideoFrameBounded(authorizedUrl);
+        if (!cancelled && extracted) {
+          if (videoFrameCache.size >= VIDEO_FRAME_CACHE_LIMIT) {
+            const oldestKey = videoFrameCache.keys().next().value;
+            if (oldestKey) videoFrameCache.delete(oldestKey);
+          }
+          videoFrameCache.set(cacheKey, extracted);
+          setFrame(extracted);
+        }
+      } catch {
+        // No shell thumbnail and no decodable frame: the fallback glyph stays.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [item.modifiedAtMs, item.path, item.type, shellThumbnail]);
+
+  if (shellThumbnail) {
+    return <img src={shellThumbnail} alt="" aria-hidden="true" draggable={false} className={`h-full w-full object-cover ${className ?? ''}`} />;
+  }
+  return frame
+    ? <img src={frame} alt="" aria-hidden="true" draggable={false} className={`h-full w-full object-cover ${className ?? ''}`} />
+    : <>{fallback}</>;
 }
 
 /* Image formats the bundled decoder cannot read but Windows usually has a thumbnail provider
@@ -5014,7 +5133,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
               {!groupCollapsed && group.visibleItems.map(item => {
               const idx = fileIndexById.get(item.id) ?? 0;
               const isSelected = visibleSelectedIdSet.has(item.id);
-              const showShellThumbnail = thumbnailsEnabled && isShellThumbnailCandidate(item) && !(item.isFolder && getCustomFolderIcon(item.path, customFolderIcons ?? {}));
 
               return (
                 <Tooltip key={item.id} label={renderItemTooltip(item)} placement="top" boundary=".cyberfiles-file-viewport" disabled={editingItemId === item.id}>
@@ -5046,8 +5164,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       nativeThumbnailState.scope === nativeThumbnailScope && nativeThumbnailState.byItemId[item.id]
                         ? <img src={nativeThumbnailState.byItemId[item.id]} alt="" aria-hidden="true" draggable={false} className="max-h-full max-w-full object-contain" />
                         : getDisplayFileIcon(item, 'large', 3.5)
-                    ) : showShellThumbnail && nativeThumbnailState.scope === nativeThumbnailScope && nativeThumbnailState.byItemId[item.id] ? (
-                      <img src={nativeThumbnailState.byItemId[item.id]} alt="" aria-hidden="true" draggable={false} className="h-full w-full rounded-lg object-cover" />
+                    ) : thumbnailsEnabled && !item.isFolder && isShellThumbnailCandidate(item) ? (
+                      <VideoFrameThumbnail
+                        item={item}
+                        shellThumbnail={nativeThumbnailState.scope === nativeThumbnailScope ? nativeThumbnailState.byItemId[item.id] : undefined}
+                        fallback={getDisplayFileIcon(item, 'large', 2)}
+                        className="h-full w-full"
+                      />
                     ) : (
                       getDisplayFileIcon(item, 'large', item.isFolder ? 3.5 : 2)
                     )}
@@ -5118,8 +5241,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       nativeThumbnailState.scope === nativeThumbnailScope && nativeThumbnailState.byItemId[item.id]
                         ? <img src={nativeThumbnailState.byItemId[item.id]} alt="" aria-hidden="true" draggable={false} className="max-h-full max-w-full object-contain" />
                         : getDisplayFileIcon(item, 'large', folderGlyphScale)
-                    ) : thumbnailsEnabled && !item.isFolder && isShellThumbnailCandidate(item) && nativeThumbnailState.scope === nativeThumbnailScope && nativeThumbnailState.byItemId[item.id] ? (
-                      <img src={nativeThumbnailState.byItemId[item.id]} alt="" aria-hidden="true" draggable={false} className="h-full w-full rounded-lg object-cover" />
+                    ) : thumbnailsEnabled && !item.isFolder && isShellThumbnailCandidate(item) ? (
+                      <VideoFrameThumbnail
+                        item={item}
+                        shellThumbnail={nativeThumbnailState.scope === nativeThumbnailScope ? nativeThumbnailState.byItemId[item.id] : undefined}
+                        fallback={getDisplayFileIcon(item, 'large', iconGlyphScale)}
+                        className="h-full w-full"
+                      />
                     ) : (
                       getDisplayFileIcon(item, 'large', item.isFolder ? folderGlyphScale : iconGlyphScale)
                     )}
