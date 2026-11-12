@@ -53,7 +53,7 @@ import { Tooltip } from './Tooltip';
 interface ContextMenuProps {
   position: ContextMenuPosition | null;
   viewMode: ViewMode;
-  /* Grid preview zoom radios, mirroring the Ctrl+wheel shortcut; only offered in the icons view. */
+  /* Grid preview zoom radios, mirroring the Ctrl+wheel shortcut; offered in the icons and tiles views. */
   iconZoom?: IconZoomLevel;
   onIconZoomChange?: (zoom: IconZoomLevel) => void;
   sortField: SortField;
@@ -955,7 +955,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             <ViewMenuButton icon={<StretchHorizontal className="h-4 w-4" />} label={t.toolbar.viewCompact} selected={viewMode === 'compact'} onClick={() => { onViewModeChange('compact'); onClose(); }} />
             <ViewMenuButton icon={<LayoutGrid className="h-4 w-4" />} label={t.toolbar.viewIcons} selected={viewMode === 'icons'} onClick={() => { onViewModeChange('icons'); onClose(); }} />
             <ViewMenuButton icon={<LayoutDashboard className="h-4 w-4" />} label={t.toolbar.viewTiles} selected={viewMode === 'tiles'} onClick={() => { onViewModeChange('tiles'); onClose(); }} />
-            {viewMode === 'icons' && onIconZoomChange && (
+            {(viewMode === 'icons' || viewMode === 'tiles') && onIconZoomChange && (
               <>
                 <MenuDivider />
                 <div className="px-3.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.toolbar.iconSize}</div>

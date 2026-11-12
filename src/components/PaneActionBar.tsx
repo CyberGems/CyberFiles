@@ -87,7 +87,7 @@ interface PaneActionBarProps {
   /* The lister modes live in this menu too: they belong to the pane that shows the list. */
   viewMode: ViewMode;
   onChangeViewMode: (mode: ViewMode) => void;
-  /* Grid preview zoom, mirroring the Ctrl+wheel shortcut; only offered in the icons view. */
+  /* Grid preview zoom, mirroring the Ctrl+wheel shortcut; offered in the icons and tiles views. */
   iconZoom?: IconZoomLevel;
   onIconZoomChange?: (zoom: IconZoomLevel) => void;
   actions: PaneSelectionActions;
@@ -302,9 +302,9 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
     },
   ];
 
-  /* Grid preview zoom radios, mirroring the Ctrl+wheel shortcut; only offered while the grid
-     (icons) view is the active one, since no other view reads the zoom level. */
-  const iconZoomMenuGroup: ActionEntry[] = viewMode === 'icons' && onIconZoomChange
+  /* Grid preview zoom radios, mirroring the Ctrl+wheel shortcut; only offered while a grid
+     (icons or tiles) view is active, since the row views do not read the zoom level. */
+  const iconZoomMenuGroup: ActionEntry[] = (viewMode === 'icons' || viewMode === 'tiles') && onIconZoomChange
     ? ([['small', t.toolbar.iconZoomSmall], ['medium', t.toolbar.iconZoomMedium], ['large', t.toolbar.iconZoomLarge], ['xlarge', t.toolbar.iconZoomXlarge]] as [IconZoomLevel, string][])
       .map(([zoom, label]) => ({
         key: `icon-zoom-${zoom}`,

@@ -42,7 +42,7 @@ import {
   Server,
   Unplug,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, HiddenItemStyle, ICON_ZOOM_PRESETS, NETWORK_PATH, NetworkResource, SortField, TabState, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type IconZoomLevel, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
+import { DriveInfo, FileItem, FileType, HiddenItemStyle, ICON_ZOOM_PRESETS, NETWORK_PATH, NetworkResource, SortField, TabState, TILE_ZOOM_PRESETS, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type IconZoomLevel, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { listerTextScaleFactor, LISTER_TEXT_SCALE_CSS_VAR, type ListerTextScale } from '../utils/listerTextScale';
 import { formatFileSize, getFileExtension, getParentPath, isPathOnUnavailableDrive, isSameOrDescendantPath, isUncPath, isUncServerRoot, normalizeDriveLetter, normalizeWindowsPath } from '../utils/fileSystem';
@@ -1531,6 +1531,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const virtualizeFiles = !isSystemHome && effectiveViewMode !== 'compact' && files.length > 300;
   const iconZoomLevel: IconZoomLevel = tab.folderStyle?.iconZoom ?? 'medium';
   const iconZoomPreset = ICON_ZOOM_PRESETS[iconZoomLevel];
+  const tileZoomPreset = TILE_ZOOM_PRESETS[iconZoomLevel];
   /* Vector fallback glyphs scale up with the zoom level so an unavailable preview never
      leaves a postage-stamp icon floating in a large cell. Folders go larger still: their
      glyph is the whole preview, the way Explorer fills a cell with a folder icon. */
@@ -1539,14 +1540,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const compactRowCount = Math.max(1, Math.floor(
     (viewportWindow.height - 12 - (tab.groupBy && tab.groupBy !== 'none' ? 32 : 0) + 4) / (34 * listerTextScaleFactorValue),
   ));
-  const gridMinCellWidth = effectiveViewMode === 'tiles' ? 248 : iconZoomPreset.minWidth;
+  const gridMinCellWidth = effectiveViewMode === 'tiles' ? tileZoomPreset.minWidth : iconZoomPreset.minWidth;
   const virtualColumns = effectiveViewMode === 'details' ? 1
     : effectiveViewMode === 'compact' ? viewportWindow.width >= 1024 ? 3 : viewportWindow.width >= 640 ? 2 : 1
       : Math.max(1, Math.min(5, Math.floor((viewportWindow.width + 12) / gridMinCellWidth)));
-  /* Grid strides are cell height plus the 12px gap; the icons stride follows the zoom level. */
+  /* Grid strides are cell height plus the 12px gap; both grid views follow the zoom level. */
   const rowStride = effectiveViewMode === 'details' ? 32 * listerTextScaleFactorValue
     : effectiveViewMode === 'compact' ? 34 * listerTextScaleFactorValue
-      : effectiveViewMode === 'tiles' ? 124 : iconZoomPreset.rowStride;
+      : effectiveViewMode === 'tiles' ? tileZoomPreset.rowStride : iconZoomPreset.rowStride;
   const headingStride = effectiveViewMode === 'details' ? 30 : effectiveViewMode === 'compact' ? 32 : 40;
   const focusedGroupPosition = React.useMemo(() => {
     if (!tab.focusedId) return null;
@@ -1712,12 +1713,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
     };
   }, [isRecycleBin, nativeThumbnailRequestKey, nativeThumbnailScope, SHELL_THUMBNAIL_SIZE]);
 
-  /* Ctrl + wheel over the grid zooms the preview cells, Explorer-style; pinch gestures on
-     precision touchpads arrive as ctrl+wheel and ride the same path. A native listener is
-     required because React registers wheel handlers as passive. */
+  /* Ctrl + wheel over the grid or tiles views zooms the preview cells, Explorer-style; pinch
+     gestures on precision touchpads arrive as ctrl+wheel and ride the same path. A native
+     listener is required because React registers wheel handlers as passive. */
   useEffect(() => {
     const viewport = viewportRef.current;
-    if (!viewport || effectiveViewMode !== 'icons' || !onIconZoomChange) return;
+    if (!viewport || (effectiveViewMode !== 'icons' && effectiveViewMode !== 'tiles') || !onIconZoomChange) return;
     const zoomLevels: IconZoomLevel[] = ['small', 'medium', 'large', 'xlarge'];
     const handleGridZoomWheel = (event: WheelEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
@@ -5149,30 +5150,31 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onMouseEnter={() => handleFolderTooltipMouseEnter(item)}
                   onMouseLeave={() => handleFolderTooltipMouseLeave(item)}
                   style={{ cursor: singleClickOpens && !item.recycleBinId ? 'pointer' : 'default', ...getItemBackgroundStyle(item, isSelected) }}
-                  className={`cyberfiles-tile-file-item relative flex min-w-0 ${virtualizeFiles ? 'h-28' : ''} items-center gap-3 overflow-hidden rounded-lg border border-transparent p-2.5 text-left cursor-pointer ${
+                  className={`cyberfiles-tile-file-item relative flex min-w-0 ${virtualizeFiles ? tileZoomPreset.cellHeight : ''} items-center gap-3 overflow-hidden rounded-lg border border-transparent p-2.5 text-left cursor-pointer ${
                     isSelected
                       ? 'text-neutral-100'
                       : 'bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60'
                   }`}
                 >
                   {/* Tiles previews stay unframed like the grid: folder photo stacks float
-                     whole, thumbnails fill the preview square, icons float unframed. */}
-                  <div className="flex h-20 w-24 flex-shrink-0 items-center justify-center">
+                     whole, thumbnails fill the preview square, icons float unframed. The
+                     preview square follows the same zoom level as the grid cells. */}
+                  <div className={`flex ${tileZoomPreset.previewHeight} ${tileZoomPreset.previewWidth} flex-shrink-0 items-center justify-center`}>
                     {thumbnailsEnabled && item.type === 'image' && !SHELL_PREVIEW_IMAGE_EXTENSIONS.has(getFileExtension(item.name)) ? (
                       <ImageFileThumbnail item={item} fallback={fileTypeGlyph(item.type, item.isFolder)} className="h-full w-full" framed={false} />
                     ) : thumbnailsEnabled && item.isFolder && !getCustomFolderIcon(item.path, customFolderIcons ?? {}) ? (
                       nativeThumbnailState.scope === nativeThumbnailScope && nativeThumbnailState.byItemId[item.id]
                         ? <img src={nativeThumbnailState.byItemId[item.id]} alt="" aria-hidden="true" draggable={false} className="max-h-full max-w-full object-contain" />
-                        : getDisplayFileIcon(item, 'large', 3.5)
+                        : getDisplayFileIcon(item, 'large', tileZoomPreset.folderScale)
                     ) : thumbnailsEnabled && !item.isFolder && isShellThumbnailCandidate(item) ? (
                       <VideoFrameThumbnail
                         item={item}
                         shellThumbnail={nativeThumbnailState.scope === nativeThumbnailScope ? nativeThumbnailState.byItemId[item.id] : undefined}
-                        fallback={getDisplayFileIcon(item, 'large', 2)}
+                        fallback={getDisplayFileIcon(item, 'large', tileZoomPreset.fileScale)}
                         className="h-full w-full"
                       />
                     ) : (
-                      getDisplayFileIcon(item, 'large', item.isFolder ? 3.5 : 2)
+                      getDisplayFileIcon(item, 'large', item.isFolder ? tileZoomPreset.folderScale : tileZoomPreset.fileScale)
                     )}
                   </div>
                   <div className="min-w-0 flex-1 self-center">

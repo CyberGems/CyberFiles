@@ -52,7 +52,7 @@ interface HeaderBarProps {
   toolbarLabelPosition: ToolbarLabelPosition;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
-  /* Grid preview zoom, mirroring the Ctrl+wheel shortcut; only offered in the icons view. */
+  /* Grid preview zoom, mirroring the Ctrl+wheel shortcut; offered in the icons and tiles views. */
   iconZoom?: IconZoomLevel;
   onIconZoomChange?: (zoom: IconZoomLevel) => void;
   relativeGraphsEnabled: boolean;
@@ -302,7 +302,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         { id: 'view-compact', label: t.toolbar.viewCompact, shortcut: 'Ctrl+2', icon: <StretchHorizontal className="h-4 w-4" />, pressed: viewMode === 'compact', onSelect: () => onViewModeChange('compact') },
         { id: 'view-icons', label: t.toolbar.viewIcons, shortcut: 'Ctrl+3', icon: <LayoutGrid className="h-4 w-4" />, pressed: viewMode === 'icons', onSelect: () => onViewModeChange('icons') },
         { id: 'view-tiles', label: t.toolbar.viewTiles, shortcut: 'Ctrl+4', icon: <LayoutDashboard className="h-4 w-4" />, pressed: viewMode === 'tiles', onSelect: () => onViewModeChange('tiles') },
-        ...(viewMode === 'icons' && onIconZoomChange ? [
+        ...((viewMode === 'icons' || viewMode === 'tiles') && onIconZoomChange ? [
           { id: 'zoom-small', label: t.toolbar.iconZoomSmall, icon: <Scaling className="h-4 w-4" />, pressed: (iconZoom ?? 'medium') === 'small', onSelect: () => onIconZoomChange('small') },
           { id: 'zoom-medium', label: t.toolbar.iconZoomMedium, icon: <Scaling className="h-4 w-4" />, pressed: (iconZoom ?? 'medium') === 'medium', onSelect: () => onIconZoomChange('medium') },
           { id: 'zoom-large', label: t.toolbar.iconZoomLarge, icon: <Scaling className="h-4 w-4" />, pressed: (iconZoom ?? 'medium') === 'large', onSelect: () => onIconZoomChange('large') },
@@ -496,7 +496,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                   onSelect={() => { setOpenToolbarMenu(null); onViewModeChange(mode); }}
                 />
               ))}
-              {viewMode === 'icons' && onIconZoomChange && (
+              {(viewMode === 'icons' || viewMode === 'tiles') && onIconZoomChange && (
                 <>
                   <CommandBarDropdownHeading label={t.toolbar.iconSize} />
                   {([['small', t.toolbar.iconZoomSmall], ['medium', t.toolbar.iconZoomMedium], ['large', t.toolbar.iconZoomLarge], ['xlarge', t.toolbar.iconZoomXlarge]] as [IconZoomLevel, string][]).map(([zoom, label]) => (

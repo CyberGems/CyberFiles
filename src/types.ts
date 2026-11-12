@@ -107,6 +107,16 @@ export const ICON_ZOOM_PRESETS: Record<IconZoomLevel, { minWidth: number; rowStr
   xlarge: { minWidth: 240, rowStride: 268, cellHeight: 'h-64', thumbHeight: 'h-48' },
 };
 
+/* Geometry of the tiles view per zoom level: the horizontal cards scale their preview square
+   and row height with the same four levels the grid uses. folderScale and fileScale are the
+   vector glyph multipliers for cards that have no preview to show. */
+export const TILE_ZOOM_PRESETS: Record<IconZoomLevel, { minWidth: number; rowStride: number; cellHeight: string; previewWidth: string; previewHeight: string; folderScale: number; fileScale: number }> = {
+  small: { minWidth: 200, rowStride: 92, cellHeight: 'h-20', previewWidth: 'w-16', previewHeight: 'h-12', folderScale: 2, fileScale: 1.5 },
+  medium: { minWidth: 248, rowStride: 124, cellHeight: 'h-28', previewWidth: 'w-24', previewHeight: 'h-20', folderScale: 3.5, fileScale: 2 },
+  large: { minWidth: 300, rowStride: 156, cellHeight: 'h-36', previewWidth: 'w-36', previewHeight: 'h-28', folderScale: 5, fileScale: 3 },
+  xlarge: { minWidth: 356, rowStride: 188, cellHeight: 'h-44', previewWidth: 'w-48', previewHeight: 'h-36', folderScale: 6.5, fileScale: 3.5 },
+};
+
 export const SYSTEM_HOME_PATH = '::cyberfiles-this-pc::';
 export const RECYCLE_BIN_PATH = '::cyberfiles-recycle-bin::';
 export const RECENT_PATH = '::cyberfiles-recent::';
