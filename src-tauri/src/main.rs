@@ -4437,16 +4437,35 @@ async fn get_thumbnails(
     let size = size.clamp(32, 512);
 
     tauri::async_runtime::spawn_blocking(move || {
-        let Some(_shell_apartment) = windows_file_icons::ShellApartment::initialize_background() else {
-            return Ok(Vec::new());
-        };
+        // Fresh files have no entry in Windows' thumbnail cache, so each lookup may mean a
+        // real frame extraction; eight workers at a time keep a never-seen folder from
+        // crawling through 48 decodes one by one. Every worker initializes its own COM
+        // apartment on its own thread.
+        const PARALLEL_THUMBNAIL_WORKERS: usize = 8;
+        let valid: Vec<&NativeFileIconRequest> = items
+            .iter()
+            .filter(|item| item.path.len() <= 32_767 && item.id.len() <= 32_767)
+            .collect();
         let mut groups: Vec<NativeFileIconGroup> = Vec::new();
-        for item in items {
-            if item.path.len() > 32_767 || item.id.len() > 32_767 {
-                continue;
-            }
-            if let Some(data_url) = windows_thumbnails::get_shell_thumbnail(&item.path, size) {
-                groups.push(NativeFileIconGroup { item_ids: vec![item.id], data_url });
+        for chunk in valid.chunks(PARALLEL_THUMBNAIL_WORKERS) {
+            let results: Vec<Option<String>> = std::thread::scope(|scope| {
+                chunk
+                    .iter()
+                    .map(|item| {
+                        scope.spawn(move || {
+                            let _shell_apartment = windows_file_icons::ShellApartment::initialize_background();
+                            windows_thumbnails::get_shell_thumbnail(&item.path, size)
+                        })
+                    })
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .map(|handle| handle.join().unwrap_or(None))
+                    .collect()
+            });
+            for (thumbnail, item) in results.into_iter().zip(chunk) {
+                if let Some(data_url) = thumbnail {
+                    groups.push(NativeFileIconGroup { item_ids: vec![item.id.clone()], data_url });
+                }
             }
         }
         Ok(groups)
