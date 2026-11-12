@@ -117,7 +117,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Acceso rápido**: fija hasta 100 carpetas, renombra o elimina accesos y ordénalos A–Z, Z–A o manualmente arrastrando (Alt+Arriba y Alt+Abajo también funcionan)
 - **Vistas**: Detalles, Lista, Cuadrícula y Mosaicos, cada una con columnas redimensionables, columnas que se añaden u ocultan, encabezados ordenables y agrupación por fecha o tamaño; cada carpeta recuerda su propia vista, orden y agrupación, y Ctrl+1 a Ctrl+4 cambia entre las cuatro vistas
 - **Miniaturas al estilo del Explorador**: las vistas Cuadrícula y Mosaicos dibujan las mismas vistas previas que muestra el Explorador de archivos de Windows, a través del propio pipeline de miniaturas del Shell: fotogramas de vídeo, primeras páginas de PDF y Office, portadas de audio, pilas de fotos para carpetas con imágenes y HEIC o AVIF cuando Windows tiene el códec; los formatos sin proveedor de vistas previas vuelven al icono del archivo, y un interruptor en Configuración desactiva las miniaturas
-- **Zoom de la cuadrícula**: Ctrl+rueda del ratón, o Ctrl+= / Ctrl+- , recorre las celdas de la Cuadrícula por cuatro tamaños de pequeño a muy grande, recordado por carpeta; los menús de vistas del panel, del menú contextual y de la cabecera ofrecen los mismos tamaños
+- **Zoom de vista previa**: Ctrl+rueda del ratón, o Ctrl+= / Ctrl+- , recorre las celdas de Cuadrícula y Mosaicos por cuatro tamaños de pequeño a muy grande, recordado por carpeta; los menús de vistas del panel, del menú contextual y de la cabecera ofrecen los mismos tamaños
 - **Gráficos relativos**: barras opcionales detrás de tamaños y fechas que muestran de un vistazo la forma de una carpeta
 - **Carga progresiva**: las carpetas grandes cargan mientras te desplazas y la barra de estado mantiene totales exactos de archivos, carpetas y elementos
 - **Vista plana**: lista de forma recursiva todas las subcarpetas en una sola lista, con confirmación cuando el árbol es grande
@@ -327,7 +327,7 @@ Cada versión escribe además `latest.json` (versión, notas, URL del instalador
 | `Ctrl+K` | Abrir la paleta de comandos y ubicaciones |
 | `Ctrl+T` / `Ctrl+W` | Abrir una pestaña / cerrar la pestaña activa |
 | `Ctrl+1` a `Ctrl+4` | Cambiar entre las vistas Detalles, Lista, Cuadrícula y Mosaicos |
-| `Ctrl+=` / `Ctrl+-` | Ampliar o reducir las celdas de la vista Cuadrícula |
+| `Ctrl+=` / `Ctrl+-` | Ampliar o reducir las celdas de las vistas Cuadrícula y Mosaicos |
 | `Ctrl+A` | Seleccionar todos los elementos visibles |
 | `Shift+flechas` | Ampliar o reducir la selección |
 | `Shift+Inicio` / `Shift+Fin` | Seleccionar hasta el principio o el final de la lista |
@@ -338,7 +338,7 @@ Cada versión escribe además `latest.json` (versión, notas, URL del instalador
 | `Esc` | Cerrar diálogos y salir del filtro |
 | `Alt+Shift+F` | Mostrar u ocultar CyberFiles (global, configurable) |
 
-Con la lista de archivos enfocada, escribir letras rellena el filtro de forma predeterminada, o salta a un nombre coincidente si desactivas esa opción en Configuración › Navegación; en el modo de salto, repetir la letra recorre las coincidencias. Con el orden manual del Acceso rápido, Alt+Arriba y Alt+Abajo mueven el acceso enfocado. Los menús contextuales y de pestañas se navegan por completo con el teclado: las flechas mueven entre elementos y bandas, Enter o Espacio activan el elemento enfocado y los submenús se abren como ventanas ancladas junto a su origen. En la vista Cuadrícula, mantener Ctrl mientras giras la rueda del ratón recorre las celdas de vista previa por los mismos cuatro tamaños que los atajos Ctrl+= y Ctrl+- , incluidos los gestos de pellizco en touchpads de precisión.
+Con la lista de archivos enfocada, escribir letras rellena el filtro de forma predeterminada, o salta a un nombre coincidente si desactivas esa opción en Configuración › Navegación; en el modo de salto, repetir la letra recorre las coincidencias. Con el orden manual del Acceso rápido, Alt+Arriba y Alt+Abajo mueven el acceso enfocado. Los menús contextuales y de pestañas se navegan por completo con el teclado: las flechas mueven entre elementos y bandas, Enter o Espacio activan el elemento enfocado y los submenús se abren como ventanas ancladas junto a su origen. En las vistas Cuadrícula y Mosaicos, mantener Ctrl mientras giras la rueda del ratón recorre las celdas de vista previa por los mismos cuatro tamaños que los atajos Ctrl+= y Ctrl+- , incluidos los gestos de pellizco en touchpads de precisión.
 
 ---
 

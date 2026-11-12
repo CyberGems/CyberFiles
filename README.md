@@ -117,7 +117,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Quick Access**: pin up to 100 folders, rename or remove shortcuts, and sort them A–Z, Z–A or manually by dragging (Alt+Up and Alt+Down also work)
 - **Views**: Details, List, Grid and Tiles, each with resizable columns, add or hide columns, sortable headers, and grouping by date or size; every folder remembers its own view, sorting and grouping, and Ctrl+1 to Ctrl+4 switch between the four views
 - **Explorer-style thumbnails**: the Grid and Tiles views draw the same previews Windows File Explorer shows, through the Shell's own thumbnail pipeline: video frames, PDF and Office first pages, audio album art, photo stacks for folders that contain images, and HEIC or AVIF when Windows has a codec for them; formats without a preview provider fall back to the file icon, and a Settings toggle turns item thumbnails off
-- **Grid zoom**: Ctrl+mouse wheel, or Ctrl+= / Ctrl+- , steps the Grid preview cells through four sizes from small to extra large, remembered per folder; the view menus in the pane, the context menu and the header offer the same sizes
+- **Preview zoom**: Ctrl+mouse wheel, or Ctrl+= / Ctrl+- , steps the Grid and Tiles preview cells through four sizes from small to extra large, remembered per folder; the view menus in the pane, the context menu and the header offer the same sizes
 - **Relative graphs**: optional bars behind sizes and dates that make the shape of a folder visible at a glance
 - **Progressive loading**: large folders load as you scroll while the status bar keeps accurate file, folder and item totals
 - **Flat view**: recursively list every subfolder in one list, with a confirmation when the tree is large
@@ -329,7 +329,7 @@ Each release also writes `latest.json` (version, notes, installer URL and signat
 | `Ctrl+K` | Open the command palette for commands and locations |
 | `Ctrl+T` / `Ctrl+W` | Open a tab / close the active tab |
 | `Ctrl+1` to `Ctrl+4` | Switch between the Details, List, Grid and Tiles views |
-| `Ctrl+=` / `Ctrl+-` | Zoom the Grid view preview cells in or out |
+| `Ctrl+=` / `Ctrl+-` | Zoom the Grid or Tiles preview cells in or out |
 | `Ctrl+A` | Select all visible items |
 | `Shift+Arrow keys` | Extend or shrink the selection |
 | `Shift+Home` / `Shift+End` | Select to the beginning or end of the list |
@@ -340,7 +340,7 @@ Each release also writes `latest.json` (version, notes, installer URL and signat
 | `Esc` | Close dialogs and leave the filter |
 | `Alt+Shift+F` | Show or hide CyberFiles (global, configurable) |
 
-With the file list focused, typing letters fills the filter by default, or jumps to a matching name when that option is turned off in Settings › Navigation; in the jump mode, repeating the letter cycles through matches. In Manual Quick Access ordering, Alt+Up and Alt+Down move the focused shortcut. Context menus and tab menus are fully keyboard navigable: arrow keys move between items and bands, Enter or Space activates the focused item, and submenus open as anchored flyouts next to their trigger. In the Grid view, holding Ctrl while spinning the mouse wheel steps the preview cells through the same four sizes as the Ctrl+= and Ctrl+- shortcuts, including pinch gestures on precision touchpads.
+With the file list focused, typing letters fills the filter by default, or jumps to a matching name when that option is turned off in Settings › Navigation; in the jump mode, repeating the letter cycles through matches. In Manual Quick Access ordering, Alt+Up and Alt+Down move the focused shortcut. Context menus and tab menus are fully keyboard navigable: arrow keys move between items and bands, Enter or Space activates the focused item, and submenus open as anchored flyouts next to their trigger. In the Grid and Tiles views, holding Ctrl while spinning the mouse wheel steps the preview cells through the same four sizes as the Ctrl+= and Ctrl+- shortcuts, including pinch gestures on precision touchpads.
 
 ---
 
