@@ -304,11 +304,15 @@ function ImageFileThumbnail({
   fallback,
   className = 'h-20 w-full',
   fit = 'cover',
+  framed = true,
 }: {
   item: FileItem;
   fallback: React.ReactNode;
   className?: string;
   fit?: 'cover' | 'contain';
+  /* The framed look doubles as the loading placeholder; the grid views draw previews edge to
+     edge like Explorer, so they opt out of the frame. */
+  framed?: boolean;
 }) {
   const [source, setSource] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -365,7 +369,7 @@ function ImageFileThumbnail({
   }, [item.handle, item.path]);
 
   return (
-    <div ref={containerRef} className={`flex ${className} items-center justify-center overflow-hidden rounded-md border border-neutral-700/70 bg-neutral-900/80`}>
+    <div ref={containerRef} className={`flex ${className} items-center justify-center ${framed ? 'overflow-hidden rounded-md border border-neutral-700/70 bg-neutral-900/80' : 'overflow-hidden rounded-lg'}`}>
       {source
         ? <img src={source} alt={item.name} loading="lazy" decoding="async" className={`h-full w-full ${fit === 'contain' ? 'object-contain' : 'object-cover'}`} />
         : <div className="scale-150">{fallback}</div>}
@@ -1432,8 +1436,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const iconZoomLevel: IconZoomLevel = tab.folderStyle?.iconZoom ?? 'medium';
   const iconZoomPreset = ICON_ZOOM_PRESETS[iconZoomLevel];
   /* Vector fallback glyphs scale up with the zoom level so an unavailable preview never
-     leaves a postage-stamp icon floating in a large cell. */
+     leaves a postage-stamp icon floating in a large cell. Folders go larger still: their
+     glyph is the whole preview, the way Explorer fills a cell with a folder icon. */
   const iconGlyphScale = iconZoomLevel === 'xlarge' ? 4 : iconZoomLevel === 'large' ? 3 : 2;
+  const folderGlyphScale = iconZoomLevel === 'xlarge' ? 8 : iconZoomLevel === 'large' ? 5.5 : 3.5;
   const compactRowCount = Math.max(1, Math.floor(
     (viewportWindow.height - 12 - (tab.groupBy && tab.groupBy !== 'none' ? 32 : 0) + 4) / (34 * listerTextScaleFactorValue),
   ));
@@ -5126,20 +5132,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       : 'bg-neutral-950/30 text-neutral-300 hover:bg-neutral-800/60'
                   }`}
                 >
-                  <div className="flex w-full items-center justify-center">
+                  {/* The grid draws previews edge to edge like Explorer: folder photo stacks
+                     float whole (object-contain keeps the artwork uncropped), photo and video
+                     thumbs fill the cell, and icons without a preview float unframed. */}
+                  <div className={`flex ${iconZoomPreset.thumbHeight} w-full items-center justify-center`}>
                     {thumbnailsEnabled && item.type === 'image' && !SHELL_PREVIEW_IMAGE_EXTENSIONS.has(getFileExtension(item.name)) ? (
-                      <ImageFileThumbnail item={item} fallback={fileTypeGlyph(item.type, item.isFolder)} className={`${iconZoomPreset.thumbHeight} w-full`} />
-                    ) : thumbnailsEnabled && isShellThumbnailCandidate(item) && !(item.isFolder && getCustomFolderIcon(item.path, customFolderIcons ?? {})) ? (
-                      <ShellItemThumbnail
-                        item={item}
-                        thumbnail={nativeThumbnailState.scope === nativeThumbnailScope ? nativeThumbnailState.byItemId[item.id] : undefined}
-                        fallback={getDisplayFileIcon(item, 'large', iconGlyphScale)}
-                        className={`${iconZoomPreset.thumbHeight} w-full`}
-                      />
+                      <ImageFileThumbnail item={item} fallback={fileTypeGlyph(item.type, item.isFolder)} className="h-full w-full" framed={false} />
+                    ) : thumbnailsEnabled && item.isFolder && !getCustomFolderIcon(item.path, customFolderIcons ?? {}) ? (
+                      nativeThumbnailState.scope === nativeThumbnailScope && nativeThumbnailState.byItemId[item.id]
+                        ? <img src={nativeThumbnailState.byItemId[item.id]} alt="" aria-hidden="true" draggable={false} className="max-h-full max-w-full object-contain" />
+                        : getDisplayFileIcon(item, 'large', folderGlyphScale)
+                    ) : thumbnailsEnabled && !item.isFolder && isShellThumbnailCandidate(item) && nativeThumbnailState.scope === nativeThumbnailScope && nativeThumbnailState.byItemId[item.id] ? (
+                      <img src={nativeThumbnailState.byItemId[item.id]} alt="" aria-hidden="true" draggable={false} className="h-full w-full rounded-lg object-cover" />
                     ) : (
-                      <div className={`flex ${iconZoomPreset.thumbHeight} w-full items-center justify-center rounded-md border border-neutral-700/70 bg-neutral-900/80`}>
-                        {getDisplayFileIcon(item, 'large', iconGlyphScale)}
-                      </div>
+                      getDisplayFileIcon(item, 'large', item.isFolder ? folderGlyphScale : iconGlyphScale)
                     )}
                   </div>
                   {editingItemId === item.id ? (
