@@ -285,6 +285,12 @@
   width: 100%;
 }
 
+/* A view switch resizes the window before the deck swaps. The deck hides for that frame
+   only; visibility (not display) keeps its box, so the card never collapses mid-switch. */
+.tray-deck[data-swapping='true'] {
+  visibility: hidden;
+}
+
 .tray-view {
   box-sizing: border-box;
   width: 100%;

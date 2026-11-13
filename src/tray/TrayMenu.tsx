@@ -75,6 +75,8 @@ export function TrayMenu() {
   const [snapshot, setSnapshot] = useState<TrayMenuSnapshot>(INITIAL_SNAPSHOT);
   const [language, setLanguage] = useState<Language>('es');
   const [view, setView] = useState<TrayView>('main');
+  const [switching, setSwitching] = useState(false);
+  const viewSizesRef = useRef<Map<TrayView, { width: number; height: number }>>(new Map());
   const cardRef = useRef<HTMLDivElement>(null);
   const t = translations[language].trayMenu;
   const isVisible = snapshot.windowState === 'visible';
@@ -89,6 +91,9 @@ export function TrayMenu() {
       ? 'is-minimized'
       : 'is-hidden';
 
+  /* Sizes are remembered per view so a switch can resize the window before the deck swaps:
+     the new content then paints inside its own box instead of the previous view's, which
+     read as a flicker every time the menu came back from a sub-view. */
   const reportSize = useCallback((view: TrayView) => {
     const card = cardRef.current;
     if (!card) return;
@@ -96,12 +101,36 @@ export function TrayMenu() {
     const width = Math.ceil(card.offsetWidth + 40);
     const height = Math.ceil(card.scrollHeight + borderY + 44);
     if (width < 10 || height < 10) return;
+    const previous = viewSizesRef.current.get(view);
+    viewSizesRef.current.set(view, { width, height });
+    if (previous?.width === width && previous.height === height) return;
     void invoke('tray_menu_ready', { width, height, view }).catch(() => {});
   }, []);
+
+  /* Resizes the window for the target view before swapping the deck, hiding the deck for
+     that frame so no geometry step is ever visible. A view that was never measured has no
+     remembered size: it swaps first and the size effect reports it once it is mounted. */
+  const openView = useCallback(async (next: TrayView) => {
+    if (next === view) return;
+    const target = viewSizesRef.current.get(next);
+    if (!target) {
+      setView(next);
+      return;
+    }
+    setSwitching(true);
+    try {
+      await invoke('tray_menu_ready', { width: target.width, height: target.height, view: next });
+    } catch {
+      // The size effect still reports the mounted view if the resize fails.
+    }
+    setView(next);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => setSwitching(false)));
+  }, [view]);
 
   const refresh = useCallback(async () => {
     document.documentElement.dataset.theme = readTheme();
     setView('main');
+    setSwitching(false);
     try {
       const next = await invoke<TrayMenuSnapshot>('get_tray_menu_state');
       setSnapshot(next);
@@ -146,6 +175,7 @@ export function TrayMenu() {
     // the main view at the size cached for it, with no visible reflow.
     void listen('tray-menu-hide', () => {
       setView('main');
+      setSwitching(false);
     }).then(stop => {
       if (cancelled) stop();
       else stopHideListening = stop;
@@ -187,7 +217,7 @@ export function TrayMenu() {
   return (
     <div className="tray-root">
       <div className="tray-card" role="menu" aria-label="CyberFiles" ref={cardRef}>
-        <div className="tray-deck" data-view={view}>
+        <div className="tray-deck" data-view={view} data-swapping={switching ? 'true' : undefined}>
           {/* ── Main view ── */}
           <div className="tray-view" id="view-main">
             <button
@@ -230,7 +260,7 @@ export function TrayMenu() {
                 type="button"
                 role="menuitem"
                 className="tray-item tray-nav-item"
-                onClick={() => setView('help')}
+                onClick={() => { void openView('help'); }}
               >
                 <span className="tray-item-icon"><HelpCircle size={16} /></span>
                 <span className="tray-item-label">{t.help}</span>
@@ -240,7 +270,7 @@ export function TrayMenu() {
                 type="button"
                 role="menuitem"
                 className="tray-item tray-nav-item"
-                onClick={() => setView('suite')}
+                onClick={() => { void openView('suite'); }}
               >
                 <span className="tray-item-icon"><Gem size={16} /></span>
                 <span className="tray-item-label">{t.suite}</span>
@@ -261,7 +291,7 @@ export function TrayMenu() {
           {/* ── Help view ── */}
           <div className="tray-view" id="view-help">
             <div className="tray-sub-header">
-              <button type="button" className="tray-back-btn" onClick={() => setView('main')}>
+              <button type="button" className="tray-back-btn"                 onClick={() => { void openView('main'); }}>
                 <span className="tray-back-icon"><ArrowLeft size={13} /></span>
                 <span>{t.back}</span>
               </button>
@@ -307,7 +337,7 @@ export function TrayMenu() {
           {/* ── Suite view ── */}
           <div className="tray-view" id="view-suite">
             <div className="tray-sub-header">
-              <button type="button" className="tray-back-btn" onClick={() => setView('main')}>
+              <button type="button" className="tray-back-btn"                 onClick={() => { void openView('main'); }}>
                 <span className="tray-back-icon"><ArrowLeft size={13} /></span>
                 <span>{t.back}</span>
               </button>
