@@ -104,6 +104,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Diseños, sesiones y espacios de trabajo**: guarda el diseño actual, guarda una sesión de pestañas y combina ambos en un espacio de trabajo que se restaura en un paso
 - **Comportamiento al iniciar**: continuar donde lo dejaste, abrir Este equipo o cargar una sesión guardada, desde Configuración o la pantalla de bienvenida
 - **Avisos de cambios sin guardar**: guardar, actualizar o descartar los cambios pendientes de diseño y sesión al cerrar la ventana
+- **Recuperación ante fallos**: las pestañas abiertas, su historial y los filtros activos se copian a disco de forma continua mediante escrituras atómicas, así que tras un cierre forzado o un corte de energía el siguiente arranque ofrece restaurarlos, comparando lo que estaba en curso contra la última sesión guardada; con varias instancias permitidas el snapshot es compartido y gana el último escritor
 
 ### 📁 Navegación y vistas
 - **Vista Este equipo**: unidades, carpetas habituales de Windows, ubicaciones de red y carpetas avanzadas de Windows en un solo lugar

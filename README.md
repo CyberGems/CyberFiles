@@ -104,6 +104,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Layouts, sessions and workspaces**: save the current layout, save a tab session, and combine both into a workspace that restores in one step
 - **Startup behavior**: continue where you left off, open This PC, or load a saved session, chosen in Settings or the welcome screen
 - **Unsaved change prompts**: saving, updating or discarding pending layout and session changes when you close the window
+- **Crash recovery**: the open tabs, their history and active filters are snapshotted to disk continuously through atomic writes, so after a forced close or a power cut the next launch offers to restore them, comparing what was in flight against the last saved session; with multiple instances allowed, the snapshot is shared and the last writer wins
 
 ### 📁 Browsing & Views
 - **This PC view**: drives, common Windows folders, network locations and advanced Windows folders in one place
