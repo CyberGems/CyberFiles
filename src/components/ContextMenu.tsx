@@ -77,9 +77,9 @@ interface ContextMenuProps {
   onCustomizeFolderIcon?: (item: FileItem) => void;
   onClearFilter: () => void;
   onViewModeChange: (mode: ViewMode) => void;
-  /* Locations that render one dedicated layout (This PC, Network): the view modes and zoom
-     radios would be no-ops there, so the menu hides them. */
-  viewModesLocked?: boolean;
+  /* Locations that render one dedicated layout (This PC, Network) have no view modes, zoom or
+     folder actions: the menu hides them instead of offering entries that can never apply. */
+  isDedicatedLayout?: boolean;
   hasSavedFolderStyle: boolean;
   onSaveFolderStyle: () => void;
   onRemoveFolderStyle: () => void;
@@ -122,7 +122,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   viewMode,
   iconZoom,
   onIconZoomChange,
-  viewModesLocked = false,
+  isDedicatedLayout = false,
   sortField,
   sortOrder,
   groupBy,
@@ -851,20 +851,24 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             role="group"
             className="flex divide-x divide-neutral-800/80 border-b border-neutral-800 bg-neutral-900/60"
           >
-            <HeaderActionButton
-              icon={<FolderPlus className="h-4 w-4 text-emerald-400" />}
-              label={t.contextMenu.newFolderShort}
-              shortcut="F7"
-              disabled={!canModifyFolder}
-              onClick={() => { onCreateItem('folder'); onClose(); }}
-            />
-            <HeaderActionButton
-              icon={<ClipboardPaste className="h-4 w-4 text-cyan-400" />}
-              label={t.contextMenu.pasteShort}
-              shortcut="Ctrl+V"
-              disabled={!canModifyFolder || !fileClipboardSupported}
-              onClick={() => { onPaste(); onClose(); }}
-            />
+            {!isDedicatedLayout && (
+              <>
+                <HeaderActionButton
+                  icon={<FolderPlus className="h-4 w-4 text-emerald-400" />}
+                  label={t.contextMenu.newFolderShort}
+                  shortcut="F7"
+                  disabled={!canModifyFolder}
+                  onClick={() => { onCreateItem('folder'); onClose(); }}
+                />
+                <HeaderActionButton
+                  icon={<ClipboardPaste className="h-4 w-4 text-cyan-400" />}
+                  label={t.contextMenu.pasteShort}
+                  shortcut="Ctrl+V"
+                  disabled={!canModifyFolder || !fileClipboardSupported}
+                  onClick={() => { onPaste(); onClose(); }}
+                />
+              </>
+            )}
             <HeaderActionButton
               icon={<RefreshCw className="h-4 w-4 text-cyan-300" />}
               label={t.toolbar.refresh}
@@ -882,18 +886,20 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           </div>
 
           <div className="pt-0.5">
-            <MenuButton
-              icon={<FolderPlus className="h-4 w-4 text-emerald-400" />}
-              label={t.contextMenu.new}
-              disabled={!canModifyFolder}
-              expanded={openFlyout?.id === 'new'}
-              trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
-              onClick={event => toggleFlyout('new', event)}
-              flyoutId="new"
-              onMouseEnter={canModifyFolder ? event => scheduleFlyoutOpen('new', event) : undefined}
-              onMouseLeave={scheduleFlyoutClose}
-              onKeyDown={event => handleSubmenuTriggerKeyDown('new', canModifyFolder, event)}
-            />
+            {!isDedicatedLayout && (
+              <MenuButton
+                icon={<FolderPlus className="h-4 w-4 text-emerald-400" />}
+                label={t.contextMenu.new}
+                disabled={!canModifyFolder}
+                expanded={openFlyout?.id === 'new'}
+                trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
+                onClick={event => toggleFlyout('new', event)}
+                flyoutId="new"
+                onMouseEnter={canModifyFolder ? event => scheduleFlyoutOpen('new', event) : undefined}
+                onMouseLeave={scheduleFlyoutClose}
+                onKeyDown={event => handleSubmenuTriggerKeyDown('new', canModifyFolder, event)}
+              />
+            )}
             {onSelectAll && (
               <MenuButton
                 icon={<ListChecks className="h-4 w-4 text-cyan-300" />}
@@ -952,7 +958,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             />
           </div>
 
-          {!viewModesLocked && (
+          {!isDedicatedLayout && (
             <>
               <MenuDivider />
               <div className="px-3.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.toolbar.viewModes}</div>

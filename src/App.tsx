@@ -7328,7 +7328,7 @@ export default function App() {
         viewMode={contextPaneTab.viewMode}
         iconZoom={contextPaneTab.folderStyle?.iconZoom}
         onIconZoomChange={zoom => updatePaneTab(contextPane, tab => setTabIconZoom(tab, zoom))}
-        viewModesLocked={isDedicatedLayoutPath(contextPaneTab.currentPath)}
+        isDedicatedLayout={isDedicatedLayoutPath(contextPaneTab.currentPath)}
         sortField={contextPaneTab.sortField}
         sortOrder={contextPaneTab.sortOrder}
         groupBy={contextPaneTab.groupBy ?? 'none'}
@@ -7340,7 +7340,7 @@ export default function App() {
         onSortOrderChange={order => updatePaneTab(contextPane, tab => ({ ...tab, sortOrder: order, folderStyle: { ...getTabFolderStyle(tab), sortOrder: order } }))}
         onGroupByChange={groupBy => updatePaneTab(contextPane, tab => ({ ...tab, groupBy, folderStyle: { ...getTabFolderStyle(tab), groupBy } }))}
         hasFolder={Boolean(contextPaneTab.currentPath)}
-        canModifyFolder={Boolean(contextPaneTab.currentPath) && contextPaneTab.currentPath !== SYSTEM_HOME_PATH && contextPaneTab.currentPath !== RECYCLE_BIN_PATH && contextPaneTab.currentPath !== RECENT_PATH}
+        canModifyFolder={Boolean(contextPaneTab.currentPath) && !isDedicatedLayoutPath(contextPaneTab.currentPath) && contextPaneTab.currentPath !== RECYCLE_BIN_PATH && contextPaneTab.currentPath !== RECENT_PATH}
         fileClipboardSupported={isTauriDesktop()}
         hasFilter={Boolean(contextPaneTab.filterQuery)}
         onClose={() => setContextMenuPos(null)}
