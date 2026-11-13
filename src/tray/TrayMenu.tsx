@@ -33,6 +33,10 @@ interface TrayMenuSnapshot {
   version: string;
 }
 
+/** Every deck view, the main one last: seeding reports each size to the window and the last
+ * report is the geometry left applied, which has to be the view the menu opens on. */
+const TRAY_VIEWS: TrayView[] = ['help', 'suite', 'main'];
+
 const INITIAL_SNAPSHOT: TrayMenuSnapshot = {
   windowState: 'hidden',
   hotkey: null,
@@ -78,6 +82,7 @@ export function TrayMenu() {
   const [switching, setSwitching] = useState(false);
   const viewSizesRef = useRef<Map<TrayView, { width: number; height: number }>>(new Map());
   const cardRef = useRef<HTMLDivElement>(null);
+  const deckRef = useRef<HTMLDivElement>(null);
   const t = translations[language].trayMenu;
   const isVisible = snapshot.windowState === 'visible';
   const statusLabel = snapshot.windowState === 'visible'
@@ -91,21 +96,33 @@ export function TrayMenu() {
       ? 'is-minimized'
       : 'is-hidden';
 
+  /* Measures one deck view without showing it: the deck is switched synchronously and put
+     back before the browser paints, so every view's size is known from the start. */
+  const measureView = useCallback((target: TrayView) => {
+    const card = cardRef.current;
+    const deck = deckRef.current;
+    if (!card || !deck) return null;
+    const current = deck.dataset.view ?? 'main';
+    deck.dataset.view = target;
+    const borderY = card.offsetHeight - card.clientHeight;
+    const width = Math.ceil(card.offsetWidth + 40);
+    const height = Math.ceil(card.scrollHeight + borderY + 44);
+    deck.dataset.view = current;
+    if (width < 10 || height < 10) return null;
+    return { width, height };
+  }, []);
+
   /* Sizes are remembered per view so a switch can resize the window before the deck swaps:
      the new content then paints inside its own box instead of the previous view's, which
      read as a flicker every time the menu came back from a sub-view. */
   const reportSize = useCallback((view: TrayView) => {
-    const card = cardRef.current;
-    if (!card) return;
-    const borderY = card.offsetHeight - card.clientHeight;
-    const width = Math.ceil(card.offsetWidth + 40);
-    const height = Math.ceil(card.scrollHeight + borderY + 44);
-    if (width < 10 || height < 10) return;
+    const size = measureView(view);
+    if (!size) return;
     const previous = viewSizesRef.current.get(view);
-    viewSizesRef.current.set(view, { width, height });
-    if (previous?.width === width && previous.height === height) return;
-    void invoke('tray_menu_ready', { width, height, view }).catch(() => {});
-  }, []);
+    viewSizesRef.current.set(view, size);
+    if (previous?.width === size.width && previous.height === size.height) return;
+    void invoke('tray_menu_ready', { width: size.width, height: size.height, view }).catch(() => {});
+  }, [measureView]);
 
   /* Resizes the window for the target view before swapping the deck, hiding the deck for
      that frame so no geometry step is ever visible. A view that was never measured has no
@@ -158,10 +175,10 @@ export function TrayMenu() {
 
   useEffect(() => {
     void refresh();
-    // Seed the size cache synchronously while the window is still hidden, so
-    // the very first opening already uses the real geometry. requestAnimationFrame
-    // is not relied upon here because it may not fire for an invisible window.
-    reportSize('main');
+    // Seed every view while the window is still hidden, so the first opening and the first
+    // switch into a sub-view already know their geometry. requestAnimationFrame is not
+    // relied upon here because it may not fire for an invisible window.
+    TRAY_VIEWS.forEach(reportSize);
     let cancelled = false;
     let stopListening: (() => void) | undefined;
     let stopHideListening: (() => void) | undefined;
@@ -217,7 +234,7 @@ export function TrayMenu() {
   return (
     <div className="tray-root">
       <div className="tray-card" role="menu" aria-label="CyberFiles" ref={cardRef}>
-        <div className="tray-deck" data-view={view} data-swapping={switching ? 'true' : undefined}>
+        <div className="tray-deck" ref={deckRef} data-view={view} data-swapping={switching ? 'true' : undefined}>
           {/* ── Main view ── */}
           <div className="tray-view" id="view-main">
             <button
