@@ -5011,8 +5011,6 @@ fn tray_menu_geometry(
     logical_h: f64,
 ) -> (i32, i32, u32, u32) {
     let scale = window.scale_factor().unwrap_or(1.0);
-    let width_px = (logical_w * scale).round() as i32;
-    let height_px = (logical_h * scale).round() as i32;
 
     let monitor = window
         .available_monitors()
@@ -5022,7 +5020,7 @@ fn tray_menu_geometry(
         .or_else(|| window.primary_monitor().ok().flatten())
         .or_else(|| window.current_monitor().ok().flatten());
 
-    let (min_x, min_y, max_x, max_y) = if let Some(monitor) = monitor {
+    let bounds = if let Some(monitor) = monitor {
         let position = monitor.position();
         let size = monitor.size();
         (
@@ -5034,6 +5032,23 @@ fn tray_menu_geometry(
     } else {
         (0, 0, 1920, 1080)
     };
+
+    tray_menu_bounds(scale, bounds, anchor_x, anchor_y, logical_w, logical_h)
+}
+
+/// Physical placement math, split from the window so the rounding at fractional
+/// display scaling can be unit tested. `bounds` is (min_x, min_y, max_x, max_y).
+fn tray_menu_bounds(
+    scale: f64,
+    bounds: (i32, i32, i32, i32),
+    anchor_x: i32,
+    anchor_y: i32,
+    logical_w: f64,
+    logical_h: f64,
+) -> (i32, i32, u32, u32) {
+    let width_px = (logical_w * scale).round() as i32;
+    let height_px = (logical_h * scale).round() as i32;
+    let (min_x, min_y, max_x, max_y) = bounds;
 
     let gap = (4.0 * scale).round() as i32;
     let shadow_pad = (TRAY_MENU_SHADOW_PAD * scale).round() as i32;
@@ -8155,7 +8170,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{canonical_directory, expand_windows_environment_path, runtime_info, validate_recycle_source};
+    use super::{canonical_directory, expand_windows_environment_path, runtime_info, tray_menu_bounds, validate_recycle_source};
     use std::path::Path;
 
     #[test]
@@ -8285,5 +8300,20 @@ mod tests {
         let escaped_quote = format!("{path_str}\"");
         assert!(super::clean_path_argument(&escaped_quote).is_some());
         assert!(super::clean_path_argument(r"C:\non_existent_folder_xyz_12345").is_none());
+    }
+
+    #[test]
+    fn rounds_the_tray_window_to_physical_pixels_at_125_percent() {
+        // 292 x 307 logical is the measured main view: 383.75 rounds up to 384 and the
+        // shadow padding scales from 12 to 15 on both sides.
+        let (_, _, width, height) = tray_menu_bounds(1.25, (0, 0, 1920, 1080), 1805, 1000, 292.0, 307.0);
+        assert_eq!((width, height), (365, 384));
+    }
+
+    #[test]
+    fn rounds_the_tray_window_to_physical_pixels_at_150_percent() {
+        // The same view at 150%: 438 exact, while 460.5 rounds up to 461.
+        let (_, _, width, height) = tray_menu_bounds(1.5, (0, 0, 1920, 1080), 1805, 1000, 292.0, 307.0);
+        assert_eq!((width, height), (438, 461));
     }
 }
