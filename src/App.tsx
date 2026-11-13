@@ -126,7 +126,7 @@ import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expand
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { normalizeListerTextScale, type ListerTextScale } from './utils/listerTextScale';
 import { fetchLaunchContext, getLaunchTargetPath } from './utils/systemIntegration';
-import { clearRecoverySnapshot, claimWebviewBoot, compareSnapshots, readRecoverySnapshot, writeRecoverySnapshot, type RecoverySnapshot } from './utils/recoverySnapshot';
+import { bootRecoveryResult, clearRecoverySnapshot, compareSnapshots, writeRecoverySnapshot, type RecoverySnapshot } from './utils/recoverySnapshot';
 import { recentFileActions, recordRecentEntry, removeRecentEntry, renameRecentEntries, toRecentFileItem, type RecentEntry } from './utils/recentFiles';
 import { AUTO_CHECK_INTERVAL_MS, checkForUpdate, getAutoCheckUpdates, getNotifiedVersion, isSkippedVersion, setNotifiedVersion, setSkippedVersion, type AvailableUpdate } from './utils/updates';
 
@@ -2021,15 +2021,15 @@ export default function App() {
      1.5 seconds, so a forced close or a power cut loses at most that window of work. A clean
      quit deletes the file inside quit_app; finding it at boot means the previous run died.
      The boot claim lives in Rust (process-lifetime flag) because sessionStorage is backed to
-     disk by WebView2 and could survive the very kill this dialog exists for. */
+     disk by WebView2 and could survive the very kill this dialog exists for, and the check
+     itself runs once from a module-scope promise so StrictMode's phantom mount cannot consume
+     the claim in development. */
   const [pendingRecovery, setPendingRecovery] = useState<RecoverySnapshot | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const isFreshProcess = await claimWebviewBoot();
-      if (cancelled || !isFreshProcess) return;
-      const recovered = await readRecoverySnapshot();
+      const recovered = await bootRecoveryResult();
       if (cancelled) return;
       if (!recovered || compareSnapshots(recovered, initialSessionSnapshot).identical) {
         void clearRecoverySnapshot();

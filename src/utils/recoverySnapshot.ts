@@ -35,6 +35,20 @@ export async function claimWebviewBoot(): Promise<boolean> {
   }
 }
 
+/* The boot check runs exactly once per webview load, from this module-scope promise. StrictMode
+   mounts, unmounts and remounts every effect in development, so a claim made inside an effect
+   would be consumed by the phantom mount and the real one would see false — which silenced the
+   recovery dialog in dev forever. Awaiting one shared promise keeps both mounts consistent. */
+const bootRecoveryPromise: Promise<RecoverySnapshot | null> = (async () => {
+  const isFreshProcess = await claimWebviewBoot();
+  if (!isFreshProcess) return null;
+  return readRecoverySnapshot();
+})();
+
+export function bootRecoveryResult(): Promise<RecoverySnapshot | null> {
+  return bootRecoveryPromise;
+}
+
 function isTauriDesktop(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
