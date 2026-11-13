@@ -13,7 +13,6 @@ import {
   RECYCLE_BIN_PATH,
   RECENT_PATH,
   SYSTEM_HOME_PATH,
-  isDedicatedLayoutPath,
   NETWORK_PATH,
   ContextMenuPosition, 
   DriveInfo, 
@@ -127,6 +126,7 @@ import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expand
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { normalizeListerTextScale, type ListerTextScale } from './utils/listerTextScale';
 import { fetchLaunchContext, getLaunchTargetPath } from './utils/systemIntegration';
+import { isDedicatedLayoutPath } from './utils/locations';
 import { bootRecoveryResult, clearRecoverySnapshot, compareSnapshots, writeRecoverySnapshot, type RecoverySnapshot } from './utils/recoverySnapshot';
 import { recentFileActions, recordRecentEntry, removeRecentEntry, renameRecentEntries, toRecentFileItem, type RecentEntry } from './utils/recentFiles';
 import { AUTO_CHECK_INTERVAL_MS, checkForUpdate, getAutoCheckUpdates, getNotifiedVersion, isSkippedVersion, setNotifiedVersion, setSkippedVersion, type AvailableUpdate } from './utils/updates';

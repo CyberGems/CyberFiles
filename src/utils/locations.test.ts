@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isDedicatedLayoutPath, NETWORK_PATH, SYSTEM_HOME_PATH } from './types';
+import { isDedicatedLayoutPath } from './locations';
+import { NETWORK_PATH, SYSTEM_HOME_PATH } from '../types';
 
 test('treats This PC as a dedicated layout', () => {
   assert.equal(isDedicatedLayoutPath(SYSTEM_HOME_PATH), true);
