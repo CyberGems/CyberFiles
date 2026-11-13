@@ -4226,7 +4226,14 @@ export default function App() {
               : 'Transfers are still pending. Minimize CyberFiles to let them finish.');
             return;
           }
-          await invoke('quit_app');
+          /* The tray Quit is a quit like any other: it goes through the unsaved-changes gate.
+             When the window is hidden in the tray, it is shown first so the prompt is visible
+             instead of the app silently dropping pending work. */
+          const window = getCurrentWindow();
+          if (!(await window.isVisible())) {
+            await window.show();
+          }
+          requestQuitWithUnsavedChangesRef.current(false);
         } catch (error) {
           showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
         }
