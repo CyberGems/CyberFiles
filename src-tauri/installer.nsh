@@ -39,4 +39,10 @@
   ${EndIf}
 !macroend
 
+; Add/Remove Programs "Comments": the Tauri NSIS template does not write it.
+; Keep this line in sync with description in package.json.
+!macro NSIS_HOOK_POSTINSTALL
+  WriteRegStr SHCTX "${UNINSTKEY}" "Comments" "A dual-pane file manager for Windows built for keyboard-first file work."
+!macroend
+
 !endif ; CYBERFILES_INSTALLER_NSH

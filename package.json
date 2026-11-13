@@ -2,6 +2,7 @@
   "name": "cyberfiles",
   "private": true,
   "version": "0.9.0",
+  "description": "A dual-pane file manager for Windows built for keyboard-first file work.",
   "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
