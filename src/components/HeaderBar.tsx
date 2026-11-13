@@ -55,7 +55,7 @@ interface HeaderBarProps {
   /* Grid preview zoom, mirroring the Ctrl+wheel shortcut; offered in the icons and tiles views. */
   iconZoom?: IconZoomLevel;
   onIconZoomChange?: (zoom: IconZoomLevel) => void;
-  /* Special locations such as This PC render one dedicated layout: the view modes and zoom
+  /* Locations that render one dedicated layout (This PC, Network): the view modes and zoom
      radios would be no-ops there, so the menus hide them. */
   viewModesLocked?: boolean;
   relativeGraphsEnabled: boolean;
@@ -149,6 +149,11 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   const canUseFolderActions = windowsActionsAvailable && !currentFolderPath.startsWith('::') && (hasDriveRoot || currentFolderPath.startsWith('\\\\'));
   const canCreateFolder = Boolean(currentFolderPath) && !currentFolderPath.startsWith('::');
   const labels = t.toolbar.buttonLabels;
+  /* The view trigger names the active mode; on a location with a dedicated layout there is
+     no mode to announce, so it names the section its dropdown still offers: the layouts. */
+  const viewTriggerName = viewModesLocked ? t.header.layoutModes : t.toolbar.viewModes;
+  const viewTriggerLabel = viewModesLocked ? t.header.layoutModes : viewMode === 'details' ? labels.details : viewMode === 'compact' ? labels.compact : labels.icons;
+  const viewTriggerIcon = viewModesLocked ? <Columns2 /> : viewMode === 'details' ? <List /> : viewMode === 'compact' ? <StretchHorizontal /> : <LayoutGrid />;
   const terminalLabels: Record<WindowsTerminalOption, string> = {
     cmd: t.toolbar.commandPromptHere,
     'cmd-admin': t.toolbar.commandPromptAdminHere,
@@ -300,7 +305,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
     },
     {
       id: 'view-menu',
-      label: t.toolbar.viewModes,
+      label: viewTriggerName,
       entries: [
         ...(!viewModesLocked ? [
           { id: 'view-details', label: t.toolbar.viewDetails, shortcut: 'Ctrl+1', icon: <List className="h-4 w-4" />, pressed: viewMode === 'details', onSelect: () => onViewModeChange('details') },
@@ -469,15 +474,13 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         <div data-overflow-group="view-menu" aria-hidden={isCollapsedGroup('view-menu') || undefined} className={groupClass('view-menu')}>
           <div ref={viewControlRef} className="relative flex items-center">
             <CommandBarSplit
-              /* A dedicated layout has no view mode to announce, so the trigger names the
-                 section the dropdown still offers there: the panel layouts. */
-              label={viewModesLocked ? t.header.layoutModes : viewMode === 'details' ? labels.details : viewMode === 'compact' ? labels.compact : labels.icons}
+              label={viewTriggerLabel}
               labelPosition={toolbarLabelPosition}
-              icon={viewModesLocked ? <Columns2 /> : viewMode === 'details' ? <List /> : viewMode === 'compact' ? <StretchHorizontal /> : <LayoutGrid />}
+              icon={viewTriggerIcon}
               onClick={() => setOpenToolbarMenu(openToolbarMenu === 'view' ? null : 'view')}
-              tooltip={viewModesLocked ? t.header.layoutModes : t.toolbar.viewModes}
-              ariaLabel={viewModesLocked ? t.header.layoutModes : t.toolbar.viewModes}
-              caretLabel={viewModesLocked ? t.header.layoutModes : t.toolbar.viewModes}
+              tooltip={viewTriggerName}
+              ariaLabel={viewTriggerName}
+              caretLabel={viewTriggerName}
               caretExpanded={openToolbarMenu === 'view'}
               onCaretClick={() => setOpenToolbarMenu(openToolbarMenu === 'view' ? null : 'view')}
             />
@@ -485,7 +488,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               open={openToolbarMenu === 'view' && Boolean(viewControlRef.current)}
               onClose={() => setOpenToolbarMenu(null)}
               anchorRef={viewControlRef}
-              label={t.toolbar.viewModes}
+              label={viewTriggerName}
               className="w-64"
             >
               {!viewModesLocked && (

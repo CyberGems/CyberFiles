@@ -42,7 +42,7 @@ import {
   Server,
   Unplug,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, HiddenItemStyle, ICON_ZOOM_PRESETS, NETWORK_PATH, NetworkResource, SortField, TabState, TILE_ZOOM_PRESETS, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type IconZoomLevel, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
+import { DriveInfo, FileItem, FileType, HiddenItemStyle, ICON_ZOOM_PRESETS, NETWORK_PATH, NetworkResource, SortField, TabState, TILE_ZOOM_PRESETS, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, isDedicatedLayoutPath, RecentItemStyle, TabCloseButtonMode, type IconZoomLevel, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { listerTextScaleFactor, LISTER_TEXT_SCALE_CSS_VAR, type ListerTextScale } from '../utils/listerTextScale';
 import { formatFileSize, getFileExtension, getParentPath, isPathOnUnavailableDrive, isSameOrDescendantPath, isUncPath, isUncServerRoot, normalizeDriveLetter, normalizeWindowsPath } from '../utils/fileSystem';
@@ -983,6 +983,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const listerTextScaleFactorValue = listerTextScaleFactor(listerTextScale);
   const isSystemHome = tab.currentPath === SYSTEM_HOME_PATH;
   const isNetworkLocation = tab.currentPath === NETWORK_PATH;
+  const hasDedicatedLayout = isDedicatedLayoutPath(tab.currentPath);
   const isRecycleBin = tab.currentPath === RECYCLE_BIN_PATH;
   const isRecentLocation = tab.currentPath === RECENT_PATH;
   const [networkHostInput, setNetworkHostInput] = useState('');
@@ -4484,7 +4485,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         onChangeViewMode={mode => onViewModeChange?.(mode)}
         iconZoom={iconZoomLevel}
         onIconZoomChange={zoom => onIconZoomChange?.(zoom)}
-        viewModesLocked={isSystemHome}
+        viewModesLocked={hasDedicatedLayout}
         actions={paneActions}
       />
 
@@ -4610,7 +4611,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       <div 
         ref={viewportRef}
         data-cyberfiles-pane-viewport={paneId}
-        className={`cyberfiles-file-viewport relative min-h-0 w-full flex-1 py-0.5 select-none focus:outline-none ${effectiveViewMode === 'compact' && !isNetworkLocation && !isSystemHome ? 'overflow-x-auto overflow-y-hidden' : 'overflow-x-hidden overflow-y-auto'}`}
+        className={`cyberfiles-file-viewport relative min-h-0 w-full flex-1 py-0.5 select-none focus:outline-none ${effectiveViewMode === 'compact' && !hasDedicatedLayout ? 'overflow-x-auto overflow-y-hidden' : 'overflow-x-hidden overflow-y-auto'}`}
         tabIndex={0}
         onWheel={event => {
           if (effectiveViewMode !== 'compact' || event.deltaY === 0 || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
@@ -4680,7 +4681,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             )}
           </div>
         )}
-        <div className={`min-h-full ${isSystemHome || isNetworkLocation ? 'px-2' : 'px-4'} ${effectiveViewMode === 'compact' && !isNetworkLocation && !isSystemHome ? 'h-full w-max min-w-full' : ''}`}>
+        <div className={`min-h-full ${isSystemHome || isNetworkLocation ? 'px-2' : 'px-4'} ${effectiveViewMode === 'compact' && !hasDedicatedLayout ? 'h-full w-max min-w-full' : ''}`}>
         {showEmptyState ? null : isSystemHome ? (
           <div className="cyberfiles-system-home space-y-5 py-3 sm:py-4">
             {quickAccessItemCount > 0 && (

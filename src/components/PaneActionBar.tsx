@@ -90,8 +90,8 @@ interface PaneActionBarProps {
   /* Grid preview zoom, mirroring the Ctrl+wheel shortcut; offered in the icons and tiles views. */
   iconZoom?: IconZoomLevel;
   onIconZoomChange?: (zoom: IconZoomLevel) => void;
-  /* Special locations such as This PC render one dedicated layout, so the view modes and the
-     zoom radios would be no-ops: the menus hide them instead of offering dead entries. */
+  /* Locations that render one dedicated layout (This PC, Network), where the view modes and
+     the zoom radios would be no-ops: the menus hide them instead of offering dead entries. */
   viewModesLocked?: boolean;
   actions: PaneSelectionActions;
 }
@@ -270,8 +270,8 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
   /* The three lister modes, kept next to the other pane-level actions so switching view never
      needs a trip to the command bar. The current one is ticked, not disabled: it stays a
      harmless no-op that tells you where you are. Declared before both menus because the folder
-     menu is a literal. Special locations such as This PC render one fixed layout, so the group
-     is emptied there and the menus skip it. */
+     menu is a literal. Locations with a dedicated layout have no view modes, so the group is
+     emptied there and the menus skip it. */
   const viewMenuGroup: ActionEntry[] = viewModesLocked ? [] : [
     {
       key: 'view-details',

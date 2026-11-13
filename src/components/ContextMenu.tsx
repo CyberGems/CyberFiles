@@ -77,7 +77,7 @@ interface ContextMenuProps {
   onCustomizeFolderIcon?: (item: FileItem) => void;
   onClearFilter: () => void;
   onViewModeChange: (mode: ViewMode) => void;
-  /* Special locations such as This PC render one dedicated layout: the view modes and zoom
+  /* Locations that render one dedicated layout (This PC, Network): the view modes and zoom
      radios would be no-ops there, so the menu hides them. */
   viewModesLocked?: boolean;
   hasSavedFolderStyle: boolean;

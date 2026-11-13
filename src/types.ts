@@ -122,11 +122,13 @@ export const RECYCLE_BIN_PATH = '::cyberfiles-recycle-bin::';
 export const RECENT_PATH = '::cyberfiles-recent::';
 export const NETWORK_PATH = '::cyberfiles-network::';
 
-/* Special locations that paint one dedicated layout instead of the file lister.
-   View modes, zoom and the compact sizing rules have nothing to act on there,
-   so every surface hides them. Keep this the single source of truth: another
+/* Locations that paint one dedicated layout instead of the file lister (This PC
+   aggregates the drives, Network its hosts and shares). View modes, zoom and the
+   compact sizing rules have nothing to act on there, so every surface hides them
+   and the shortcuts stay inert. Keep this the single source of truth: another
    virtual location that grows a fixed layout only has to be added here. */
-export const isDedicatedLayoutPath = (path?: string | null): boolean => path === SYSTEM_HOME_PATH;
+export const isDedicatedLayoutPath = (path?: string | null): boolean =>
+  path === SYSTEM_HOME_PATH || path === NETWORK_PATH;
 
 export interface NetworkResource {
   id: string;
