@@ -13,6 +13,7 @@ import {
   RECYCLE_BIN_PATH,
   RECENT_PATH,
   SYSTEM_HOME_PATH,
+  isDedicatedLayoutPath,
   NETWORK_PATH,
   ContextMenuPosition, 
   DriveInfo, 
@@ -2424,7 +2425,7 @@ export default function App() {
   }, [setActiveTabs, activeTabIndex]);
 
   const handleViewModeChange = useCallback((mode: ViewMode) => {
-    updateActiveTab(tab => tab.currentPath === SYSTEM_HOME_PATH ? tab : setTabViewMode(tab, mode));
+    updateActiveTab(tab => isDedicatedLayoutPath(tab.currentPath) ? tab : setTabViewMode(tab, mode));
   }, [updateActiveTab]);
 
   const handleIconZoomChange = useCallback((zoom: IconZoomLevel) => {
@@ -6459,7 +6460,7 @@ export default function App() {
   const paletteViewCommands: CommandPaletteCommand[] = [
     /* Special locations such as This PC render one dedicated layout, so the view commands
        would be no-ops there. Layouts still apply everywhere. */
-    ...(currentTab.currentPath === SYSTEM_HOME_PATH ? [] : [
+    ...(isDedicatedLayoutPath(currentTab.currentPath) ? [] : [
       { id: 'view-details', group: t.commandPalette.groups.view, label: t.commandPalette.commands.viewDetails, keywords: 'list table', onSelect: () => handleViewModeChange('details') },
       { id: 'view-compact', group: t.commandPalette.groups.view, label: t.commandPalette.commands.viewCompact, keywords: 'dense rows', onSelect: () => handleViewModeChange('compact') },
       { id: 'view-icons', group: t.commandPalette.groups.view, label: t.commandPalette.commands.viewIcons, keywords: 'large icons grid', onSelect: () => handleViewModeChange('icons') },
@@ -6676,7 +6677,7 @@ export default function App() {
         onViewModeChange={handleViewModeChange}
         iconZoom={currentTab.folderStyle?.iconZoom}
         onIconZoomChange={handleIconZoomChange}
-        viewModesLocked={currentTab.currentPath === SYSTEM_HOME_PATH}
+        viewModesLocked={isDedicatedLayoutPath(currentTab.currentPath)}
         relativeGraphsEnabled={relativeGraphsEnabled}
         onToggleRelativeGraphs={() => setRelativeGraphsEnabled(enabled => !enabled)}
         showHiddenFiles={showHiddenFiles}
@@ -7327,7 +7328,7 @@ export default function App() {
         viewMode={contextPaneTab.viewMode}
         iconZoom={contextPaneTab.folderStyle?.iconZoom}
         onIconZoomChange={zoom => updatePaneTab(contextPane, tab => setTabIconZoom(tab, zoom))}
-        viewModesLocked={contextPaneTab.currentPath === SYSTEM_HOME_PATH}
+        viewModesLocked={isDedicatedLayoutPath(contextPaneTab.currentPath)}
         sortField={contextPaneTab.sortField}
         sortOrder={contextPaneTab.sortOrder}
         groupBy={contextPaneTab.groupBy ?? 'none'}

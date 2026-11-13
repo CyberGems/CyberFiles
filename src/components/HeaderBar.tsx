@@ -469,13 +469,15 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         <div data-overflow-group="view-menu" aria-hidden={isCollapsedGroup('view-menu') || undefined} className={groupClass('view-menu')}>
           <div ref={viewControlRef} className="relative flex items-center">
             <CommandBarSplit
-              label={viewMode === 'details' ? labels.details : viewMode === 'compact' ? labels.compact : labels.icons}
+              /* A dedicated layout has no view mode to announce, so the trigger names the
+                 section the dropdown still offers there: the panel layouts. */
+              label={viewModesLocked ? t.header.layoutModes : viewMode === 'details' ? labels.details : viewMode === 'compact' ? labels.compact : labels.icons}
               labelPosition={toolbarLabelPosition}
-              icon={viewMode === 'details' ? <List /> : viewMode === 'compact' ? <StretchHorizontal /> : <LayoutGrid />}
+              icon={viewModesLocked ? <Columns2 /> : viewMode === 'details' ? <List /> : viewMode === 'compact' ? <StretchHorizontal /> : <LayoutGrid />}
               onClick={() => setOpenToolbarMenu(openToolbarMenu === 'view' ? null : 'view')}
-              tooltip={t.toolbar.viewModes}
-              ariaLabel={t.toolbar.viewModes}
-              caretLabel={t.toolbar.viewModes}
+              tooltip={viewModesLocked ? t.header.layoutModes : t.toolbar.viewModes}
+              ariaLabel={viewModesLocked ? t.header.layoutModes : t.toolbar.viewModes}
+              caretLabel={viewModesLocked ? t.header.layoutModes : t.toolbar.viewModes}
               caretExpanded={openToolbarMenu === 'view'}
               onCaretClick={() => setOpenToolbarMenu(openToolbarMenu === 'view' ? null : 'view')}
             />
