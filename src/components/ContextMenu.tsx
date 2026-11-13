@@ -77,6 +77,9 @@ interface ContextMenuProps {
   onCustomizeFolderIcon?: (item: FileItem) => void;
   onClearFilter: () => void;
   onViewModeChange: (mode: ViewMode) => void;
+  /* Special locations such as This PC render one dedicated layout: the view modes and zoom
+     radios would be no-ops there, so the menu hides them. */
+  viewModesLocked?: boolean;
   hasSavedFolderStyle: boolean;
   onSaveFolderStyle: () => void;
   onRemoveFolderStyle: () => void;
@@ -119,6 +122,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   viewMode,
   iconZoom,
   onIconZoomChange,
+  viewModesLocked = false,
   sortField,
   sortOrder,
   groupBy,
@@ -948,23 +952,27 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             />
           </div>
 
-          <MenuDivider />
-          <div className="px-3.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.toolbar.viewModes}</div>
-          <div>
-            <ViewMenuButton icon={<List className="h-4 w-4" />} label={t.toolbar.viewDetails} selected={viewMode === 'details'} onClick={() => { onViewModeChange('details'); onClose(); }} />
-            <ViewMenuButton icon={<StretchHorizontal className="h-4 w-4" />} label={t.toolbar.viewCompact} selected={viewMode === 'compact'} onClick={() => { onViewModeChange('compact'); onClose(); }} />
-            <ViewMenuButton icon={<LayoutGrid className="h-4 w-4" />} label={t.toolbar.viewIcons} selected={viewMode === 'icons'} onClick={() => { onViewModeChange('icons'); onClose(); }} />
-            <ViewMenuButton icon={<LayoutDashboard className="h-4 w-4" />} label={t.toolbar.viewTiles} selected={viewMode === 'tiles'} onClick={() => { onViewModeChange('tiles'); onClose(); }} />
-            {(viewMode === 'icons' || viewMode === 'tiles') && onIconZoomChange && (
-              <>
-                <MenuDivider />
-                <div className="px-3.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.toolbar.iconSize}</div>
-                {([['small', t.toolbar.iconZoomSmall], ['medium', t.toolbar.iconZoomMedium], ['large', t.toolbar.iconZoomLarge], ['xlarge', t.toolbar.iconZoomXlarge]] as [IconZoomLevel, string][]).map(([zoom, label]) => (
-                  <ViewMenuButton key={zoom} icon={<Scaling className="h-4 w-4" />} label={label} selected={(iconZoom ?? 'medium') === zoom} onClick={() => { onIconZoomChange(zoom); onClose(); }} />
-                ))}
-              </>
-            )}
-          </div>
+          {!viewModesLocked && (
+            <>
+              <MenuDivider />
+              <div className="px-3.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.toolbar.viewModes}</div>
+              <div>
+                <ViewMenuButton icon={<List className="h-4 w-4" />} label={t.toolbar.viewDetails} selected={viewMode === 'details'} onClick={() => { onViewModeChange('details'); onClose(); }} />
+                <ViewMenuButton icon={<StretchHorizontal className="h-4 w-4" />} label={t.toolbar.viewCompact} selected={viewMode === 'compact'} onClick={() => { onViewModeChange('compact'); onClose(); }} />
+                <ViewMenuButton icon={<LayoutGrid className="h-4 w-4" />} label={t.toolbar.viewIcons} selected={viewMode === 'icons'} onClick={() => { onViewModeChange('icons'); onClose(); }} />
+                <ViewMenuButton icon={<LayoutDashboard className="h-4 w-4" />} label={t.toolbar.viewTiles} selected={viewMode === 'tiles'} onClick={() => { onViewModeChange('tiles'); onClose(); }} />
+                {(viewMode === 'icons' || viewMode === 'tiles') && onIconZoomChange && (
+                  <>
+                    <MenuDivider />
+                    <div className="px-3.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.toolbar.iconSize}</div>
+                    {([['small', t.toolbar.iconZoomSmall], ['medium', t.toolbar.iconZoomMedium], ['large', t.toolbar.iconZoomLarge], ['xlarge', t.toolbar.iconZoomXlarge]] as [IconZoomLevel, string][]).map(([zoom, label]) => (
+                      <ViewMenuButton key={zoom} icon={<Scaling className="h-4 w-4" />} label={label} selected={(iconZoom ?? 'medium') === zoom} onClick={() => { onIconZoomChange(zoom); onClose(); }} />
+                    ))}
+                  </>
+                )}
+              </div>
+            </>
+          )}
 
           {canModifyFolder && (
             <>

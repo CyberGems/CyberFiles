@@ -90,6 +90,9 @@ interface PaneActionBarProps {
   /* Grid preview zoom, mirroring the Ctrl+wheel shortcut; offered in the icons and tiles views. */
   iconZoom?: IconZoomLevel;
   onIconZoomChange?: (zoom: IconZoomLevel) => void;
+  /* Special locations such as This PC render one dedicated layout, so the view modes and the
+     zoom radios would be no-ops: the menus hide them instead of offering dead entries. */
+  viewModesLocked?: boolean;
   actions: PaneSelectionActions;
 }
 
@@ -131,6 +134,7 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
   onChangeViewMode,
   iconZoom,
   onIconZoomChange,
+  viewModesLocked = false,
   actions,
 }) => {
   const { t } = useLanguage();
@@ -266,8 +270,9 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
   /* The three lister modes, kept next to the other pane-level actions so switching view never
      needs a trip to the command bar. The current one is ticked, not disabled: it stays a
      harmless no-op that tells you where you are. Declared before both menus because the folder
-     menu is a literal. */
-  const viewMenuGroup: ActionEntry[] = [
+     menu is a literal. Special locations such as This PC render one fixed layout, so the group
+     is emptied there and the menus skip it. */
+  const viewMenuGroup: ActionEntry[] = viewModesLocked ? [] : [
     {
       key: 'view-details',
       label: t.toolbar.viewDetails,
@@ -304,7 +309,7 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
 
   /* Grid preview zoom radios, mirroring the Ctrl+wheel shortcut; only offered while a grid
      (icons or tiles) view is active, since the row views do not read the zoom level. */
-  const iconZoomMenuGroup: ActionEntry[] = (viewMode === 'icons' || viewMode === 'tiles') && onIconZoomChange
+  const iconZoomMenuGroup: ActionEntry[] = !viewModesLocked && (viewMode === 'icons' || viewMode === 'tiles') && onIconZoomChange
     ? ([['small', t.toolbar.iconZoomSmall], ['medium', t.toolbar.iconZoomMedium], ['large', t.toolbar.iconZoomLarge], ['xlarge', t.toolbar.iconZoomXlarge]] as [IconZoomLevel, string][])
       .map(([zoom, label]) => ({
         key: `icon-zoom-${zoom}`,
@@ -418,7 +423,7 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
       onSelect: () => actions.onCopyPath(selectedItems),
     });
     selectionMenuGroups.push(contextGroup);
-    selectionMenuGroups.push(selectMenuGroup, viewMenuGroup, ...(iconZoomMenuGroup.length > 0 ? [iconZoomMenuGroup] : []), paneMenuGroup);
+    selectionMenuGroups.push(selectMenuGroup, ...(viewMenuGroup.length > 0 ? [viewMenuGroup] : []), ...(iconZoomMenuGroup.length > 0 ? [iconZoomMenuGroup] : []), paneMenuGroup);
   }
 
   const folderMenuGroups: ActionEntry[][] = [
@@ -446,7 +451,7 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
       },
     ],
     selectMenuGroup,
-    viewMenuGroup,
+    ...(viewMenuGroup.length > 0 ? [viewMenuGroup] : []),
     ...(iconZoomMenuGroup.length > 0 ? [iconZoomMenuGroup] : []),
     paneMenuGroup,
     ...(isRecentLocation && onClearRecentHistory ? [[{

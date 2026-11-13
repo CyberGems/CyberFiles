@@ -55,6 +55,9 @@ interface HeaderBarProps {
   /* Grid preview zoom, mirroring the Ctrl+wheel shortcut; offered in the icons and tiles views. */
   iconZoom?: IconZoomLevel;
   onIconZoomChange?: (zoom: IconZoomLevel) => void;
+  /* Special locations such as This PC render one dedicated layout: the view modes and zoom
+     radios would be no-ops there, so the menus hide them. */
+  viewModesLocked?: boolean;
   relativeGraphsEnabled: boolean;
   onToggleRelativeGraphs: () => void;
   showHiddenFiles: boolean;
@@ -103,6 +106,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onViewModeChange,
   iconZoom,
   onIconZoomChange,
+  viewModesLocked = false,
   relativeGraphsEnabled,
   onToggleRelativeGraphs,
   showHiddenFiles,
@@ -298,15 +302,17 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       id: 'view-menu',
       label: t.toolbar.viewModes,
       entries: [
-        { id: 'view-details', label: t.toolbar.viewDetails, shortcut: 'Ctrl+1', icon: <List className="h-4 w-4" />, pressed: viewMode === 'details', onSelect: () => onViewModeChange('details') },
-        { id: 'view-compact', label: t.toolbar.viewCompact, shortcut: 'Ctrl+2', icon: <StretchHorizontal className="h-4 w-4" />, pressed: viewMode === 'compact', onSelect: () => onViewModeChange('compact') },
-        { id: 'view-icons', label: t.toolbar.viewIcons, shortcut: 'Ctrl+3', icon: <LayoutGrid className="h-4 w-4" />, pressed: viewMode === 'icons', onSelect: () => onViewModeChange('icons') },
-        { id: 'view-tiles', label: t.toolbar.viewTiles, shortcut: 'Ctrl+4', icon: <LayoutDashboard className="h-4 w-4" />, pressed: viewMode === 'tiles', onSelect: () => onViewModeChange('tiles') },
-        ...((viewMode === 'icons' || viewMode === 'tiles') && onIconZoomChange ? [
-          { id: 'zoom-small', label: t.toolbar.iconZoomSmall, icon: <Scaling className="h-4 w-4" />, pressed: (iconZoom ?? 'medium') === 'small', onSelect: () => onIconZoomChange('small') },
-          { id: 'zoom-medium', label: t.toolbar.iconZoomMedium, icon: <Scaling className="h-4 w-4" />, pressed: (iconZoom ?? 'medium') === 'medium', onSelect: () => onIconZoomChange('medium') },
-          { id: 'zoom-large', label: t.toolbar.iconZoomLarge, icon: <Scaling className="h-4 w-4" />, pressed: (iconZoom ?? 'medium') === 'large', onSelect: () => onIconZoomChange('large') },
-          { id: 'zoom-xlarge', label: t.toolbar.iconZoomXlarge, icon: <Scaling className="h-4 w-4" />, pressed: (iconZoom ?? 'medium') === 'xlarge', onSelect: () => onIconZoomChange('xlarge') },
+        ...(!viewModesLocked ? [
+          { id: 'view-details', label: t.toolbar.viewDetails, shortcut: 'Ctrl+1', icon: <List className="h-4 w-4" />, pressed: viewMode === 'details', onSelect: () => onViewModeChange('details') },
+          { id: 'view-compact', label: t.toolbar.viewCompact, shortcut: 'Ctrl+2', icon: <StretchHorizontal className="h-4 w-4" />, pressed: viewMode === 'compact', onSelect: () => onViewModeChange('compact') },
+          { id: 'view-icons', label: t.toolbar.viewIcons, shortcut: 'Ctrl+3', icon: <LayoutGrid className="h-4 w-4" />, pressed: viewMode === 'icons', onSelect: () => onViewModeChange('icons') },
+          { id: 'view-tiles', label: t.toolbar.viewTiles, shortcut: 'Ctrl+4', icon: <LayoutDashboard className="h-4 w-4" />, pressed: viewMode === 'tiles', onSelect: () => onViewModeChange('tiles') },
+          ...((viewMode === 'icons' || viewMode === 'tiles') && onIconZoomChange ? [
+            { id: 'zoom-small', label: t.toolbar.iconZoomSmall, icon: <Scaling className="h-4 w-4" />, pressed: (iconZoom ?? 'medium') === 'small', onSelect: () => onIconZoomChange('small') },
+            { id: 'zoom-medium', label: t.toolbar.iconZoomMedium, icon: <Scaling className="h-4 w-4" />, pressed: (iconZoom ?? 'medium') === 'medium', onSelect: () => onIconZoomChange('medium') },
+            { id: 'zoom-large', label: t.toolbar.iconZoomLarge, icon: <Scaling className="h-4 w-4" />, pressed: (iconZoom ?? 'medium') === 'large', onSelect: () => onIconZoomChange('large') },
+            { id: 'zoom-xlarge', label: t.toolbar.iconZoomXlarge, icon: <Scaling className="h-4 w-4" />, pressed: (iconZoom ?? 'medium') === 'xlarge', onSelect: () => onIconZoomChange('xlarge') },
+          ] : []),
         ] : []),
         ...(!isCompactWindow ? [
           { id: 'layout-dual-vertical', label: t.header.layoutDualVertical, shortcut: 'Alt+1', icon: <Columns2 className="h-4 w-4" />, pressed: layout === 'dual-vertical', onSelect: () => onLayoutChange('dual-vertical') },
@@ -480,34 +486,38 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
               label={t.toolbar.viewModes}
               className="w-64"
             >
-              <CommandBarDropdownHeading label={t.toolbar.viewModes} />
-              {([
-                ['details', t.toolbar.viewDetails, t.toolbar.viewDetails, 'Ctrl+1', <List className="h-4 w-4" />],
-                ['compact', t.toolbar.viewCompact, t.toolbar.viewCompact, 'Ctrl+2', <StretchHorizontal className="h-4 w-4" />],
-                ['icons', t.toolbar.viewIcons, t.toolbar.viewIcons, 'Ctrl+3', <LayoutGrid className="h-4 w-4" />],
-                ['tiles', t.toolbar.viewTiles, t.toolbar.viewTiles, 'Ctrl+4', <LayoutDashboard className="h-4 w-4" />],
-              ] as [ViewMode, string, string, string, React.ReactNode][]).map(([mode, label, ariaLabel, shortcut, icon]) => (
-                <CommandBarDropdownItem
-                  key={mode}
-                  label={label}
-                  icon={icon}
-                  shortcut={shortcut}
-                  checked={viewMode === mode}
-                  onSelect={() => { setOpenToolbarMenu(null); onViewModeChange(mode); }}
-                />
-              ))}
-              {(viewMode === 'icons' || viewMode === 'tiles') && onIconZoomChange && (
+              {!viewModesLocked && (
                 <>
-                  <CommandBarDropdownHeading label={t.toolbar.iconSize} />
-                  {([['small', t.toolbar.iconZoomSmall], ['medium', t.toolbar.iconZoomMedium], ['large', t.toolbar.iconZoomLarge], ['xlarge', t.toolbar.iconZoomXlarge]] as [IconZoomLevel, string][]).map(([zoom, label]) => (
+                  <CommandBarDropdownHeading label={t.toolbar.viewModes} />
+                  {([
+                    ['details', t.toolbar.viewDetails, t.toolbar.viewDetails, 'Ctrl+1', <List className="h-4 w-4" />],
+                    ['compact', t.toolbar.viewCompact, t.toolbar.viewCompact, 'Ctrl+2', <StretchHorizontal className="h-4 w-4" />],
+                    ['icons', t.toolbar.viewIcons, t.toolbar.viewIcons, 'Ctrl+3', <LayoutGrid className="h-4 w-4" />],
+                    ['tiles', t.toolbar.viewTiles, t.toolbar.viewTiles, 'Ctrl+4', <LayoutDashboard className="h-4 w-4" />],
+                  ] as [ViewMode, string, string, string, React.ReactNode][]).map(([mode, label, ariaLabel, shortcut, icon]) => (
                     <CommandBarDropdownItem
-                      key={zoom}
+                      key={mode}
                       label={label}
-                      icon={<Scaling className="h-4 w-4" />}
-                      checked={(iconZoom ?? 'medium') === zoom}
-                      onSelect={() => { setOpenToolbarMenu(null); onIconZoomChange(zoom); }}
+                      icon={icon}
+                      shortcut={shortcut}
+                      checked={viewMode === mode}
+                      onSelect={() => { setOpenToolbarMenu(null); onViewModeChange(mode); }}
                     />
                   ))}
+                  {(viewMode === 'icons' || viewMode === 'tiles') && onIconZoomChange && (
+                    <>
+                      <CommandBarDropdownHeading label={t.toolbar.iconSize} />
+                      {([['small', t.toolbar.iconZoomSmall], ['medium', t.toolbar.iconZoomMedium], ['large', t.toolbar.iconZoomLarge], ['xlarge', t.toolbar.iconZoomXlarge]] as [IconZoomLevel, string][]).map(([zoom, label]) => (
+                        <CommandBarDropdownItem
+                          key={zoom}
+                          label={label}
+                          icon={<Scaling className="h-4 w-4" />}
+                          checked={(iconZoom ?? 'medium') === zoom}
+                          onSelect={() => { setOpenToolbarMenu(null); onIconZoomChange(zoom); }}
+                        />
+                      ))}
+                    </>
+                  )}
                 </>
               )}
               {!isCompactWindow && (

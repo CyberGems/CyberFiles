@@ -4484,6 +4484,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         onChangeViewMode={mode => onViewModeChange?.(mode)}
         iconZoom={iconZoomLevel}
         onIconZoomChange={zoom => onIconZoomChange?.(zoom)}
+        viewModesLocked={isSystemHome}
         actions={paneActions}
       />
 
@@ -4609,7 +4610,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       <div 
         ref={viewportRef}
         data-cyberfiles-pane-viewport={paneId}
-        className={`cyberfiles-file-viewport relative min-h-0 w-full flex-1 py-0.5 select-none focus:outline-none ${effectiveViewMode === 'compact' ? 'overflow-x-auto overflow-y-hidden' : 'overflow-x-hidden overflow-y-auto'}`}
+        className={`cyberfiles-file-viewport relative min-h-0 w-full flex-1 py-0.5 select-none focus:outline-none ${effectiveViewMode === 'compact' && !isNetworkLocation && !isSystemHome ? 'overflow-x-auto overflow-y-hidden' : 'overflow-x-hidden overflow-y-auto'}`}
         tabIndex={0}
         onWheel={event => {
           if (effectiveViewMode !== 'compact' || event.deltaY === 0 || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
@@ -4679,7 +4680,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             )}
           </div>
         )}
-        <div className={`min-h-full ${isSystemHome || isNetworkLocation ? 'px-2' : 'px-4'} ${effectiveViewMode === 'compact' && !isNetworkLocation ? 'h-full w-max min-w-full' : ''}`}>
+        <div className={`min-h-full ${isSystemHome || isNetworkLocation ? 'px-2' : 'px-4'} ${effectiveViewMode === 'compact' && !isNetworkLocation && !isSystemHome ? 'h-full w-max min-w-full' : ''}`}>
         {showEmptyState ? null : isSystemHome ? (
           <div className="cyberfiles-system-home space-y-5 py-3 sm:py-4">
             {quickAccessItemCount > 0 && (
