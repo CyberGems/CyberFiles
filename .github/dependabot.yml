@@ -10,6 +10,9 @@ updates:
       npm-minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: cargo
     directory: "/src-tauri"
@@ -20,3 +23,13 @@ updates:
       cargo-minor-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # 0.x crates: a minor bump is a breaking change, so these need a planned migration
+      - dependency-name: "windows"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "windows-core"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "unrar-rs"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
