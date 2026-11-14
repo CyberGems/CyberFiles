@@ -87,4 +87,6 @@ The SHA-256 checksums are also included in the downloadable SHA256SUMS.txt file.
 
 ---
 
+📜 **Full changelog:** browse every version in [CHANGELOG.md](https://github.com/CyberGems/CyberFiles/blob/main/CHANGELOG.md).
+
 *Crafted with precision by [CyberGems](https://cybergems.org)*
