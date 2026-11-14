@@ -29,7 +29,7 @@
     "@tauri-apps/plugin-process": "^2.4.0",
     "@tauri-apps/plugin-updater": "^2.14.0",
     "@vitejs/plugin-react": "^6.1.1",
-    "lucide-react": "^0.546.0",
+    "lucide-react": "^1.72.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "vite": "^8.3.0"
