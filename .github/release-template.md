@@ -22,11 +22,17 @@
 - **Startup hardening:** A logon launch that finds the app already running stays in the tray, the uninstaller now removes the autostart entry, and Shell lookups stopped silently returning empty on machines where the COM apartment was already initialized.
 
 <details>
-<summary><b>🌐 Ver notas de la versión en Español</b></summary>
+<summary><b>🇪🇸 Ver notas de la versión en Español</b></summary>
 
 ### 🚀 Novedades de esta versión
 
+Cuarta vista en Mosaicos, miniaturas reales al estilo del Explorador y zoom de vista previa por carpeta. Los vídeos y la música se reproducen en el panel de propiedades, y el arranque automático queda reforzado tras actualizar.
+
 > **¿Nuevo en CyberFiles?** Un gestor de archivos Windows de doble panel, con pestañas, operaciones de copia y movimiento en cola que puedes pausar o deshacer, herramientas de archivos comprimidos y vistas previas con el Shell real de Windows.
+
+---
+
+### ✨ Novedades destacadas
 
 - **Vista Mosaicos:** Un cuarto modo presenta los elementos como tarjetas al estilo del Explorador, con la vista previa a la izquierda y tipo, tamaño y fecha de modificación a la derecha. Ctrl+4 activa la vista y cada carpeta recuerda si la prefiere.
 - **Miniaturas al estilo del Explorador:** Cuadrícula y Mosaicos dibujan las mismas vistas previas que muestra el Explorador de Windows, a través del propio pipeline del Shell: fotogramas de vídeo, primeras páginas de documentos, portadas de audio y pilas de fotos en carpetas. Un fotograma extraído por la propia app cubre los vídeos que el Shell no puede miniaturizar.
