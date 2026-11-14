@@ -198,7 +198,7 @@ jobs:
           [System.IO.File]::WriteAllText('latest.json', $manifestJson, [System.Text.UTF8Encoding]::new($false))
           Write-Host "Updater manifest: latest.json ($versionNumber, $downloadUrl)"
 
-      - name: Scan installer with VirusTotal
+      - name: Scan installer and portable with VirusTotal
         id: virustotal
         shell: pwsh
         env:
@@ -206,7 +206,9 @@ jobs:
         run: |
           $installer = Get-ChildItem 'src-tauri/target/release/bundle/nsis' -Filter 'CyberFiles_*_x64-setup.exe' | Select-Object -First 1
           if (-not $installer) { throw 'The built installer could not be found for VirusTotal scanning.' }
-          $result = & .github/scripts/scan-virus-total.ps1 -InstallerPath $installer.FullName | ConvertFrom-Json
+          $portable = Get-ChildItem 'src-tauri/target/release/bundle/portable' -Filter 'CyberFiles_*_x64-portable.zip' | Select-Object -First 1
+          if (-not $portable) { throw 'The built portable archive could not be found for VirusTotal scanning.' }
+          $result = & .github/scripts/scan-virus-total.ps1 -InstallerPath $installer.FullName -PortablePath $portable.FullName | ConvertFrom-Json
           "status=$($result.status)" >> $env:GITHUB_OUTPUT
           "sha256=$($result.sha256)" >> $env:GITHUB_OUTPUT
           "report_url=$($result.reportUrl)" >> $env:GITHUB_OUTPUT
