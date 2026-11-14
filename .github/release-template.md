@@ -6,8 +6,10 @@
 
 ### 🚀 What's new in this release
 
-<!-- IMPORTANT FOR AGENTS & MAINTAINERS: Always rewrite this entire section and highlights with the ACTUAL release notes for this specific new version before tagging. NEVER leave or copy previous version notes! The summary paragraph below is injected from the annotated tag message. Use 25-45 words for the tag summary, lead with user-facing changes, and do not repeat the app name or version. -->
-{{RELEASE_SUMMARY}}
+<!-- IMPORTANT FOR AGENTS & MAINTAINERS: Always rewrite this entire section and highlights with the ACTUAL release notes for this specific new version before tagging. NEVER leave or copy previous version notes! Use 25-45 words for the summary, lead with user-facing changes, and do not repeat the app name or version. Keep the Spanish mirror inside the details block in sync: translate the summary and rewrite the highlights. -->
+<!-- changelog-summary:start -->
+Fourth Tiles view, real Explorer-style thumbnails and per-folder preview zoom. Video and audio play right in the properties panel, and the logon autostart path got hardened.
+<!-- changelog-summary:end -->
 
 > **New to CyberFiles?** A dual-pane Windows file manager with tabs, queued copy and move operations you can pause or undo, archive tools, and previews powered by the real Windows Shell.
 

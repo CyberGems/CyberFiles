@@ -36,6 +36,9 @@ jobs:
         with:
           config: .github/about-icons.json
 
+      - name: Validate release summary
+        run: node .github/scripts/validate-release-summary.mjs
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -130,36 +133,8 @@ jobs:
           $checksumLines = @("$installerHash  $($installer.Name)", "$portableHash  $($portable.Name)")
           [System.IO.File]::WriteAllText($checksumPath, ($checksumLines -join "`n") + "`n", [System.Text.UTF8Encoding]::new($false))
 
-          $tagRef = "refs/tags/$($env:RELEASE_TAG)"
-          $tagRefSpec = "${tagRef}:${tagRef}"
-          git fetch --force origin $tagRefSpec
-          if ($LASTEXITCODE -ne 0) {
-            throw "Could not fetch release tag $($env:RELEASE_TAG) from origin."
-          }
-          $tagObjectType = (git cat-file -t $tagRef | Out-String).Trim()
-          if ($LASTEXITCODE -ne 0 -or $tagObjectType -ne 'tag') {
-            throw "Release tag $($env:RELEASE_TAG) is not an annotated tag."
-          }
-          $tagObject = git cat-file -p $tagRef | Out-String
-          if ($LASTEXITCODE -ne 0) {
-            throw "Could not read annotated tag $($env:RELEASE_TAG)."
-          }
-          $separator = [regex]::Match($tagObject, "\r?\n\r?\n")
-          if (-not $separator.Success) {
-            throw "Tag $($env:RELEASE_TAG) is not an annotated tag."
-          }
-          $releaseSummary = $tagObject.Substring($separator.Index + $separator.Length).Trim()
-          $signatureIndex = $releaseSummary.IndexOf('-----BEGIN PGP SIGNATURE-----')
-          if ($signatureIndex -ge 0) {
-            $releaseSummary = $releaseSummary.Substring(0, $signatureIndex).Trim()
-          }
-          if ([string]::IsNullOrWhiteSpace($releaseSummary)) {
-            throw 'Add a concise user-facing summary to the annotated release tag message.'
-          }
-
           $template = [System.IO.File]::ReadAllText('.github/release-template.md', [System.Text.Encoding]::UTF8)
           $notes = $template.Replace('{{VERSION}}', $env:RELEASE_TAG).
-            Replace('{{RELEASE_SUMMARY}}', $releaseSummary).
             Replace('{{VERSION_NUM}}', $versionNumber).
             Replace('{{SETUP_SHA256}}', $installerHash).
             Replace('{{PORTABLE_SHA256}}', $portableHash).
