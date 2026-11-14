@@ -9,7 +9,7 @@
 <!-- IMPORTANT FOR AGENTS & MAINTAINERS: Always rewrite this entire section and highlights with the ACTUAL release notes for this specific new version before tagging. NEVER leave or copy previous version notes! The summary paragraph below is injected from the annotated tag message. Use 25-45 words for the tag summary, lead with user-facing changes, and do not repeat the app name or version. -->
 {{RELEASE_SUMMARY}}
 
-> CyberFiles is a Windows-first file manager by CyberGems.
+> **New to CyberFiles?** A dual-pane Windows file manager with tabs, queued copy and move operations you can pause or undo, archive tools, and previews powered by the real Windows Shell.
 
 ---
 
@@ -25,6 +25,8 @@
 <summary><b>🌐 Ver notas de la versión en Español</b></summary>
 
 ### 🚀 Novedades de esta versión
+
+> **¿Nuevo en CyberFiles?** Un gestor de archivos Windows de doble panel, con pestañas, operaciones de copia y movimiento en cola que puedes pausar o deshacer, herramientas de archivos comprimidos y vistas previas con el Shell real de Windows.
 
 - **Vista Mosaicos:** Un cuarto modo presenta los elementos como tarjetas al estilo del Explorador, con la vista previa a la izquierda y tipo, tamaño y fecha de modificación a la derecha. Ctrl+4 activa la vista y cada carpeta recuerda si la prefiere.
 - **Miniaturas al estilo del Explorador:** Cuadrícula y Mosaicos dibujan las mismas vistas previas que muestra el Explorador de Windows, a través del propio pipeline del Shell: fotogramas de vídeo, primeras páginas de documentos, portadas de audio y pilas de fotos en carpetas. Un fotograma extraído por la propia app cubre los vídeos que el Shell no puede miniaturizar.
