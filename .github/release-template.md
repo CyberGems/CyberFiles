@@ -32,7 +32,17 @@
 - **Medios en el panel de propiedades:** Los archivos de audio y vídeo se reproducen en el propio panel, transmitiendo desde el disco sin copiar el archivo; los formatos que el reproductor no puede manejar ofrecen abrirlos con su aplicación.
 - **Arranque reforzado:** Un inicio por sesión que encuentra la app ya abierta se queda en la bandeja, el desinstalador elimina ahora la entrada de autoarranque, y las consultas al Shell dejaron de devolver vacío en equipos con el apartment COM ya inicializado.
 
+### ⚠️ Antes de instalar
+
+- **Windows:** esta versión aún no está firmada digitalmente. SmartScreen puede avisar antes de ejecutarla: **Más información › Ejecutar de todas formas**. Cuando Smart App Control está activado, Windows rechaza programas sin firmar; consulta la [política de firma de código](https://github.com/CyberGems/.github/blob/main/CODE_SIGNING.md). Verifica la descarga con los checksums SHA256 que aparecen más abajo.
+
 </details>
+
+---
+
+### ⚠️ Before you install
+
+- **Windows:** this release is not code-signed yet. SmartScreen may ask before it runs: **More info › Run anyway**. Where Smart App Control is on, Windows refuses unsigned programs; see the [code signing policy](https://github.com/CyberGems/.github/blob/main/CODE_SIGNING.md). Verify the download with the SHA256 checksums below.
 
 ---
 
