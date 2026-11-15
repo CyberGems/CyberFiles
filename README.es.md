@@ -230,7 +230,7 @@ CyberFiles se abre en **Este equipo**, mostrando unidades y carpetas habituales 
 
 Las preferencias de diseño se guardan en este equipo y las carpetas grandes se cargan progresivamente al desplazarte. Abrir una ubicación de la barra lateral en una pestaña nueva está activado por defecto y se puede cambiar en **Configuración**.
 
-Consulta [¿Cómo se usa CyberFiles?](https://github.com/CyberGems/CyberFiles/wiki/How-Do-You-Use) para ver ejemplos cotidianos y las guías completas de la wiki (en inglés).
+Consulta [¿Cómo se usa CyberFiles?](https://github.com/CyberGems/CyberFiles/wiki/How-Do-You-Use-es) para ver ejemplos cotidianos y las guías completas de la wiki.
 
 ---
 
@@ -427,7 +427,7 @@ Para guías de uso, configuración, atajos de teclado, detalles de seguridad y s
 
 | Página | Qué cubre |
 |---|---|
-| [Cómo se usa CyberFiles](https://github.com/CyberGems/CyberFiles/wiki/How-Do-You-Use) | Este equipo, paneles, pestañas, vistas e inspección de elementos |
+| [Cómo se usa CyberFiles](https://github.com/CyberGems/CyberFiles/wiki/How-Do-You-Use-es) | Este equipo, paneles, pestañas, vistas e inspección de elementos |
 | [Configuración](https://github.com/CyberGems/CyberFiles/wiki/Settings) | Temas, idioma, navegación, inicio y atajo global |
 | [Operaciones de archivos y seguridad](https://github.com/CyberGems/CyberFiles/wiki/File-Operations-and-Safety) | Cola, deshacer, Papelera y restricciones de red |
 | [Instalación y configuración](https://github.com/CyberGems/CyberFiles/wiki/Installation-and-Setup) | Versiones, edición portable, comandos de desarrollo y compilaciones |
