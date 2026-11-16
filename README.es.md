@@ -18,7 +18,7 @@
   <img src="https://img.shields.io/badge/Plataforma-Windows_10%2F11-1F2428.svg?style=flat-square&color=334155" alt="Plataforma" />&nbsp;
   <img src="https://img.shields.io/badge/Tauri-2.x-1F2428.svg?style=flat-square&logo=tauri&logoColor=white&color=334155" alt="Tauri" />&nbsp;
   <img src="https://img.shields.io/badge/React-19-1F2428.svg?style=flat-square&logo=react&logoColor=white&color=334155" alt="React" />&nbsp;
-  <a href="https://github.com/CyberGems/CyberFiles/wiki"><img src="https://img.shields.io/badge/Wiki-Documentaci%C3%B3n-1F2428?style=flat-square&logo=gitbook&logoColor=white&color=334155" alt="Wiki" /></a>&nbsp;
+  <a href="https://github.com/CyberGems/CyberFiles/wiki/Home-es"><img src="https://img.shields.io/badge/Wiki-Documentaci%C3%B3n-1F2428?style=flat-square&logo=gitbook&logoColor=white&color=334155" alt="Wiki" /></a>&nbsp;
   <a href="https://github.com/CyberGems/CyberFiles/blob/main/CHANGELOG.md"><img src="https://img.shields.io/badge/Notas_de_la_versi%C3%B3n-475569?style=flat-square" alt="Notas de la versión" /></a>
 </p>
 
@@ -51,7 +51,7 @@
 <summary><strong>🔗 Related links (outside this README)</strong></summary>
 
 - 🌐 [CyberFiles en GitHub](https://github.com/CyberGems/CyberFiles) — código fuente, issues y notas de versión
-- 📚 [Documentación y FAQ — Wiki](https://github.com/CyberGems/CyberFiles/wiki) — solución de problemas y guías detalladas
+- 📚 [Documentación y FAQ — Wiki](https://github.com/CyberGems/CyberFiles/wiki/Home-es) — solución de problemas y guías detalladas
 - 💾 [Releases](https://github.com/CyberGems/CyberFiles/releases) — instaladores, versiones portátiles y changelog
 - 🟣 [Suite CyberGems](https://github.com/CyberGems) — todas las apps de código abierto
 
@@ -214,7 +214,7 @@ Windows muestra este aviso con cualquier instalador sin un certificado de firma 
 
 3. Pulsa **Ejecutar de todas formas**. El instalador arranca con normalidad.
 
-Puedes verificar el archivo de forma independiente: compara el SHA con el de la versión en GitHub, analízalo en VirusTotal o compílalo desde el código fuente. Más detalles: [guía de SmartScreen en el sitio web](https://cybergems.org/download#smartscreen).
+Puedes verificar el archivo de forma independiente: compara el SHA con el de la versión en GitHub, analízalo en VirusTotal o compílalo desde el código fuente. Más detalles: [guía de SmartScreen en el sitio web](https://cybergems.org/es/download#smartscreen).
 
 </details>
 
@@ -328,7 +328,7 @@ Dos limitaciones actuales son intencionadas y están documentadas:
 - **Las ubicaciones de red no se pueden usar como destino de borrado.** El borrado a la Papelera acepta solo rutas locales canónicas en unidades fijas o extraíbles; las rutas UNC, las unidades de red asignadas, los medios ópticos y las raíces del sistema de archivos se rechazan con un error por elemento. Usa el Explorador de Windows para borrar en red.
 - **Vaciar la Papelera sigue el comportamiento de Windows.** Pasa una ruta nula al Shell, que vacía las Papeleras de todas las unidades, así que su alcance puede ser mayor que el del indicador de estado. Es permanente y no se puede deshacer.
 
-Consulta [Operaciones de archivos y seguridad](https://github.com/CyberGems/CyberFiles/wiki/File-Operations-and-Safety) para la lista completa de comportamientos.
+Consulta [Operaciones de archivos y seguridad](https://github.com/CyberGems/CyberFiles/wiki/File-Operations-and-Safety-es) para la lista completa de comportamientos.
 
 ### 🤝 Contribuir
 
@@ -378,7 +378,7 @@ Con la lista de archivos enfocada, escribir letras rellena el filtro de forma pr
 
 ## ❤️ Donar
 
-**CyberFiles** es 100% gratis y de código abierto. Si te resulta útil, por favor considera [donar](https://cybergems.org/donate) o [dar una estrella al repo en GitHub](https://github.com/CyberGems/CyberFiles) para apoyar el desarrollo continuo. [Lee la historia completa](https://cybergems.org/about/) del proyecto. ¡Gracias! 🙏
+**CyberFiles** es 100% gratis y de código abierto. Si te resulta útil, por favor considera [donar](https://cybergems.org/es/donate) o [dar una estrella al repo en GitHub](https://github.com/CyberGems/CyberFiles) para apoyar el desarrollo continuo. [Lee la historia completa](https://cybergems.org/es/about/) del proyecto. ¡Gracias! 🙏
 
 <p align="center">
   <a href="https://www.paypal.com/donate/?hosted_button_id=M4PY3UPJA5Y6Q"><img src="https://img.shields.io/badge/Donar-PayPal-0070BA?style=for-the-badge&logo=paypal" alt="Donar por PayPal" /></a>
@@ -423,15 +423,15 @@ Copyright (C) 2026 CyberGems
 
 ## ❓ Preguntas frecuentes
 
-Para guías de uso, configuración, atajos de teclado, detalles de seguridad y solución de problemas, visita la [wiki de CyberFiles](https://github.com/CyberGems/CyberFiles/wiki):
+Para guías de uso, configuración, atajos de teclado, detalles de seguridad y solución de problemas, visita la [wiki de CyberFiles](https://github.com/CyberGems/CyberFiles/wiki/Home-es):
 
 | Página | Qué cubre |
 |---|---|
 | [Cómo se usa CyberFiles](https://github.com/CyberGems/CyberFiles/wiki/How-Do-You-Use-es) | Este equipo, paneles, pestañas, vistas e inspección de elementos |
-| [Configuración](https://github.com/CyberGems/CyberFiles/wiki/Settings) | Temas, idioma, navegación, inicio y atajo global |
-| [Operaciones de archivos y seguridad](https://github.com/CyberGems/CyberFiles/wiki/File-Operations-and-Safety) | Cola, deshacer, Papelera y restricciones de red |
-| [Instalación y configuración](https://github.com/CyberGems/CyberFiles/wiki/Installation-and-Setup) | Versiones, edición portable, comandos de desarrollo y compilaciones |
-| [Solución de problemas](https://github.com/CyberGems/CyberFiles/wiki/Troubleshooting) | Dudas habituales sobre operaciones, archivos comprimidos y atajos |
+| [Configuración](https://github.com/CyberGems/CyberFiles/wiki/Settings-es) | Temas, idioma, navegación, inicio y atajo global |
+| [Operaciones de archivos y seguridad](https://github.com/CyberGems/CyberFiles/wiki/File-Operations-and-Safety-es) | Cola, deshacer, Papelera y restricciones de red |
+| [Instalación y configuración](https://github.com/CyberGems/CyberFiles/wiki/Installation-and-Setup-es) | Versiones, edición portable, comandos de desarrollo y compilaciones |
+| [Solución de problemas](https://github.com/CyberGems/CyberFiles/wiki/Troubleshooting-es) | Dudas habituales sobre operaciones, archivos comprimidos y atajos |
 
 ---
 
@@ -439,7 +439,7 @@ Para guías de uso, configuración, atajos de teclado, detalles de seguridad y s
 
 ### ¡Gracias por usar CyberFiles! 🎉
 
-Creado por [**CyberGems**](https://cybergems.org)
+Creado por [**CyberGems**](https://cybergems.org/es/)
 
 </div>
 <p align="center">
@@ -470,4 +470,4 @@ Más aplicaciones gratuitas, de código abierto y con la privacidad primero de [
 | 💫&nbsp;[**CyberViewer**](https://github.com/CyberGems/CyberViewer#readme) | Visor y editor de imágenes completo diseñado para usuarios casuales y avanzados. |
 | 🛡️&nbsp;[**CyberWall**](https://github.com/CyberGems/CyberWall#readme) | Cortafuegos de Windows fácil de usar con reglas por aplicación en tiempo real gracias al motor kernel WFP. |
 
-➡️ **[Todas las aplicaciones en cybergems.org](https://cybergems.org)**
+➡️ **[Todas las aplicaciones en cybergems.org](https://cybergems.org/es/)**
