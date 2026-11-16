@@ -192,6 +192,34 @@ jobs:
           [System.IO.File]::WriteAllText('release_notes.md', $notes, [System.Text.UTF8Encoding]::new($false))
           Write-Host "VirusTotal: $($result.status)"
 
+      - name: Generate and upload winget manifests
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          # winget versions carry no 'v' prefix (0.9.0, not v0.9.0); URLs keep the tag's.
+          $bareVersion = $tag.TrimStart('v')
+          $installerPath = Join-Path 'src-tauri/target/release/bundle/nsis' "CyberFiles_${bareVersion}_x64-setup.exe"
+          if (-not (Test-Path -LiteralPath $installerPath)) { throw "Expected NSIS installer not found: $installerPath" }
+          $installerHash = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $manifestFiles = @{
+              "winget-version.yaml"   = "CyberGems.CyberFiles.yaml"
+              "winget-locale.yaml"    = "CyberGems.CyberFiles.locale.en-US.yaml"
+              "winget-installer.yaml" = "CyberGems.CyberFiles.installer.yaml"
+          }
+          New-Item -ItemType Directory -Path winget-pkg -Force | Out-Null
+          foreach ($entry in $manifestFiles.GetEnumerator()) {
+              $manifestTemplate = [System.IO.File]::ReadAllText($entry.Key, [System.Text.Encoding]::UTF8)
+              $manifest = $manifestTemplate.Replace('{{VERSION}}', $bareVersion).Replace('{{TAG}}', $tag).Replace('{{INSTALLER_HASH}}', $installerHash)
+              [System.IO.File]::WriteAllText("winget-pkg/$($entry.Value)", $manifest, [System.Text.Encoding]::UTF8)
+          }
+          winget validate winget-pkg
+          if ($LASTEXITCODE -ne 0) { throw 'winget manifest validation failed.' }
+          gh release upload $tag winget-pkg/CyberGems.CyberFiles.yaml winget-pkg/CyberGems.CyberFiles.locale.en-US.yaml winget-pkg/CyberGems.CyberFiles.installer.yaml --clobber
+          Write-Host "Generated, validated and uploaded winget manifests for $tag."
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
