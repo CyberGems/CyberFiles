@@ -123,6 +123,8 @@ interface FilePaneProps {
   onRemoveSavedNetworkHost?: (hostPath: string) => void;
   onUpdateSavedNetworkHost?: (hostPath: string, updates: { alias?: string; note?: string; pinned?: boolean }) => void;
   onTogglePinNetworkHost?: (hostPath: string) => void;
+  onExportSavedNetworkHosts?: () => void;
+  onImportSavedNetworkHosts?: (jsonText: string) => boolean;
   onRequestNetworkAuth?: (targetPath: string) => void;
   onRequestMapNetworkDrive?: (initialUncPath?: string) => void;
   onDisconnectNetworkDrive?: (driveLetter: string) => void;
@@ -945,6 +947,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onRemoveSavedNetworkHost,
   onUpdateSavedNetworkHost,
   onTogglePinNetworkHost,
+  onExportSavedNetworkHosts,
+  onImportSavedNetworkHosts,
   onRequestNetworkAuth,
   onRequestMapNetworkDrive,
   onDisconnectNetworkDrive,
@@ -1001,6 +1005,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const [editingHostPath, setEditingHostPath] = useState<string | null>(null);
   const [editingHostAlias, setEditingHostAlias] = useState('');
   const [editingHostNote, setEditingHostNote] = useState('');
+  const [showImportNetworkHosts, setShowImportNetworkHosts] = useState(false);
+  const [importNetworkHostsText, setImportNetworkHostsText] = useState('');
   const [collapsedNetworkSections, setCollapsedNetworkSections] = useState<{ hosts: boolean; shares: boolean }>({
     hosts: false,
     shares: false,
@@ -4796,7 +4802,35 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     <div className="truncate text-[11px] text-neutral-400">{t.pane.networkSubtitle}</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {onExportSavedNetworkHosts && savedNetworkHosts.length > 0 && (
+                    <Tooltip label={t.pane.networkExportHostsTooltip} placement="bottom">
+                      <button
+                        type="button"
+                        onClick={() => onExportSavedNetworkHosts()}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-800 bg-neutral-900 px-2.5 text-[11px] font-medium text-neutral-300 transition-colors hover:border-cyan-500/50 hover:text-cyan-200"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        <span>{t.pane.networkExportHostsButton}</span>
+                      </button>
+                    </Tooltip>
+                  )}
+                  {onImportSavedNetworkHosts && (
+                    <Tooltip label={t.pane.networkImportHostsTooltip} placement="bottom">
+                      <button
+                        type="button"
+                        onClick={() => setShowImportNetworkHosts(prev => !prev)}
+                        className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-medium transition-colors ${
+                          showImportNetworkHosts
+                            ? 'border-cyan-500/60 bg-cyan-950/50 text-cyan-200'
+                            : 'border-neutral-800 bg-neutral-900 text-neutral-300 hover:border-cyan-500/50 hover:text-cyan-200'
+                        }`}
+                      >
+                        <FileCode className="h-3.5 w-3.5" />
+                        <span>{t.pane.networkImportHostsButton}</span>
+                      </button>
+                    </Tooltip>
+                  )}
                   {onRequestMapNetworkDrive && (
                     <button
                       type="button"
@@ -4822,6 +4856,43 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   )}
                 </div>
               </div>
+              {showImportNetworkHosts && onImportSavedNetworkHosts && (
+                <div className="mt-3 space-y-2 rounded-lg border border-neutral-800 bg-neutral-900/60 p-2.5">
+                  <textarea
+                    value={importNetworkHostsText}
+                    onChange={event => setImportNetworkHostsText(event.target.value)}
+                    placeholder={t.pane.networkImportHostsPlaceholder}
+                    aria-label={t.pane.networkImportHostsPlaceholder}
+                    rows={3}
+                    className="w-full rounded-md border border-neutral-700 bg-neutral-950 p-2 font-mono text-xs text-neutral-100 placeholder-neutral-500 outline-none focus:border-cyan-500/70"
+                  />
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowImportNetworkHosts(false);
+                        setImportNetworkHostsText('');
+                      }}
+                      className="rounded-md border border-neutral-700 bg-neutral-800/80 px-2.5 py-1 text-xs text-neutral-300 transition-colors hover:bg-neutral-800"
+                    >
+                      {t.core.cancel}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!importNetworkHostsText.trim()}
+                      onClick={() => {
+                        if (onImportSavedNetworkHosts(importNetworkHostsText)) {
+                          setShowImportNetworkHosts(false);
+                          setImportNetworkHostsText('');
+                        }
+                      }}
+                      className="rounded-md border border-cyan-500/60 bg-cyan-950/70 px-2.5 py-1 text-xs font-medium text-cyan-200 transition-colors hover:border-cyan-400 hover:bg-cyan-900/70 disabled:opacity-40"
+                    >
+                      {t.pane.networkImportHostsApply}
+                    </button>
+                  </div>
+                </div>
+              )}
               <form
                 onSubmit={event => {
                   event.preventDefault();

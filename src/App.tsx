@@ -3290,6 +3290,76 @@ export default function App() {
     void handleNavigate(normalized, targetPane, true);
   }, [activePane, handleNavigate, rememberNetworkHost, showToast, t.pane.networkInvalidHost]);
 
+  const handleExportSavedNetworkHosts = useCallback(() => {
+    const serialized = JSON.stringify(savedNetworkHostsRef.current, null, 2);
+    void navigator.clipboard.writeText(serialized).then(() => {
+      showToast(t.pane.networkExportHostsSuccess);
+    }).catch(() => {
+      showToast(t.sidebar.copyPathFailure);
+    });
+  }, [showToast, t.pane.networkExportHostsSuccess, t.sidebar.copyPathFailure]);
+
+  const handleImportSavedNetworkHosts = useCallback((jsonText: string): boolean => {
+    try {
+      const parsed: unknown = JSON.parse(jsonText);
+      if (!Array.isArray(parsed)) {
+        showToast(t.pane.networkImportHostsError);
+        return false;
+      }
+      const imported: SavedNetworkHost[] = [];
+      const seen = new Set<string>();
+      for (const value of parsed) {
+        if (typeof value === 'string') {
+          const hostRoot = getUncHostRoot(value);
+          if (!hostRoot) continue;
+          const key = getPathKey(hostRoot);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          imported.push({ path: hostRoot });
+        } else if (value && typeof value === 'object') {
+          const candidate = value as Record<string, unknown>;
+          if (typeof candidate.path !== 'string') continue;
+          const hostRoot = getUncHostRoot(candidate.path);
+          if (!hostRoot) continue;
+          const key = getPathKey(hostRoot);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const alias = typeof candidate.alias === 'string' && candidate.alias.trim()
+            ? candidate.alias.trim().slice(0, 80)
+            : undefined;
+          const note = typeof candidate.note === 'string' && candidate.note.trim()
+            ? candidate.note.trim().slice(0, 160)
+            : undefined;
+          const pinned = candidate.pinned === true ? true : undefined;
+          imported.push({ path: hostRoot, alias, note, pinned });
+        }
+      }
+      if (imported.length === 0) {
+        showToast(t.pane.networkImportHostsError);
+        return false;
+      }
+      setSavedNetworkHosts(previous => {
+        const byKey = new Map<string, SavedNetworkHost>();
+        for (const item of imported) {
+          byKey.set(getPathKey(item.path), item);
+        }
+        for (const existing of previous) {
+          const key = getPathKey(existing.path);
+          if (!byKey.has(key)) {
+            byKey.set(key, existing);
+          }
+        }
+        return [...byKey.values()].slice(0, 50);
+      });
+      void runNetworkHostProbes(imported.map(item => item.path));
+      showToast(t.pane.networkImportHostsSuccess.replace('{count}', String(imported.length)));
+      return true;
+    } catch {
+      showToast(t.pane.networkImportHostsError);
+      return false;
+    }
+  }, [runNetworkHostProbes, showToast, t.pane.networkImportHostsError, t.pane.networkImportHostsSuccess]);
+
   const handleRequestNetworkAuth = useCallback((path: string, targetPane: 'left' | 'right' = activePane) => {
     setPendingNetworkAuth({ path, pane: targetPane, errorMessage: null });
   }, [activePane]);
@@ -6964,6 +7034,8 @@ export default function App() {
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   onUpdateSavedNetworkHost={handleUpdateSavedNetworkHost}
                   onTogglePinNetworkHost={handleTogglePinNetworkHost}
+                  onExportSavedNetworkHosts={handleExportSavedNetworkHosts}
+                  onImportSavedNetworkHosts={handleImportSavedNetworkHosts}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
                   quickAccessItems={sidebarQuickAccess}
@@ -7058,6 +7130,8 @@ export default function App() {
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   onUpdateSavedNetworkHost={handleUpdateSavedNetworkHost}
                   onTogglePinNetworkHost={handleTogglePinNetworkHost}
+                  onExportSavedNetworkHosts={handleExportSavedNetworkHosts}
+                  onImportSavedNetworkHosts={handleImportSavedNetworkHosts}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
                   quickAccessItems={sidebarQuickAccess}
@@ -7153,6 +7227,8 @@ export default function App() {
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   onUpdateSavedNetworkHost={handleUpdateSavedNetworkHost}
                   onTogglePinNetworkHost={handleTogglePinNetworkHost}
+                  onExportSavedNetworkHosts={handleExportSavedNetworkHosts}
+                  onImportSavedNetworkHosts={handleImportSavedNetworkHosts}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
                   quickAccessItems={sidebarQuickAccess}
@@ -7243,6 +7319,8 @@ export default function App() {
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   onUpdateSavedNetworkHost={handleUpdateSavedNetworkHost}
                   onTogglePinNetworkHost={handleTogglePinNetworkHost}
+                  onExportSavedNetworkHosts={handleExportSavedNetworkHosts}
+                  onImportSavedNetworkHosts={handleImportSavedNetworkHosts}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
                   quickAccessItems={sidebarQuickAccess}
@@ -7338,6 +7416,8 @@ export default function App() {
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
                   onUpdateSavedNetworkHost={handleUpdateSavedNetworkHost}
                   onTogglePinNetworkHost={handleTogglePinNetworkHost}
+                  onExportSavedNetworkHosts={handleExportSavedNetworkHosts}
+                  onImportSavedNetworkHosts={handleImportSavedNetworkHosts}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
                   quickAccessItems={sidebarQuickAccess}
