@@ -12,7 +12,7 @@ All notable changes to CyberFiles are documented here.
 - Hide folder actions that the virtual locations cannot perform.
 - Hide the Before you install guidance from the update modal.
 - Show the CyberFiles website and description in the Windows uninstall entry.
-- Update 12 npm dependencies and ship winget manifests with every release.
+- Update 12 npm dependencies plus the dialog and opener Tauri plugins, and ship winget manifests with every release.
 
 ### 🇪🇸 Español
 

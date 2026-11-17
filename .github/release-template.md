@@ -21,7 +21,7 @@ Crash recovery now restores unsaved tab sessions after an unexpected exit, the t
 
 - 🖥️ **Tray layout and quit polish**: This PC and Network stay on their dedicated layouts, tray views are measured at startup and resized before swapping, folder actions hide where the virtual locations cannot apply, and quitting routes through the unsaved-changes gate.
 
-- 🧹 **Updates, uninstall and maintenance**: The update modal skips "Before you install", the Windows uninstall entry shows the website and description, 12 npm dependencies are refreshed, and every release ships winget manifests.
+- 🧹 **Updates, uninstall and maintenance**: The update modal skips "Before you install", the Windows uninstall entry shows the website and description, 12 npm dependencies plus the dialog and opener Tauri plugins are refreshed, and every release ships winget manifests.
 
 <details>
 <summary><b>🇪🇸 Ver notas de la versión en Español</b></summary>
@@ -40,7 +40,7 @@ La recuperación tras fallo restaura ahora las sesiones de pestañas sin guardar
 
 - 🖥️ **Pulido de la bandeja**: Este equipo y Red mantienen sus diseños dedicados, las vistas de la bandeja se miden al arranque y se redimensionan antes del cambio, las acciones de carpeta se ocultan donde las ubicaciones virtuales no aplican, y salir pasa por la puerta de cambios sin guardar.
 
-- 🧹 **Actualizaciones, desinstalación y mantenimiento**: El modal de actualización omite «Antes de instalar», la entrada de desinstalación de Windows muestra el sitio web y la descripción, se renuevan 12 dependencias de npm y cada release publica manifiestos winget.
+- 🧹 **Actualizaciones, desinstalación y mantenimiento**: El modal de actualización omite «Antes de instalar», la entrada de desinstalación de Windows muestra el sitio web y la descripción, se renuevan 12 dependencias de npm más los plugins Tauri de dialog y opener, y cada release publica manifiestos winget.
 
 ### ⚠️ Antes de instalar
 
