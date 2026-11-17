@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, Compass, FolderOpen, Info, Keyboard, Palette, RotateCcw, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { Check, Compass, FolderOpen, Info, Keyboard, Palette, Plus, RotateCcw, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useLanguage } from '../locales/LanguageContext';
 import { type AppTheme, useTheme } from '../themes/ThemeContext';
@@ -9,9 +9,9 @@ import { type GroupByField, type HiddenItemStyle, type NewTabActionMode, type Ne
 import type { FolderStylePreference, SavedFolderStyles } from '../utils/folderStylePreferences';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
-import { isTauriDesktop } from '../utils/nativeFileSystem';
+import { chooseNativeFolder, isTauriDesktop } from '../utils/nativeFileSystem';
 import type { DeleteConfirmationPreference } from '../utils/deletePreferences';
-import { fetchAutostartStatus, fetchExplorerIntegrationStatus, fetchWindowsFolderHandler, readStartMinimizedOnStartup, setAutostart as persistAutostart, setExplorerIntegration as persistExplorerIntegration, setWindowsFolderHandler, writeStartMinimizedOnStartup, type WindowsFolderHandlerStatus } from '../utils/systemIntegration';
+import { fetchAutostartStatus, fetchExplorerIntegrationStatus, fetchWindowsFolderHandler, fetchWindowsFolderHandlerExceptions, readStartMinimizedOnStartup, setAutostart as persistAutostart, setExplorerIntegration as persistExplorerIntegration, setWindowsFolderHandler, setWindowsFolderHandlerExceptions, writeStartMinimizedOnStartup, type FolderHandlerException, type WindowsFolderHandlerStatus } from '../utils/systemIntegration';
 import { resetLocalPreferences } from '../utils/factoryReset';
 import { ConfirmActionModal } from './ConfirmActionModal';
 import { ColorValueEditor } from './ColorValueEditor';
@@ -401,6 +401,10 @@ export function SettingsModal({
   const [folderHandler, setFolderHandler] = useState<WindowsFolderHandlerStatus | null>(null);
   const [folderHandlerBusy, setFolderHandlerBusy] = useState(false);
   const [folderHandlerError, setFolderHandlerError] = useState<'read' | 'write' | null>(null);
+  const [folderExceptions, setFolderExceptions] = useState<FolderHandlerException[]>([]);
+  const [newFolderExceptionPath, setNewFolderExceptionPath] = useState('');
+  const [newFolderExceptionSubfolders, setNewFolderExceptionSubfolders] = useState(true);
+  const [folderExceptionInputError, setFolderExceptionInputError] = useState<string | null>(null);
   const [startMinimizedOnStartup, setStartMinimizedOnStartup] = useState(true);
 
   useEffect(() => {
@@ -511,8 +515,55 @@ export function SettingsModal({
     void fetchWindowsFolderHandler()
       .then(status => { if (!cancelled) setFolderHandler(status); })
       .catch(() => { if (!cancelled) setFolderHandlerError('read'); });
+    void fetchWindowsFolderHandlerExceptions()
+      .then(list => { if (!cancelled) setFolderExceptions(list); })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, [isOpen]);
+
+  const handleAddFolderException = async (rawPath: string, includeSubfolders = newFolderExceptionSubfolders) => {
+    const trimmed = rawPath.trim();
+    if (!trimmed) return;
+    setFolderExceptionInputError(null);
+    const previousCount = folderExceptions.length;
+    const exists = folderExceptions.some(item => item.path.toLowerCase() === trimmed.replace(/[\\/]+$/, '').toLowerCase());
+    try {
+      const updated = await setWindowsFolderHandlerExceptions([
+        ...folderExceptions,
+        { path: trimmed, includeSubfolders },
+      ]);
+      if (!exists && updated.length === previousCount) {
+        setFolderExceptionInputError(t.settings.windowsFolderExceptionsInvalidPath);
+        return;
+      }
+      setFolderExceptions(updated);
+      setNewFolderExceptionPath('');
+    } catch {
+      setFolderExceptionInputError(t.settings.systemIntegrationSaveError);
+    }
+  };
+
+  const handleToggleFolderExceptionSubfolders = async (path: string, includeSubfolders: boolean) => {
+    try {
+      const updated = await setWindowsFolderHandlerExceptions(
+        folderExceptions.map(item => (item.path === path ? { ...item, includeSubfolders } : item)),
+      );
+      setFolderExceptions(updated);
+    } catch {
+      setFolderExceptionInputError(t.settings.systemIntegrationSaveError);
+    }
+  };
+
+  const handleRemoveFolderException = async (path: string) => {
+    try {
+      const updated = await setWindowsFolderHandlerExceptions(
+        folderExceptions.filter(item => item.path !== path),
+      );
+      setFolderExceptions(updated);
+    } catch {
+      setFolderExceptionInputError(t.settings.systemIntegrationSaveError);
+    }
+  };
 
   const handleFolderHandlerChange = async (enabled: boolean) => {
     setFolderHandlerBusy(true);
@@ -1271,6 +1322,110 @@ export function SettingsModal({
                   <p className="mt-1 pl-6 text-rose-300" role="alert">
                     {folderHandlerError === 'read' ? t.settings.systemIntegrationUnavailable : t.settings.systemIntegrationSaveError}
                   </p>
+                )}
+
+                {isTauriDesktop() && folderHandler !== 'unavailable' && (
+                  <div className="mt-3 border-t border-neutral-800/80 pt-3 pl-6">
+                    <div className="font-medium text-neutral-200">{t.settings.windowsFolderExceptionsTitle}</div>
+                    <p className="mt-0.5 text-[11px] text-neutral-400">{t.settings.windowsFolderExceptionsDescription}</p>
+
+                    <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
+                      <input
+                        type="text"
+                        value={newFolderExceptionPath}
+                        onChange={event => {
+                          setNewFolderExceptionPath(event.target.value);
+                          if (folderExceptionInputError) setFolderExceptionInputError(null);
+                        }}
+                        onKeyDown={event => {
+                          if (event.key === 'Enter' && newFolderExceptionPath.trim()) {
+                            event.preventDefault();
+                            void handleAddFolderException(newFolderExceptionPath);
+                          }
+                        }}
+                        placeholder={t.settings.windowsFolderExceptionsPlaceholder}
+                        aria-label={t.settings.windowsFolderExceptionsPlaceholder}
+                        className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-2.5 py-1.5 font-mono text-xs text-neutral-100 placeholder:text-neutral-500 outline-none focus:border-cyan-500/70"
+                      />
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void chooseNativeFolder(t.settings.windowsFolderExceptionsChoose).then(chosen => {
+                              if (chosen) void handleAddFolderException(chosen);
+                            }).catch(() => {});
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-xs text-neutral-200 transition-colors hover:border-cyan-600/60 hover:text-cyan-200"
+                        >
+                          <FolderOpen className="h-3.5 w-3.5" />
+                          <span>{t.settings.windowsFolderExceptionsChoose}</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!newFolderExceptionPath.trim()}
+                          onClick={() => void handleAddFolderException(newFolderExceptionPath)}
+                          className="inline-flex items-center gap-1 rounded-md border border-cyan-600/60 bg-cyan-950/50 px-2.5 py-1.5 text-xs font-medium text-cyan-200 transition-colors hover:border-cyan-500 hover:bg-cyan-900/60 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          <span>{t.settings.windowsFolderExceptionsAdd}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-[11px] text-neutral-300">
+                      <input
+                        type="checkbox"
+                        checked={newFolderExceptionSubfolders}
+                        onChange={event => setNewFolderExceptionSubfolders(event.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-neutral-600 bg-neutral-950 accent-cyan-400"
+                      />
+                      <span>{t.settings.windowsFolderExceptionsIncludeSubfolders}</span>
+                    </label>
+
+                    {folderExceptionInputError && (
+                      <p className="mt-1.5 text-[11px] text-rose-300" role="alert">
+                        {folderExceptionInputError}
+                      </p>
+                    )}
+
+                    <div className="mt-2.5 space-y-1.5">
+                      {folderExceptions.length === 0 ? (
+                        <p className="text-[11px] text-neutral-500">{t.settings.windowsFolderExceptionsEmpty}</p>
+                      ) : (
+                        folderExceptions.map(item => (
+                          <div
+                            key={item.path}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-neutral-800 bg-neutral-900/70 px-2.5 py-1.5"
+                          >
+                            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-neutral-200" title={item.path}>
+                              {item.path}
+                            </span>
+                            <div className="flex items-center gap-2.5">
+                              <label className="inline-flex cursor-pointer items-center gap-1.5 text-[10px] text-neutral-400 hover:text-neutral-200">
+                                <input
+                                  type="checkbox"
+                                  checked={item.includeSubfolders}
+                                  onChange={event => void handleToggleFolderExceptionSubfolders(item.path, event.target.checked)}
+                                  className="h-3 w-3 rounded border-neutral-600 bg-neutral-950 accent-cyan-400"
+                                />
+                                <span>{t.settings.windowsFolderExceptionsIncludeSubfolders}</span>
+                              </label>
+                              <Tooltip label={t.settings.windowsFolderExceptionsRemove} placement="top">
+                                <button
+                                  type="button"
+                                  aria-label={`${t.settings.windowsFolderExceptionsRemove}: ${item.path}`}
+                                  onClick={() => void handleRemoveFolderException(item.path)}
+                                  className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-rose-300"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </Tooltip>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

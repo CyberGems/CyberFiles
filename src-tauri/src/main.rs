@@ -717,7 +717,12 @@ fn set_global_shortcut_settings(
 #[tauri::command]
 fn reset_app_preferences(app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "windows")]
-    windows_folder_handler::set_enabled(false).map_err(|error| error.to_string())?;
+    {
+        windows_folder_handler::set_enabled(false).map_err(|error| error.to_string())?;
+        if let Ok(path) = folder_handler_exceptions_path() {
+            let _ = fs::remove_file(path);
+        }
+    }
 
     let shortcut_state = app
         .try_state::<GlobalShortcutState>()
@@ -7576,14 +7581,51 @@ async fn open_recycle_bin_in_explorer() -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 fn reveal_folder_in_explorer(path: &str) -> Result<(), String> {
-    let folder = Path::new(path)
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve the folder: {error}"))?;
-    if !folder.is_dir() {
-        return Err("The selected location is not an available folder.".to_string());
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::{w, PCWSTR};
+    use windows::Win32::System::Com::{
+        CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
+    };
+    use windows::Win32::UI::Shell::{
+        ShellExecuteExW, SEE_MASK_CLASSNAME, SHELLEXECUTEINFOW,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let folder = resolve_accessible_directory(path)?;
+    let clean_folder = display_path(&folder);
+    let initialized =
+        unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) };
+    struct ComApartment(bool);
+    impl Drop for ComApartment {
+        fn drop(&mut self) {
+            if self.0 {
+                unsafe { CoUninitialize() };
+            }
+        }
+    }
+    let _apartment = ComApartment(initialized.is_ok());
+
+    // Invoke the "open" verb on the "Folder" class (`HKCR\Folder\shell\open`) rather than
+    // spawning `explorer.exe <path>`, which would delegate to `Directory\shell`'s default verb
+    // and loop back into CyberFiles when CyberFiles is the default folder handler.
+    let wide_path: Vec<u16> = std::ffi::OsStr::new(&clean_folder)
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+        fMask: SEE_MASK_CLASSNAME,
+        lpVerb: w!("open"),
+        lpFile: PCWSTR(wide_path.as_ptr()),
+        lpClass: w!("Folder"),
+        nShow: SW_SHOWNORMAL.0,
+        ..Default::default()
+    };
+    if unsafe { ShellExecuteExW(&mut info) }.is_ok() {
+        return Ok(());
     }
     std::process::Command::new("explorer.exe")
-        .arg(&folder)
+        .arg(&clean_folder)
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("Could not open Windows File Explorer: {error}"))
@@ -8023,6 +8065,41 @@ fn set_explorer_integration(enabled: bool) -> Result<bool, String> {
 }
 
 #[cfg(target_os = "windows")]
+const FOLDER_HANDLER_EXCEPTIONS_FILE: &str = "cyberfiles-folder-handler-exceptions.json";
+
+#[cfg(target_os = "windows")]
+fn folder_handler_exceptions_path() -> Result<PathBuf, String> {
+    resolve_app_config_directory().map(|dir| dir.join(FOLDER_HANDLER_EXCEPTIONS_FILE))
+}
+
+#[cfg(target_os = "windows")]
+fn load_folder_handler_exceptions() -> Vec<windows_folder_handler::FolderHandlerException> {
+    let Ok(path) = folder_handler_exceptions_path() else {
+        return Vec::new();
+    };
+    let Ok(contents) = fs::read(path) else {
+        return Vec::new();
+    };
+    let Ok(entries) =
+        serde_json::from_slice::<Vec<windows_folder_handler::FolderHandlerException>>(&contents)
+    else {
+        return Vec::new();
+    };
+    windows_folder_handler::sanitize_exceptions(entries)
+}
+
+#[cfg(target_os = "windows")]
+fn save_folder_handler_exceptions(
+    exceptions: Vec<windows_folder_handler::FolderHandlerException>,
+) -> Result<Vec<windows_folder_handler::FolderHandlerException>, String> {
+    let sanitized = windows_folder_handler::sanitize_exceptions(exceptions);
+    let path = folder_handler_exceptions_path()?;
+    let encoded = serde_json::to_vec_pretty(&sanitized).map_err(|error| error.to_string())?;
+    atomic_write_file(&path, &encoded)?;
+    Ok(sanitized)
+}
+
+#[cfg(target_os = "windows")]
 #[tauri::command]
 fn get_windows_folder_handler() -> Result<windows_folder_handler::Status, String> {
     windows_folder_handler::status().map_err(|error| error.to_string())
@@ -8034,6 +8111,21 @@ fn set_windows_folder_handler(enabled: bool) -> Result<windows_folder_handler::S
     windows_folder_handler::set_enabled(enabled).map_err(|error| error.to_string())
 }
 
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn get_windows_folder_handler_exceptions(
+) -> Result<Vec<windows_folder_handler::FolderHandlerException>, String> {
+    Ok(load_folder_handler_exceptions())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn set_windows_folder_handler_exceptions(
+    exceptions: Vec<windows_folder_handler::FolderHandlerException>,
+) -> Result<Vec<windows_folder_handler::FolderHandlerException>, String> {
+    save_folder_handler_exceptions(exceptions)
+}
+
 fn main() {
     #[cfg(target_os = "windows")]
     if std::env::args_os().nth(1).is_some_and(|argument| argument == "--unregister-folder-handler") {
@@ -8042,6 +8134,21 @@ fn main() {
             std::process::exit(1);
         }
         return;
+    }
+
+    #[cfg(target_os = "windows")]
+    if std::env::args_os().nth(1).is_some_and(|argument| argument == "--shell-folder") {
+        if let Some(raw_arg) = std::env::args_os().nth(2) {
+            if let Some(folder_path) =
+                windows_folder_handler::shell_folder_argument(&raw_arg.to_string_lossy())
+            {
+                let exceptions = load_folder_handler_exceptions();
+                if windows_folder_handler::matches_folder_exception(&folder_path, &exceptions) {
+                    let _ = reveal_folder_in_explorer(&folder_path);
+                    return;
+                }
+            }
+        }
     }
 
     let _ = LAUNCH_CONTEXT.set(parse_launch_context());
@@ -8305,6 +8412,10 @@ fn main() {
             get_windows_folder_handler,
             #[cfg(target_os = "windows")]
             set_windows_folder_handler,
+            #[cfg(target_os = "windows")]
+            get_windows_folder_handler_exceptions,
+            #[cfg(target_os = "windows")]
+            set_windows_folder_handler_exceptions,
             reset_app_preferences,
         ])
         .run(tauri::generate_context!())

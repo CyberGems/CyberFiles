@@ -48,12 +48,29 @@ export async function setExplorerIntegration(enabled: boolean): Promise<boolean>
 
 export type WindowsFolderHandlerStatus = 'unavailable' | 'off' | 'on' | 'needsRestore';
 
+export interface FolderHandlerException {
+  path: string;
+  includeSubfolders: boolean;
+}
+
 export function fetchWindowsFolderHandler(): Promise<WindowsFolderHandlerStatus> {
   return invoke<WindowsFolderHandlerStatus>('get_windows_folder_handler');
 }
 
 export function setWindowsFolderHandler(enabled: boolean): Promise<WindowsFolderHandlerStatus> {
   return invoke<WindowsFolderHandlerStatus>('set_windows_folder_handler', { enabled });
+}
+
+export async function fetchWindowsFolderHandlerExceptions(): Promise<FolderHandlerException[]> {
+  if (!isTauriDesktop()) return [];
+  return invoke<FolderHandlerException[]>('get_windows_folder_handler_exceptions');
+}
+
+export async function setWindowsFolderHandlerExceptions(
+  exceptions: FolderHandlerException[],
+): Promise<FolderHandlerException[]> {
+  if (!isTauriDesktop()) return [];
+  return invoke<FolderHandlerException[]>('set_windows_folder_handler_exceptions', { exceptions });
 }
 
 export function readStartMinimizedOnStartup(): boolean {

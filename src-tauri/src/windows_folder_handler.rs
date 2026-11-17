@@ -23,6 +23,86 @@ pub enum Status {
     NeedsRestore,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderHandlerException {
+    pub path: String,
+    #[serde(default)]
+    pub include_subfolders: bool,
+}
+
+pub fn normalize_exception_path(raw: &str) -> Option<String> {
+    let trimmed = raw.trim().trim_matches('"');
+    if trimmed.is_empty() {
+        return None;
+    }
+    let expanded = crate::expand_windows_environment_path(trimmed).replace('/', "\\");
+    let without_verbatim = expanded.strip_prefix(r"\\?\").unwrap_or(&expanded);
+    if matches!(without_verbatim.as_bytes(), [drive, b':'] if drive.is_ascii_alphabetic()) {
+        return Some(format!("{}:\\", (without_verbatim.as_bytes()[0] as char).to_ascii_uppercase()));
+    }
+    if matches!(without_verbatim.as_bytes(), [drive, b':', b'\\'] if drive.is_ascii_alphabetic()) {
+        return Some(format!("{}:\\", (without_verbatim.as_bytes()[0] as char).to_ascii_uppercase()));
+    }
+    let cleaned = without_verbatim.trim_end_matches('\\');
+    if cleaned.is_empty() || !Path::new(cleaned).is_absolute() {
+        return None;
+    }
+    if matches!(cleaned.as_bytes(), [drive, b':', b'\\', ..] if drive.is_ascii_alphabetic()) {
+        let mut normalized = cleaned.to_string();
+        if let Some(first) = normalized.get_mut(0..1) {
+            first.make_ascii_uppercase();
+        }
+        return Some(normalized);
+    }
+    Some(cleaned.to_string())
+}
+
+pub fn sanitize_exceptions(entries: Vec<FolderHandlerException>) -> Vec<FolderHandlerException> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for entry in entries {
+        let Some(normalized) = normalize_exception_path(&entry.path) else {
+            continue;
+        };
+        let key = normalized.to_lowercase();
+        if seen.insert(key) {
+            out.push(FolderHandlerException {
+                path: normalized,
+                include_subfolders: entry.include_subfolders,
+            });
+            if out.len() >= 200 {
+                break;
+            }
+        }
+    }
+    out
+}
+
+pub fn matches_folder_exception(target_path: &str, exceptions: &[FolderHandlerException]) -> bool {
+    let Some(target_norm) = normalize_exception_path(target_path) else {
+        return false;
+    };
+    let target_lower = target_norm.to_lowercase();
+    let target_trimmed = target_lower.trim_end_matches('\\');
+    for exception in exceptions {
+        let Some(exc_norm) = normalize_exception_path(&exception.path) else {
+            continue;
+        };
+        let exc_lower = exc_norm.to_lowercase();
+        if target_lower == exc_lower || target_trimmed == exc_lower.trim_end_matches('\\') {
+            return true;
+        }
+        if exception.include_subfolders {
+            let prefix = format!("{}\\", exc_lower.trim_end_matches('\\'));
+            if target_lower.starts_with(&prefix) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 struct RegistryLock(HANDLE);
 
 impl RegistryLock {
@@ -164,7 +244,11 @@ pub fn shell_folder_argument(argument: &str) -> Option<String> {
     if matches!(path.as_bytes(), [drive, b':'] if drive.is_ascii_alphabetic()) {
         return Some(format!("{path}\\"));
     }
-    Path::new(path).is_absolute().then(|| path.to_string())
+    if matches!(path.as_bytes(), [drive, b':', b'\\'] if drive.is_ascii_alphabetic()) {
+        return Some(path.to_string());
+    }
+    let trimmed = path.trim_end_matches('\\');
+    Path::new(trimmed).is_absolute().then(|| trimmed.to_string())
 }
 
 fn notify_shell() {
@@ -241,10 +325,33 @@ mod tests {
         assert_eq!(shell_folder_argument(r"C:\\."), Some(r"C:\".into()));
         assert_eq!(shell_folder_argument(r"C:\."), Some(r"C:\".into()));
         assert_eq!(
+            shell_folder_argument(r"C:\Users\Carlos\\."),
+            Some(r"C:\Users\Carlos".into())
+        );
+        assert_eq!(
             shell_folder_argument(r"\\server\share\A %USERPROFILE% folder\."),
             Some(r"\\server\share\A %USERPROFILE% folder".into())
         );
         assert_eq!(shell_folder_argument(r"relative\folder\."), None);
+    }
+
+    #[test]
+    fn matches_exact_and_descendant_folder_exceptions() {
+        let exceptions = sanitize_exceptions(vec![
+            FolderHandlerException {
+                path: r"c:\work\legacy\".into(),
+                include_subfolders: false,
+            },
+            FolderHandlerException {
+                path: r"D:\Shared\ExplorerOnly".into(),
+                include_subfolders: true,
+            },
+        ]);
+        assert!(matches_folder_exception(r"C:\Work\Legacy", &exceptions));
+        assert!(!matches_folder_exception(r"C:\Work\Legacy\Subfolder", &exceptions));
+        assert!(matches_folder_exception(r"D:\Shared\ExplorerOnly", &exceptions));
+        assert!(matches_folder_exception(r"D:\Shared\ExplorerOnly\Deep\Child", &exceptions));
+        assert!(!matches_folder_exception(r"D:\Shared\ExplorerOnlyOther", &exceptions));
     }
 
     #[test]
