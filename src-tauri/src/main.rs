@@ -24,6 +24,8 @@ use zip::{
 };
 
 mod windows_file_icons;
+#[cfg(target_os = "windows")]
+mod windows_folder_handler;
 mod windows_thumbnails;
 
 #[derive(Serialize)]
@@ -556,29 +558,36 @@ fn single_instance_pipe_name(portable: bool) -> String {
 #[cfg(target_os = "windows")]
 fn send_message_to_existing_instance(portable: bool, message: &str) -> bool {
     let pipe_name = single_instance_pipe_name(portable);
-    for _ in 0..6 {
+    for _ in 0..40 {
         if let Ok(mut file) = std::fs::OpenOptions::new().write(true).open(&pipe_name) {
-            let _ = writeln!(file, "{}", message);
-            let _ = file.flush();
-            return true;
+            return file.write_all(message.as_bytes()).is_ok();
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     false
 }
 
+static PENDING_OPEN_PATHS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+#[tauri::command]
+fn take_pending_open_paths() -> Result<Vec<String>, String> {
+    let mut paths = PENDING_OPEN_PATHS.lock().map_err(|error| error.to_string())?;
+    Ok(std::mem::take(&mut *paths))
+}
+
 #[cfg(target_os = "windows")]
 fn start_single_instance_listener(app: tauri::AppHandle, portable: bool) {
+    use std::os::windows::io::FromRawHandle;
     use windows_sys::Win32::{
-        Foundation::{CloseHandle, GetLastError, ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE},
-        Storage::FileSystem::ReadFile,
-        System::Pipes::{ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe},
+        Foundation::{GetLastError, ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE},
+        System::Pipes::{ConnectNamedPipe, CreateNamedPipeW},
     };
 
     const PIPE_ACCESS_INBOUND: u32 = 0x00000001;
     const PIPE_TYPE_BYTE: u32 = 0x00000000;
     const PIPE_READMODE_BYTE: u32 = 0x00000000;
     const PIPE_WAIT: u32 = 0x00000000;
+    const MAX_MESSAGE_BYTES: u64 = 3 * 32_767;
 
     let pipe_name = single_instance_pipe_name(portable);
     let name_utf16: Vec<u16> = pipe_name.encode_utf16().chain(Some(0)).collect();
@@ -605,41 +614,34 @@ fn start_single_instance_listener(app: tauri::AppHandle, portable: bool) {
 
             let connected = unsafe { ConnectNamedPipe(pipe, std::ptr::null_mut()) };
             let is_connected = connected != 0 || unsafe { GetLastError() } == ERROR_PIPE_CONNECTED;
-
-            if is_connected {
-                let mut buffer = [0u8; 4096];
-                let mut bytes_read = 0u32;
-                let read_success = unsafe {
-                    ReadFile(
-                        pipe,
-                        buffer.as_mut_ptr(),
-                        buffer.len() as u32,
-                        &mut bytes_read,
-                        std::ptr::null_mut(),
-                    )
-                };
-
-                if read_success != 0 && bytes_read > 0 {
-                    if let Ok(text) = std::str::from_utf8(&buffer[..bytes_read as usize]) {
-                        let message = text.trim();
-                        let _ = ensure_tray_icon_registered(&app);
-                        if let Some(main_window) = app.get_webview_window("main") {
-                            let _ = main_window.unminimize();
-                            let _ = main_window.show();
-                            let _ = main_window.set_focus();
-                        }
-                        focus_existing_main_window();
-                        if !message.is_empty() && message != "__FOCUS__" {
-                            let _ = app.emit("open-path", message.to_string());
-                        }
-                    }
+            let file = unsafe { fs::File::from_raw_handle(pipe) };
+            if !is_connected {
+                continue;
+            }
+            let mut message = String::new();
+            if file.take(MAX_MESSAGE_BYTES + 1).read_to_string(&mut message).is_err()
+                || message.len() as u64 > MAX_MESSAGE_BYTES
+            {
+                continue;
+            }
+            // Accept the newline written by earlier CyberFiles builds during an update.
+            let message = message.trim_end_matches(['\r', '\n']);
+            if message.is_empty() {
+                continue;
+            }
+            if message != "__FOCUS__" {
+                if let Ok(mut paths) = PENDING_OPEN_PATHS.lock() {
+                    paths.push(message.to_string());
                 }
+                let _ = app.emit("open-path", ());
             }
-
-            unsafe {
-                DisconnectNamedPipe(pipe);
-                CloseHandle(pipe);
+            let _ = ensure_tray_icon_registered(&app);
+            if let Some(main_window) = app.get_webview_window("main") {
+                let _ = main_window.unminimize();
+                let _ = main_window.show();
+                let _ = main_window.set_focus();
             }
+            focus_existing_main_window();
         }
     });
 }
@@ -711,12 +713,12 @@ fn set_global_shortcut_settings(
     global_shortcut_status(&state)
 }
 
-/* The factory reset for the preferences that live outside the webview: the global shortcut and
-   the instance behaviour are JSON files in the app config directory, so clearing localStorage
-   would leave them at whatever they were. Each file is rewritten with its default and the live
-   state follows, which is what makes the reset hold after the window reloads. */
+/* Restore the folder association and reset the native preferences before reloading the webview. */
 #[tauri::command]
 fn reset_app_preferences(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    windows_folder_handler::set_enabled(false).map_err(|error| error.to_string())?;
+
     let shortcut_state = app
         .try_state::<GlobalShortcutState>()
         .ok_or_else(|| "CyberFiles global shortcut state is not ready".to_string())?;
@@ -1530,9 +1532,11 @@ fn validate_child_name(name: &str) -> Result<(), String> {
 /// e.g. `%APPDATA%\CyberSnap\logs` or `%USERPROFILE%`. Lookup is case-insensitive,
 /// matching how the Windows command parser treats variable names. Unresolvable,
 /// empty, or unterminated tokens are left untouched so the downstream canonicalize
-/// call reports the real filesystem error instead of a wrong expansion.
+/// call reports the real filesystem error instead of a wrong expansion. Existing
+/// absolute paths keep percent signs that are part of their names.
 fn expand_windows_environment_path(path: &str) -> String {
-    if !path.contains('%') {
+    let literal = Path::new(path);
+    if !path.contains('%') || (literal.is_absolute() && literal.exists()) {
         return path.to_string();
     }
     let mut expanded = String::with_capacity(path.len());
@@ -1574,10 +1578,11 @@ fn expand_windows_environment_path(path: &str) -> String {
 }
 
 /// Expands a user-typed `%VAR%` path so the UI can store the resolved location.
-/// Keep this synchronous and cheap: it never touches the filesystem.
 #[tauri::command]
-fn expand_environment_path(path: String) -> Result<String, String> {
-    Ok(expand_windows_environment_path(&path))
+async fn expand_environment_path(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || expand_windows_environment_path(&path))
+        .await
+        .map_err(|error| error.to_string())
 }
 
 fn canonical_directory(path: &str) -> Result<PathBuf, String> {
@@ -7720,8 +7725,7 @@ async fn edit_hosts_file() -> Result<(), String> {
 
 /// How this process was launched. `--startup` is only ever present in the
 /// Windows Run entry, so the session can tell a boot launch apart from a
-/// manual one; a trailing directory argument comes from the Explorer
-/// "Open in CyberFiles" menu entry.
+/// manual one. A directory argument comes from the Windows shell or the CLI.
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct LaunchContext {
@@ -7769,9 +7773,19 @@ fn clean_path_argument(raw: &str) -> Option<String> {
 }
 
 fn parse_launch_context() -> LaunchContext {
+    let mut arguments = std::env::args_os().skip(1).peekable();
+    #[cfg(target_os = "windows")]
+    if arguments.peek().is_some_and(|argument| argument == "--shell-folder") {
+        return LaunchContext {
+            startup: false,
+            target_path: arguments.nth(1).and_then(|argument| {
+                windows_folder_handler::shell_folder_argument(&argument.to_string_lossy())
+            }),
+        };
+    }
     let mut startup = false;
     let mut target_path: Option<String> = None;
-    for argument in std::env::args_os().skip(1) {
+    for argument in arguments {
         let argument = argument.to_string_lossy().to_string();
         if argument == "--startup" {
             startup = true;
@@ -7906,7 +7920,28 @@ fn set_explorer_integration(enabled: bool) -> Result<bool, String> {
     Ok(query_reg_value(EXPLORER_MENU_DIRECTORY_KEY, None))
 }
 
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn get_windows_folder_handler() -> Result<windows_folder_handler::Status, String> {
+    windows_folder_handler::status().map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn set_windows_folder_handler(enabled: bool) -> Result<windows_folder_handler::Status, String> {
+    windows_folder_handler::set_enabled(enabled).map_err(|error| error.to_string())
+}
+
 fn main() {
+    #[cfg(target_os = "windows")]
+    if std::env::args_os().nth(1).is_some_and(|argument| argument == "--unregister-folder-handler") {
+        if let Err(error) = windows_folder_handler::unregister_for_uninstall() {
+            eprintln!("Could not restore the Windows folder association: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     let _ = LAUNCH_CONTEXT.set(parse_launch_context());
     #[cfg(target_os = "windows")]
     configure_portable_webview_data_directory();
@@ -8158,10 +8193,15 @@ fn main() {
             clear_recovery_snapshot,
             claim_webview_boot,
             get_launch_context,
+            take_pending_open_paths,
             get_autostart_status,
             set_autostart,
             get_explorer_integration_status,
             set_explorer_integration,
+            #[cfg(target_os = "windows")]
+            get_windows_folder_handler,
+            #[cfg(target_os = "windows")]
+            set_windows_folder_handler,
             reset_app_preferences,
         ])
         .run(tauri::generate_context!())

@@ -46,6 +46,16 @@ export async function setExplorerIntegration(enabled: boolean): Promise<boolean>
   return await invoke<boolean>('set_explorer_integration', { enabled });
 }
 
+export type WindowsFolderHandlerStatus = 'unavailable' | 'off' | 'on' | 'needsRestore';
+
+export function fetchWindowsFolderHandler(): Promise<WindowsFolderHandlerStatus> {
+  return invoke<WindowsFolderHandlerStatus>('get_windows_folder_handler');
+}
+
+export function setWindowsFolderHandler(enabled: boolean): Promise<WindowsFolderHandlerStatus> {
+  return invoke<WindowsFolderHandlerStatus>('set_windows_folder_handler', { enabled });
+}
+
 export function readStartMinimizedOnStartup(): boolean {
   try {
     return window.localStorage.getItem(START_MINIMIZED_ON_STARTUP_STORAGE_KEY) !== 'false';

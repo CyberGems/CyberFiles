@@ -11,7 +11,7 @@ import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
 import { isTauriDesktop } from '../utils/nativeFileSystem';
 import type { DeleteConfirmationPreference } from '../utils/deletePreferences';
-import { fetchAutostartStatus, fetchExplorerIntegrationStatus, readStartMinimizedOnStartup, setAutostart as persistAutostart, setExplorerIntegration as persistExplorerIntegration, writeStartMinimizedOnStartup } from '../utils/systemIntegration';
+import { fetchAutostartStatus, fetchExplorerIntegrationStatus, fetchWindowsFolderHandler, readStartMinimizedOnStartup, setAutostart as persistAutostart, setExplorerIntegration as persistExplorerIntegration, setWindowsFolderHandler, writeStartMinimizedOnStartup, type WindowsFolderHandlerStatus } from '../utils/systemIntegration';
 import { resetLocalPreferences } from '../utils/factoryReset';
 import { ConfirmActionModal } from './ConfirmActionModal';
 import { ColorValueEditor } from './ColorValueEditor';
@@ -398,6 +398,9 @@ export function SettingsModal({
   const [internalExplorerEnabled, setInternalExplorerEnabled] = useState(false);
   const [internalExplorerLoaded, setInternalExplorerLoaded] = useState(false);
   const [internalExplorerError, setInternalExplorerError] = useState<string | null>(null);
+  const [folderHandler, setFolderHandler] = useState<WindowsFolderHandlerStatus | null>(null);
+  const [folderHandlerBusy, setFolderHandlerBusy] = useState(false);
+  const [folderHandlerError, setFolderHandlerError] = useState<'read' | 'write' | null>(null);
   const [startMinimizedOnStartup, setStartMinimizedOnStartup] = useState(true);
 
   useEffect(() => {
@@ -496,6 +499,34 @@ export function SettingsModal({
       .finally(() => setInternalExplorerLoaded(true));
   }, [isOpen, t.settings.systemIntegrationDesktopOnly, t.settings.systemIntegrationUnavailable]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!isTauriDesktop()) {
+      setFolderHandler('unavailable');
+      return;
+    }
+    let cancelled = false;
+    setFolderHandler(null);
+    setFolderHandlerError(null);
+    void fetchWindowsFolderHandler()
+      .then(status => { if (!cancelled) setFolderHandler(status); })
+      .catch(() => { if (!cancelled) setFolderHandlerError('read'); });
+    return () => { cancelled = true; };
+  }, [isOpen]);
+
+  const handleFolderHandlerChange = async (enabled: boolean) => {
+    setFolderHandlerBusy(true);
+    setFolderHandlerError(null);
+    try {
+      setFolderHandler(await setWindowsFolderHandler(enabled));
+    } catch {
+      setFolderHandlerError('write');
+      setFolderHandler(await fetchWindowsFolderHandler().catch(() => null));
+    } finally {
+      setFolderHandlerBusy(false);
+    }
+  };
+
   const handleAutostartChange = async (enabled: boolean) => {
     setInternalAutostartError(null);
     try {
@@ -528,8 +559,7 @@ export function SettingsModal({
 
   /* The reset clears storage and then reloads, because every preference is read once on mount:
      a reload is what makes the defaults reach the panes, the theme and the tab strip at the
-     same time. The backend goes first — it owns the two preferences stored as JSON — so a
-     failure there aborts before anything is cleared, and the user is not left half reset. */
+     same time. Reset the native preferences first, including the Windows folder association. */
   const handleResetPreferences = async () => {
     setResetBusy(true);
     setResetError(false);
@@ -1211,6 +1241,37 @@ export function SettingsModal({
                 </label>
                 {!internalExplorerLoaded && <p className="mt-1 pl-6">{t.settings.systemIntegrationUnavailable}</p>}
                 {internalExplorerError && <p className="mt-1 pl-6 text-rose-300">{internalExplorerError}</p>}
+              </div>
+              <div data-settings-search-unit className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                <label className="flex items-start gap-2.5 has-enabled:cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={folderHandler === 'on'}
+                    disabled={folderHandlerBusy || (folderHandler !== 'on' && folderHandler !== 'off')}
+                    onChange={event => void handleFolderHandlerChange(event.target.checked)}
+                    aria-labelledby="windows-folder-handler-label"
+                    aria-describedby="windows-folder-handler-description"
+                    className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                  />
+                  <span>
+                    <span id="windows-folder-handler-label" className="block font-medium text-neutral-200">{t.settings.windowsFolderHandler}</span>
+                    <span id="windows-folder-handler-description" className="mt-1 block">{t.settings.windowsFolderHandlerDescription}</span>
+                  </span>
+                </label>
+                {folderHandler === 'unavailable' && <p className="mt-1 pl-6">{t.settings.windowsFolderHandlerUnavailable}</p>}
+                {folderHandler === 'needsRestore' && (
+                  <div className="mt-1 space-y-1 pl-6">
+                    <p role="status">{t.settings.windowsFolderHandlerNeedsRestore}</p>
+                    <button type="button" className="font-medium text-cyan-400 underline disabled:opacity-50" disabled={folderHandlerBusy} onClick={() => void handleFolderHandlerChange(false)}>
+                      {t.settings.windowsFolderHandlerRestore}
+                    </button>
+                  </div>
+                )}
+                {folderHandlerError && (
+                  <p className="mt-1 pl-6 text-rose-300" role="alert">
+                    {folderHandlerError === 'read' ? t.settings.systemIntegrationUnavailable : t.settings.systemIntegrationSaveError}
+                  </p>
+                )}
               </div>
             </div>
           </div>

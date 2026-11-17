@@ -20,6 +20,27 @@
 ; rendered the app icon distorted at non-default DPI settings.
 !define MUI_HEADERIMAGE_RIGHT
 
+!macro NSIS_HOOK_PREUNINSTALL
+  ${If} $UpdateMode <> 1
+  ${AndIf} ${FileExists} "$INSTDIR\CyberFiles.exe"
+    ; The template checks for a running app after this hook. Do it first so
+    ; canceling that prompt leaves the folder registration intact.
+    !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+    ClearErrors
+    ExecWait '"$INSTDIR\CyberFiles.exe" --unregister-folder-handler' $0
+    ${If} ${Errors}
+    ${OrIf} $0 != 0
+      ${If} $LANGUAGE == 1034
+      ${OrIf} $LANGUAGE == 3082
+        MessageBox MB_OK|MB_ICONSTOP "No se pudo restaurar la apertura de carpetas de Windows. Desactiva el ajuste en CyberFiles y vuelve a desinstalar." /SD IDOK
+      ${Else}
+        MessageBox MB_OK|MB_ICONSTOP "Could not restore Windows folder handling. Turn off the setting in CyberFiles and run the uninstaller again." /SD IDOK
+      ${EndIf}
+      Abort
+    ${EndIf}
+  ${EndIf}
+!macroend
+
 !macro NSIS_HOOK_POSTUNINSTALL
   ${If} $UpdateMode <> 1
     DeleteRegValue HKLM "${MANUPRODUCTKEY}" ""

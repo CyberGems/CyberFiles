@@ -2851,12 +2851,12 @@ export default function App() {
   }, [previewItem?.id, previewItem?.path, previewItem?.handle, previewItem?.extension, previewItem?.type, previewItem?.isFolder, previewItem?.contentPreview]);
 
   // Navigation handlers
-  const handleNavigate = useCallback(async (newPath: string, targetPane: 'left' | 'right' = activePane, forceRefresh = false, openInNewTab = false, historyIndexOverride?: number) => {
+  const handleNavigate = useCallback(async (newPath: string, targetPane: 'left' | 'right' = activePane, forceRefresh = false, openInNewTab = false, historyIndexOverride?: number, literalPath = false) => {
     // %VAR% paths must be resolved before any state is stored: children are
     // indexed by the canonical parent path, history and recents persist the
     // resolved location, and guards compare plain Windows paths.
     let expansionSource = newPath;
-    if (expansionSource.includes('%') && isTauriDesktop()) {
+    if (!literalPath && expansionSource.includes('%') && isTauriDesktop()) {
       try {
         expansionSource = await expandNativeEnvironmentPath(expansionSource);
       } catch {
@@ -3330,12 +3330,19 @@ export default function App() {
   const handleNavigateRef = useRef(handleNavigate);
   handleNavigateRef.current = handleNavigate;
 
-  /* The Explorer "Open in CyberFiles" menu entry launches the app with the
-     chosen folder as an argument. Opened in a new tab so the startup session
+  /* Windows folder launches pass the chosen folder as an argument.
+     Opened in a new tab so the startup session
      (last folder, saved session) survives next to it; StrictMode's double
      mount would otherwise navigate twice. */
   const activePaneRef = useRef(activePane);
   activePaneRef.current = activePane;
+  const openExternalFolder = useCallback((path: string) => {
+    if (!systemHomeWorkspace.current && nativeRootPath.current && !isSameOrDescendantPath(path, nativeRootPath.current)) {
+      systemHomeWorkspace.current = true;
+      nativeRootPath.current = SYSTEM_HOME_PATH;
+    }
+    void handleNavigateRef.current(path, activePaneRef.current, true, true, undefined, true);
+  }, []);
 
   const launchPathHandledRef = useRef(false);
   useEffect(() => {
@@ -3344,32 +3351,48 @@ export default function App() {
     void fetchLaunchContext().then(context => {
       const target = getLaunchTargetPath(context);
       if (!target) return;
-      handleNavigateRef.current(target, activePaneRef.current, true, true);
+      openExternalFolder(target);
     });
-  }, []);
+  }, [openExternalFolder]);
 
-  /* When CyberFiles is already running, subsequent launches via the Explorer
-     context menu send the target path through a named pipe, which emits an
-     'open-path' event. */
+  /* Drain after subscribing to catch both live requests and paths queued
+     while the webview was still starting. */
   useEffect(() => {
     if (!isTauriDesktop()) return;
     let cancelled = false;
     let unlisten: (() => void) | undefined;
-    void listen<string>('open-path', event => {
-      if (event.payload) {
-        handleNavigateRef.current(event.payload, activePaneRef.current, true, true);
+    let draining = false;
+    let requested = false;
+    const drain = async () => {
+      requested = true;
+      if (draining) return;
+      draining = true;
+      try {
+        while (!cancelled && requested) {
+          requested = false;
+          const paths = await invoke<string[]>('take_pending_open_paths');
+          for (const path of paths) {
+            openExternalFolder(path);
+          }
+        }
+      } finally {
+        draining = false;
       }
-    }).then(stop => {
-      if (cancelled) stop();
-      else unlisten = stop;
-    }).catch(() => {
-      // Event listener unavailable outside Tauri
-    });
+    };
+    const requestDrain = () => void drain().catch(error => console.error('Could not open the Windows folder request', error));
+    void listen('open-path', requestDrain).then(stop => {
+      if (cancelled) {
+        stop();
+      } else {
+        unlisten = stop;
+        requestDrain();
+      }
+    }).catch(error => console.error('Could not listen for Windows folder requests', error));
     return () => {
       cancelled = true;
       unlisten?.();
     };
-  }, []);
+  }, [openExternalFolder]);
 
   /* USB drives, card readers and network volumes appear or disappear while the
      app runs: the backend polls active drives and emits this event, and the
