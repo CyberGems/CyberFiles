@@ -719,6 +719,7 @@ fn reset_app_preferences(app: tauri::AppHandle) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         windows_folder_handler::set_enabled(false).map_err(|error| error.to_string())?;
+        windows_folder_handler::set_win_e_enabled(false).map_err(|error| error.to_string())?;
         if let Ok(path) = folder_handler_exceptions_path() {
             let _ = fs::remove_file(path);
         }
@@ -8126,6 +8127,18 @@ fn set_windows_folder_handler_exceptions(
     save_folder_handler_exceptions(exceptions)
 }
 
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn get_windows_win_e_handler() -> Result<windows_folder_handler::Status, String> {
+    windows_folder_handler::win_e_status().map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn set_windows_win_e_handler(enabled: bool) -> Result<windows_folder_handler::Status, String> {
+    windows_folder_handler::set_win_e_enabled(enabled).map_err(|error| error.to_string())
+}
+
 fn main() {
     #[cfg(target_os = "windows")]
     if std::env::args_os().nth(1).is_some_and(|argument| argument == "--unregister-folder-handler") {
@@ -8416,6 +8429,10 @@ fn main() {
             get_windows_folder_handler_exceptions,
             #[cfg(target_os = "windows")]
             set_windows_folder_handler_exceptions,
+            #[cfg(target_os = "windows")]
+            get_windows_win_e_handler,
+            #[cfg(target_os = "windows")]
+            set_windows_win_e_handler,
             reset_app_preferences,
         ])
         .run(tauri::generate_context!())

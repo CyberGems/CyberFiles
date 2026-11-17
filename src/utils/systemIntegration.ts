@@ -73,6 +73,14 @@ export async function setWindowsFolderHandlerExceptions(
   return invoke<FolderHandlerException[]>('set_windows_folder_handler_exceptions', { exceptions });
 }
 
+export function fetchWindowsWinEHandler(): Promise<WindowsFolderHandlerStatus> {
+  return invoke<WindowsFolderHandlerStatus>('get_windows_win_e_handler');
+}
+
+export function setWindowsWinEHandler(enabled: boolean): Promise<WindowsFolderHandlerStatus> {
+  return invoke<WindowsFolderHandlerStatus>('set_windows_win_e_handler', { enabled });
+}
+
 export function readStartMinimizedOnStartup(): boolean {
   try {
     return window.localStorage.getItem(START_MINIMIZED_ON_STARTUP_STORAGE_KEY) !== 'false';

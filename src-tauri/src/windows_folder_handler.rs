@@ -13,6 +13,13 @@ use winreg::{
 const SHELL_KEYS: [&str; 2] = [r"Directory\shell", r"Drive\shell"];
 const VERB: &str = "CyberFiles.OpenFolder";
 const PREVIOUS_DEFAULT: &str = "PreviousDefault";
+const WIN_E_CLSID_KEY: &str = r"CLSID\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}";
+const WIN_E_COMMAND_KEYS: [&str; 2] = [
+    r"CLSID\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}\shell\OpenNewWindow\command",
+    r"CLSID\{52205fd8-5dfb-447d-801a-d0b52f2e83e1}\shell\open\command",
+];
+const WIN_E_MARKER: &str = "CyberFilesOwner";
+const PREVIOUS_DELEGATE_EXECUTE: &str = "PreviousDelegateExecute";
 
 #[derive(Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -309,10 +316,167 @@ pub fn set_enabled(enabled: bool) -> io::Result<Status> {
 
 pub fn unregister_for_uninstall() -> io::Result<()> {
     let _lock = RegistryLock::acquire()?;
-    let command = command_for(&std::env::current_exe()?);
-    let result = restore(&user_classes()?, Some(&command));
+    let exe = std::env::current_exe()?;
+    let command = command_for(&exe);
+    let win_e_cmd = win_e_command_for(&exe);
+    let classes = user_classes()?;
+    let folder_result = restore(&classes, Some(&command));
+    let win_e_result = restore_win_e(&classes, Some(&win_e_cmd));
     notify_shell();
-    result
+    folder_result.and(win_e_result)
+}
+
+fn win_e_command_for(executable: &Path) -> String {
+    format!("\"{}\"", executable.display())
+}
+
+fn win_e_status_in(classes: &RegKey, command: &str) -> io::Result<Status> {
+    let mut active = 0;
+    let mut has_registration = false;
+    for path in WIN_E_COMMAND_KEYS {
+        let Some(cmd_key) = optional(classes.open_subkey(path))? else {
+            continue;
+        };
+        let marker = optional(cmd_key.get_raw_value(WIN_E_MARKER))?
+            .and_then(|v| String::from_reg_value(&v).ok());
+        let default_val = optional(cmd_key.get_raw_value(""))?
+            .and_then(|v| String::from_reg_value(&v).ok());
+        let delegate_val = optional(cmd_key.get_raw_value("DelegateExecute"))?
+            .and_then(|v| String::from_reg_value(&v).ok());
+        let is_ours = default_val.as_deref() == Some(command)
+            && delegate_val.as_deref() == Some("");
+        has_registration |= marker.is_some() || is_ours;
+        if is_ours && marker.as_deref() == Some(command) {
+            active += 1;
+        }
+    }
+    Ok(if active == WIN_E_COMMAND_KEYS.len() {
+        Status::On
+    } else if has_registration {
+        Status::NeedsRestore
+    } else {
+        Status::Off
+    })
+}
+
+fn register_win_e(classes: &RegKey, command: &str) -> io::Result<()> {
+    for path in WIN_E_COMMAND_KEYS {
+        let (cmd_key, _) = classes.create_subkey(path)?;
+        let existing_marker = optional(cmd_key.get_raw_value(WIN_E_MARKER))?;
+        if existing_marker.is_none() {
+            if let Some(previous_default) = optional(cmd_key.get_raw_value(""))? {
+                cmd_key.set_raw_value(PREVIOUS_DEFAULT, &previous_default)?;
+            }
+            if let Some(previous_delegate) = optional(cmd_key.get_raw_value("DelegateExecute"))? {
+                cmd_key.set_raw_value(PREVIOUS_DELEGATE_EXECUTE, &previous_delegate)?;
+            }
+        }
+        cmd_key.set_value(WIN_E_MARKER, &command)?;
+        cmd_key.set_value("", &command)?;
+        cmd_key.set_value("DelegateExecute", &"")?;
+    }
+    Ok(())
+}
+
+fn restore_win_e_key(classes: &RegKey, path: &str, owner: Option<&str>) -> io::Result<()> {
+    let Some(cmd_key) = optional(classes.open_subkey_with_flags(path, KEY_ALL_ACCESS))? else {
+        return Ok(());
+    };
+    let marker = optional(cmd_key.get_raw_value(WIN_E_MARKER))?
+        .and_then(|v| String::from_reg_value(&v).ok());
+    if let Some(owner) = owner {
+        if marker.as_deref() != Some(owner) {
+            return Ok(());
+        }
+    }
+    let current_default = optional(cmd_key.get_raw_value(""))?
+        .and_then(|v| String::from_reg_value(&v).ok());
+    let still_ours = marker.is_some() && current_default == marker;
+    let prev_default = optional(cmd_key.get_raw_value(PREVIOUS_DEFAULT))?;
+    let prev_delegate = optional(cmd_key.get_raw_value(PREVIOUS_DELEGATE_EXECUTE))?;
+
+    if still_ours {
+        match prev_default {
+            Some(value) => cmd_key.set_raw_value("", &value)?,
+            None => {
+                optional(cmd_key.delete_value(""))?;
+            }
+        }
+        match prev_delegate {
+            Some(value) => cmd_key.set_raw_value("DelegateExecute", &value)?,
+            None => {
+                optional(cmd_key.delete_value("DelegateExecute"))?;
+            }
+        }
+    }
+    optional(cmd_key.delete_value(WIN_E_MARKER))?;
+    optional(cmd_key.delete_value(PREVIOUS_DEFAULT))?;
+    optional(cmd_key.delete_value(PREVIOUS_DELEGATE_EXECUTE))?;
+    Ok(())
+}
+
+fn is_win_e_command_key_empty(classes: &RegKey, path: &str) -> io::Result<bool> {
+    let Some(cmd_key) = optional(classes.open_subkey(path))? else {
+        return Ok(true);
+    };
+    let has_default = optional(cmd_key.get_raw_value(""))?.is_some();
+    let has_delegate = optional(cmd_key.get_raw_value("DelegateExecute"))?.is_some();
+    let has_marker = optional(cmd_key.get_raw_value(WIN_E_MARKER))?.is_some();
+    Ok(!has_default && !has_delegate && !has_marker)
+}
+
+fn restore_win_e(classes: &RegKey, owner: Option<&str>) -> io::Result<()> {
+    let [open_new_window, open] =
+        WIN_E_COMMAND_KEYS.map(|path| restore_win_e_key(classes, path, owner));
+    open_new_window.and(open)?;
+    if WIN_E_COMMAND_KEYS
+        .iter()
+        .all(|path| is_win_e_command_key_empty(classes, path).unwrap_or(false))
+    {
+        optional(classes.delete_subkey_all(WIN_E_CLSID_KEY))?;
+    }
+    Ok(())
+}
+
+pub fn win_e_status() -> io::Result<Status> {
+    if crate::is_portable_build() {
+        return Ok(Status::Unavailable);
+    }
+    let _lock = RegistryLock::acquire()?;
+    win_e_status_in(&user_classes()?, &win_e_command_for(&std::env::current_exe()?))
+}
+
+pub fn set_win_e_enabled(enabled: bool) -> io::Result<Status> {
+    if crate::is_portable_build() {
+        return Ok(Status::Unavailable);
+    }
+    let _lock = RegistryLock::acquire()?;
+    let classes = user_classes()?;
+    let executable = std::env::current_exe()?;
+    let command = win_e_command_for(&executable);
+    let before = win_e_status_in(&classes, &command)?;
+    let result = match (enabled, before) {
+        (false, Status::Off) => return Ok(Status::Off),
+        (false, _) => restore_win_e(&classes, None),
+        (true, Status::On) => return Ok(Status::On),
+        (true, Status::NeedsRestore) => {
+            return Err(io::Error::other(
+                "Restore the previous Win+E shortcut settings before enabling CyberFiles",
+            ));
+        }
+        (true, _) => match register_win_e(&classes, &command) {
+            Ok(()) => Ok(()),
+            Err(error) => match restore_win_e(&classes, None) {
+                Ok(()) => Err(error),
+                Err(restore_error) => Err(io::Error::other(format!(
+                    "{error}. Restoration failed: {restore_error}"
+                ))),
+            },
+        },
+    };
+    notify_shell();
+    result?;
+    win_e_status_in(&classes, &command)
 }
 
 #[cfg(test)]
@@ -401,6 +565,44 @@ mod tests {
         assert_eq!(directory.get_raw_value("")?, original);
         assert_eq!(drive.get_value::<String, _>("")?, "AnotherFileManager");
         assert_eq!(status_in(&classes, &command)?, Status::Off);
+        Ok(())
+    }
+
+    #[test]
+    fn win_e_registration_and_restore_preserves_previous_values() -> io::Result<()> {
+        struct TestKey(String);
+        impl Drop for TestKey {
+            fn drop(&mut self) {
+                let _ = RegKey::predef(HKEY_CURRENT_USER).delete_subkey_all(&self.0);
+            }
+        }
+
+        let root = RegKey::predef(HKEY_CURRENT_USER);
+        let test_path = format!(
+            r"Software\CyberFiles.WinEHandlerTest.{}",
+            std::process::id()
+        );
+        let (classes, _) = root.create_subkey(&test_path)?;
+        let _test_key = TestKey(test_path);
+
+        let exe = Path::new(r"C:\Program Files\CyberFiles\CyberFiles.exe");
+        let command = win_e_command_for(exe);
+
+        assert_eq!(win_e_status_in(&classes, &command)?, Status::Off);
+        register_win_e(&classes, &command)?;
+        assert_eq!(win_e_status_in(&classes, &command)?, Status::On);
+
+        let open_new_window = classes.open_subkey(WIN_E_COMMAND_KEYS[0])?;
+        assert_eq!(open_new_window.get_value::<String, _>("")?, command);
+        assert_eq!(open_new_window.get_value::<String, _>("DelegateExecute")?, "");
+        drop(open_new_window);
+
+        restore_win_e(&classes, Some("other-exe"))?;
+        assert_eq!(win_e_status_in(&classes, &command)?, Status::On);
+
+        restore_win_e(&classes, Some(&command))?;
+        assert_eq!(win_e_status_in(&classes, &command)?, Status::Off);
+        assert!(optional(classes.open_subkey(WIN_E_CLSID_KEY))?.is_none());
         Ok(())
     }
 }

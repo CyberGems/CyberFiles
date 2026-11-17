@@ -11,7 +11,7 @@ import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
 import { chooseNativeFolder, isTauriDesktop } from '../utils/nativeFileSystem';
 import type { DeleteConfirmationPreference } from '../utils/deletePreferences';
-import { fetchAutostartStatus, fetchExplorerIntegrationStatus, fetchWindowsFolderHandler, fetchWindowsFolderHandlerExceptions, readStartMinimizedOnStartup, setAutostart as persistAutostart, setExplorerIntegration as persistExplorerIntegration, setWindowsFolderHandler, setWindowsFolderHandlerExceptions, writeStartMinimizedOnStartup, type FolderHandlerException, type WindowsFolderHandlerStatus } from '../utils/systemIntegration';
+import { fetchAutostartStatus, fetchExplorerIntegrationStatus, fetchWindowsFolderHandler, fetchWindowsFolderHandlerExceptions, fetchWindowsWinEHandler, readStartMinimizedOnStartup, setAutostart as persistAutostart, setExplorerIntegration as persistExplorerIntegration, setWindowsFolderHandler, setWindowsFolderHandlerExceptions, setWindowsWinEHandler, writeStartMinimizedOnStartup, type FolderHandlerException, type WindowsFolderHandlerStatus } from '../utils/systemIntegration';
 import { resetLocalPreferences } from '../utils/factoryReset';
 import { ConfirmActionModal } from './ConfirmActionModal';
 import { ColorValueEditor } from './ColorValueEditor';
@@ -401,6 +401,9 @@ export function SettingsModal({
   const [folderHandler, setFolderHandler] = useState<WindowsFolderHandlerStatus | null>(null);
   const [folderHandlerBusy, setFolderHandlerBusy] = useState(false);
   const [folderHandlerError, setFolderHandlerError] = useState<'read' | 'write' | null>(null);
+  const [winEHandler, setWinEHandler] = useState<WindowsFolderHandlerStatus | null>(null);
+  const [winEHandlerBusy, setWinEHandlerBusy] = useState(false);
+  const [winEHandlerError, setWinEHandlerError] = useState<'read' | 'write' | null>(null);
   const [folderExceptions, setFolderExceptions] = useState<FolderHandlerException[]>([]);
   const [newFolderExceptionPath, setNewFolderExceptionPath] = useState('');
   const [newFolderExceptionSubfolders, setNewFolderExceptionSubfolders] = useState(true);
@@ -507,14 +510,20 @@ export function SettingsModal({
     if (!isOpen) return;
     if (!isTauriDesktop()) {
       setFolderHandler('unavailable');
+      setWinEHandler('unavailable');
       return;
     }
     let cancelled = false;
     setFolderHandler(null);
     setFolderHandlerError(null);
+    setWinEHandler(null);
+    setWinEHandlerError(null);
     void fetchWindowsFolderHandler()
       .then(status => { if (!cancelled) setFolderHandler(status); })
       .catch(() => { if (!cancelled) setFolderHandlerError('read'); });
+    void fetchWindowsWinEHandler()
+      .then(status => { if (!cancelled) setWinEHandler(status); })
+      .catch(() => { if (!cancelled) setWinEHandlerError('read'); });
     void fetchWindowsFolderHandlerExceptions()
       .then(list => { if (!cancelled) setFolderExceptions(list); })
       .catch(() => {});
@@ -575,6 +584,19 @@ export function SettingsModal({
       setFolderHandler(await fetchWindowsFolderHandler().catch(() => null));
     } finally {
       setFolderHandlerBusy(false);
+    }
+  };
+
+  const handleWinEHandlerChange = async (enabled: boolean) => {
+    setWinEHandlerBusy(true);
+    setWinEHandlerError(null);
+    try {
+      setWinEHandler(await setWindowsWinEHandler(enabled));
+    } catch {
+      setWinEHandlerError('write');
+      setWinEHandler(await fetchWindowsWinEHandler().catch(() => null));
+    } finally {
+      setWinEHandlerBusy(false);
     }
   };
 
@@ -1426,6 +1448,38 @@ export function SettingsModal({
                       )}
                     </div>
                   </div>
+                )}
+              </div>
+
+              <div data-settings-search-unit className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-xs leading-relaxed text-neutral-400">
+                <label className="flex items-start gap-2.5 has-enabled:cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={winEHandler === 'on'}
+                    disabled={winEHandlerBusy || (winEHandler !== 'on' && winEHandler !== 'off')}
+                    onChange={event => void handleWinEHandlerChange(event.target.checked)}
+                    aria-labelledby="windows-win-e-handler-label"
+                    aria-describedby="windows-win-e-handler-description"
+                    className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-neutral-600 bg-neutral-950 accent-cyan-400 focus:ring-cyan-400"
+                  />
+                  <span>
+                    <span id="windows-win-e-handler-label" className="block font-medium text-neutral-200">{t.settings.windowsWinEHandler}</span>
+                    <span id="windows-win-e-handler-description" className="mt-1 block">{t.settings.windowsWinEHandlerDescription}</span>
+                  </span>
+                </label>
+                {winEHandler === 'unavailable' && <p className="mt-1 pl-6">{t.settings.windowsFolderHandlerUnavailable}</p>}
+                {winEHandler === 'needsRestore' && (
+                  <div className="mt-1 space-y-1 pl-6">
+                    <p role="status">{t.settings.windowsWinEHandlerNeedsRestore}</p>
+                    <button type="button" className="font-medium text-cyan-400 underline disabled:opacity-50" disabled={winEHandlerBusy} onClick={() => void handleWinEHandlerChange(false)}>
+                      {t.settings.windowsWinEHandlerRestore}
+                    </button>
+                  </div>
+                )}
+                {winEHandlerError && (
+                  <p className="mt-1 pl-6 text-rose-300" role="alert">
+                    {winEHandlerError === 'read' ? t.settings.systemIntegrationUnavailable : t.settings.systemIntegrationSaveError}
+                  </p>
                 )}
               </div>
             </div>
