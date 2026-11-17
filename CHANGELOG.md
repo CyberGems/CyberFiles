@@ -2,6 +2,28 @@
 
 All notable changes to CyberFiles are documented here.
 
+## [0.10.0] - 2026-11-17
+
+### 🇺🇸 English
+
+- Add crash recovery: after an unexpected exit, the session of unsaved tabs is restored on the next launch, with the recovery boot check running once per webview load.
+- Route tray quit through the unsaved-changes gate, and keep This PC and Network on their dedicated layouts.
+- Measure every tray view at startup and resize the tray window before swapping views.
+- Hide folder actions that the virtual locations cannot perform.
+- Hide the Before you install guidance from the update modal.
+- Show the CyberFiles website and description in the Windows uninstall entry.
+- Update 12 npm dependencies and ship winget manifests with every release.
+
+### 🇪🇸 Español
+
+- Añade la recuperación tras fallo: tras una salida inesperada, la sesión de pestañas sin guardar se restaura en el siguiente arranque, con la comprobación de arranque de recuperación ejecutándose una vez por carga del webview.
+- Pasa la salida de la bandeja por la puerta de cambios sin guardar, y mantiene Este equipo y Red en sus diseños dedicados.
+- Mide cada vista de la bandeja al arranque y redimensiona la ventana antes de cambiar de vista.
+- Oculta las acciones de carpeta que las ubicaciones virtuales no pueden realizar.
+- Oculta la guía Antes de instalar del modal de actualización.
+- Muestra el sitio web de CyberFiles y su descripción en la entrada de desinstalación de Windows.
+- Actualiza 12 dependencias de npm y publica manifiestos winget con cada release.
+
 ## [0.9.0] - 2026-11-12
 
 ### 🇺🇸 English
