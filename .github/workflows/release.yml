@@ -231,6 +231,9 @@ jobs:
             src-tauri/target/release/bundle/portable/CyberFiles_*_x64-portable.zip
             src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
             latest.json
+            winget-pkg/CyberGems.CyberFiles.yaml
+            winget-pkg/CyberGems.CyberFiles.locale.en-US.yaml
+            winget-pkg/CyberGems.CyberFiles.installer.yaml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
