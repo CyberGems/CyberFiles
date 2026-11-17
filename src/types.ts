@@ -131,6 +131,13 @@ export interface NetworkResource {
   driveLetter?: string;
 }
 
+export interface SavedNetworkHost {
+  path: string;
+  alias?: string;
+  note?: string;
+  pinned?: boolean;
+}
+
 export interface TabState {
   id: string;
   title: string;

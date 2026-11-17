@@ -25,6 +25,7 @@ import {
   TabCloseButtonMode,
   type IconZoomLevel,
   type NetworkResource,
+  type SavedNetworkHost,
   type NewTabActionPreference,
   type NewTabActionMode,
   type NewTabTrigger,
@@ -690,20 +691,37 @@ function readRecentFolderPaths(): string[] {
   }
 }
 
-function readSavedNetworkHosts(): string[] {
+function readSavedNetworkHosts(): SavedNetworkHost[] {
   try {
     const saved: unknown = JSON.parse(window.localStorage.getItem(SAVED_NETWORK_HOSTS_KEY) || 'null');
     if (!Array.isArray(saved)) return [];
     const seen = new Set<string>();
-    const hosts: string[] = [];
+    const hosts: SavedNetworkHost[] = [];
     for (const value of saved) {
-      if (typeof value !== 'string') continue;
-      const hostRoot = getUncHostRoot(value);
-      if (!hostRoot) continue;
-      const key = getPathKey(hostRoot);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      hosts.push(hostRoot);
+      if (typeof value === 'string') {
+        const hostRoot = getUncHostRoot(value);
+        if (!hostRoot) continue;
+        const key = getPathKey(hostRoot);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        hosts.push({ path: hostRoot });
+      } else if (value && typeof value === 'object') {
+        const candidate = value as Record<string, unknown>;
+        if (typeof candidate.path !== 'string') continue;
+        const hostRoot = getUncHostRoot(candidate.path);
+        if (!hostRoot) continue;
+        const key = getPathKey(hostRoot);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const alias = typeof candidate.alias === 'string' && candidate.alias.trim()
+          ? candidate.alias.trim().slice(0, 80)
+          : undefined;
+        const note = typeof candidate.note === 'string' && candidate.note.trim()
+          ? candidate.note.trim().slice(0, 160)
+          : undefined;
+        const pinned = candidate.pinned === true ? true : undefined;
+        hosts.push({ path: hostRoot, alias, note, pinned });
+      }
       if (hosts.length === 50) break;
     }
     return hosts;
@@ -955,18 +973,75 @@ export default function App() {
   const [networkLoading, setNetworkLoading] = useState(false);
   const networkDiscoveryInFlight = useRef(false);
   const networkLoaded = useRef(false);
-  const [savedNetworkHosts, setSavedNetworkHosts] = useState<string[]>(readSavedNetworkHosts);
+  const [savedNetworkHosts, setSavedNetworkHosts] = useState<SavedNetworkHost[]>(readSavedNetworkHosts);
   const rememberNetworkHost = useCallback((value: string) => {
     const hostRoot = getUncHostRoot(value);
     if (!hostRoot) return;
-    setSavedNetworkHosts(previous => [
-      hostRoot,
-      ...previous.filter(existing => getPathKey(existing) !== getPathKey(hostRoot)),
-    ].slice(0, 50));
+    const key = getPathKey(hostRoot);
+    setSavedNetworkHosts(previous => {
+      const existing = previous.find(item => getPathKey(item.path) === key);
+      const entry: SavedNetworkHost = existing ? { ...existing, path: hostRoot } : { path: hostRoot };
+      return [
+        entry,
+        ...previous.filter(item => getPathKey(item.path) !== key),
+      ].slice(0, 50);
+    });
   }, []);
   const handleRemoveSavedNetworkHost = useCallback((hostPath: string) => {
     const key = getPathKey(hostPath);
-    setSavedNetworkHosts(previous => previous.filter(existing => getPathKey(existing) !== key));
+    setSavedNetworkHosts(previous => previous.filter(existing => getPathKey(existing.path) !== key));
+  }, []);
+  const handleUpdateSavedNetworkHost = useCallback((hostPath: string, updates: { alias?: string; note?: string; pinned?: boolean }) => {
+    const hostRoot = getUncHostRoot(hostPath);
+    if (!hostRoot) return;
+    const key = getPathKey(hostRoot);
+    setSavedNetworkHosts(previous => {
+      const existingIndex = previous.findIndex(item => getPathKey(item.path) === key);
+      const alias = updates.alias?.trim().slice(0, 80) || undefined;
+      const note = updates.note?.trim().slice(0, 160) || undefined;
+      if (existingIndex >= 0) {
+        const next = [...previous];
+        const current = next[existingIndex];
+        next[existingIndex] = {
+          ...current,
+          path: hostRoot,
+          alias: 'alias' in updates ? alias : current.alias,
+          note: 'note' in updates ? note : current.note,
+          pinned: 'pinned' in updates ? (updates.pinned ? true : undefined) : current.pinned,
+        };
+        return next;
+      }
+      return [
+        {
+          path: hostRoot,
+          alias,
+          note,
+          pinned: updates.pinned ? true : undefined,
+        },
+        ...previous,
+      ].slice(0, 50);
+    });
+  }, []);
+  const handleTogglePinNetworkHost = useCallback((hostPath: string) => {
+    const hostRoot = getUncHostRoot(hostPath);
+    if (!hostRoot) return;
+    const key = getPathKey(hostRoot);
+    setSavedNetworkHosts(previous => {
+      const existingIndex = previous.findIndex(item => getPathKey(item.path) === key);
+      if (existingIndex >= 0) {
+        const next = [...previous];
+        const current = next[existingIndex];
+        next[existingIndex] = {
+          ...current,
+          pinned: current.pinned ? undefined : true,
+        };
+        return next;
+      }
+      return [
+        { path: hostRoot, pinned: true },
+        ...previous,
+      ].slice(0, 50);
+    });
   }, []);
   useEffect(() => {
     try {
@@ -6826,6 +6901,8 @@ export default function App() {
                   onRequestMapNetworkDrive={path => handleRequestMapNetworkDrive(path ?? '', 'left')}
                   onDisconnectNetworkDrive={letter => { void handleDisconnectNetworkDrive(letter); }}
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
+                  onUpdateSavedNetworkHost={handleUpdateSavedNetworkHost}
+                  onTogglePinNetworkHost={handleTogglePinNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
                   quickAccessItems={sidebarQuickAccess}
@@ -6917,6 +6994,8 @@ export default function App() {
                   onRequestMapNetworkDrive={path => handleRequestMapNetworkDrive(path ?? '', 'right')}
                   onDisconnectNetworkDrive={letter => { void handleDisconnectNetworkDrive(letter); }}
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
+                  onUpdateSavedNetworkHost={handleUpdateSavedNetworkHost}
+                  onTogglePinNetworkHost={handleTogglePinNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
                   quickAccessItems={sidebarQuickAccess}
@@ -7009,6 +7088,8 @@ export default function App() {
                   onRequestMapNetworkDrive={path => handleRequestMapNetworkDrive(path ?? '', 'left')}
                   onDisconnectNetworkDrive={letter => { void handleDisconnectNetworkDrive(letter); }}
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
+                  onUpdateSavedNetworkHost={handleUpdateSavedNetworkHost}
+                  onTogglePinNetworkHost={handleTogglePinNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
                   quickAccessItems={sidebarQuickAccess}
@@ -7096,6 +7177,8 @@ export default function App() {
                   onRequestMapNetworkDrive={path => handleRequestMapNetworkDrive(path ?? '', 'right')}
                   onDisconnectNetworkDrive={letter => { void handleDisconnectNetworkDrive(letter); }}
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
+                  onUpdateSavedNetworkHost={handleUpdateSavedNetworkHost}
+                  onTogglePinNetworkHost={handleTogglePinNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
                   quickAccessItems={sidebarQuickAccess}
@@ -7188,6 +7271,8 @@ export default function App() {
                   onRequestMapNetworkDrive={path => handleRequestMapNetworkDrive(path ?? '', activePane)}
                   onDisconnectNetworkDrive={letter => { void handleDisconnectNetworkDrive(letter); }}
                   onRemoveSavedNetworkHost={handleRemoveSavedNetworkHost}
+                  onUpdateSavedNetworkHost={handleUpdateSavedNetworkHost}
+                  onTogglePinNetworkHost={handleTogglePinNetworkHost}
                   windowsSpecialFolders={windowsSpecialFolders}
                   onOpenWindowsSpecialFolder={handleOpenWindowsSpecialFolder}
                   quickAccessItems={sidebarQuickAccess}

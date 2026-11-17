@@ -39,10 +39,14 @@ import {
   UnlockKeyhole,
   Keyboard,
   KeyRound,
+  Check,
+  Pencil,
+  Pin,
+  PinOff,
   Server,
   Unplug,
 } from 'lucide-react';
-import { DriveInfo, FileItem, FileType, HiddenItemStyle, ICON_ZOOM_PRESETS, NETWORK_PATH, NetworkResource, SortField, TabState, TILE_ZOOM_PRESETS, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type IconZoomLevel, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
+import { DriveInfo, FileItem, FileType, HiddenItemStyle, ICON_ZOOM_PRESETS, NETWORK_PATH, NetworkResource, SavedNetworkHost, SortField, TabState, TILE_ZOOM_PRESETS, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type IconZoomLevel, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { isDedicatedLayoutPath } from '../utils/locations';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { listerTextScaleFactor, LISTER_TEXT_SCALE_CSS_VAR, type ListerTextScale } from '../utils/listerTextScale';
@@ -113,9 +117,11 @@ interface FilePaneProps {
   quickAccessItems: QuickAccessItem[];
   networkResources?: NetworkResource[];
   isLoadingNetwork?: boolean;
-  savedNetworkHosts?: string[];
+  savedNetworkHosts?: SavedNetworkHost[];
   onConnectNetworkHost?: (input: string) => void;
   onRemoveSavedNetworkHost?: (hostPath: string) => void;
+  onUpdateSavedNetworkHost?: (hostPath: string, updates: { alias?: string; note?: string; pinned?: boolean }) => void;
+  onTogglePinNetworkHost?: (hostPath: string) => void;
   onRequestNetworkAuth?: (targetPath: string) => void;
   onRequestMapNetworkDrive?: (initialUncPath?: string) => void;
   onDisconnectNetworkDrive?: (driveLetter: string) => void;
@@ -935,6 +941,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   savedNetworkHosts = [],
   onConnectNetworkHost,
   onRemoveSavedNetworkHost,
+  onUpdateSavedNetworkHost,
+  onTogglePinNetworkHost,
   onRequestNetworkAuth,
   onRequestMapNetworkDrive,
   onDisconnectNetworkDrive,
@@ -988,6 +996,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const isRecycleBin = tab.currentPath === RECYCLE_BIN_PATH;
   const isRecentLocation = tab.currentPath === RECENT_PATH;
   const [networkHostInput, setNetworkHostInput] = useState('');
+  const [editingHostPath, setEditingHostPath] = useState<string | null>(null);
+  const [editingHostAlias, setEditingHostAlias] = useState('');
+  const [editingHostNote, setEditingHostNote] = useState('');
   const [collapsedNetworkSections, setCollapsedNetworkSections] = useState<{ hosts: boolean; shares: boolean }>({
     hosts: false,
     shares: false,
@@ -3690,19 +3701,24 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const matchesNetworkFilter = (...values: Array<string | undefined>) => !networkFilterQuery || values.some(value =>
     Boolean(value && value.toLowerCase().includes(networkFilterQuery)),
   );
-  const savedNetworkHostSet = React.useMemo(
-    () => new Set(savedNetworkHosts.map(host => normalizeWindowsPath(host).toLowerCase())),
-    [savedNetworkHosts],
-  );
-  const combinedNetworkHosts = React.useMemo(() => {
-    const byPath = new Map<string, NetworkResource>();
-    for (const resource of networkResources) {
-      if (resource.kind !== 'host') continue;
-      const normalized = normalizeWindowsPath(resource.path);
-      byPath.set(normalized.toLowerCase(), { ...resource, path: normalized });
-    }
+  const savedHostByPath = React.useMemo(() => {
+    const map = new Map<string, SavedNetworkHost>();
     for (const saved of savedNetworkHosts) {
-      const normalized = normalizeWindowsPath(saved);
+      const normalized = normalizeWindowsPath(saved.path);
+      map.set(normalized.toLowerCase(), { ...saved, path: normalized });
+    }
+    return map;
+  }, [savedNetworkHosts]);
+  const combinedNetworkHosts = React.useMemo(() => {
+    type CombinedHost = NetworkResource & {
+      alias?: string;
+      note?: string;
+      pinned?: boolean;
+      isSaved: boolean;
+    };
+    const byPath = new Map<string, CombinedHost>();
+    for (const saved of savedNetworkHosts) {
+      const normalized = normalizeWindowsPath(saved.path);
       const key = normalized.toLowerCase();
       if (!byPath.has(key)) {
         byPath.set(key, {
@@ -3710,11 +3726,34 @@ export const FilePane: React.FC<FilePaneProps> = ({
           name: normalized.replace(/^\\+/, ''),
           path: normalized,
           kind: 'host',
+          alias: saved.alias,
+          note: saved.note,
+          pinned: saved.pinned === true,
+          isSaved: true,
         });
       }
     }
-    return [...byPath.values()].filter(host => matchesNetworkFilter(host.name, host.path, host.comment));
-  }, [networkResources, savedNetworkHosts, networkFilterQuery]);
+    for (const resource of networkResources) {
+      if (resource.kind !== 'host') continue;
+      const normalized = normalizeWindowsPath(resource.path);
+      const key = normalized.toLowerCase();
+      const savedMeta = savedHostByPath.get(key);
+      byPath.set(key, {
+        ...resource,
+        path: normalized,
+        alias: savedMeta?.alias,
+        note: savedMeta?.note,
+        pinned: savedMeta?.pinned === true,
+        isSaved: Boolean(savedMeta),
+      });
+    }
+    return [...byPath.values()]
+      .filter(host => matchesNetworkFilter(host.name, host.alias, host.note, host.path, host.comment))
+      .sort((a, b) => {
+        if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+        return 0;
+      });
+  }, [networkResources, savedNetworkHosts, savedHostByPath, networkFilterQuery]);
   const visibleNetworkShares = React.useMemo(
     () => networkResources
       .filter(resource => resource.kind !== 'host')
@@ -4829,10 +4868,115 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 <div style={{ display: collapsedNetworkSections.hosts ? 'none' : undefined }} className="cyberfiles-system-home-grid grid grid-cols-1 gap-1.5">
                   {combinedNetworkHosts.map(host => {
                     const shortcutId = `network-host:${host.id}`;
-                    const isSaved = savedNetworkHostSet.has(host.path.toLowerCase());
+                    const isSaved = host.isSaved;
+                    const isPinned = host.pinned === true;
+                    const isEditing = editingHostPath === host.path.toLowerCase();
                     const isSelected = selectedSystemHomeShortcutId === shortcutId;
+                    const displayLabel = host.alias || host.name;
+                    const secondaryText = host.note || host.comment;
+                    const tooltipText = [
+                      host.alias ? `${host.alias} (${host.path})` : host.path,
+                      secondaryText,
+                    ].filter(Boolean).join(' · ');
+
+                    const startEditingHost = () => {
+                      setEditingHostPath(host.path.toLowerCase());
+                      setEditingHostAlias(host.alias ?? '');
+                      setEditingHostNote(host.note ?? '');
+                    };
+
+                    const cancelEditingHost = () => {
+                      setEditingHostPath(null);
+                      setEditingHostAlias('');
+                      setEditingHostNote('');
+                    };
+
+                    const commitEditingHost = () => {
+                      onUpdateSavedNetworkHost?.(host.path, {
+                        alias: editingHostAlias.trim() || undefined,
+                        note: editingHostNote.trim() || undefined,
+                      });
+                      cancelEditingHost();
+                    };
+
+                    if (isEditing) {
+                      return (
+                        <div
+                          key={host.id}
+                          onClick={event => event.stopPropagation()}
+                          onDoubleClick={event => event.stopPropagation()}
+                          className="cyberfiles-system-home-card flex flex-col gap-2 rounded-lg border border-cyan-500/60 bg-neutral-900/80 px-3 py-2.5 shadow-sm"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate font-mono text-[11px] font-medium text-cyan-300">{host.path}</span>
+                            <div className="flex items-center gap-1">
+                              <Tooltip label={t.pane.networkSaveHostMetadata} placement="top">
+                                <button
+                                  type="button"
+                                  aria-label={t.pane.networkSaveHostMetadata}
+                                  onClick={commitEditingHost}
+                                  className="rounded p-1 text-emerald-400 transition-colors hover:bg-neutral-800 hover:text-emerald-300"
+                                >
+                                  <Check className="h-3.5 w-3.5" />
+                                </button>
+                              </Tooltip>
+                              <Tooltip label={t.pane.networkCancelHostMetadata} placement="top">
+                                <button
+                                  type="button"
+                                  aria-label={t.pane.networkCancelHostMetadata}
+                                  onClick={cancelEditingHost}
+                                  className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </Tooltip>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                            <input
+                              type="text"
+                              value={editingHostAlias}
+                              maxLength={80}
+                              autoFocus
+                              onChange={event => setEditingHostAlias(event.target.value)}
+                              onKeyDown={event => {
+                                if (event.key === 'Enter') {
+                                  event.preventDefault();
+                                  commitEditingHost();
+                                } else if (event.key === 'Escape') {
+                                  event.preventDefault();
+                                  cancelEditingHost();
+                                }
+                              }}
+                              placeholder={t.pane.networkHostAliasPlaceholder}
+                              aria-label={t.pane.networkHostAliasPlaceholder}
+                              className="h-7 w-full rounded border border-neutral-700 bg-neutral-950 px-2 text-xs text-neutral-100 placeholder-neutral-500 outline-none focus:border-cyan-500/70"
+                            />
+                            <input
+                              type="text"
+                              value={editingHostNote}
+                              maxLength={160}
+                              onChange={event => setEditingHostNote(event.target.value)}
+                              onKeyDown={event => {
+                                if (event.key === 'Enter') {
+                                  event.preventDefault();
+                                  commitEditingHost();
+                                } else if (event.key === 'Escape') {
+                                  event.preventDefault();
+                                  cancelEditingHost();
+                                }
+                              }}
+                              placeholder={t.pane.networkHostNotePlaceholder}
+                              aria-label={t.pane.networkHostNotePlaceholder}
+                              className="h-7 w-full rounded border border-neutral-700 bg-neutral-950 px-2 text-xs text-neutral-100 placeholder-neutral-500 outline-none focus:border-cyan-500/70"
+                            />
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
-                      <Tooltip key={host.id} label={host.comment ? `${host.path} · ${host.comment}` : host.path} placement="top" boundary=".cyberfiles-file-viewport">
+                      <Tooltip key={host.id} label={tooltipText} placement="top" boundary=".cyberfiles-file-viewport">
                         <div
                           role="button"
                           tabIndex={0}
@@ -4855,19 +4999,65 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             <Server className="h-6 w-6" />
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="flex items-center gap-1.5">
-                              <span className="cyberfiles-system-home-name truncate text-xs font-medium text-neutral-100">{host.name}</span>
-                              <span className="flex-shrink-0 rounded border border-cyan-500/25 bg-cyan-950/35 px-1.5 py-0.5 text-[9px] font-medium text-cyan-300/90">
-                                {isSaved ? t.pane.networkSavedHostBadge : t.pane.networkHostBadge}
-                              </span>
+                            <span className="flex flex-wrap items-center gap-1.5">
+                              <span className="cyberfiles-system-home-name truncate text-xs font-medium text-neutral-100">{displayLabel}</span>
+                              {host.alias && (
+                                <span className="truncate font-mono text-[10px] text-neutral-400">({host.name})</span>
+                              )}
+                              {isPinned ? (
+                                <span className="inline-flex flex-shrink-0 items-center gap-1 rounded border border-amber-500/35 bg-amber-950/35 px-1.5 py-0.5 text-[9px] font-medium text-amber-300">
+                                  <Pin className="h-2.5 w-2.5" />
+                                  <span>{t.pane.networkPinnedHostBadge}</span>
+                                </span>
+                              ) : (
+                                <span className="flex-shrink-0 rounded border border-cyan-500/25 bg-cyan-950/35 px-1.5 py-0.5 text-[9px] font-medium text-cyan-300/90">
+                                  {isSaved ? t.pane.networkSavedHostBadge : t.pane.networkHostBadge}
+                                </span>
+                              )}
                             </span>
-                            <span className="mt-1 block truncate text-[10px] text-neutral-400">{host.path}</span>
+                            <span className="mt-1 block truncate text-[10px] text-neutral-400">
+                              {secondaryText ? `${host.path} · ${secondaryText}` : host.path}
+                            </span>
                           </span>
+                          {onTogglePinNetworkHost && (
+                            <Tooltip label={isPinned ? t.pane.networkUnpinHostTooltip : t.pane.networkPinHostTooltip} placement="top">
+                              <button
+                                type="button"
+                                aria-label={`${isPinned ? t.pane.networkUnpinHostTooltip : t.pane.networkPinHostTooltip}: ${displayLabel}`}
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  onTogglePinNetworkHost(host.path);
+                                }}
+                                className={`rounded p-1 transition-opacity hover:bg-neutral-800 ${
+                                  isPinned
+                                    ? 'text-amber-300 opacity-90 hover:text-amber-200'
+                                    : 'text-neutral-500 opacity-0 hover:text-amber-300 group-hover:opacity-100 focus-visible:opacity-100'
+                                }`}
+                              >
+                                {isPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+                              </button>
+                            </Tooltip>
+                          )}
+                          {onUpdateSavedNetworkHost && (
+                            <Tooltip label={t.pane.networkEditHostTooltip} placement="top">
+                              <button
+                                type="button"
+                                aria-label={`${t.pane.networkEditHostTooltip}: ${displayLabel}`}
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  startEditingHost();
+                                }}
+                                className="rounded p-1 text-neutral-500 opacity-0 transition-opacity hover:bg-neutral-800 hover:text-cyan-300 group-hover:opacity-100 focus-visible:opacity-100"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                            </Tooltip>
+                          )}
                           {onRequestNetworkAuth && (
                             <Tooltip label={t.pane.networkAuthenticateTooltip} placement="top">
                               <button
                                 type="button"
-                                aria-label={`${t.pane.networkAuthenticateTooltip}: ${host.name}`}
+                                aria-label={`${t.pane.networkAuthenticateTooltip}: ${displayLabel}`}
                                 onClick={event => {
                                   event.stopPropagation();
                                   onRequestNetworkAuth(host.path);
@@ -4882,7 +5072,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             <Tooltip label={t.pane.networkRemoveSavedHost} placement="top">
                               <button
                                 type="button"
-                                aria-label={`${t.pane.networkRemoveSavedHost}: ${host.name}`}
+                                aria-label={`${t.pane.networkRemoveSavedHost}: ${displayLabel}`}
                                 onClick={event => {
                                   event.stopPropagation();
                                   onRemoveSavedNetworkHost(host.path);
