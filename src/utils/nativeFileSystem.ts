@@ -570,3 +570,14 @@ export function parseNetworkMapFailedError(error: unknown): { code?: number; raw
   const code = Number.parseInt(match[1], 10);
   return { code: Number.isFinite(code) ? code : undefined, raw };
 }
+
+export interface NetworkHostProbeStatus {
+  path: string;
+  online: boolean;
+  latencyMs?: number;
+}
+
+export async function probeNativeNetworkHosts(hosts: string[]): Promise<NetworkHostProbeStatus[]> {
+  if (!isTauriDesktop() || hosts.length === 0) return [];
+  return invoke<NetworkHostProbeStatus[]>('probe_network_hosts', { hosts });
+}

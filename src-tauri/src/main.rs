@@ -6193,6 +6193,108 @@ async fn disconnect_network_drive(drive_letter: String, force: bool) -> Result<(
         .map_err(|error| format!("Disconnect network drive worker failed: {error}"))?
 }
 
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct NetworkHostStatus {
+    path: String,
+    online: bool,
+    latency_ms: Option<u64>,
+}
+
+fn probe_single_network_host(raw_path: &str) -> Option<NetworkHostStatus> {
+    use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+    use std::time::{Duration, Instant};
+
+    let (host, normalized_path) = extract_unc_host_root(raw_path)?;
+    let started = Instant::now();
+    let Ok(addrs_iter) = (host.as_str(), 445u16).to_socket_addrs() else {
+        return Some(NetworkHostStatus {
+            path: normalized_path,
+            online: false,
+            latency_ms: None,
+        });
+    };
+    let mut addrs: Vec<SocketAddr> = addrs_iter.collect();
+    addrs.sort_by_key(|addr| if addr.is_ipv4() { 0 } else { 1 });
+
+    for addr in addrs.into_iter().take(3) {
+        if TcpStream::connect_timeout(&addr, Duration::from_millis(650)).is_ok() {
+            let elapsed = started.elapsed().as_millis() as u64;
+            return Some(NetworkHostStatus {
+                path: normalized_path,
+                online: true,
+                latency_ms: Some(elapsed.max(1)),
+            });
+        }
+        let netbios_addr = SocketAddr::new(addr.ip(), 139);
+        if TcpStream::connect_timeout(&netbios_addr, Duration::from_millis(350)).is_ok() {
+            let elapsed = started.elapsed().as_millis() as u64;
+            return Some(NetworkHostStatus {
+                path: normalized_path,
+                online: true,
+                latency_ms: Some(elapsed.max(1)),
+            });
+        }
+    }
+
+    Some(NetworkHostStatus {
+        path: normalized_path,
+        online: false,
+        latency_ms: None,
+    })
+}
+
+fn probe_network_hosts_blocking(hosts: Vec<String>) -> Vec<NetworkHostStatus> {
+    let mut unique_hosts = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for raw in hosts {
+        if let Some((_, normalized)) = extract_unc_host_root(&raw) {
+            let key = normalized.to_ascii_lowercase();
+            if seen.insert(key) {
+                unique_hosts.push(normalized);
+                if unique_hosts.len() >= 32 {
+                    break;
+                }
+            }
+        }
+    }
+    if unique_hosts.is_empty() {
+        return Vec::new();
+    }
+
+    let (tx, rx) = std::sync::mpsc::channel::<NetworkHostStatus>();
+    let total = unique_hosts.len();
+    for host_path in unique_hosts {
+        let tx_clone = tx.clone();
+        std::thread::spawn(move || {
+            if let Some(status) = probe_single_network_host(&host_path) {
+                let _ = tx_clone.send(status);
+            }
+        });
+    }
+    drop(tx);
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1500);
+    let mut results = Vec::with_capacity(total);
+    for _ in 0..total {
+        let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) else {
+            break;
+        };
+        match rx.recv_timeout(remaining) {
+            Ok(status) => results.push(status),
+            Err(_) => break,
+        }
+    }
+    results
+}
+
+#[tauri::command]
+async fn probe_network_hosts(hosts: Vec<String>) -> Result<Vec<NetworkHostStatus>, String> {
+    tauri::async_runtime::spawn_blocking(move || probe_network_hosts_blocking(hosts))
+        .await
+        .map_err(|error| format!("Network host probe worker failed: {error}"))
+}
+
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct RecycleBinStatus {
@@ -8166,6 +8268,7 @@ fn main() {
             authenticate_network_resource,
             map_network_drive,
             disconnect_network_drive,
+            probe_network_hosts,
             get_recycle_bin_status,
             list_recycle_bin,
             restore_recycle_bin_items,

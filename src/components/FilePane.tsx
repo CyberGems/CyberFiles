@@ -118,6 +118,7 @@ interface FilePaneProps {
   networkResources?: NetworkResource[];
   isLoadingNetwork?: boolean;
   savedNetworkHosts?: SavedNetworkHost[];
+  networkHostStatuses?: Record<string, { online: boolean; latencyMs?: number; checking?: boolean }>;
   onConnectNetworkHost?: (input: string) => void;
   onRemoveSavedNetworkHost?: (hostPath: string) => void;
   onUpdateSavedNetworkHost?: (hostPath: string, updates: { alias?: string; note?: string; pinned?: boolean }) => void;
@@ -939,6 +940,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   networkResources = [],
   isLoadingNetwork = false,
   savedNetworkHosts = [],
+  networkHostStatuses,
   onConnectNetworkHost,
   onRemoveSavedNetworkHost,
   onUpdateSavedNetworkHost,
@@ -4874,8 +4876,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     const isSelected = selectedSystemHomeShortcutId === shortcutId;
                     const displayLabel = host.alias || host.name;
                     const secondaryText = host.note || host.comment;
+                    const hostStatus = networkHostStatuses?.[host.path.toLowerCase()];
+                    const statusLabel = hostStatus?.checking
+                      ? t.pane.networkHostStatusChecking
+                      : hostStatus?.online === true
+                        ? (hostStatus.latencyMs !== undefined
+                            ? t.pane.networkHostStatusOnlineLatency.replace('{ms}', String(hostStatus.latencyMs))
+                            : t.pane.networkHostStatusOnline)
+                        : hostStatus?.online === false
+                          ? t.pane.networkHostStatusOffline
+                          : undefined;
                     const tooltipText = [
                       host.alias ? `${host.alias} (${host.path})` : host.path,
+                      statusLabel,
                       secondaryText,
                     ].filter(Boolean).join(' · ');
 
@@ -4995,8 +5008,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
                               : 'border-transparent bg-neutral-900/35 hover:border-neutral-700/80 hover:bg-neutral-800/70'
                           }`}
                         >
-                          <span data-system-home-icon="network" className="cyberfiles-system-home-icon flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-cyan-400/10 text-cyan-300">
+                          <span data-system-home-icon="network" className="cyberfiles-system-home-icon relative flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg bg-cyan-400/10 text-cyan-300">
                             <Server className="h-6 w-6" />
+                            {hostStatus && (
+                              <span
+                                aria-hidden="true"
+                                className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-neutral-950 ${
+                                  hostStatus.checking
+                                    ? 'animate-pulse bg-cyan-400'
+                                    : hostStatus.online
+                                      ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.75)]'
+                                      : 'bg-neutral-500'
+                                }`}
+                              />
+                            )}
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="flex flex-wrap items-center gap-1.5">
@@ -5012,6 +5037,35 @@ export const FilePane: React.FC<FilePaneProps> = ({
                               ) : (
                                 <span className="flex-shrink-0 rounded border border-cyan-500/25 bg-cyan-950/35 px-1.5 py-0.5 text-[9px] font-medium text-cyan-300/90">
                                   {isSaved ? t.pane.networkSavedHostBadge : t.pane.networkHostBadge}
+                                </span>
+                              )}
+                              {hostStatus && (
+                                <span
+                                  className={`inline-flex flex-shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[9px] font-medium ${
+                                    hostStatus.checking
+                                      ? 'border-neutral-700/80 bg-neutral-900/70 text-neutral-400'
+                                      : hostStatus.online
+                                        ? 'border-emerald-500/30 bg-emerald-950/35 text-emerald-300'
+                                        : 'border-neutral-700/70 bg-neutral-900/60 text-neutral-400'
+                                  }`}
+                                >
+                                  <span
+                                    aria-hidden="true"
+                                    className={`h-1.5 w-1.5 rounded-full ${
+                                      hostStatus.checking
+                                        ? 'animate-pulse bg-cyan-400'
+                                        : hostStatus.online
+                                          ? 'bg-emerald-400'
+                                          : 'bg-neutral-500'
+                                    }`}
+                                  />
+                                  <span>
+                                    {hostStatus.checking
+                                      ? t.pane.networkHostStatusChecking
+                                      : hostStatus.online
+                                        ? t.pane.networkHostStatusOnline
+                                        : t.pane.networkHostStatusOffline}
+                                  </span>
                                 </span>
                               )}
                             </span>

@@ -123,7 +123,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, mapNativeNetworkDrive, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, parseNetworkMapFailedError, pasteNativeClipboardImage, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, mapNativeNetworkDrive, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, parseNetworkMapFailedError, pasteNativeClipboardImage, probeNativeNetworkHosts, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { normalizeListerTextScale, type ListerTextScale } from './utils/listerTextScale';
 import { fetchLaunchContext, getLaunchTargetPath } from './utils/systemIntegration';
@@ -971,9 +971,62 @@ export default function App() {
   const [systemHomeLoading, setSystemHomeLoading] = useState(startsAtSystemHome);
   const [networkResources, setNetworkResources] = useState<NetworkResource[]>([]);
   const [networkLoading, setNetworkLoading] = useState(false);
+  const [networkHostStatuses, setNetworkHostStatuses] = useState<Record<string, { online: boolean; latencyMs?: number; checking?: boolean }>>({});
   const networkDiscoveryInFlight = useRef(false);
   const networkLoaded = useRef(false);
   const [savedNetworkHosts, setSavedNetworkHosts] = useState<SavedNetworkHost[]>(readSavedNetworkHosts);
+  const savedNetworkHostsRef = useRef(savedNetworkHosts);
+  savedNetworkHostsRef.current = savedNetworkHosts;
+  const runNetworkHostProbes = useCallback(async (hostPaths: string[]) => {
+    if (!isTauriDesktop()) return;
+    const uniquePaths: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of hostPaths) {
+      const root = getUncHostRoot(raw);
+      if (!root) continue;
+      const key = getPathKey(root);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      uniquePaths.push(root);
+    }
+    if (uniquePaths.length === 0) return;
+    setNetworkHostStatuses(previous => {
+      const next = { ...previous };
+      for (const path of uniquePaths) {
+        const key = getPathKey(path);
+        next[key] = { online: next[key]?.online ?? false, latencyMs: next[key]?.latencyMs, checking: true };
+      }
+      return next;
+    });
+    try {
+      const results = await probeNativeNetworkHosts(uniquePaths);
+      setNetworkHostStatuses(previous => {
+        const next = { ...previous };
+        const returnedKeys = new Set<string>();
+        for (const result of results) {
+          const key = getPathKey(result.path);
+          returnedKeys.add(key);
+          next[key] = { online: result.online, latencyMs: result.latencyMs, checking: false };
+        }
+        for (const path of uniquePaths) {
+          const key = getPathKey(path);
+          if (!returnedKeys.has(key)) {
+            next[key] = { online: false, checking: false };
+          }
+        }
+        return next;
+      });
+    } catch {
+      setNetworkHostStatuses(previous => {
+        const next = { ...previous };
+        for (const path of uniquePaths) {
+          const key = getPathKey(path);
+          if (next[key]) next[key] = { ...next[key], checking: false };
+        }
+        return next;
+      });
+    }
+  }, []);
   const rememberNetworkHost = useCallback((value: string) => {
     const hostRoot = getUncHostRoot(value);
     if (!hostRoot) return;
@@ -986,7 +1039,8 @@ export default function App() {
         ...previous.filter(item => getPathKey(item.path) !== key),
       ].slice(0, 50);
     });
-  }, []);
+    void runNetworkHostProbes([hostRoot]);
+  }, [runNetworkHostProbes]);
   const handleRemoveSavedNetworkHost = useCallback((hostPath: string) => {
     const key = getPathKey(hostPath);
     setSavedNetworkHosts(previous => previous.filter(existing => getPathKey(existing.path) !== key));
@@ -1054,16 +1108,22 @@ export default function App() {
     if (!isTauriDesktop() || networkDiscoveryInFlight.current) return;
     networkDiscoveryInFlight.current = true;
     setNetworkLoading(true);
+    void runNetworkHostProbes(savedNetworkHostsRef.current.map(item => item.path));
     try {
       const resources = await listNativeNetworkResources();
       setNetworkResources(resources);
+      const allHostPaths = [
+        ...savedNetworkHostsRef.current.map(item => item.path),
+        ...resources.filter(res => res.kind === 'host').map(res => res.path),
+      ];
+      void runNetworkHostProbes(allHostPaths);
     } catch {
       // Keep previously discovered resources if LAN discovery fails.
     } finally {
       networkDiscoveryInFlight.current = false;
       setNetworkLoading(false);
     }
-  }, []);
+  }, [runNetworkHostProbes]);
   const [quickAccess, setQuickAccess] = useState<QuickAccessItem[]>([]);
   const [recentFolderPaths, setRecentFolderPaths] = useState<string[]>(readRecentFolderPaths);
   const [customQuickAccess, setCustomQuickAccess] = useState<QuickAccessItem[]>(readCustomQuickAccess);
@@ -6896,6 +6956,7 @@ export default function App() {
                   networkResources={networkResources}
                   isLoadingNetwork={networkLoading}
                   savedNetworkHosts={savedNetworkHosts}
+                  networkHostStatuses={networkHostStatuses}
                   onConnectNetworkHost={input => handleConnectNetworkHost(input, 'left')}
                   onRequestNetworkAuth={path => handleRequestNetworkAuth(path, 'left')}
                   onRequestMapNetworkDrive={path => handleRequestMapNetworkDrive(path ?? '', 'left')}
@@ -6989,6 +7050,7 @@ export default function App() {
                   networkResources={networkResources}
                   isLoadingNetwork={networkLoading}
                   savedNetworkHosts={savedNetworkHosts}
+                  networkHostStatuses={networkHostStatuses}
                   onConnectNetworkHost={input => handleConnectNetworkHost(input, 'right')}
                   onRequestNetworkAuth={path => handleRequestNetworkAuth(path, 'right')}
                   onRequestMapNetworkDrive={path => handleRequestMapNetworkDrive(path ?? '', 'right')}
@@ -7083,6 +7145,7 @@ export default function App() {
                   networkResources={networkResources}
                   isLoadingNetwork={networkLoading}
                   savedNetworkHosts={savedNetworkHosts}
+                  networkHostStatuses={networkHostStatuses}
                   onConnectNetworkHost={input => handleConnectNetworkHost(input, 'left')}
                   onRequestNetworkAuth={path => handleRequestNetworkAuth(path, 'left')}
                   onRequestMapNetworkDrive={path => handleRequestMapNetworkDrive(path ?? '', 'left')}
@@ -7172,6 +7235,7 @@ export default function App() {
                   networkResources={networkResources}
                   isLoadingNetwork={networkLoading}
                   savedNetworkHosts={savedNetworkHosts}
+                  networkHostStatuses={networkHostStatuses}
                   onConnectNetworkHost={input => handleConnectNetworkHost(input, 'right')}
                   onRequestNetworkAuth={path => handleRequestNetworkAuth(path, 'right')}
                   onRequestMapNetworkDrive={path => handleRequestMapNetworkDrive(path ?? '', 'right')}
@@ -7266,6 +7330,7 @@ export default function App() {
                   networkResources={networkResources}
                   isLoadingNetwork={networkLoading}
                   savedNetworkHosts={savedNetworkHosts}
+                  networkHostStatuses={networkHostStatuses}
                   onConnectNetworkHost={input => handleConnectNetworkHost(input, activePane)}
                   onRequestNetworkAuth={path => handleRequestNetworkAuth(path, activePane)}
                   onRequestMapNetworkDrive={path => handleRequestMapNetworkDrive(path ?? '', activePane)}
