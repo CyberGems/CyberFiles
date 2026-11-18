@@ -2,6 +2,24 @@
 
 All notable changes to CyberFiles are documented here.
 
+## [0.11.0] - 2026-11-18
+
+### 🇺🇸 English
+
+- Allow Windows to open folders in CyberFiles by default with per-folder Explorer exceptions, folder and background context menu toggles (when folder replacement is active), exclusion badges, a Settings quick action to open excluded folders in Explorer, and JSON export/import for exceptions.
+- Add an independent `Win+E` shortcut handler setting with configurable behavior when a CyberFiles window is already running, and eliminate console window flashes on shell launches.
+- Enhance saved LAN network hosts with custom aliases, notes, pinning, asynchronous SMB reachability status badges, and JSON export/import.
+- Convert tray submenus into side-by-side flyout panels, add a Quick Access and recent folders tray flyout synced live with the main window, and display friendly localized names for This PC and Network in the crash recovery modal.
+- Ship winget manifests with every release.
+
+### 🇪🇸 Español
+
+- Permite que Windows abra carpetas en CyberFiles de forma predeterminada con excepciones por carpeta para abrir en el Explorador de Windows, opciones en los menús contextuales de carpeta y fondo (cuando el reemplazo está activo), insignias visuales de exclusión, acceso rápido desde Ajustes y exportación/importación en JSON.
+- Añade un ajuste independiente para interceptar el atajo `Win+E` con acción configurable cuando CyberFiles ya está abierto, evitando ventanas de consola al iniciar desde el shell.
+- Mejora los hosts de red LAN guardados con alias personalizados, notas, anclaje, comprobación asíncrona de disponibilidad SMB con insignias de estado y exportación/importación en JSON.
+- Convierte los submenús de la bandeja en paneles flyout laterales, añade un flyout de Acceso rápido y carpetas recientes sincronizado en vivo con la ventana principal y muestra nombres amigables para Este equipo y Red en el modal de recuperación tras fallo.
+- Publica manifiestos winget con cada release.
+
 ## [0.10.0] - 2026-11-17
 
 ### 🇺🇸 English

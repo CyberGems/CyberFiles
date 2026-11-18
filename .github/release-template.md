@@ -8,7 +8,7 @@
 
 <!-- IMPORTANT FOR AGENTS & MAINTAINERS: Always rewrite this entire section and highlights with the ACTUAL release notes for this specific new version before tagging. NEVER leave or copy previous version notes! Use 25-45 words for the summary, lead with user-facing changes, and do not repeat the app name or version. Keep the Spanish mirror inside the details block in sync: translate the summary and rewrite the highlights. -->
 <!-- changelog-summary:start -->
-Crash recovery now restores unsaved tab sessions after an unexpected exit, the tray quits through the unsaved-changes gate and keeps This PC and Network on their dedicated layouts, folder actions hide where they cannot apply, and the update modal drops the pre-install guidance. Releases now ship winget manifests.
+Windows folder replacement and Win+E handling now support per-folder Explorer exceptions, saved LAN hosts gain aliases, pinning and live SMB reachability badges, tray submenus expand into side-by-side flyouts with live-synced folders, and crash recovery shows friendly virtual folder names.
 <!-- changelog-summary:end -->
 
 > **New to CyberFiles?** A dual-pane Windows file manager with tabs, queued copy and move operations you can pause or undo, archive tools, and previews powered by the real Windows Shell.
@@ -17,18 +17,18 @@ Crash recovery now restores unsaved tab sessions after an unexpected exit, the t
 
 ### ✨ Key Features & Highlights
 
-- 💾 **Crash recovery for tabs**: After an unexpected exit, the session of unsaved tabs is restored on the next launch, with the recovery boot check running once per webview load.
+- 🗂️ **Default folder handler and `Win+E` control**: Set CyberFiles as your default Windows folder opener alongside an independent `Win+E` shortcut toggle, configurable already-running behavior, per-folder Explorer exceptions via context menus, exclusion badges, Settings quick open, and JSON export/import.
 
-- 🖥️ **Tray layout and quit polish**: This PC and Network stay on their dedicated layouts, tray views are measured at startup and resized before swapping, folder actions hide where the virtual locations cannot apply, and quitting routes through the unsaved-changes gate.
+- 🌐 **Richer LAN hosts and recovery clarity**: Customize saved SMB hosts with aliases, notes, pinning, asynchronous reachability probes, and JSON backup; crash recovery displays localized names for This PC and Network.
 
-- 🧹 **Updates, uninstall and maintenance**: The update modal skips "Before you install", the Windows uninstall entry shows the website and description, 12 npm dependencies plus the dialog and opener Tauri plugins are refreshed, and every release ships winget manifests.
+- 🪟 **Side-by-side tray flyout panels**: Tray submenus open beside the main card, including a new Quick Access and recent folders flyout synced live from the main window.
 
 <details>
 <summary><b>🇪🇸 Ver notas de la versión en Español</b></summary>
 
 ### 🚀 Novedades de esta versión
 
-La recuperación tras fallo restaura ahora las sesiones de pestañas sin guardar tras una salida inesperada, la bandeja sale por la puerta de cambios sin guardar y mantiene Este equipo y Red en sus diseños dedicados, las acciones de carpeta se ocultan donde no aplican y el modal de actualización omite la guía previa. Los releases publican manifiestos winget.
+El reemplazo de carpetas de Windows y el atajo Win+E ahora admiten excepciones por carpeta hacia el Explorador, los hosts LAN suman alias, anclaje y estado SMB en vivo, los submenús de bandeja pasan a flyouts laterales sincronizados y la recuperación muestra nombres amigables.
 
 > **¿Nuevo en CyberFiles?** Un gestor de archivos Windows de doble panel, con pestañas, operaciones de copia y movimiento en cola que puedes pausar o deshacer, herramientas de archivos comprimidos y vistas previas con el Shell real de Windows.
 
@@ -36,11 +36,11 @@ La recuperación tras fallo restaura ahora las sesiones de pestañas sin guardar
 
 ### ✨ Novedades destacadas
 
-- 💾 **Recuperación de pestañas tras un fallo**: Tras una salida inesperada, la sesión de pestañas sin guardar se restaura en el siguiente arranque, con la comprobación de arranque de recuperación ejecutándose una vez por carga del webview.
+- 🗂️ **Manejo predeterminado de carpetas y `Win+E`**: Configura CyberFiles para abrir carpetas por defecto junto a un ajuste independiente para `Win+E`, acción configurable si ya está abierto, excepciones por carpeta desde el menú contextual, insignias visuales, apertura rápida desde Ajustes y respaldo JSON.
 
-- 🖥️ **Pulido de la bandeja**: Este equipo y Red mantienen sus diseños dedicados, las vistas de la bandeja se miden al arranque y se redimensionan antes del cambio, las acciones de carpeta se ocultan donde las ubicaciones virtuales no aplican, y salir pasa por la puerta de cambios sin guardar.
+- 🌐 **Hosts LAN mejorados y recuperación clara**: Personaliza hosts SMB guardados con alias, notas, anclaje, comprobación asíncrona de estado y respaldo JSON; la recuperación tras fallo muestra nombres localizados para Este equipo y Red.
 
-- 🧹 **Actualizaciones, desinstalación y mantenimiento**: El modal de actualización omite «Antes de instalar», la entrada de desinstalación de Windows muestra el sitio web y la descripción, se renuevan 12 dependencias de npm más los plugins Tauri de dialog y opener, y cada release publica manifiestos winget.
+- 🪟 **Paneles flyout laterales en la bandeja**: Los submenús se abren junto a la tarjeta principal, sumando un flyout de Acceso rápido y carpetas recientes sincronizado en tiempo real con la ventana principal.
 
 ### ℹ️ Antes de instalar
 
