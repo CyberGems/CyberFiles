@@ -3,7 +3,6 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import {
-  ArrowLeft,
   ArrowRight,
   BookOpen,
   Bug,
@@ -23,25 +22,29 @@ import { translations, type Language } from '../locales/translations';
 import { CYBERFILES_REPO, CYBERGEMS_APPS, CYBERGEMS_SITE, SUITE_APPS } from './suiteApps';
 import './tray.css';
 
-type TrayView = 'main' | 'help' | 'suite';
+type TrayFlyoutId = 'help' | 'suite';
 type TrayWindowState = 'visible' | 'minimized' | 'hidden';
+type TrayFlyoutSide = 'left' | 'right';
+type TrayVerticalAlign = 'bottom' | 'top';
 
 interface TrayMenuSnapshot {
   windowState: TrayWindowState;
   hotkey: string | null;
   english: boolean;
   version: string;
+  flyoutSide?: TrayFlyoutSide;
+  verticalAlign?: TrayVerticalAlign;
 }
 
-/** Every deck view, the main one last: seeding reports each size to the window and the last
- * report is the geometry left applied, which has to be the view the menu opens on. */
-const TRAY_VIEWS: TrayView[] = ['help', 'suite', 'main'];
+const FLYOUT_EXTRA_LOGICAL_WIDTH = 268; // 260px flyout card + 8px gap
 
 const INITIAL_SNAPSHOT: TrayMenuSnapshot = {
   windowState: 'hidden',
   hotkey: null,
   english: false,
   version: __APP_VERSION__,
+  flyoutSide: 'left',
+  verticalAlign: 'bottom',
 };
 
 const HELP_URLS = {
@@ -78,13 +81,22 @@ function readTheme() {
 export function TrayMenu() {
   const [snapshot, setSnapshot] = useState<TrayMenuSnapshot>(INITIAL_SNAPSHOT);
   const [language, setLanguage] = useState<Language>('es');
-  const [view, setView] = useState<TrayView>('main');
-  const [switching, setSwitching] = useState(false);
-  const viewSizesRef = useRef<Map<TrayView, { width: number; height: number }>>(new Map());
+  const [activeFlyout, setActiveFlyout] = useState<TrayFlyoutId | null>(null);
+  const activeFlyoutRef = useRef<TrayFlyoutId | null>(null);
+  activeFlyoutRef.current = activeFlyout;
+
   const cardRef = useRef<HTMLDivElement>(null);
-  const deckRef = useRef<HTMLDivElement>(null);
+  const helpFlyoutRef = useRef<HTMLDivElement>(null);
+  const suiteFlyoutRef = useRef<HTMLDivElement>(null);
+  const helpTriggerRef = useRef<HTMLButtonElement>(null);
+  const suiteTriggerRef = useRef<HTMLButtonElement>(null);
+  const lastReportedSizesRef = useRef<{ mainW: number; mainH: number; canvasH: number } | null>(null);
+  const flyoutTimersRef = useRef<{ open: number | null; close: number | null }>({ open: null, close: null });
+
   const t = translations[language].trayMenu;
   const isVisible = snapshot.windowState === 'visible';
+  const flyoutSide: TrayFlyoutSide = snapshot.flyoutSide === 'right' ? 'right' : 'left';
+  const verticalAlign: TrayVerticalAlign = snapshot.verticalAlign === 'top' ? 'top' : 'bottom';
   const statusLabel = snapshot.windowState === 'visible'
     ? t.statusVisible
     : snapshot.windowState === 'minimized'
@@ -96,58 +108,77 @@ export function TrayMenu() {
       ? 'is-minimized'
       : 'is-hidden';
 
-  /* Measures one deck view without showing it: the deck is switched synchronously and put
-     back before the browser paints, so every view's size is known from the start. */
-  const measureView = useCallback((target: TrayView) => {
-    const card = cardRef.current;
-    const deck = deckRef.current;
-    if (!card || !deck) return null;
-    const current = deck.dataset.view ?? 'main';
-    deck.dataset.view = target;
-    const borderY = card.offsetHeight - card.clientHeight;
-    const width = Math.ceil(card.offsetWidth + 40);
-    const height = Math.ceil(card.scrollHeight + borderY + 44);
-    deck.dataset.view = current;
-    if (width < 10 || height < 10) return null;
-    return { width, height };
+  const cancelFlyoutTimers = useCallback(() => {
+    if (flyoutTimersRef.current.open !== null) window.clearTimeout(flyoutTimersRef.current.open);
+    if (flyoutTimersRef.current.close !== null) window.clearTimeout(flyoutTimersRef.current.close);
+    flyoutTimersRef.current = { open: null, close: null };
   }, []);
 
-  /* Sizes are remembered per view so a switch can resize the window before the deck swaps:
-     the new content then paints inside its own box instead of the previous view's, which
-     read as a flicker every time the menu came back from a sub-view. */
-  const reportSize = useCallback((view: TrayView) => {
-    const size = measureView(view);
-    if (!size) return;
-    const previous = viewSizesRef.current.get(view);
-    viewSizesRef.current.set(view, size);
-    if (previous?.width === size.width && previous.height === size.height) return;
-    void invoke('tray_menu_ready', { width: size.width, height: size.height, view }).catch(() => {});
-  }, [measureView]);
+  const scheduleFlyoutOpen = useCallback((target: TrayFlyoutId) => {
+    cancelFlyoutTimers();
+    if (activeFlyoutRef.current === target) return;
+    const delay = activeFlyoutRef.current !== null ? 60 : 120;
+    flyoutTimersRef.current.open = window.setTimeout(() => {
+      flyoutTimersRef.current.open = null;
+      setActiveFlyout(target);
+    }, delay);
+  }, [cancelFlyoutTimers]);
 
-  /* Resizes the window for the target view before swapping the deck, hiding the deck for
-     that frame so no geometry step is ever visible. A view that was never measured has no
-     remembered size: it swaps first and the size effect reports it once it is mounted. */
-  const openView = useCallback(async (next: TrayView) => {
-    if (next === view) return;
-    const target = viewSizesRef.current.get(next);
-    if (!target) {
-      setView(next);
+  const scheduleFlyoutClose = useCallback(() => {
+    cancelFlyoutTimers();
+    if (activeFlyoutRef.current === null) return;
+    flyoutTimersRef.current.close = window.setTimeout(() => {
+      flyoutTimersRef.current.close = null;
+      setActiveFlyout(null);
+    }, 220);
+  }, [cancelFlyoutTimers]);
+
+  const openFlyoutAndFocusFirst = useCallback((target: TrayFlyoutId) => {
+    cancelFlyoutTimers();
+    setActiveFlyout(target);
+    window.requestAnimationFrame(() => {
+      const container = target === 'help' ? helpFlyoutRef.current : suiteFlyoutRef.current;
+      container?.querySelector<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)')?.focus();
+    });
+  }, [cancelFlyoutTimers]);
+
+  const closeFlyoutAndReturnFocus = useCallback(() => {
+    const previous = activeFlyoutRef.current;
+    cancelFlyoutTimers();
+    setActiveFlyout(null);
+    if (previous === 'help') helpTriggerRef.current?.focus();
+    else if (previous === 'suite') suiteTriggerRef.current?.focus();
+  }, [cancelFlyoutTimers]);
+
+  const measureElementLogicalBox = (element: HTMLElement | null) => {
+    if (!element) return null;
+    const borderY = element.offsetHeight - element.clientHeight;
+    const width = Math.ceil(element.offsetWidth + 40);
+    const height = Math.ceil(element.scrollHeight + borderY + 44);
+    if (width < 10 || height < 10) return null;
+    return { width, height };
+  };
+
+  const reportSizes = useCallback(() => {
+    const mainBox = measureElementLogicalBox(cardRef.current);
+    if (!mainBox) return;
+    const helpBox = measureElementLogicalBox(helpFlyoutRef.current);
+    const suiteBox = measureElementLogicalBox(suiteFlyoutRef.current);
+    const canvasH = Math.max(mainBox.height, helpBox?.height ?? 0, suiteBox?.height ?? 0);
+
+    const prev = lastReportedSizesRef.current;
+    if (prev && prev.mainW === mainBox.width && prev.mainH === mainBox.height && prev.canvasH === canvasH) {
       return;
     }
-    setSwitching(true);
-    try {
-      await invoke('tray_menu_ready', { width: target.width, height: target.height, view: next });
-    } catch {
-      // The size effect still reports the mounted view if the resize fails.
-    }
-    setView(next);
-    window.requestAnimationFrame(() => window.requestAnimationFrame(() => setSwitching(false)));
-  }, [view]);
+    lastReportedSizesRef.current = { mainW: mainBox.width, mainH: mainBox.height, canvasH };
+    void invoke('tray_menu_ready', { width: mainBox.width, height: mainBox.height, view: 'main' }).catch(() => {});
+    void invoke('tray_menu_ready', { width: FLYOUT_EXTRA_LOGICAL_WIDTH, height: canvasH, view: 'canvas' }).catch(() => {});
+  }, []);
 
   const refresh = useCallback(async () => {
     document.documentElement.dataset.theme = readTheme();
-    setView('main');
-    setSwitching(false);
+    cancelFlyoutTimers();
+    setActiveFlyout(null);
     try {
       const next = await invoke<TrayMenuSnapshot>('get_tray_menu_state');
       setSnapshot(next);
@@ -155,16 +186,19 @@ export function TrayMenu() {
     } catch {
       setLanguage(readLanguage(false));
     }
-    window.requestAnimationFrame(() => window.requestAnimationFrame(() => reportSize('main')));
-  }, [reportSize]);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => reportSizes()));
+  }, [cancelFlyoutTimers, reportSizes]);
 
   const runAction = (action: string) => {
+    cancelFlyoutTimers();
+    setActiveFlyout(null);
     void invoke('tray_menu_action', { action }).catch(error => {
       console.error('tray_menu_action failed:', error);
     });
   };
 
   const openExternal = (url: string) => {
+    cancelFlyoutTimers();
     void openUrl(url).catch(error => {
       console.error('openUrl failed:', error);
     });
@@ -175,10 +209,7 @@ export function TrayMenu() {
 
   useEffect(() => {
     void refresh();
-    // Seed every view while the window is still hidden, so the first opening and the first
-    // switch into a sub-view already know their geometry. requestAnimationFrame is not
-    // relied upon here because it may not fire for an invisible window.
-    TRAY_VIEWS.forEach(reportSize);
+    reportSizes();
     let cancelled = false;
     let stopListening: (() => void) | undefined;
     let stopHideListening: (() => void) | undefined;
@@ -188,21 +219,20 @@ export function TrayMenu() {
       if (cancelled) stop();
       else stopListening = stop;
     });
-    // Reset the deck while the menu is invisible: the next opening then shows
-    // the main view at the size cached for it, with no visible reflow.
     void listen('tray-menu-hide', () => {
-      setView('main');
-      setSwitching(false);
+      cancelFlyoutTimers();
+      setActiveFlyout(null);
     }).then(stop => {
       if (cancelled) stop();
       else stopHideListening = stop;
     });
     return () => {
       cancelled = true;
+      cancelFlyoutTimers();
       stopListening?.();
       stopHideListening?.();
     };
-  }, [refresh, reportSize]);
+  }, [cancelFlyoutTimers, refresh, reportSizes]);
 
   useEffect(() => {
     const onFocus = () => {
@@ -213,13 +243,65 @@ export function TrayMenu() {
   }, [refresh]);
 
   useEffect(() => {
-    window.requestAnimationFrame(() => window.requestAnimationFrame(() => reportSize(view)));
-  }, [view, reportSize]);
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => reportSizes()));
+  }, [language, reportSizes]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      const activeElement = document.activeElement as HTMLElement | null;
+      const inFlyout = Boolean(activeElement?.closest('.tray-flyout.is-open'));
+
       if (event.key === 'Escape') {
-        void invoke('hide_tray_menu').catch(() => {});
+        event.preventDefault();
+        if (activeFlyoutRef.current !== null) {
+          closeFlyoutAndReturnFocus();
+        } else {
+          void invoke('hide_tray_menu').catch(() => {});
+        }
+        return;
+      }
+
+      if (inFlyout) {
+        const closeKey = flyoutSide === 'left' ? 'ArrowRight' : 'ArrowLeft';
+        if (event.key === closeKey || event.key === 'Backspace') {
+          event.preventDefault();
+          closeFlyoutAndReturnFocus();
+          return;
+        }
+      } else {
+        const openKey = flyoutSide === 'left' ? 'ArrowLeft' : 'ArrowRight';
+        if (event.key === openKey || event.key === 'ArrowRight') {
+          if (activeElement === helpTriggerRef.current) {
+            event.preventDefault();
+            openFlyoutAndFocusFirst('help');
+            return;
+          }
+          if (activeElement === suiteTriggerRef.current) {
+            event.preventDefault();
+            openFlyoutAndFocusFirst('suite');
+            return;
+          }
+        }
+      }
+
+      if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+        event.preventDefault();
+        const container = inFlyout
+          ? (activeFlyoutRef.current === 'help' ? helpFlyoutRef.current : suiteFlyoutRef.current)
+          : cardRef.current;
+        const items = Array.from(
+          container?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)') ?? [],
+        );
+        if (items.length === 0) return;
+        const currentIndex = items.indexOf(activeElement as HTMLButtonElement);
+        const nextIndex = event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? items.length - 1
+            : currentIndex === -1
+              ? (event.key === 'ArrowUp' ? items.length - 1 : 0)
+              : (currentIndex + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+        items[nextIndex]?.focus();
       }
     };
     const blockContextMenu = (event: MouseEvent) => event.preventDefault();
@@ -229,89 +311,139 @@ export function TrayMenu() {
       window.removeEventListener('keydown', onKeyDown);
       document.removeEventListener('contextmenu', blockContextMenu);
     };
-  }, []);
+  }, [closeFlyoutAndReturnFocus, flyoutSide, openFlyoutAndFocusFirst]);
 
   return (
-    <div className="tray-root">
-      <div className="tray-card" role="menu" aria-label="CyberFiles" ref={cardRef}>
-        <div className="tray-deck" ref={deckRef} data-view={view} data-swapping={switching ? 'true' : undefined}>
-          {/* ── Main view ── */}
-          <div className="tray-view" id="view-main">
-            <button
-              type="button"
-              className="tray-header"
-              title={t.headerTooltip}
-              onClick={() => runAction('about')}
-            >
-              <img className="tray-header-icon" src="/icon.png" alt="" />
-              <span className="tray-header-name">
-                Cyber<span className="tray-header-accent">Files</span>
+    <div
+      className="tray-root"
+      onPointerDown={event => {
+        const target = event.target as HTMLElement | null;
+        if (!target?.closest('.tray-card, .tray-flyout.is-open')) {
+          cancelFlyoutTimers();
+          setActiveFlyout(null);
+          void invoke('hide_tray_menu').catch(() => {});
+        }
+      }}
+    >
+      <div
+        className="tray-stage"
+        data-flyout-side={flyoutSide}
+        data-vertical-align={verticalAlign}
+        onMouseLeave={scheduleFlyoutClose}
+      >
+        {/* ── Main tray card (always anchored in place) ── */}
+        <div className="tray-card" role="menu" aria-label="CyberFiles" ref={cardRef}>
+          <button
+            type="button"
+            className="tray-header"
+            title={t.headerTooltip}
+            onMouseEnter={scheduleFlyoutClose}
+            onClick={() => runAction('about')}
+          >
+            <img className="tray-header-icon" src="/icon.png" alt="" />
+            <span className="tray-header-name">
+              Cyber<span className="tray-header-accent">Files</span>
+            </span>
+            <span className="tray-header-version">v{snapshot.version}</span>
+          </button>
+
+          <div className="tray-divider" />
+
+          <div className="tray-group" onMouseEnter={scheduleFlyoutClose}>
+            <div className={`tray-status ${statusTone}`} role="status">
+              <span className="tray-status-dot" aria-hidden="true" />
+              <span className="tray-status-text">{statusLabel}</span>
+            </div>
+            <button type="button" role="menuitem" className="tray-item" onClick={() => runAction('toggle')}>
+              <span className="tray-item-icon">
+                {isVisible ? <EyeOff size={16} /> : <Eye size={16} />}
               </span>
-              <span className="tray-header-version">v{snapshot.version}</span>
+              <span className="tray-item-label">{isVisible ? t.hide : t.show}</span>
+              {snapshot.hotkey && <span className="tray-item-hotkey">{snapshot.hotkey}</span>}
             </button>
-
-            <div className="tray-divider" />
-
-            <div className="tray-group">
-              <div className={`tray-status ${statusTone}`} role="status">
-                <span className="tray-status-dot" aria-hidden="true" />
-                <span className="tray-status-text">{statusLabel}</span>
-              </div>
-              <button type="button" role="menuitem" className="tray-item" onClick={() => runAction('toggle')}>
-                <span className="tray-item-icon">
-                  {isVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                </span>
-                <span className="tray-item-label">{isVisible ? t.hide : t.show}</span>
-                {snapshot.hotkey && <span className="tray-item-hotkey">{snapshot.hotkey}</span>}
-              </button>
-            </div>
-
-            <div className="tray-divider" />
-
-            <div className="tray-group">
-              <button type="button" role="menuitem" className="tray-item" onClick={() => runAction('settings')}>
-                <span className="tray-item-icon"><Settings size={16} /></span>
-                <span className="tray-item-label">{t.settings}</span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="tray-item tray-nav-item"
-                onClick={() => { void openView('help'); }}
-              >
-                <span className="tray-item-icon"><HelpCircle size={16} /></span>
-                <span className="tray-item-label">{t.help}</span>
-                <span className="tray-nav-arrow"><ChevronRight size={14} /></span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="tray-item tray-nav-item"
-                onClick={() => { void openView('suite'); }}
-              >
-                <span className="tray-item-icon"><Gem size={16} /></span>
-                <span className="tray-item-label">{t.suite}</span>
-                <span className="tray-nav-arrow"><ChevronRight size={14} /></span>
-              </button>
-            </div>
-
-            <div className="tray-divider" />
-
-            <div className="tray-group tray-group-exit">
-              <button type="button" role="menuitem" className="tray-item tray-item-exit" onClick={() => runAction('quit')}>
-                <span className="tray-item-icon"><Power size={16} /></span>
-                <span className="tray-item-label">{t.quit}</span>
-              </button>
-            </div>
           </div>
 
-          {/* ── Help view ── */}
-          <div className="tray-view" id="view-help">
-            <div className="tray-sub-header">
-              <button type="button" className="tray-back-btn"                 onClick={() => { void openView('main'); }}>
-                <span className="tray-back-icon"><ArrowLeft size={13} /></span>
-                <span>{t.back}</span>
-              </button>
+          <div className="tray-divider" />
+
+          <div className="tray-group">
+            <button
+              type="button"
+              role="menuitem"
+              className="tray-item"
+              onMouseEnter={scheduleFlyoutClose}
+              onClick={() => runAction('settings')}
+            >
+              <span className="tray-item-icon"><Settings size={16} /></span>
+              <span className="tray-item-label">{t.settings}</span>
+            </button>
+            <button
+              ref={helpTriggerRef}
+              type="button"
+              role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={activeFlyout === 'help'}
+              className={`tray-item tray-nav-item ${activeFlyout === 'help' ? 'is-open' : ''}`}
+              onMouseEnter={() => scheduleFlyoutOpen('help')}
+              onClick={event => {
+                cancelFlyoutTimers();
+                if (event.detail === 0) {
+                  openFlyoutAndFocusFirst('help');
+                } else {
+                  setActiveFlyout(current => (current === 'help' ? null : 'help'));
+                }
+              }}
+            >
+              <span className="tray-item-icon"><HelpCircle size={16} /></span>
+              <span className="tray-item-label">{t.help}</span>
+              <span className="tray-nav-arrow"><ChevronRight size={14} /></span>
+            </button>
+            <button
+              ref={suiteTriggerRef}
+              type="button"
+              role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={activeFlyout === 'suite'}
+              className={`tray-item tray-nav-item ${activeFlyout === 'suite' ? 'is-open' : ''}`}
+              onMouseEnter={() => scheduleFlyoutOpen('suite')}
+              onClick={event => {
+                cancelFlyoutTimers();
+                if (event.detail === 0) {
+                  openFlyoutAndFocusFirst('suite');
+                } else {
+                  setActiveFlyout(current => (current === 'suite' ? null : 'suite'));
+                }
+              }}
+            >
+              <span className="tray-item-icon"><Gem size={16} /></span>
+              <span className="tray-item-label">{t.suite}</span>
+              <span className="tray-nav-arrow"><ChevronRight size={14} /></span>
+            </button>
+          </div>
+
+          <div className="tray-divider" />
+
+          <div className="tray-group tray-group-exit" onMouseEnter={scheduleFlyoutClose}>
+            <button type="button" role="menuitem" className="tray-item tray-item-exit" onClick={() => runAction('quit')}>
+              <span className="tray-item-icon"><Power size={16} /></span>
+              <span className="tray-item-label">{t.quit}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* ── Side-by-side flyout slot (Help & Suite submenus) ── */}
+        <div className="tray-flyout-slot">
+          {/* Help flyout */}
+          <div
+            ref={helpFlyoutRef}
+            id="flyout-help"
+            role="menu"
+            aria-label={t.help}
+            aria-hidden={activeFlyout !== 'help'}
+            onMouseEnter={cancelFlyoutTimers}
+            className={`tray-flyout ${activeFlyout === 'help' ? 'is-open' : ''}`}
+          >
+            <div className="tray-flyout-header">
+              <span className="tray-flyout-header-icon"><HelpCircle size={14} /></span>
               <span className="tray-sub-title">{t.help}</span>
             </div>
 
@@ -351,13 +483,17 @@ export function TrayMenu() {
             </div>
           </div>
 
-          {/* ── Suite view ── */}
-          <div className="tray-view" id="view-suite">
-            <div className="tray-sub-header">
-              <button type="button" className="tray-back-btn"                 onClick={() => { void openView('main'); }}>
-                <span className="tray-back-icon"><ArrowLeft size={13} /></span>
-                <span>{t.back}</span>
-              </button>
+          {/* Suite flyout */}
+          <div
+            ref={suiteFlyoutRef}
+            id="flyout-suite"
+            role="menu"
+            aria-label={t.suite}
+            aria-hidden={activeFlyout !== 'suite'}
+            onMouseEnter={cancelFlyoutTimers}
+            className={`tray-flyout ${activeFlyout === 'suite' ? 'is-open' : ''}`}
+          >
+            <div className="tray-flyout-header">
               <button
                 type="button"
                 className="tray-brand-link"
@@ -367,6 +503,7 @@ export function TrayMenu() {
                 <img className="tray-brand-mark" src="/cybergems-logo.svg" alt="" />
                 <span className="tray-brand-name">CyberGems</span>
               </button>
+              <span className="tray-flyout-badge">{SUITE_APPS.length}</span>
             </div>
 
             <div className="tray-divider" />

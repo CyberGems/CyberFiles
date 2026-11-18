@@ -5001,6 +5001,9 @@ fn set_tray_language(language: String, app: tauri::AppHandle) -> Result<(), Stri
 
 const TRAY_MENU_EST_WIDTH: f64 = 292.0;
 const TRAY_MENU_EST_HEIGHT: f64 = 284.0;
+/// Logical width of the side-by-side flyout panel plus the gap between cards (260 + 8).
+const TRAY_MENU_FLYOUT_EXTRA_WIDTH: f64 = 268.0;
+const TRAY_MENU_CANVAS_EST_HEIGHT: f64 = 424.0;
 /// Transparent padding around the card, reserved for its drop shadow.
 const TRAY_MENU_SHADOW_PAD: f64 = 12.0;
 
@@ -5013,16 +5016,11 @@ fn monitor_contains(monitor: &tauri::Monitor, x: i32, y: i32) -> bool {
         && y < position.y + size.height as i32
 }
 
-/// Places the tray card next to the tray icon, clamped to the monitor that
-/// contains the anchor. `logical_w`/`logical_h` describe the whole window,
-/// including the transparent padding used for the shadow.
-fn tray_menu_geometry(
+fn tray_menu_monitor_bounds(
     window: &tauri::WebviewWindow,
     anchor_x: i32,
     anchor_y: i32,
-    logical_w: f64,
-    logical_h: f64,
-) -> (i32, i32, u32, u32) {
+) -> (f64, (i32, i32, i32, i32)) {
     let scale = window.scale_factor().unwrap_or(1.0);
 
     let monitor = window
@@ -5046,7 +5044,7 @@ fn tray_menu_geometry(
         (0, 0, 1920, 1080)
     };
 
-    tray_menu_bounds(scale, bounds, anchor_x, anchor_y, logical_w, logical_h)
+    (scale, bounds)
 }
 
 /// Physical placement math, split from the window so the rounding at fractional
@@ -5097,19 +5095,112 @@ fn tray_menu_bounds(
     )
 }
 
-fn apply_tray_menu_geometry(app: &tauri::AppHandle, width: f64, height: f64) {
+/// Computes the transparent canvas bounds that keep the main tray card anchored at
+/// its exact physical screen position while reserving a side-by-side slot on the
+/// left or right for flyout submenus (Help, More from CyberGems).
+fn tray_menu_flyout_canvas_bounds(
+    scale: f64,
+    bounds: (i32, i32, i32, i32),
+    anchor_x: i32,
+    anchor_y: i32,
+    main_logical_w: f64,
+    main_logical_h: f64,
+    flyout_extra_logical_w: f64,
+    canvas_logical_h: f64,
+) -> (i32, i32, u32, u32, &'static str, &'static str) {
+    let (main_win_x, main_win_y, main_win_w, main_win_h) =
+        tray_menu_bounds(scale, bounds, anchor_x, anchor_y, main_logical_w, main_logical_h);
+    let (min_x, min_y, max_x, max_y) = bounds;
+    let shadow_pad = (TRAY_MENU_SHADOW_PAD * scale).round() as i32;
+    let extra_w_px = (flyout_extra_logical_w.max(0.0) * scale).round() as i32;
+    let max_canvas_h = (max_y - min_y).max(240);
+    let canvas_h_px = (((canvas_logical_h.max(main_logical_h)) * scale).round() as i32)
+        .clamp(main_win_h as i32, max_canvas_h.max(main_win_h as i32));
+
+    let main_card_left = main_win_x + shadow_pad;
+    let main_card_right = main_win_x + main_win_w as i32 - shadow_pad;
+    let space_left = main_card_left - min_x;
+    let space_right = max_x - main_card_right;
+
+    let flyout_side = if space_left >= extra_w_px && space_right < extra_w_px {
+        "left"
+    } else if space_right >= extra_w_px && space_left < extra_w_px {
+        "right"
+    } else if anchor_x >= (min_x + max_x) / 2 {
+        "left"
+    } else {
+        "right"
+    };
+
+    let canvas_x = if flyout_side == "left" {
+        main_win_x - extra_w_px
+    } else {
+        main_win_x
+    };
+
+    let vertical_align = if anchor_y < (min_y + max_y) / 2 {
+        "top"
+    } else {
+        "bottom"
+    };
+
+    let canvas_y = if vertical_align == "top" {
+        main_win_y
+    } else {
+        main_win_y + main_win_h as i32 - canvas_h_px
+    };
+
+    (
+        canvas_x,
+        canvas_y,
+        (main_win_w as i32 + extra_w_px) as u32,
+        canvas_h_px as u32,
+        flyout_side,
+        vertical_align,
+    )
+}
+
+fn read_tray_menu_cached_sizes(app: &tauri::AppHandle) -> ((f64, f64), (f64, f64)) {
+    let mut main_size = (TRAY_MENU_EST_WIDTH, TRAY_MENU_EST_HEIGHT);
+    let mut canvas_size = (TRAY_MENU_FLYOUT_EXTRA_WIDTH, TRAY_MENU_CANVAS_EST_HEIGHT);
+    if let Some(sizes_state) = app.try_state::<TrayMenuSizes>() {
+        if let Ok(sizes) = sizes_state.0.lock() {
+            if let Some(saved_main) = sizes.get("main").copied() {
+                main_size = saved_main;
+            }
+            if let Some(saved_canvas) = sizes.get("canvas").copied() {
+                canvas_size = saved_canvas;
+            }
+        }
+    }
+    (main_size, canvas_size)
+}
+
+fn apply_tray_menu_geometry(app: &tauri::AppHandle) -> (&'static str, &'static str) {
     let Some(window) = app.get_webview_window("tray_menu") else {
-        return;
+        return ("left", "bottom");
     };
     let anchor = app
         .try_state::<TrayMenuAnchor>()
         .and_then(|state| state.0.lock().ok().and_then(|value| *value));
     let Some((anchor_x, anchor_y)) = anchor else {
-        return;
+        return ("left", "bottom");
     };
-    let (x, y, width_px, height_px) = tray_menu_geometry(&window, anchor_x, anchor_y, width, height);
+    let ((main_w, main_h), (flyout_extra_w, canvas_h)) = read_tray_menu_cached_sizes(app);
+    let (scale, bounds) = tray_menu_monitor_bounds(&window, anchor_x, anchor_y);
+    let (x, y, width_px, height_px, flyout_side, vertical_align) = tray_menu_flyout_canvas_bounds(
+        scale,
+        bounds,
+        anchor_x,
+        anchor_y,
+        main_w,
+        main_h,
+        flyout_extra_w,
+        canvas_h,
+    );
     let _ = window.set_size(PhysicalSize::new(width_px, height_px));
     let _ = window.set_position(PhysicalPosition::new(x, y));
+    (flyout_side, vertical_align)
 }
 
 /// Hides the tray menu and tells the page to fall back to the main view while
@@ -5135,20 +5226,7 @@ fn show_tray_menu_at(app: tauri::AppHandle, anchor_x: i32, anchor_y: i32) {
             *anchor = Some((anchor_x, anchor_y));
         }
     }
-    // The deck is always back on the main view while hidden, so the size it
-    // reported last time is the one to open with. It was measured while the
-    // window was invisible, which makes the very first opening exact too.
-    let (width, height) = app
-        .try_state::<TrayMenuSizes>()
-        .and_then(|sizes_state| {
-            sizes_state
-                .0
-                .lock()
-                .ok()
-                .and_then(|sizes| sizes.get("main").copied())
-        })
-        .unwrap_or((TRAY_MENU_EST_WIDTH, TRAY_MENU_EST_HEIGHT));
-    apply_tray_menu_geometry(&app, width, height);
+    apply_tray_menu_geometry(&app);
     let _ = window.show();
     let _ = window.set_focus();
     let _ = app.emit("tray-menu-show", ());
@@ -5166,10 +5244,18 @@ fn reveal_main_window(app: &tauri::AppHandle) {
 fn tray_menu_ready(app: tauri::AppHandle, width: f64, height: f64, view: String) {
     if let Some(sizes_state) = app.try_state::<TrayMenuSizes>() {
         if let Ok(mut sizes) = sizes_state.0.lock() {
-            sizes.insert(view, (width, height));
+            if view == "main" || view == "canvas" {
+                sizes.insert(view, (width, height));
+            } else {
+                let current_canvas = sizes
+                    .get("canvas")
+                    .copied()
+                    .unwrap_or((TRAY_MENU_FLYOUT_EXTRA_WIDTH, TRAY_MENU_CANVAS_EST_HEIGHT));
+                sizes.insert("canvas".to_string(), (current_canvas.0, current_canvas.1.max(height)));
+            }
         }
     }
-    apply_tray_menu_geometry(&app, width, height);
+    apply_tray_menu_geometry(&app);
 }
 
 #[tauri::command]
@@ -5185,6 +5271,8 @@ struct TrayMenuSnapshot {
     hotkey: Option<String>,
     english: bool,
     version: &'static str,
+    flyout_side: &'static str,
+    vertical_align: &'static str,
 }
 
 #[tauri::command]
@@ -5205,11 +5293,14 @@ fn get_tray_menu_state(app: tauri::AppHandle) -> TrayMenuSnapshot {
         Some(window) if window.is_visible().unwrap_or(true) => "visible",
         _ => "hidden",
     };
+    let (flyout_side, vertical_align) = apply_tray_menu_geometry(&app);
     TrayMenuSnapshot {
         window_state,
         hotkey,
         english,
         version: env!("CARGO_PKG_VERSION"),
+        flyout_side,
+        vertical_align,
     }
 }
 
@@ -8510,7 +8601,10 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{canonical_directory, expand_windows_environment_path, runtime_info, tray_menu_bounds, validate_recycle_source};
+    use super::{
+        canonical_directory, expand_windows_environment_path, runtime_info, tray_menu_bounds,
+        tray_menu_flyout_canvas_bounds, validate_recycle_source,
+    };
     use std::path::Path;
 
     #[test]
@@ -8655,5 +8749,25 @@ mod tests {
         // The same view at 150%: 438 exact, while 460.5 rounds up to 461.
         let (_, _, width, height) = tray_menu_bounds(1.5, (0, 0, 1920, 1080), 1805, 1000, 292.0, 307.0);
         assert_eq!((width, height), (438, 461));
+    }
+
+    #[test]
+    fn anchors_main_tray_card_while_opening_flyout_to_left_or_right() {
+        let bounds = (0, 0, 1920, 1080);
+        let (main_x, main_y, main_w, main_h) = tray_menu_bounds(1.0, bounds, 1805, 1000, 292.0, 284.0);
+        let (canvas_x, canvas_y, canvas_w, canvas_h, side, v_align) =
+            tray_menu_flyout_canvas_bounds(1.0, bounds, 1805, 1000, 292.0, 284.0, 268.0, 424.0);
+        assert_eq!(side, "left");
+        assert_eq!(v_align, "bottom");
+        assert_eq!(canvas_x + canvas_w as i32, main_x + main_w as i32);
+        assert_eq!(canvas_y + canvas_h as i32, main_y + main_h as i32);
+
+        let (left_main_x, left_main_y, _, _) = tray_menu_bounds(1.0, bounds, 60, 40, 292.0, 284.0);
+        let (left_canvas_x, left_canvas_y, _, _, left_side, left_v_align) =
+            tray_menu_flyout_canvas_bounds(1.0, bounds, 60, 40, 292.0, 284.0, 268.0, 424.0);
+        assert_eq!(left_side, "right");
+        assert_eq!(left_v_align, "top");
+        assert_eq!(left_canvas_x, left_main_x);
+        assert_eq!(left_canvas_y, left_main_y);
     }
 }

@@ -1,8 +1,9 @@
 /*
  * CyberFiles tray menu.
  * Shares the CyberGems suite tray pattern: a floating glass card anchored to
- * the tray icon, with a branding header, status row, icon rows, keycap hints
- * and a red exit item. Accent follows the app theme.
+ * the tray icon, with a branding header, status row, icon rows, keycap hints,
+ * a red exit item, and side-by-side flyout submenus (Help & Suite).
+ * Accent follows the app theme.
  */
 
 :root {
@@ -46,8 +47,6 @@
 
 .tray-root {
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
@@ -57,8 +56,34 @@
   font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
+.tray-stage {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  gap: 8px;
+  justify-content: flex-start;
+  align-items: flex-end;
+}
+
+.tray-stage[data-flyout-side="left"] {
+  flex-direction: row-reverse;
+}
+
+.tray-stage[data-flyout-side="right"] {
+  flex-direction: row;
+}
+
+.tray-stage[data-vertical-align="top"] {
+  align-items: flex-start;
+}
+
+.tray-stage[data-vertical-align="bottom"] {
+  align-items: flex-end;
+}
+
 .tray-card {
   width: 252px;
+  flex: 0 0 252px;
   box-sizing: border-box;
   max-height: calc(100vh - 40px);
   background: var(--tray-bg);
@@ -200,8 +225,9 @@
   transition: background 0.12s ease, color 0.12s ease, transform 0.12s ease;
 }
 
-.tray-item:hover {
-  background: rgba(var(--tray-accent-rgb), 0.12);
+.tray-item:hover,
+.tray-nav-item.is-open {
+  background: rgba(var(--tray-accent-rgb), 0.14);
   color: var(--tray-hover-text);
   transform: translateX(2px);
 }
@@ -227,7 +253,8 @@
   transition: transform 0.15s ease;
 }
 
-.tray-item:hover .tray-item-icon {
+.tray-item:hover .tray-item-icon,
+.tray-nav-item.is-open .tray-item-icon {
   transform: scale(1.08);
 }
 
@@ -278,46 +305,65 @@
   background: rgba(239, 68, 68, 0.22);
 }
 
-/* ── Drill-down views ─────────────────────────────────────────────── */
+/* ── Side-by-side flyout panels ───────────────────────────────────── */
 
-.tray-deck {
+.tray-flyout-slot {
   position: relative;
-  width: 100%;
+  width: 260px;
+  flex: 0 0 260px;
+  height: 100%;
+  display: flex;
+  align-items: inherit;
+  pointer-events: none;
 }
 
-/* A view switch resizes the window before the deck swaps. The deck hides for that frame
-   only; visibility (not display) keeps its box, so the card never collapses mid-switch. */
-.tray-deck[data-swapping='true'] {
-  visibility: hidden;
-}
-
-.tray-view {
+.tray-flyout {
+  position: absolute;
+  left: 0;
+  width: 260px;
   box-sizing: border-box;
-  width: 100%;
+  max-height: calc(100vh - 40px);
+  background: var(--tray-bg);
+  backdrop-filter: blur(28px) saturate(1.8);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  border: 1px solid var(--tray-border);
+  border-radius: 16px;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.38),
+    0 2px 6px rgba(0, 0, 0, 0.22),
+    0 0 12px rgba(var(--tray-accent-rgb), 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition: opacity 0.13s ease, transform 0.13s ease, visibility 0.13s ease;
 }
 
-/* The deck swaps views instantly. An entrance animation here ran every time the menu was
-   shown (the webview paints its first frame on show), which made the card fade and slide in
-   instead of appearing in place like a native menu. */
-.tray-deck[data-view="main"] #view-main {
-  display: block;
+.tray-stage[data-vertical-align="bottom"] .tray-flyout {
+  bottom: 0;
 }
 
-.tray-deck[data-view="main"] #view-help,
-.tray-deck[data-view="main"] #view-suite,
-.tray-deck[data-view="help"] #view-main,
-.tray-deck[data-view="help"] #view-suite,
-.tray-deck[data-view="suite"] #view-main,
-.tray-deck[data-view="suite"] #view-help {
-  display: none;
+.tray-stage[data-vertical-align="top"] .tray-flyout {
+  top: 0;
 }
 
-.tray-deck[data-view="help"] #view-help,
-.tray-deck[data-view="suite"] #view-suite {
-  display: block;
+.tray-stage[data-flyout-side="left"] .tray-flyout {
+  transform: translateX(6px);
 }
 
-/* Nav rows that open a sub-view */
+.tray-stage[data-flyout-side="right"] .tray-flyout {
+  transform: translateX(-6px);
+}
+
+.tray-flyout.is-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+/* Nav rows that open a flyout submenu */
 .tray-nav-item .tray-nav-arrow {
   display: inline-flex;
   align-items: center;
@@ -330,78 +376,58 @@
   transition: transform 0.15s ease, color 0.15s ease;
 }
 
-.tray-nav-item:hover .tray-nav-arrow {
+.tray-nav-item:hover .tray-nav-arrow,
+.tray-nav-item.is-open .tray-nav-arrow {
   color: var(--tray-accent);
   transform: translateX(2px);
 }
 
-/* Sub-view header */
-.tray-sub-header {
+/* Flyout header */
+.tray-flyout-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   box-sizing: border-box;
   min-height: 36px;
-  padding: 7px 8px 5px;
+  padding: 8px 12px 6px;
 }
 
-.tray-back-btn {
+.tray-flyout-header-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 4px 10px 4px 7px;
-  border: 1px solid rgba(var(--tray-accent-rgb), 0.22);
-  border-radius: 8px;
-  background: rgba(var(--tray-accent-rgb), 0.08);
   color: var(--tray-accent);
-  font-family: inherit;
-  font-size: 11.5px;
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
-}
-
-.tray-back-btn:hover {
-  border-color: var(--tray-accent);
-  background: rgba(var(--tray-accent-rgb), 0.18);
-  color: var(--tray-hover-text);
-  transform: translateX(-2px);
-}
-
-.tray-back-btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 1px var(--tray-border-bright);
-}
-
-.tray-back-icon {
-  display: inline-flex;
-  flex: 0 0 13px;
-  align-items: center;
-  justify-content: center;
-  width: 13px;
-  height: 13px;
+  filter: drop-shadow(0 0 4px rgba(var(--tray-accent-rgb), 0.45));
 }
 
 .tray-sub-title {
-  padding-right: 4px;
-  color: var(--tray-text-md);
+  flex: 1;
+  color: var(--tray-text-hi);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.3px;
+}
+
+.tray-flyout-badge {
+  padding: 1px 6px;
+  border: 1px solid var(--tray-border);
+  border-radius: 999px;
+  background: rgba(var(--tray-accent-rgb), 0.1);
+  color: var(--tray-accent);
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .tray-brand-link {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-right: 2px;
-  padding: 2px 2px 2px 4px;
+  padding: 2px 4px 2px 0;
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: var(--tray-text-md);
+  color: var(--tray-text-hi);
   font-family: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -412,7 +438,7 @@
 }
 
 .tray-brand-link:hover {
-  color: var(--tray-text-hi);
+  color: var(--tray-accent);
 }
 
 .tray-brand-mark {
@@ -428,12 +454,12 @@
   transform: scale(1.08);
 }
 
-/* Compact rows inside a sub-view */
+/* Compact rows inside a flyout */
 .tray-sub-item {
   box-sizing: border-box;
   width: 100%;
-  min-height: 26px;
-  padding: 4px 10px;
+  min-height: 27px;
+  padding: 5px 10px;
   font-size: 11.5px;
 }
 
@@ -461,7 +487,7 @@
 /* ── Suite list ───────────────────────────────────────────────────── */
 
 .tray-suite-list {
-  max-height: 300px;
+  max-height: 288px;
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -485,7 +511,7 @@
 
 .tray-suite-item {
   align-items: center;
-  min-height: 40px;
+  min-height: 38px;
   gap: 8px;
 }
 
