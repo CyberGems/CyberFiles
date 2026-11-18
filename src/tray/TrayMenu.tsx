@@ -7,22 +7,28 @@ import {
   BookOpen,
   Bug,
   ChevronRight,
+  Clock,
   Eye,
   EyeOff,
+  FolderOpen,
   Gem,
   Globe,
+  HardDrive,
   Heart,
   HelpCircle,
   Info,
+  Network,
   Power,
   ScrollText,
   Settings,
+  Star,
 } from 'lucide-react';
 import { translations, type Language } from '../locales/translations';
+import { NETWORK_PATH, RECENT_PATH, SYSTEM_HOME_PATH } from '../types';
 import { CYBERFILES_REPO, CYBERGEMS_APPS, CYBERGEMS_SITE, SUITE_APPS } from './suiteApps';
 import './tray.css';
 
-type TrayFlyoutId = 'help' | 'suite';
+type TrayFlyoutId = 'quick' | 'help' | 'suite';
 type TrayWindowState = 'visible' | 'minimized' | 'hidden';
 type TrayFlyoutSide = 'left' | 'right';
 type TrayVerticalAlign = 'bottom' | 'top';
@@ -36,7 +42,14 @@ interface TrayMenuSnapshot {
   verticalAlign?: TrayVerticalAlign;
 }
 
+interface TrayFolderShortcut {
+  name: string;
+  path: string;
+}
+
 const FLYOUT_EXTRA_LOGICAL_WIDTH = 268; // 260px flyout card + 8px gap
+const CUSTOM_QUICK_ACCESS_KEY = 'cyberfiles_custom_quick_access_v1';
+const RECENT_FOLDER_PATHS_KEY = 'cyberfiles_recent_folder_paths_v1';
 
 const INITIAL_SNAPSHOT: TrayMenuSnapshot = {
   windowState: 'hidden',
@@ -55,6 +68,57 @@ const HELP_URLS = {
   donate: `${CYBERFILES_REPO}#%EF%B8%8F-donate`,
   issues: `${CYBERFILES_REPO}/issues`,
 };
+
+function folderLeafName(rawPath: string): string {
+  const trimmed = rawPath.replace(/[\\/]+$/, '');
+  const parts = trimmed.split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || rawPath;
+}
+
+function readPinnedQuickAccess(): TrayFolderShortcut[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_QUICK_ACCESS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const result: TrayFolderShortcut[] = [];
+    for (const item of parsed) {
+      if (item && typeof item === 'object' && typeof (item as { path?: unknown }).path === 'string') {
+        const path = (item as { path: string }).path.trim();
+        if (!path || path.startsWith('::')) continue;
+        const name = typeof (item as { name?: unknown }).name === 'string' && (item as { name: string }).name.trim()
+          ? (item as { name: string }).name.trim()
+          : folderLeafName(path);
+        result.push({ name, path });
+      }
+    }
+    return result.slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+
+function readRecentFolderShortcuts(pinnedPaths: Set<string>): TrayFolderShortcut[] {
+  try {
+    const raw = localStorage.getItem(RECENT_FOLDER_PATHS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const result: TrayFolderShortcut[] = [];
+    for (const entry of parsed) {
+      if (typeof entry !== 'string') continue;
+      const path = entry.trim();
+      if (!path || path.startsWith('::')) continue;
+      const key = path.replace(/[\\/]+$/, '').toLowerCase();
+      if (pinnedPaths.has(key)) continue;
+      result.push({ name: folderLeafName(path), path });
+      if (result.length >= 6) break;
+    }
+    return result;
+  } catch {
+    return [];
+  }
+}
 
 /** The tray window shares localStorage with the main window, so the language
  * and theme stored there are always current when the menu opens. */
@@ -82,12 +146,16 @@ export function TrayMenu() {
   const [snapshot, setSnapshot] = useState<TrayMenuSnapshot>(INITIAL_SNAPSHOT);
   const [language, setLanguage] = useState<Language>('es');
   const [activeFlyout, setActiveFlyout] = useState<TrayFlyoutId | null>(null);
+  const [pinnedFolders, setPinnedFolders] = useState<TrayFolderShortcut[]>([]);
+  const [recentFolders, setRecentFolders] = useState<TrayFolderShortcut[]>([]);
   const activeFlyoutRef = useRef<TrayFlyoutId | null>(null);
   activeFlyoutRef.current = activeFlyout;
 
   const cardRef = useRef<HTMLDivElement>(null);
+  const quickFlyoutRef = useRef<HTMLDivElement>(null);
   const helpFlyoutRef = useRef<HTMLDivElement>(null);
   const suiteFlyoutRef = useRef<HTMLDivElement>(null);
+  const quickTriggerRef = useRef<HTMLButtonElement>(null);
   const helpTriggerRef = useRef<HTMLButtonElement>(null);
   const suiteTriggerRef = useRef<HTMLButtonElement>(null);
   const lastReportedSizesRef = useRef<{ mainW: number; mainH: number; canvasH: number } | null>(null);
@@ -133,12 +201,18 @@ export function TrayMenu() {
     }, 220);
   }, [cancelFlyoutTimers]);
 
+  const getFlyoutElement = (target: TrayFlyoutId | null) => {
+    if (target === 'quick') return quickFlyoutRef.current;
+    if (target === 'help') return helpFlyoutRef.current;
+    if (target === 'suite') return suiteFlyoutRef.current;
+    return null;
+  };
+
   const openFlyoutAndFocusFirst = useCallback((target: TrayFlyoutId) => {
     cancelFlyoutTimers();
     setActiveFlyout(target);
     window.requestAnimationFrame(() => {
-      const container = target === 'help' ? helpFlyoutRef.current : suiteFlyoutRef.current;
-      container?.querySelector<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)')?.focus();
+      getFlyoutElement(target)?.querySelector<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)')?.focus();
     });
   }, [cancelFlyoutTimers]);
 
@@ -146,7 +220,8 @@ export function TrayMenu() {
     const previous = activeFlyoutRef.current;
     cancelFlyoutTimers();
     setActiveFlyout(null);
-    if (previous === 'help') helpTriggerRef.current?.focus();
+    if (previous === 'quick') quickTriggerRef.current?.focus();
+    else if (previous === 'help') helpTriggerRef.current?.focus();
     else if (previous === 'suite') suiteTriggerRef.current?.focus();
   }, [cancelFlyoutTimers]);
 
@@ -162,9 +237,10 @@ export function TrayMenu() {
   const reportSizes = useCallback(() => {
     const mainBox = measureElementLogicalBox(cardRef.current);
     if (!mainBox) return;
+    const quickBox = measureElementLogicalBox(quickFlyoutRef.current);
     const helpBox = measureElementLogicalBox(helpFlyoutRef.current);
     const suiteBox = measureElementLogicalBox(suiteFlyoutRef.current);
-    const canvasH = Math.max(mainBox.height, helpBox?.height ?? 0, suiteBox?.height ?? 0);
+    const canvasH = Math.max(mainBox.height, quickBox?.height ?? 0, helpBox?.height ?? 0, suiteBox?.height ?? 0);
 
     const prev = lastReportedSizesRef.current;
     if (prev && prev.mainW === mainBox.width && prev.mainH === mainBox.height && prev.canvasH === canvasH) {
@@ -179,6 +255,10 @@ export function TrayMenu() {
     document.documentElement.dataset.theme = readTheme();
     cancelFlyoutTimers();
     setActiveFlyout(null);
+    const pinned = readPinnedQuickAccess();
+    const pinnedSet = new Set(pinned.map(item => item.path.replace(/[\\/]+$/, '').toLowerCase()));
+    setPinnedFolders(pinned);
+    setRecentFolders(readRecentFolderShortcuts(pinnedSet));
     try {
       const next = await invoke<TrayMenuSnapshot>('get_tray_menu_state');
       setSnapshot(next);
@@ -244,7 +324,7 @@ export function TrayMenu() {
 
   useEffect(() => {
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => reportSizes()));
-  }, [language, reportSizes]);
+  }, [language, pinnedFolders.length, recentFolders.length, reportSizes]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -271,6 +351,11 @@ export function TrayMenu() {
       } else {
         const openKey = flyoutSide === 'left' ? 'ArrowLeft' : 'ArrowRight';
         if (event.key === openKey || event.key === 'ArrowRight') {
+          if (activeElement === quickTriggerRef.current) {
+            event.preventDefault();
+            openFlyoutAndFocusFirst('quick');
+            return;
+          }
           if (activeElement === helpTriggerRef.current) {
             event.preventDefault();
             openFlyoutAndFocusFirst('help');
@@ -286,9 +371,7 @@ export function TrayMenu() {
 
       if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
         event.preventDefault();
-        const container = inFlyout
-          ? (activeFlyoutRef.current === 'help' ? helpFlyoutRef.current : suiteFlyoutRef.current)
-          : cardRef.current;
+        const container = inFlyout ? getFlyoutElement(activeFlyoutRef.current) : cardRef.current;
         const items = Array.from(
           container?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)') ?? [],
         );
@@ -367,6 +450,27 @@ export function TrayMenu() {
 
           <div className="tray-group">
             <button
+              ref={quickTriggerRef}
+              type="button"
+              role="menuitem"
+              aria-haspopup="menu"
+              aria-expanded={activeFlyout === 'quick'}
+              className={`tray-item tray-nav-item ${activeFlyout === 'quick' ? 'is-open' : ''}`}
+              onMouseEnter={() => scheduleFlyoutOpen('quick')}
+              onClick={event => {
+                cancelFlyoutTimers();
+                if (event.detail === 0) {
+                  openFlyoutAndFocusFirst('quick');
+                } else {
+                  setActiveFlyout(current => (current === 'quick' ? null : 'quick'));
+                }
+              }}
+            >
+              <span className="tray-item-icon"><Star size={16} /></span>
+              <span className="tray-item-label">{t.quickAccess}</span>
+              <span className="tray-nav-arrow"><ChevronRight size={14} /></span>
+            </button>
+            <button
               type="button"
               role="menuitem"
               className="tray-item"
@@ -430,8 +534,102 @@ export function TrayMenu() {
           </div>
         </div>
 
-        {/* ── Side-by-side flyout slot (Help & Suite submenus) ── */}
+        {/* ── Side-by-side flyout slot (Quick Access, Help & Suite submenus) ── */}
         <div className="tray-flyout-slot">
+          {/* Quick Access flyout */}
+          <div
+            ref={quickFlyoutRef}
+            id="flyout-quick"
+            role="menu"
+            aria-label={t.quickAccess}
+            aria-hidden={activeFlyout !== 'quick'}
+            onMouseEnter={cancelFlyoutTimers}
+            className={`tray-flyout ${activeFlyout === 'quick' ? 'is-open' : ''}`}
+          >
+            <div className="tray-flyout-header">
+              <span className="tray-flyout-header-icon"><Star size={14} /></span>
+              <span className="tray-sub-title">{t.quickAccess}</span>
+            </div>
+
+            <div className="tray-divider" />
+
+            <div className="tray-group tray-quick-list">
+              <button
+                type="button"
+                role="menuitem"
+                className="tray-item tray-sub-item"
+                onClick={() => runAction(`open:${SYSTEM_HOME_PATH}`)}
+              >
+                <span className="tray-item-icon"><HardDrive size={14} /></span>
+                <span className="tray-item-label">{t.thisPc}</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="tray-item tray-sub-item"
+                onClick={() => runAction(`open:${NETWORK_PATH}`)}
+              >
+                <span className="tray-item-icon"><Network size={14} /></span>
+                <span className="tray-item-label">{t.network}</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="tray-item tray-sub-item"
+                onClick={() => runAction(`open:${RECENT_PATH}`)}
+              >
+                <span className="tray-item-icon"><Clock size={14} /></span>
+                <span className="tray-item-label">{t.recents}</span>
+              </button>
+
+              {pinnedFolders.length > 0 && (
+                <>
+                  <div className="tray-sub-sep" />
+                  <div className="tray-section-caption">{t.pinnedFolders}</div>
+                  {pinnedFolders.map(folder => (
+                    <button
+                      key={`pinned:${folder.path}`}
+                      type="button"
+                      role="menuitem"
+                      title={folder.path}
+                      className="tray-item tray-sub-item tray-folder-shortcut"
+                      onClick={() => runAction(`open:${folder.path}`)}
+                    >
+                      <span className="tray-item-icon"><Star size={14} /></span>
+                      <span className="tray-suite-copy">
+                        <span className="tray-suite-name">{folder.name}</span>
+                        <span className="tray-suite-short">{folder.path}</span>
+                      </span>
+                    </button>
+                  ))}
+                </>
+              )}
+
+              {recentFolders.length > 0 && (
+                <>
+                  <div className="tray-sub-sep" />
+                  <div className="tray-section-caption">{t.recentFolders}</div>
+                  {recentFolders.map(folder => (
+                    <button
+                      key={`recent:${folder.path}`}
+                      type="button"
+                      role="menuitem"
+                      title={folder.path}
+                      className="tray-item tray-sub-item tray-folder-shortcut"
+                      onClick={() => runAction(`open:${folder.path}`)}
+                    >
+                      <span className="tray-item-icon"><FolderOpen size={14} /></span>
+                      <span className="tray-suite-copy">
+                        <span className="tray-suite-name">{folder.name}</span>
+                        <span className="tray-suite-short">{folder.path}</span>
+                      </span>
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+
           {/* Help flyout */}
           <div
             ref={helpFlyoutRef}

@@ -5307,6 +5307,16 @@ fn get_tray_menu_state(app: tauri::AppHandle) -> TrayMenuSnapshot {
 #[tauri::command]
 fn tray_menu_action(app: tauri::AppHandle, action: String) {
     hide_tray_menu_window(&app);
+    if let Some(target_path) = action.strip_prefix("open:") {
+        if !target_path.is_empty() {
+            if let Ok(mut paths) = PENDING_OPEN_PATHS.lock() {
+                paths.push(target_path.to_string());
+            }
+            reveal_main_window(&app);
+            let _ = app.emit("open-path", ());
+        }
+        return;
+    }
     match action.as_str() {
         "toggle" => toggle_main_window(&app),
         "settings" => {
