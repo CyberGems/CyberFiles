@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, Compass, Download, FolderOpen, Info, Keyboard, Palette, Plus, RotateCcw, Search, SlidersHorizontal, Trash2, Upload, X } from 'lucide-react';
+import { Check, Compass, Download, ExternalLink, FolderOpen, Info, Keyboard, Palette, Plus, RotateCcw, Search, SlidersHorizontal, Trash2, Upload, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useLanguage } from '../locales/LanguageContext';
 import { type AppTheme, useTheme } from '../themes/ThemeContext';
@@ -9,7 +9,7 @@ import { type GroupByField, type HiddenItemStyle, type NewTabActionMode, type Ne
 import type { FolderStylePreference, SavedFolderStyles } from '../utils/folderStylePreferences';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
-import { chooseNativeFolder, isTauriDesktop } from '../utils/nativeFileSystem';
+import { chooseNativeFolder, isTauriDesktop, openFolderInWindowsExplorer } from '../utils/nativeFileSystem';
 import type { DeleteConfirmationPreference } from '../utils/deletePreferences';
 import { fetchAutostartStatus, fetchExplorerIntegrationStatus, fetchWindowsFolderHandler, fetchWindowsFolderHandlerExceptions, fetchWindowsWinEHandler, readStartMinimizedOnStartup, readWinEOpenBehavior, setAutostart as persistAutostart, setExplorerIntegration as persistExplorerIntegration, setWindowsFolderHandler, setWindowsFolderHandlerExceptions, setWindowsWinEHandler, writeStartMinimizedOnStartup, writeWinEOpenBehavior, type FolderHandlerException, type WindowsFolderHandlerStatus, type WinEOpenBehavior } from '../utils/systemIntegration';
 import { resetLocalPreferences } from '../utils/factoryReset';
@@ -1551,6 +1551,21 @@ export function SettingsModal({
                                 />
                                 <span>{t.settings.windowsFolderExceptionsIncludeSubfolders}</span>
                               </label>
+                              <Tooltip label={t.settings.windowsFolderExceptionsOpenInExplorer} placement="top">
+                                <button
+                                  type="button"
+                                  aria-label={`${t.settings.windowsFolderExceptionsOpenInExplorer}: ${item.path}`}
+                                  onClick={() => {
+                                    setFolderExceptionInputError(null);
+                                    void openFolderInWindowsExplorer(item.path).catch(() => {
+                                      setFolderExceptionInputError(t.settings.windowsFolderExceptionsOpenInExplorerError);
+                                    });
+                                  }}
+                                  className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-300"
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </button>
+                              </Tooltip>
                               <Tooltip label={t.settings.windowsFolderExceptionsRemove} placement="top">
                                 <button
                                   type="button"
