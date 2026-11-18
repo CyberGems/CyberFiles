@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Check, Compass, FolderOpen, Info, Keyboard, Palette, Plus, RotateCcw, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { Check, Compass, Download, FolderOpen, Info, Keyboard, Palette, Plus, RotateCcw, Search, SlidersHorizontal, Trash2, Upload, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useLanguage } from '../locales/LanguageContext';
 import { type AppTheme, useTheme } from '../themes/ThemeContext';
@@ -409,6 +409,8 @@ export function SettingsModal({
   const [newFolderExceptionPath, setNewFolderExceptionPath] = useState('');
   const [newFolderExceptionSubfolders, setNewFolderExceptionSubfolders] = useState(true);
   const [folderExceptionInputError, setFolderExceptionInputError] = useState<string | null>(null);
+  const [folderExceptionStatusMessage, setFolderExceptionStatusMessage] = useState<string | null>(null);
+  const folderExceptionsImportInputRef = useRef<HTMLInputElement>(null);
   const [startMinimizedOnStartup, setStartMinimizedOnStartup] = useState(true);
 
   useEffect(() => {
@@ -566,6 +568,8 @@ export function SettingsModal({
   };
 
   const handleRemoveFolderException = async (path: string) => {
+    setFolderExceptionInputError(null);
+    setFolderExceptionStatusMessage(null);
     try {
       const updated = await setWindowsFolderHandlerExceptions(
         folderExceptions.filter(item => item.path !== path),
@@ -573,6 +577,77 @@ export function SettingsModal({
       setFolderExceptions(updated);
     } catch {
       setFolderExceptionInputError(t.settings.systemIntegrationSaveError);
+    }
+  };
+
+  const handleExportFolderExceptions = () => {
+    if (folderExceptions.length === 0) return;
+    setFolderExceptionInputError(null);
+    const payload = {
+      app: 'CyberFiles',
+      kind: 'folder-handler-exceptions',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      exceptions: folderExceptions,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `cyberfiles-folder-exceptions-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setFolderExceptionStatusMessage(t.settings.windowsFolderExceptionsExportedToast);
+  };
+
+  const handleImportFolderExceptionsText = async (jsonText: string) => {
+    setFolderExceptionInputError(null);
+    setFolderExceptionStatusMessage(null);
+    try {
+      const parsed: unknown = JSON.parse(jsonText);
+      const rawList = Array.isArray(parsed)
+        ? parsed
+        : parsed && typeof parsed === 'object' && Array.isArray((parsed as { exceptions?: unknown }).exceptions)
+          ? (parsed as { exceptions: unknown[] }).exceptions
+          : null;
+      if (!rawList) {
+        setFolderExceptionInputError(t.settings.windowsFolderExceptionsImportInvalid);
+        return;
+      }
+      const candidates: FolderHandlerException[] = [];
+      for (const entry of rawList) {
+        if (typeof entry === 'string' && entry.trim()) {
+          candidates.push({ path: entry.trim(), includeSubfolders: true });
+        } else if (entry && typeof entry === 'object' && typeof (entry as { path?: unknown }).path === 'string') {
+          const path = (entry as { path: string }).path.trim();
+          const includeSubfolders = typeof (entry as { includeSubfolders?: unknown }).includeSubfolders === 'boolean'
+            ? (entry as { includeSubfolders: boolean }).includeSubfolders
+            : true;
+          if (path) candidates.push({ path, includeSubfolders });
+        }
+      }
+      if (candidates.length === 0) {
+        setFolderExceptionInputError(t.settings.windowsFolderExceptionsImportInvalid);
+        return;
+      }
+      const mergedByKey = new Map<string, FolderHandlerException>();
+      for (const item of [...folderExceptions, ...candidates]) {
+        const key = item.path.replace(/[\\/]+$/, '').toLowerCase();
+        mergedByKey.set(key, item);
+      }
+      const updated = await setWindowsFolderHandlerExceptions([...mergedByKey.values()]);
+      if (updated.length === 0) {
+        setFolderExceptionInputError(t.settings.windowsFolderExceptionsImportInvalid);
+        return;
+      }
+      setFolderExceptions(updated);
+      setFolderExceptionStatusMessage(
+        t.settings.windowsFolderExceptionsImportedToast.replace('{count}', String(updated.length)),
+      );
+    } catch {
+      setFolderExceptionInputError(t.settings.windowsFolderExceptionsImportInvalid);
     }
   };
 
@@ -1350,8 +1425,45 @@ export function SettingsModal({
 
                 {isTauriDesktop() && folderHandler !== 'unavailable' && (
                   <div className="mt-3 border-t border-neutral-800/80 pt-3 pl-6">
-                    <div className="font-medium text-neutral-200">{t.settings.windowsFolderExceptionsTitle}</div>
-                    <p className="mt-0.5 text-[11px] text-neutral-400">{t.settings.windowsFolderExceptionsDescription}</p>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium text-neutral-200">{t.settings.windowsFolderExceptionsTitle}</div>
+                        <p className="mt-0.5 text-[11px] text-neutral-400">{t.settings.windowsFolderExceptionsDescription}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          ref={folderExceptionsImportInputRef}
+                          type="file"
+                          accept=".json,application/json"
+                          className="hidden"
+                          onChange={event => {
+                            const file = event.target.files?.[0];
+                            event.target.value = '';
+                            if (!file) return;
+                            void file.text().then(text => handleImportFolderExceptionsText(text)).catch(() => {
+                              setFolderExceptionInputError(t.settings.windowsFolderExceptionsImportInvalid);
+                            });
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => folderExceptionsImportInputRef.current?.click()}
+                          className="inline-flex items-center gap-1 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-300 transition-colors hover:border-cyan-600/60 hover:text-cyan-200"
+                        >
+                          <Upload className="h-3 w-3" />
+                          <span>{t.settings.windowsFolderExceptionsImport}</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={folderExceptions.length === 0}
+                          onClick={handleExportFolderExceptions}
+                          className="inline-flex items-center gap-1 rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-300 transition-colors hover:border-cyan-600/60 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <Download className="h-3 w-3" />
+                          <span>{t.settings.windowsFolderExceptionsExport}</span>
+                        </button>
+                      </div>
+                    </div>
 
                     <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
                       <input
@@ -1409,6 +1521,11 @@ export function SettingsModal({
                     {folderExceptionInputError && (
                       <p className="mt-1.5 text-[11px] text-rose-300" role="alert">
                         {folderExceptionInputError}
+                      </p>
+                    )}
+                    {!folderExceptionInputError && folderExceptionStatusMessage && (
+                      <p className="mt-1.5 text-[11px] text-emerald-300" role="status">
+                        {folderExceptionStatusMessage}
                       </p>
                     )}
 
