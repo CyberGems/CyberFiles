@@ -126,7 +126,15 @@ import {
 import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, mapNativeNetworkDrive, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, parseNetworkMapFailedError, pasteNativeClipboardImage, probeNativeNetworkHosts, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { normalizeListerTextScale, type ListerTextScale } from './utils/listerTextScale';
-import { fetchLaunchContext, getLaunchTargetPath } from './utils/systemIntegration';
+import {
+  fetchLaunchContext,
+  fetchWindowsFolderHandler,
+  fetchWindowsFolderHandlerExceptions,
+  getLaunchTargetPath,
+  setWindowsFolderHandlerExceptions,
+  type FolderHandlerException,
+  type WindowsFolderHandlerStatus,
+} from './utils/systemIntegration';
 import { isDedicatedLayoutPath } from './utils/locations';
 import { bootRecoveryResult, clearRecoverySnapshot, compareSnapshots, writeRecoverySnapshot, type RecoverySnapshot } from './utils/recoverySnapshot';
 import { recentFileActions, recordRecentEntry, removeRecentEntry, renameRecentEntries, toRecentFileItem, type RecentEntry } from './utils/recentFiles';
@@ -1368,6 +1376,61 @@ export default function App() {
     });
   }, [t.folderIconModal.savedToast, t.folderIconModal.resetToast, showToast]);
 
+  const [windowsFolderHandlerStatus, setWindowsFolderHandlerStatus] = useState<WindowsFolderHandlerStatus>('off');
+  const [folderHandlerExceptions, setFolderHandlerExceptions] = useState<FolderHandlerException[]>([]);
+  const refreshWindowsFolderHandlerState = useCallback(async () => {
+    if (!isTauriDesktop()) return;
+    try {
+      const [status, exceptions] = await Promise.all([
+        fetchWindowsFolderHandler(),
+        fetchWindowsFolderHandlerExceptions(),
+      ]);
+      setWindowsFolderHandlerStatus(status);
+      setFolderHandlerExceptions(exceptions);
+    } catch {
+      // Keep last known folder handler state when querying fails.
+    }
+  }, []);
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    void refreshWindowsFolderHandlerState();
+    const handleWindowFocus = () => {
+      void refreshWindowsFolderHandlerState();
+    };
+    window.addEventListener('focus', handleWindowFocus);
+    return () => window.removeEventListener('focus', handleWindowFocus);
+  }, [refreshWindowsFolderHandlerState]);
+
+  const isExplorerExceptionItem = useCallback((item: FileItem) => {
+    const key = getPathKey(item.path);
+    return folderHandlerExceptions.some(entry => getPathKey(entry.path) === key);
+  }, [folderHandlerExceptions]);
+
+  const handleToggleExplorerException = useCallback(async (item: FileItem) => {
+    if (!isTauriDesktop() || !item.isFolder || item.path.startsWith('::')) return;
+    const key = getPathKey(item.path);
+    const exists = folderHandlerExceptions.some(entry => getPathKey(entry.path) === key);
+    const next = exists
+      ? folderHandlerExceptions.filter(entry => getPathKey(entry.path) !== key)
+      : [...folderHandlerExceptions, { path: item.path, includeSubfolders: false }];
+    try {
+      const saved = await setWindowsFolderHandlerExceptions(next);
+      setFolderHandlerExceptions(saved);
+      showToast(
+        (exists ? t.contextMenu.removedExplorerExceptionToast : t.contextMenu.addedExplorerExceptionToast)
+          .replace('{name}', item.name || item.path),
+      );
+    } catch (error) {
+      showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
+    }
+  }, [
+    folderHandlerExceptions,
+    showToast,
+    t.contextMenu.addedExplorerExceptionToast,
+    t.contextMenu.removedExplorerExceptionToast,
+    t.core.operationFailedWithReason,
+  ]);
+
   const [recycleBinStatus, setRecycleBinStatus] = useState<RecycleBinStatus | null>(null);
   const [recycleBinItems, setRecycleBinItems] = useState<FileItem[]>([]);
   const [recycleBinPage, setRecycleBinPage] = useState({ hasMore: false, nextOffset: 0, loading: false });
@@ -1547,6 +1610,9 @@ export default function App() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  useEffect(() => {
+    void refreshWindowsFolderHandlerState();
+  }, [isSettingsOpen, refreshWindowsFolderHandlerState]);
   const [focusTabSettingsRequest, setFocusTabSettingsRequest] = useState(0);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   /* The release the updater found. It is kept here rather than inside the window so the
@@ -7668,6 +7734,9 @@ export default function App() {
           }
         }}
         onCustomizeFolderIcon={item => handleOpenFolderIconModal({ path: item.path, name: item.name })}
+        canToggleExplorerException={windowsFolderHandlerStatus === 'on'}
+        isExplorerExceptionItem={isExplorerExceptionItem}
+        onToggleExplorerException={item => { void handleToggleExplorerException(item); }}
         onRefresh={() => { void handleNavigate(contextPaneTab.currentPath, contextPane, true); }}
         onUndo={() => {
           const latest = undoHistory[0];

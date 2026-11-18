@@ -75,6 +75,9 @@ interface ContextMenuProps {
   onDisconnectNetworkDrive?: (item: FileItem) => void;
   isMappedNetworkDriveItem?: (item: FileItem) => boolean;
   onCustomizeFolderIcon?: (item: FileItem) => void;
+  canToggleExplorerException?: boolean;
+  isExplorerExceptionItem?: (item: FileItem) => boolean;
+  onToggleExplorerException?: (item: FileItem) => void;
   onClearFilter: () => void;
   onViewModeChange: (mode: ViewMode) => void;
   /* Locations that render one dedicated layout (This PC, Network) have no view modes, zoom or
@@ -142,6 +145,9 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onDisconnectNetworkDrive,
   isMappedNetworkDriveItem,
   onCustomizeFolderIcon,
+  canToggleExplorerException = false,
+  isExplorerExceptionItem,
+  onToggleExplorerException,
   onClearFilter,
   onViewModeChange,
   hasSavedFolderStyle,
@@ -630,6 +636,13 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                   onClick={() => { onCopyPath(); onClose(); }}
                 />
               )}
+              {canToggleExplorerException && onToggleExplorerException && item.isFolder && !item.path.startsWith('::') && !isUncServerRoot(item.path) && (
+                <MenuButton
+                  icon={<ExternalLink className={`h-4 w-4 ${isExplorerExceptionItem?.(item) ? 'text-amber-300' : 'text-cyan-300'}`} />}
+                  label={isExplorerExceptionItem?.(item) ? t.contextMenu.removeExplorerException : t.contextMenu.addExplorerException}
+                  onClick={() => { onToggleExplorerException(item); onClose(); }}
+                />
+              )}
               {onOpenProperties && (
                 <MenuButton
                   icon={<Wrench className="h-4 w-4 text-neutral-300" />}
@@ -782,6 +795,13 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                           icon={<Palette className="h-4 w-4 text-pink-400" />}
                           label={t.contextMenu.customizeFolderIcon}
                           onClick={() => { onCustomizeFolderIcon(item); onClose(); }}
+                        />
+                      )}
+                      {canToggleExplorerException && onToggleExplorerException && !item.path.startsWith('::') && !isUncServerRoot(item.path) && (
+                        <MenuButton
+                          icon={<ExternalLink className={`h-4 w-4 ${isExplorerExceptionItem?.(item) ? 'text-amber-300' : 'text-cyan-300'}`} />}
+                          label={isExplorerExceptionItem?.(item) ? t.contextMenu.removeExplorerException : t.contextMenu.addExplorerException}
+                          onClick={() => { onToggleExplorerException(item); onClose(); }}
                         />
                       )}
                     </>
