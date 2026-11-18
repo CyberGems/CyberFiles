@@ -78,6 +78,8 @@ interface ContextMenuProps {
   canToggleExplorerException?: boolean;
   isExplorerExceptionItem?: (item: FileItem) => boolean;
   onToggleExplorerException?: (item: FileItem) => void;
+  isCurrentFolderExplorerException?: boolean;
+  onToggleCurrentFolderExplorerException?: () => void;
   onClearFilter: () => void;
   onViewModeChange: (mode: ViewMode) => void;
   /* Locations that render one dedicated layout (This PC, Network) have no view modes, zoom or
@@ -148,6 +150,8 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   canToggleExplorerException = false,
   isExplorerExceptionItem,
   onToggleExplorerException,
+  isCurrentFolderExplorerException = false,
+  onToggleCurrentFolderExplorerException,
   onClearFilter,
   onViewModeChange,
   hasSavedFolderStyle,
@@ -1014,6 +1018,13 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                     icon={<BookmarkX className="h-4 w-4 text-amber-300" />}
                     label={t.contextMenu.removeFolderStyle}
                     onClick={() => { onRemoveFolderStyle(); onClose(); }}
+                  />
+                )}
+                {canToggleExplorerException && onToggleCurrentFolderExplorerException && (
+                  <MenuButton
+                    icon={<ExternalLink className={`h-4 w-4 ${isCurrentFolderExplorerException ? 'text-amber-300' : 'text-cyan-300'}`} />}
+                    label={isCurrentFolderExplorerException ? t.contextMenu.removeThisFolderExplorerException : t.contextMenu.addThisFolderExplorerException}
+                    onClick={() => { onToggleCurrentFolderExplorerException(); onClose(); }}
                   />
                 )}
               </div>

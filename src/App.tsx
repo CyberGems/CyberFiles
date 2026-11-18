@@ -7779,6 +7779,27 @@ export default function App() {
         canToggleExplorerException={windowsFolderHandlerStatus === 'on'}
         isExplorerExceptionItem={isExplorerExceptionItem}
         onToggleExplorerException={item => { void handleToggleExplorerException(item); }}
+        isCurrentFolderExplorerException={Boolean(
+          contextPaneTab.currentPath &&
+          !contextPaneTab.currentPath.startsWith('::') &&
+          folderHandlerExceptions.some(entry => getPathKey(entry.path) === getPathKey(contextPaneTab.currentPath)),
+        )}
+        onToggleCurrentFolderExplorerException={
+          contextPaneTab.currentPath && !contextPaneTab.currentPath.startsWith('::') && !isUncServerRoot(contextPaneTab.currentPath)
+            ? () => {
+                void handleToggleExplorerException({
+                  id: `current-folder:${contextPaneTab.currentPath}`,
+                  name: contextPaneTab.title || contextPaneTab.currentPath,
+                  path: contextPaneTab.currentPath,
+                  isFolder: true,
+                  type: 'folder',
+                  size: 0,
+                  modifiedDate: '',
+                  extension: '',
+                });
+              }
+            : undefined
+        }
         onRefresh={() => { void handleNavigate(contextPaneTab.currentPath, contextPane, true); }}
         onUndo={() => {
           const latest = undoHistory[0];
