@@ -629,7 +629,9 @@ fn start_single_instance_listener(app: tauri::AppHandle, portable: bool) {
             if message.is_empty() {
                 continue;
             }
-            if message != "__FOCUS__" {
+            if message == "__WIN_E__" {
+                let _ = app.emit("win-e-activated", ());
+            } else if message != "__FOCUS__" {
                 if let Ok(mut paths) = PENDING_OPEN_PATHS.lock() {
                     paths.push(message.to_string());
                 }
@@ -7875,6 +7877,7 @@ async fn edit_hosts_file() -> Result<(), String> {
 #[serde(rename_all = "camelCase")]
 struct LaunchContext {
     startup: bool,
+    win_e: bool,
     target_path: Option<String>,
 }
 
@@ -7923,17 +7926,23 @@ fn parse_launch_context() -> LaunchContext {
     if arguments.peek().is_some_and(|argument| argument == "--shell-folder") {
         return LaunchContext {
             startup: false,
+            win_e: false,
             target_path: arguments.nth(1).and_then(|argument| {
                 windows_folder_handler::shell_folder_argument(&argument.to_string_lossy())
             }),
         };
     }
     let mut startup = false;
+    let mut win_e = false;
     let mut target_path: Option<String> = None;
     for argument in arguments {
         let argument = argument.to_string_lossy().to_string();
         if argument == "--startup" {
             startup = true;
+            continue;
+        }
+        if argument == "--win-e" {
+            win_e = true;
             continue;
         }
         if argument.starts_with('-') || target_path.is_some() {
@@ -7943,7 +7952,11 @@ fn parse_launch_context() -> LaunchContext {
             target_path = Some(valid_path);
         }
     }
-    LaunchContext { startup, target_path }
+    LaunchContext {
+        startup,
+        win_e,
+        target_path,
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -8018,7 +8031,11 @@ fn get_launch_context() -> LaunchContext {
     LAUNCH_CONTEXT
         .get()
         .cloned()
-        .unwrap_or(LaunchContext { startup: false, target_path: None })
+        .unwrap_or(LaunchContext {
+            startup: false,
+            win_e: false,
+            target_path: None,
+        })
 }
 
 #[tauri::command]
@@ -8232,7 +8249,13 @@ fn main() {
                     // defeat "start minimized" on a boot where the user has the app in the tray.
                     return;
                 }
-                let message = target.unwrap_or("__FOCUS__");
+                let message = if let Some(target) = target {
+                    target
+                } else if launch_ctx.as_ref().is_some_and(|context| context.win_e) {
+                    "__WIN_E__"
+                } else {
+                    "__FOCUS__"
+                };
                 send_message_to_existing_instance(portable, message);
                 focus_existing_main_window();
                 return;

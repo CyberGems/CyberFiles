@@ -327,7 +327,12 @@ pub fn unregister_for_uninstall() -> io::Result<()> {
 }
 
 fn win_e_command_for(executable: &Path) -> String {
-    format!("\"{}\"", executable.display())
+    format!("\"{}\" --win-e", executable.display())
+}
+
+fn win_e_matches_command(value: Option<&str>, command: &str) -> bool {
+    let legacy = command.strip_suffix(" --win-e").unwrap_or(command);
+    value == Some(command) || value == Some(legacy)
 }
 
 fn win_e_status_in(classes: &RegKey, command: &str) -> io::Result<Status> {
@@ -343,10 +348,10 @@ fn win_e_status_in(classes: &RegKey, command: &str) -> io::Result<Status> {
             .and_then(|v| String::from_reg_value(&v).ok());
         let delegate_val = optional(cmd_key.get_raw_value("DelegateExecute"))?
             .and_then(|v| String::from_reg_value(&v).ok());
-        let is_ours = default_val.as_deref() == Some(command)
+        let is_ours = win_e_matches_command(default_val.as_deref(), command)
             && delegate_val.as_deref() == Some("");
         has_registration |= marker.is_some() || is_ours;
-        if is_ours && marker.as_deref() == Some(command) {
+        if is_ours && win_e_matches_command(marker.as_deref(), command) {
             active += 1;
         }
     }
@@ -385,7 +390,7 @@ fn restore_win_e_key(classes: &RegKey, path: &str, owner: Option<&str>) -> io::R
     let marker = optional(cmd_key.get_raw_value(WIN_E_MARKER))?
         .and_then(|v| String::from_reg_value(&v).ok());
     if let Some(owner) = owner {
-        if marker.as_deref() != Some(owner) {
+        if !win_e_matches_command(marker.as_deref(), owner) {
             return Ok(());
         }
     }
@@ -443,7 +448,13 @@ pub fn win_e_status() -> io::Result<Status> {
         return Ok(Status::Unavailable);
     }
     let _lock = RegistryLock::acquire()?;
-    win_e_status_in(&user_classes()?, &win_e_command_for(&std::env::current_exe()?))
+    let classes = user_classes()?;
+    let command = win_e_command_for(&std::env::current_exe()?);
+    let status = win_e_status_in(&classes, &command)?;
+    if status == Status::On {
+        let _ = register_win_e(&classes, &command);
+    }
+    Ok(status)
 }
 
 pub fn set_win_e_enabled(enabled: bool) -> io::Result<Status> {

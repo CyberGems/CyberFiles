@@ -2,9 +2,14 @@ import { invoke } from '@tauri-apps/api/core';
 
 /** Off means "show the window at boot" too: an absent value stays minimized. */
 export const START_MINIMIZED_ON_STARTUP_STORAGE_KEY = 'cyberfiles_start_minimized_on_startup_v1';
+export const WIN_E_OPEN_BEHAVIOR_STORAGE_KEY = 'cyberfiles_win_e_open_behavior_v1';
+
+export type WinEOpenBehavior = 'focus' | 'new-tab-this-pc' | 'new-tab-default';
 
 export interface LaunchContext {
   startup: boolean;
+  winE?: boolean;
+  win_e?: boolean;
   targetPath?: string | null;
   target_path?: string | null;
 }
@@ -94,5 +99,23 @@ export function writeStartMinimizedOnStartup(enabled: boolean): void {
     window.localStorage.setItem(START_MINIMIZED_ON_STARTUP_STORAGE_KEY, enabled ? 'true' : 'false');
   } catch {
     // Storage can be unavailable in restricted modes; the default stays minimized.
+  }
+}
+
+export function readWinEOpenBehavior(): WinEOpenBehavior {
+  try {
+    const saved = window.localStorage.getItem(WIN_E_OPEN_BEHAVIOR_STORAGE_KEY);
+    if (saved === 'new-tab-this-pc' || saved === 'new-tab-default') return saved;
+    return 'focus';
+  } catch {
+    return 'focus';
+  }
+}
+
+export function writeWinEOpenBehavior(behavior: WinEOpenBehavior): void {
+  try {
+    window.localStorage.setItem(WIN_E_OPEN_BEHAVIOR_STORAGE_KEY, behavior);
+  } catch {
+    // Storage can be unavailable in restricted modes; the default stays 'focus'.
   }
 }

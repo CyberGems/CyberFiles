@@ -11,7 +11,7 @@ import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime
 import { DEFAULT_SESSION_PROFILE_ID, type StartupBehavior, type TabSessionProfile, type TabStripPosition } from '../utils/workspaceProfiles';
 import { chooseNativeFolder, isTauriDesktop } from '../utils/nativeFileSystem';
 import type { DeleteConfirmationPreference } from '../utils/deletePreferences';
-import { fetchAutostartStatus, fetchExplorerIntegrationStatus, fetchWindowsFolderHandler, fetchWindowsFolderHandlerExceptions, fetchWindowsWinEHandler, readStartMinimizedOnStartup, setAutostart as persistAutostart, setExplorerIntegration as persistExplorerIntegration, setWindowsFolderHandler, setWindowsFolderHandlerExceptions, setWindowsWinEHandler, writeStartMinimizedOnStartup, type FolderHandlerException, type WindowsFolderHandlerStatus } from '../utils/systemIntegration';
+import { fetchAutostartStatus, fetchExplorerIntegrationStatus, fetchWindowsFolderHandler, fetchWindowsFolderHandlerExceptions, fetchWindowsWinEHandler, readStartMinimizedOnStartup, readWinEOpenBehavior, setAutostart as persistAutostart, setExplorerIntegration as persistExplorerIntegration, setWindowsFolderHandler, setWindowsFolderHandlerExceptions, setWindowsWinEHandler, writeStartMinimizedOnStartup, writeWinEOpenBehavior, type FolderHandlerException, type WindowsFolderHandlerStatus, type WinEOpenBehavior } from '../utils/systemIntegration';
 import { resetLocalPreferences } from '../utils/factoryReset';
 import { ConfirmActionModal } from './ConfirmActionModal';
 import { ColorValueEditor } from './ColorValueEditor';
@@ -404,6 +404,7 @@ export function SettingsModal({
   const [winEHandler, setWinEHandler] = useState<WindowsFolderHandlerStatus | null>(null);
   const [winEHandlerBusy, setWinEHandlerBusy] = useState(false);
   const [winEHandlerError, setWinEHandlerError] = useState<'read' | 'write' | null>(null);
+  const [winEOpenBehavior, setWinEOpenBehavior] = useState<WinEOpenBehavior>(() => readWinEOpenBehavior());
   const [folderExceptions, setFolderExceptions] = useState<FolderHandlerException[]>([]);
   const [newFolderExceptionPath, setNewFolderExceptionPath] = useState('');
   const [newFolderExceptionSubfolders, setNewFolderExceptionSubfolders] = useState(true);
@@ -490,6 +491,7 @@ export function SettingsModal({
   useEffect(() => {
     if (!isOpen) return;
     setStartMinimizedOnStartup(readStartMinimizedOnStartup());
+    setWinEOpenBehavior(readWinEOpenBehavior());
     if (!isTauriDesktop()) {
       setInternalAutostartLoaded(true);
       setInternalExplorerLoaded(true);
@@ -1480,6 +1482,36 @@ export function SettingsModal({
                   <p className="mt-1 pl-6 text-rose-300" role="alert">
                     {winEHandlerError === 'read' ? t.settings.systemIntegrationUnavailable : t.settings.systemIntegrationSaveError}
                   </p>
+                )}
+                {winEHandler === 'on' && (
+                  <div className="mt-3 border-t border-neutral-800/80 pt-3 pl-6">
+                    <div className="font-medium text-neutral-200">{t.settings.windowsWinEOpenBehaviorLabel}</div>
+                    <div className="mt-2 space-y-1.5">
+                      {([
+                        { value: 'focus' as const, label: t.settings.windowsWinEOpenBehaviorFocus },
+                        { value: 'new-tab-this-pc' as const, label: t.settings.windowsWinEOpenBehaviorNewTabThisPc },
+                        { value: 'new-tab-default' as const, label: t.settings.windowsWinEOpenBehaviorNewTabDefault },
+                      ]).map(option => (
+                        <label
+                          key={option.value}
+                          className="flex cursor-pointer items-center gap-2 text-xs text-neutral-300 hover:text-neutral-100"
+                        >
+                          <input
+                            type="radio"
+                            name="win-e-open-behavior"
+                            value={option.value}
+                            checked={winEOpenBehavior === option.value}
+                            onChange={() => {
+                              setWinEOpenBehavior(option.value);
+                              writeWinEOpenBehavior(option.value);
+                            }}
+                            className="h-3.5 w-3.5 accent-cyan-400"
+                          />
+                          <span>{option.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>

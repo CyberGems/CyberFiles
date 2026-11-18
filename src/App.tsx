@@ -131,6 +131,7 @@ import {
   fetchWindowsFolderHandler,
   fetchWindowsFolderHandlerExceptions,
   getLaunchTargetPath,
+  readWinEOpenBehavior,
   setWindowsFolderHandlerExceptions,
   type FolderHandlerException,
   type WindowsFolderHandlerStatus,
@@ -3659,6 +3660,30 @@ export default function App() {
         requestDrain();
       }
     }).catch(error => console.error('Could not listen for Windows folder requests', error));
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [openExternalFolder]);
+
+  const defaultNewTabPathRef = useRef(defaultNewTabPath);
+  defaultNewTabPathRef.current = defaultNewTabPath;
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void listen('win-e-activated', () => {
+      const behavior = readWinEOpenBehavior();
+      if (behavior === 'new-tab-this-pc') {
+        void handleNavigateRef.current(SYSTEM_HOME_PATH, activePaneRef.current, false, true);
+      } else if (behavior === 'new-tab-default') {
+        const target = defaultNewTabPathRef.current.trim() || SYSTEM_HOME_PATH;
+        openExternalFolder(target);
+      }
+    }).then(stop => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    }).catch(() => {});
     return () => {
       cancelled = true;
       unlisten?.();
