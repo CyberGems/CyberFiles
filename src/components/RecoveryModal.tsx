@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { AlertTriangle, RotateCcw, Trash2, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
+import { NETWORK_PATH, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
 import { Tooltip } from './Tooltip';
 import { DialogButton } from './DialogButton';
 import { compareSnapshots, type RecoverySnapshot, type RecoveryTabStatus } from '../utils/recoverySnapshot';
@@ -67,6 +68,14 @@ export function RecoveryModal({ isOpen, recovered, baseline, onRecover, onDiscar
   if (!isOpen) return null;
 
   const savedAtLabel = new Date(recovered.savedAt).toLocaleString(language === 'es' ? 'es-CR' : 'en-US');
+  const formatTabDisplayName = (value: string | null | undefined): string => {
+    if (!value) return '—';
+    if (value === SYSTEM_HOME_PATH) return t.sidebar.thisPc;
+    if (value === NETWORK_PATH) return t.sidebar.network;
+    if (value === RECYCLE_BIN_PATH) return t.sidebar.recycleBinTitle;
+    if (value === RECENT_PATH) return t.sidebar.recentsTitle;
+    return value;
+  };
   const panes: Array<{ key: 'left' | 'right'; label: string; pane: typeof comparison.left }> = [
     { key: 'left', label: copy.leftPane, pane: comparison.left },
     { key: 'right', label: copy.rightPane, pane: comparison.right },
@@ -134,13 +143,13 @@ export function RecoveryModal({ isOpen, recovered, baseline, onRecover, onDiscar
                   <div className="flex min-w-0 gap-1.5">
                     <dt className="shrink-0 font-medium text-neutral-500">{copy.savedLabel}:</dt>
                     <dd className="min-w-0 truncate text-neutral-300">
-                      {pane.savedCount === 0 ? copy.noTabs : `${copy.paneTabsLabel}: ${pane.savedCount} · ${copy.activeTabLabel}: ${pane.savedActiveTitle ?? '—'}`}
+                      {pane.savedCount === 0 ? copy.noTabs : `${copy.paneTabsLabel}: ${pane.savedCount} · ${copy.activeTabLabel}: ${formatTabDisplayName(pane.savedActiveTitle)}`}
                     </dd>
                   </div>
                   <div className="flex min-w-0 gap-1.5">
                     <dt className="shrink-0 font-medium text-neutral-500">{copy.recoveredLabel}:</dt>
                     <dd className="min-w-0 truncate text-neutral-100">
-                      {pane.recoveredCount === 0 ? copy.noTabs : `${copy.paneTabsLabel}: ${pane.recoveredCount} · ${copy.activeTabLabel}: ${pane.recoveredActiveTitle ?? '—'}`}
+                      {pane.recoveredCount === 0 ? copy.noTabs : `${copy.paneTabsLabel}: ${pane.recoveredCount} · ${copy.activeTabLabel}: ${formatTabDisplayName(pane.recoveredActiveTitle)}`}
                     </dd>
                   </div>
                 </dl>
@@ -151,7 +160,7 @@ export function RecoveryModal({ isOpen, recovered, baseline, onRecover, onDiscar
                         <span className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${TAB_STATUS_BADGE_CLASSES[status]}`}>
                           {status === 'new' ? copy.badgeNew : status === 'changed' ? copy.badgeChanged : copy.badgeSame}
                         </span>
-                        <span className="min-w-0 flex-1 truncate text-neutral-200">{tab.customTitle || tab.title || tab.currentPath}</span>
+                        <span className="min-w-0 flex-1 truncate text-neutral-200">{tab.customTitle || formatTabDisplayName(tab.title || tab.currentPath)}</span>
                         {tab.filterQuery && (
                           <span className="shrink-0 rounded border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-[10px] text-neutral-400">{copy.filterActive}</span>
                         )}
@@ -160,7 +169,7 @@ export function RecoveryModal({ isOpen, recovered, baseline, onRecover, onDiscar
                     {pane.removed.map(tab => (
                       <li key={tab.id} className="flex min-w-0 items-center gap-2 rounded-md border border-rose-900/50 bg-rose-950/20 px-2.5 py-1.5 text-xs">
                         <span className="shrink-0 rounded-full border border-rose-800/60 bg-rose-950/40 px-1.5 py-0.5 text-[10px] font-medium text-rose-200">{copy.badgeRemoved}</span>
-                        <span className="min-w-0 flex-1 truncate text-neutral-400">{tab.customTitle || tab.title || tab.currentPath}</span>
+                        <span className="min-w-0 flex-1 truncate text-neutral-400">{tab.customTitle || formatTabDisplayName(tab.title || tab.currentPath)}</span>
                       </li>
                     ))}
                   </ul>
