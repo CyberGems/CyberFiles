@@ -8139,6 +8139,49 @@ fn set_windows_win_e_handler(enabled: bool) -> Result<windows_folder_handler::St
     windows_folder_handler::set_win_e_enabled(enabled).map_err(|error| error.to_string())
 }
 
+#[cfg(all(debug_assertions, target_os = "windows"))]
+fn ensure_vite_dev_server_for_cold_debug_launch() {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
+    use std::os::windows::process::CommandExt;
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let dev_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 1421);
+    if TcpStream::connect_timeout(&dev_addr, Duration::from_millis(120)).is_ok() {
+        return;
+    }
+
+    let Some(workspace_root) = Path::new(env!("CARGO_MANIFEST_DIR")).parent() else {
+        return;
+    };
+    let helper_script = workspace_root.join("scripts").join("ensure-vite-dev.mjs");
+    if !helper_script.is_file() {
+        return;
+    }
+
+    let spawned = Command::new("node")
+        .arg(&helper_script)
+        .current_dir(workspace_root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn();
+
+    if spawned.is_err() {
+        return;
+    }
+
+    let deadline = Instant::now() + Duration::from_millis(6_000);
+    while Instant::now() < deadline {
+        if TcpStream::connect_timeout(&dev_addr, Duration::from_millis(120)).is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(80));
+    }
+}
+
 fn main() {
     #[cfg(target_os = "windows")]
     if std::env::args_os().nth(1).is_some_and(|argument| argument == "--unregister-folder-handler") {
@@ -8197,6 +8240,9 @@ fn main() {
             guard
         }
     };
+
+    #[cfg(all(debug_assertions, target_os = "windows"))]
+    ensure_vite_dev_server_for_cold_debug_launch();
 
     let shortcut_config_path = startup_global_shortcut_config_path()
         .expect("Could not locate CyberFiles global shortcut configuration");
