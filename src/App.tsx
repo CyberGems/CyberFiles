@@ -1,6 +1,6 @@
 import React, { Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { emit, listen } from '@tauri-apps/api/event';
 import { homeDir } from '@tauri-apps/api/path';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { 
@@ -1151,6 +1151,7 @@ export default function App() {
   useEffect(() => {
     try {
       window.localStorage.setItem(RECENT_FOLDER_PATHS_KEY, JSON.stringify(recentFolderPaths));
+      void emit('tray-quick-folders-updated').catch(() => {});
     } catch {
       // Recent folders remain available for the current session.
     }
@@ -2594,6 +2595,7 @@ export default function App() {
   useEffect(() => {
     try {
       window.localStorage.setItem(CUSTOM_QUICK_ACCESS_KEY, JSON.stringify(customQuickAccess));
+      void emit('tray-quick-folders-updated').catch(() => {});
     } catch {
       // Keep custom locations available for the current session if storage is unavailable.
     }

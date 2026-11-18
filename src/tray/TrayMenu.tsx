@@ -251,6 +251,14 @@ export function TrayMenu() {
     void invoke('tray_menu_ready', { width: FLYOUT_EXTRA_LOGICAL_WIDTH, height: canvasH, view: 'canvas' }).catch(() => {});
   }, []);
 
+  const syncQuickFolders = useCallback(() => {
+    const pinned = readPinnedQuickAccess();
+    const pinnedSet = new Set(pinned.map(item => item.path.replace(/[\\/]+$/, '').toLowerCase()));
+    setPinnedFolders(pinned);
+    setRecentFolders(readRecentFolderShortcuts(pinnedSet));
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => reportSizes()));
+  }, [reportSizes]);
+
   const refresh = useCallback(async () => {
     document.documentElement.dataset.theme = readTheme();
     cancelFlyoutTimers();
@@ -293,6 +301,7 @@ export function TrayMenu() {
     let cancelled = false;
     let stopListening: (() => void) | undefined;
     let stopHideListening: (() => void) | undefined;
+    let stopQuickFoldersListening: (() => void) | undefined;
     void listen('tray-menu-show', () => {
       void refresh();
     }).then(stop => {
@@ -306,13 +315,27 @@ export function TrayMenu() {
       if (cancelled) stop();
       else stopHideListening = stop;
     });
+    void listen('tray-quick-folders-updated', () => {
+      syncQuickFolders();
+    }).then(stop => {
+      if (cancelled) stop();
+      else stopQuickFoldersListening = stop;
+    });
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === CUSTOM_QUICK_ACCESS_KEY || event.key === RECENT_FOLDER_PATHS_KEY) {
+        syncQuickFolders();
+      }
+    };
+    window.addEventListener('storage', onStorage);
     return () => {
       cancelled = true;
       cancelFlyoutTimers();
       stopListening?.();
       stopHideListening?.();
+      stopQuickFoldersListening?.();
+      window.removeEventListener('storage', onStorage);
     };
-  }, [cancelFlyoutTimers, refresh, reportSizes]);
+  }, [cancelFlyoutTimers, refresh, reportSizes, syncQuickFolders]);
 
   useEffect(() => {
     const onFocus = () => {
