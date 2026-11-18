@@ -45,6 +45,7 @@ import {
   PinOff,
   Server,
   Unplug,
+  ExternalLink,
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, HiddenItemStyle, ICON_ZOOM_PRESETS, NETWORK_PATH, NetworkResource, SavedNetworkHost, SortField, TabState, TILE_ZOOM_PRESETS, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type IconZoomLevel, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { isDedicatedLayoutPath } from '../utils/locations';
@@ -105,6 +106,7 @@ interface FilePaneProps {
   onTabStripContextMenu: (x: number, y: number) => void;
   files: FileItem[];
   customFolderIcons?: SavedFolderIcons;
+  isExplorerExceptionFolder?: (path: string) => boolean;
   recentFolderPaths: string[];
   onClearRecentFolders: () => void;
   autoFolderSizeEnabled: boolean;
@@ -570,6 +572,7 @@ interface DetailsFileRowProps {
   isHidden: boolean;
   isRecentlyChanged: boolean;
   isRecentlyActive: boolean;
+  isExplorerException?: boolean;
   folderSizeState: FolderSizeState | undefined;
   folderChildCountState: FolderChildCountState | undefined;
   nativeIcon: string | undefined;
@@ -675,6 +678,7 @@ interface ItemTooltipOptions {
   dateFormat: DateFormatMode;
   isRecentlyActive: boolean;
   isHidden: boolean;
+  isExplorerException?: boolean;
   additionalDetails?: React.ReactNode;
 }
 
@@ -716,7 +720,7 @@ function renderFolderSizeStatusLine(itemId: string, folderSize: FolderSizeState 
 }
 
 function renderItemTooltipContent(item: FileItem, options: ItemTooltipOptions) {
-  const { t, language, folderChildCountState, folderSizeState, isTauri, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, isRecycleBin, dateFormat, isRecentlyActive, isHidden, additionalDetails } = options;
+  const { t, language, folderChildCountState, folderSizeState, isTauri, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, isRecycleBin, dateFormat, isRecentlyActive, isHidden, isExplorerException, additionalDetails } = options;
   return (
     <div className={`flex flex-col items-center gap-1 text-center ${item.isFolder ? 'w-64 max-w-[calc(100vw-2rem)]' : 'max-w-[18rem]'}`}>
       {imageTooltipThumbnailsEnabled && item.type === 'image' && !item.isFolder && (
@@ -768,6 +772,12 @@ function renderItemTooltipContent(item: FileItem, options: ItemTooltipOptions) {
           {item.isFolder ? t.pane.itemTooltipHiddenFolder : t.pane.itemTooltipHiddenFile}
         </span>
       )}
+      {isExplorerException && (
+        <span className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-amber-400/35 bg-amber-950/45 px-2 py-0.5 text-[10px] text-amber-200">
+          <ExternalLink className="h-2.5 w-2.5" />
+          <span>{t.pane.explorerExceptionBadgeTooltip}</span>
+        </span>
+      )}
       {additionalDetails}
     </div>
   );
@@ -782,6 +792,7 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
   isHidden,
   isRecentlyChanged,
   isRecentlyActive,
+  isExplorerException = false,
   folderSizeState,
   folderChildCountState,
   nativeIcon,
@@ -848,11 +859,22 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
               {isEditing ? (
                 handlers.renderRenameInput(item, 'min-w-0 flex-1')
               ) : (
-                <Tooltip label={renderItemTooltipContent(item, { t, language, folderChildCountState, folderSizeState, isTauri, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, isRecycleBin, dateFormat, isRecentlyActive, isHidden })} placement="top" boundary=".cyberfiles-file-viewport">
+                <Tooltip label={renderItemTooltipContent(item, { t, language, folderChildCountState, folderSizeState, isTauri, autoFolderSizeEnabled, imageTooltipThumbnailsEnabled, isRecycleBin, dateFormat, isRecentlyActive, isHidden, isExplorerException })} placement="top" boundary=".cyberfiles-file-viewport">
                   <span data-file-column-content={column} data-file-name="true" onMouseEnter={() => handlers.onNameMouseEnter(item)} onMouseLeave={() => handlers.onNameMouseLeave(item)} className={`${flatLabel ? 'max-w-[55%] ' : ''}truncate text-[calc(11.5px*var(--lister-text-scale,1))] font-medium text-neutral-100`} style={detailsItemNameStyle(isSelected, isHidden, isRecentlyChanged, hiddenItemStyle, recentItemStyle)} >{getDisplayItemName(item, showFileExtensions)}</span>
                 </Tooltip>
               )}
               {folderBadge}
+              {isExplorerException && (
+                <Tooltip label={t.pane.explorerExceptionBadgeTooltip} placement="top" boundary=".cyberfiles-file-viewport">
+                  <span
+                    data-explorer-exception-badge="true"
+                    className="inline-flex flex-shrink-0 items-center gap-1 rounded border border-amber-500/35 bg-amber-950/35 px-1.5 py-0.5 text-[9px] font-medium text-amber-300"
+                  >
+                    <ExternalLink className="h-2.5 w-2.5" />
+                    <span>{t.pane.explorerExceptionBadge}</span>
+                  </span>
+                </Tooltip>
+              )}
               {flatLabel && <span className="min-w-0 truncate font-sans text-[calc(10px*var(--lister-text-scale,1))] font-normal text-neutral-500">· {flatLabel}</span>}
             </div>
           );
@@ -929,6 +951,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onTabStripContextMenu,
   files,
   customFolderIcons,
+  isExplorerExceptionFolder,
   recentFolderPaths,
   onClearRecentFolders,
   autoFolderSizeEnabled,
@@ -1472,6 +1495,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   const flatParentLabel = (item: FileItem) => flatParentLabelFor(item, tab.flatView === true, tab.currentPath);
 
+  const isExplorerExceptionItem = (item: FileItem) => Boolean(
+    item.isFolder && !item.recycleBinId && item.path && !item.path.startsWith('::') && isExplorerExceptionFolder?.(item.path),
+  );
+
   const renderItemTooltip = (item: FileItem, additionalDetails?: React.ReactNode) => renderItemTooltipContent(item, {
     t,
     language,
@@ -1484,6 +1511,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     dateFormat,
     isRecentlyActive: hasRecentActivity(item),
     isHidden: hasHiddenAttribute(item),
+    isExplorerException: isExplorerExceptionItem(item),
     additionalDetails,
   });
 
@@ -2528,8 +2556,27 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const renderFolderStatusBadge = (item: FileItem) => {
     if (!item.isFolder) return null;
     const customConfig = getCustomFolderIcon(item.path, customFolderIcons ?? {});
-    if (!customConfig?.badge || customConfig.badge.type === 'none') return null;
-    return <FolderStatusBadge badge={customConfig.badge} language={language} className="flex-shrink-0" />;
+    const hasCustomBadge = Boolean(customConfig?.badge && customConfig.badge.type !== 'none');
+    const isExplorerException = isExplorerExceptionItem(item);
+    if (!hasCustomBadge && !isExplorerException) return null;
+    return (
+      <span className="inline-flex flex-shrink-0 items-center gap-1">
+        {hasCustomBadge && customConfig?.badge && (
+          <FolderStatusBadge badge={customConfig.badge} language={language} className="flex-shrink-0" />
+        )}
+        {isExplorerException && (
+          <Tooltip label={t.pane.explorerExceptionBadgeTooltip} placement="top" boundary=".cyberfiles-file-viewport">
+            <span
+              data-explorer-exception-badge="true"
+              className="inline-flex flex-shrink-0 items-center gap-1 rounded border border-amber-500/35 bg-amber-950/35 px-1.5 py-0.5 text-[9px] font-medium text-amber-300"
+            >
+              <ExternalLink className="h-2.5 w-2.5" />
+              <span>{t.pane.explorerExceptionBadge}</span>
+            </span>
+          </Tooltip>
+        )}
+      </span>
+    );
   };
 
   // Breadcrumbs generator for Windows and UNC paths
@@ -3525,7 +3572,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
           {icon}
         </span>
         <span className="min-w-0 flex-1">
-          <span className={`cyberfiles-system-home-name block max-w-full text-xs text-neutral-100 font-medium ${category === 'folder' ? 'whitespace-normal break-words' : 'truncate'}`} style={getItemNameStyle(item, selected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+          <span className="flex flex-wrap items-center gap-1.5">
+            <span className={`cyberfiles-system-home-name max-w-full text-xs text-neutral-100 font-medium ${category === 'folder' ? 'whitespace-normal break-words' : 'truncate'}`} style={getItemNameStyle(item, selected)}>{getDisplayItemName(item, showFileExtensions)}</span>
+            {renderFolderStatusBadge(item)}
+          </span>
           {category === 'folder' ? (
             <span className="mt-1 block truncate text-[10px] text-neutral-500">{item.path}</span>
           ) : hasCapacity && drive ? (
@@ -3640,8 +3690,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
             {customIcon ? <FolderIconRenderer config={customIcon} size="large" /> : <Folder className="h-7 w-7" />}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-1.5">
+            <span className="flex flex-wrap items-center gap-1.5">
               <span className={`cyberfiles-system-home-name truncate text-xs font-medium ${isOffline ? 'text-neutral-400' : 'text-neutral-100'}`}>{item.name}</span>
+              {renderFolderStatusBadge(quickAccessFileItem)}
               {isOffline && (
                 <span className="flex-shrink-0 rounded border border-amber-500/30 bg-amber-950/30 px-1.5 py-0.5 text-[9px] font-medium text-amber-300/90">
                   {t.sidebar.quickAccessDriveOffline}
@@ -5365,6 +5416,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   isHidden={isHiddenItem(item)}
                   isRecentlyChanged={isRecentlyChanged(item)}
                   isRecentlyActive={hasRecentActivity(item)}
+                  isExplorerException={isExplorerExceptionItem(item)}
                   folderSizeState={folderSizeStates[item.id]}
                   folderChildCountState={folderChildCounts[item.id]}
                   nativeIcon={!item.isFolder && nativeFileIconState.scope === nativeFileIconScope ? nativeFileIconState.byItemId[item.id] : undefined}

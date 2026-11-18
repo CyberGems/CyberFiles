@@ -1407,6 +1407,18 @@ export default function App() {
     return folderHandlerExceptions.some(entry => getPathKey(entry.path) === key);
   }, [folderHandlerExceptions]);
 
+  const isExplorerExceptionFolder = useCallback((folderPath: string) => {
+    if (windowsFolderHandlerStatus !== 'on' || !folderPath || folderPath.startsWith('::')) return false;
+    const normalizedTarget = getPathKey(folderPath);
+    if (!normalizedTarget) return false;
+    return folderHandlerExceptions.some(entry => {
+      const rulePath = getPathKey(entry.path);
+      if (!rulePath) return false;
+      if (normalizedTarget === rulePath) return true;
+      return entry.includeSubfolders && isSameOrDescendantPath(folderPath, entry.path);
+    });
+  }, [windowsFolderHandlerStatus, folderHandlerExceptions]);
+
   const handleToggleExplorerException = useCallback(async (item: FileItem) => {
     if (!isTauriDesktop() || !item.isFolder || item.path.startsWith('::')) return;
     const key = getPathKey(item.path);
@@ -7160,6 +7172,7 @@ export default function App() {
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
                   customFolderIcons={customFolderIcons}
+                  isExplorerExceptionFolder={isExplorerExceptionFolder}
                   renderError={paneLoadFailure}
                   loadingFallback={paneLoadingFallback}
                 />
@@ -7256,6 +7269,7 @@ export default function App() {
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
                   customFolderIcons={customFolderIcons}
+                  isExplorerExceptionFolder={isExplorerExceptionFolder}
                   renderError={paneLoadFailure}
                   loadingFallback={paneLoadingFallback}
                 />
@@ -7353,6 +7367,7 @@ export default function App() {
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
                   customFolderIcons={customFolderIcons}
+                  isExplorerExceptionFolder={isExplorerExceptionFolder}
                   renderError={paneLoadFailure}
                   loadingFallback={paneLoadingFallback}
                 />
@@ -7445,6 +7460,7 @@ export default function App() {
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
                   customFolderIcons={customFolderIcons}
+                  isExplorerExceptionFolder={isExplorerExceptionFolder}
                   renderError={paneLoadFailure}
                   loadingFallback={paneLoadingFallback}
                 />
@@ -7542,6 +7558,7 @@ export default function App() {
                   columnPreferencesRevision={columnPreferencesRevision}
                   onColumnPreferencesChange={onColumnPreferencesChange}
                   customFolderIcons={customFolderIcons}
+                  isExplorerExceptionFolder={isExplorerExceptionFolder}
                   renderError={paneLoadFailure}
                   loadingFallback={paneLoadingFallback}
               />
