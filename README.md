@@ -108,7 +108,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 
 ### 📁 Browsing & Views
 - **This PC view**: drives, common Windows folders, network locations and advanced Windows folders in one place
-- **Network drives**: browse LAN devices and SMB shares, navigate UNC paths, map and disconnect network drives, and sign in with the native credentials dialog; addresses accept environment variables such as `%APPDATA%`
+- **Network drives**: browse LAN devices and SMB shares, customize saved hosts with aliases, notes, pinning, live SMB reachability badges, and JSON export/import, navigate UNC paths, map and disconnect network drives, and sign in with the native credentials dialog; addresses accept environment variables such as `%APPDATA%`
 - **Address bar**: the current folder path with clickable segments; click a parent to jump back, click the current segment to refresh the listing, and open recent folders from the chevron at the right edge. Type or paste a path with environment variables such as `%APPDATA%\CyberSnap\logs` and CyberFiles resolves the tokens automatically
 - **Sidebar**: locations only, so the tree never leaves the screen: quick access with a lazy-loaded folder tree, drives with capacity bars, advanced Windows folders and Recycle Bin status
 - **Collapsible locations panel**: hide the sidebar with Ctrl+L, the button beside the properties toggle or the command palette, and both panes take the full width; the choice is part of saved layouts

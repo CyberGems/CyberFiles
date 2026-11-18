@@ -108,7 +108,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 
 ### 📁 Navegación y vistas
 - **Vista Este equipo**: unidades, carpetas habituales de Windows, ubicaciones de red y carpetas avanzadas de Windows en un solo lugar
-- **Unidades de red**: explora dispositivos LAN y recursos SMB, navega rutas UNC, conecta y desconecta unidades de red e inicia sesión con el diálogo nativo de credenciales; las direcciones aceptan variables de entorno como `%APPDATA%`
+- **Unidades de red**: explora dispositivos LAN y recursos SMB, personaliza los hosts guardados con alias, notas, anclaje, insignias de disponibilidad SMB en vivo y exportación/importación en JSON, navega rutas UNC, conecta y desconecta unidades de red e inicia sesión con el diálogo nativo de credenciales; las direcciones aceptan variables de entorno como `%APPDATA%`
 - **Barra de direcciones**: la ruta de la carpeta actual con segmentos en los que puedes hacer clic; pulsa un nivel superior para volver, pulsa el segmento actual para actualizar la lista y abre carpetas recientes desde el chevron del borde derecho. Escribe o pega una ruta con variables de entorno como `%APPDATA%\CyberSnap\logs` y CyberFiles resuelve los tokens automáticamente
 - **Barra lateral**: solo ubicaciones, para que el árbol no salga nunca de la pantalla: acceso rápido con árbol de carpetas de carga diferida, unidades con barras de capacidad, carpetas avanzadas de Windows y estado de la Papelera de reciclaje
 - **Panel de ubicaciones plegable**: oculta la barra lateral con Ctrl+L, con el botón junto al de propiedades o desde la paleta de comandos, y ambos paneles ocupan todo el ancho; la elección forma parte de los diseños guardados
