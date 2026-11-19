@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { X, FileText, Folder, Image as ImageIcon, Code2, Copy, Check, Info, Music, Video, ChevronDown, ChevronUp, ExternalLink, Archive, TriangleAlert } from 'lucide-react';
 import { FileItem } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
-import { formatFileSize, isTextPreviewableFile } from '../utils/fileSystem';
+import { formatFileSize, isPortablePath, isTextPreviewableFile } from '../utils/fileSystem';
 import { isTauriDesktop, loadNativeImageThumbnail, loadNativePdfPreviewUrl, loadNativeMediaPreviewUrl, loadNativeArchivePreview, calculateNativeFolderSizeBounded, MAX_PDF_PREVIEW_BYTES, type NativeArchivePreview } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { useLanguage } from '../locales/LanguageContext';
@@ -163,7 +163,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
   /* The folder total size: one bounded pass so a huge folder cannot hang the inspector; a partial
      result is labelled as such instead of pretending it is complete. */
   useEffect(() => {
-    if (!item?.isFolder || !isTauriDesktop()) {
+    if (!item?.isFolder || !isTauriDesktop() || isPortablePath(item.path)) {
       setFolderSize(null);
       return;
     }
@@ -347,7 +347,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
   }, [item?.id, item?.path, item?.extension, item?.type, item?.isFolder]);
 
   useEffect(() => {
-    if (!item?.isFolder) {
+    if (!item?.isFolder || isPortablePath(item.path)) {
       setFolderContent(null);
       return;
     }

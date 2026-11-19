@@ -176,7 +176,10 @@ export interface DriveInfo {
   label: string;
   totalBytes: number;
   usedBytes: number;
-  type: 'fixed' | 'removable' | 'network' | 'optical' | 'unknown';
+  type: 'fixed' | 'removable' | 'network' | 'optical' | 'portable' | 'unknown';
+  rootPath?: string;
+  deviceSubtype?: 'phone' | 'camera' | 'media' | 'generic';
+  deviceTypeLabel?: string;
 }
 
 export interface QuickAccessItem {

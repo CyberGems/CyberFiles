@@ -72,6 +72,9 @@ interface NativeDrive {
   totalBytes: number;
   usedBytes: number;
   kind: DriveInfo['type'];
+  rootPath?: string;
+  deviceSubtype?: DriveInfo['deviceSubtype'];
+  deviceTypeLabel?: string;
 }
 
 export interface NativeLocation {

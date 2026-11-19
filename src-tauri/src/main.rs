@@ -26,6 +26,7 @@ use zip::{
 mod windows_file_icons;
 #[cfg(target_os = "windows")]
 mod windows_folder_handler;
+mod windows_portable_devices;
 mod windows_thumbnails;
 
 #[derive(Serialize)]
@@ -1045,6 +1046,537 @@ fn copy_path_with_progress(
     }
 }
 
+fn portable_item_label(path: &str) -> String {
+    windows_portable_devices::parse_portable_path(path)
+        .and_then(|(device, segments)| segments.into_iter().last().or(Some(device)))
+        .unwrap_or_else(|| path.to_string())
+}
+
+fn portable_same_or_descendant(candidate: &str, root: &str) -> bool {
+    let a = candidate.trim().replace('/', "\\").trim_end_matches('\\').to_ascii_lowercase();
+    let b = root.trim().replace('/', "\\").trim_end_matches('\\').to_ascii_lowercase();
+    a == b || a.starts_with(&format!("{b}\\"))
+}
+
+struct TempTransferDir(PathBuf);
+
+impl Drop for TempTransferDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn transfer_portable_items_with_progress(
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+    target_path: &str,
+    job_id: &str,
+    move_items: bool,
+    preserve_names: bool,
+    control: &TransferJobControl,
+) -> NativeOperationResult {
+    let target_is_portable = windows_portable_devices::is_portable_path(target_path);
+    if target_is_portable && windows_portable_devices::is_portable_device_root(target_path) {
+        let error = "Open a storage volume inside the device before transferring items.".to_string();
+        return NativeOperationResult {
+            completed_paths: Vec::new(),
+            failures: paths
+                .into_iter()
+                .map(|path| NativeOperationFailure { path, error: error.clone() })
+                .collect(),
+        };
+    }
+
+    let local_target = if target_is_portable {
+        None
+    } else {
+        match canonical_directory(target_path) {
+            Ok(dir) => Some(dir),
+            Err(error) => {
+                return NativeOperationResult {
+                    completed_paths: Vec::new(),
+                    failures: paths
+                        .into_iter()
+                        .map(|path| NativeOperationFailure { path, error: error.clone() })
+                        .collect(),
+                };
+            }
+        }
+    };
+
+    let mut failures = Vec::new();
+    let mut tracker = TransferProgressTracker {
+        app,
+        job_id: job_id.to_string(),
+        phase: "scanning".to_string(),
+        current_item: String::new(),
+        bytes_copied: 0,
+        total_bytes: 0,
+        current_file_bytes: 0,
+        current_file_total: 0,
+        items_completed: 0,
+        total_items: 0,
+        last_emit: std::time::Instant::now() - std::time::Duration::from_secs(1),
+    };
+
+    enum ValidSource {
+        Local {
+            original_path: String,
+            source: PathBuf,
+            destination_name: String,
+        },
+        Portable {
+            original_path: String,
+            destination_name: String,
+            bytes: u64,
+            items: usize,
+        },
+    }
+
+    let mut valid_sources = Vec::new();
+    let mut reserved_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for path in paths {
+        if windows_portable_devices::is_portable_path(&path) {
+            if windows_portable_devices::is_portable_device_root(&path)
+                || windows_portable_devices::is_portable_storage_root(&path)
+            {
+                failures.push(NativeOperationFailure {
+                    path,
+                    error: "Portable device and storage roots cannot be transferred directly.".to_string(),
+                });
+                continue;
+            }
+            if target_is_portable && portable_same_or_descendant(target_path, &path) {
+                failures.push(NativeOperationFailure {
+                    path,
+                    error: "A folder cannot be transferred inside itself.".to_string(),
+                });
+                continue;
+            }
+            let src_name = portable_item_label(&path);
+            let final_name = if target_is_portable {
+                let exists = windows_portable_devices::child_exists_on_portable(target_path, &src_name)
+                    .unwrap_or(false)
+                    || reserved_names.contains(&src_name.to_ascii_lowercase());
+                if preserve_names && exists {
+                    failures.push(NativeOperationFailure {
+                        path,
+                        error: "UNDO_DESTINATION_CONFLICT".to_string(),
+                    });
+                    continue;
+                }
+                let mut candidate = if preserve_names {
+                    src_name.clone()
+                } else {
+                    match windows_portable_devices::unique_portable_child_name(target_path, &src_name) {
+                        Ok(name) => name,
+                        Err(error) => {
+                            failures.push(NativeOperationFailure { path, error });
+                            continue;
+                        }
+                    }
+                };
+                if reserved_names.contains(&candidate.to_ascii_lowercase()) {
+                    let (stem, ext) = match candidate.rfind('.') {
+                        Some(idx) if idx > 0 && idx < candidate.len() - 1 => (&candidate[..idx], &candidate[idx..]),
+                        _ => (candidate.as_str(), ""),
+                    };
+                    let mut idx = 1u32;
+                    while reserved_names.contains(&format!("{stem} ({idx}){ext}").to_ascii_lowercase()) {
+                        idx += 1;
+                    }
+                    candidate = format!("{stem} ({idx}){ext}");
+                }
+                reserved_names.insert(candidate.to_ascii_lowercase());
+                candidate
+            } else {
+                let target_dir = local_target.as_ref().expect("local target");
+                let requested = target_dir.join(&src_name);
+                if preserve_names
+                    && (requested.exists() || reserved_names.contains(&src_name.to_ascii_lowercase()))
+                {
+                    failures.push(NativeOperationFailure {
+                        path,
+                        error: "UNDO_DESTINATION_CONFLICT".to_string(),
+                    });
+                    continue;
+                }
+                let mut dest = if preserve_names {
+                    requested
+                } else {
+                    unique_child_path(target_dir, &src_name)
+                };
+                let mut candidate = dest
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| src_name.clone());
+                while reserved_names.contains(&candidate.to_ascii_lowercase()) {
+                    dest = unique_child_path(target_dir, &candidate);
+                    candidate = dest
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or(candidate);
+                    if !reserved_names.contains(&candidate.to_ascii_lowercase()) {
+                        break;
+                    }
+                    candidate = format!("copy-{candidate}");
+                }
+                reserved_names.insert(candidate.to_ascii_lowercase());
+                candidate
+            };
+
+            let mut scan_cb = |item_name: &str, _size: u64| -> Result<(), String> {
+                wait_for_transfer_job(control)?;
+                tracker.current_item = item_name.to_string();
+                tracker.emit(false);
+                Ok(())
+            };
+            match windows_portable_devices::inspect_portable_tree(&path, &mut scan_cb) {
+                Ok(summary) => {
+                    tracker.total_bytes = tracker.total_bytes.saturating_add(summary.total_bytes);
+                    tracker.total_items = tracker.total_items.saturating_add(summary.total_items as usize);
+                    tracker.emit(true);
+                    valid_sources.push(ValidSource::Portable {
+                        original_path: path,
+                        destination_name: final_name,
+                        bytes: summary.total_bytes,
+                        items: summary.total_items as usize,
+                    });
+                }
+                Err(error) => {
+                    failures.push(NativeOperationFailure { path, error });
+                    if wait_for_transfer_job(control).is_err() {
+                        break;
+                    }
+                }
+            }
+        } else {
+            let source = match canonical_item(&path) {
+                Ok(src) => src,
+                Err(error) => {
+                    failures.push(NativeOperationFailure { path, error });
+                    continue;
+                }
+            };
+            let Some(raw_name) = source.file_name() else {
+                failures.push(NativeOperationFailure {
+                    path,
+                    error: "A filesystem root cannot be transferred as an item.".to_string(),
+                });
+                continue;
+            };
+            let src_name = windows_portable_devices::sanitize_portable_segment(&raw_name.to_string_lossy());
+            let exists = windows_portable_devices::child_exists_on_portable(target_path, &src_name)
+                .unwrap_or(false)
+                || reserved_names.contains(&src_name.to_ascii_lowercase());
+            if preserve_names && exists {
+                failures.push(NativeOperationFailure {
+                    path,
+                    error: "UNDO_DESTINATION_CONFLICT".to_string(),
+                });
+                continue;
+            }
+            let mut candidate = if preserve_names {
+                src_name.clone()
+            } else {
+                match windows_portable_devices::unique_portable_child_name(target_path, &src_name) {
+                    Ok(name) => name,
+                    Err(error) => {
+                        failures.push(NativeOperationFailure { path, error });
+                        continue;
+                    }
+                }
+            };
+            if reserved_names.contains(&candidate.to_ascii_lowercase()) {
+                let (stem, ext) = match candidate.rfind('.') {
+                    Some(idx) if idx > 0 && idx < candidate.len() - 1 => (&candidate[..idx], &candidate[idx..]),
+                    _ => (candidate.as_str(), ""),
+                };
+                let mut idx = 1u32;
+                while reserved_names.contains(&format!("{stem} ({idx}){ext}").to_ascii_lowercase()) {
+                    idx += 1;
+                }
+                candidate = format!("{stem} ({idx}){ext}");
+            }
+            reserved_names.insert(candidate.to_ascii_lowercase());
+
+            match count_copy_tree(&source, control, &mut tracker) {
+                Ok(()) => valid_sources.push(ValidSource::Local {
+                    original_path: path,
+                    source,
+                    destination_name: candidate,
+                }),
+                Err(error) => {
+                    failures.push(NativeOperationFailure { path, error });
+                    if wait_for_transfer_job(control).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    tracker.phase = "copying".to_string();
+    tracker.current_item.clear();
+    tracker.emit(true);
+
+    let mut completed_paths = Vec::new();
+    for item in valid_sources {
+        if wait_for_transfer_job(control).is_err() {
+            let orig = match &item {
+                ValidSource::Local { original_path, .. } => original_path.clone(),
+                ValidSource::Portable { original_path, .. } => original_path.clone(),
+            };
+            failures.push(NativeOperationFailure {
+                path: orig,
+                error: "File transfer cancelled.".to_string(),
+            });
+            break;
+        }
+
+        let bytes_before = tracker.bytes_copied;
+        let items_before = tracker.items_completed;
+
+        match item {
+            ValidSource::Local { original_path, source, destination_name, .. } => {
+                let mut check_cb = |name: &str, delta_bytes: u64, file_total: u64, completed: bool| -> Result<(), String> {
+                    wait_for_transfer_job(control)?;
+                    if completed {
+                        tracker.current_file_bytes = file_total;
+                        tracker.items_completed = tracker.items_completed.saturating_add(1);
+                        tracker.emit(false);
+                        tracker.current_file_bytes = 0;
+                        tracker.current_file_total = 0;
+                    } else {
+                        tracker.current_item = name.to_string();
+                        tracker.current_file_total = file_total;
+                        if delta_bytes > 0 {
+                            tracker.bytes_copied = tracker.bytes_copied.saturating_add(delta_bytes);
+                            tracker.current_file_bytes = tracker.current_file_bytes.saturating_add(delta_bytes);
+                        }
+                        tracker.emit(false);
+                    }
+                    Ok(())
+                };
+                match windows_portable_devices::upload_local_to_portable(
+                    &source,
+                    target_path,
+                    &destination_name,
+                    &mut check_cb,
+                ) {
+                    Ok(uploaded_path) => {
+                        if move_items {
+                            if let Err(remove_err) = remove_path_without_following_links(&source) {
+                                let _ = windows_portable_devices::delete_portable_item(&uploaded_path);
+                                tracker.bytes_copied = bytes_before;
+                                tracker.items_completed = items_before;
+                                failures.push(NativeOperationFailure {
+                                    path: original_path,
+                                    error: format!(
+                                        "The item was copied, but its original could not be removed ({remove_err})."
+                                    ),
+                                });
+                                continue;
+                            }
+                        }
+                        tracker.emit(true);
+                        completed_paths.push(uploaded_path);
+                    }
+                    Err(error) => {
+                        tracker.bytes_copied = bytes_before;
+                        tracker.items_completed = items_before;
+                        let cancelled = error.contains("cancelled");
+                        failures.push(NativeOperationFailure { path: original_path, error });
+                        if cancelled {
+                            break;
+                        }
+                    }
+                }
+            }
+            ValidSource::Portable { original_path, destination_name, bytes, items } => {
+                if let Some(target_dir) = &local_target {
+                    let destination = target_dir.join(&destination_name);
+                    let mut check_cb = |name: &str, delta_bytes: u64, file_total: u64, completed: bool| -> Result<(), String> {
+                        wait_for_transfer_job(control)?;
+                        if completed {
+                            tracker.current_file_bytes = file_total;
+                            tracker.items_completed = tracker.items_completed.saturating_add(1);
+                            tracker.emit(false);
+                            tracker.current_file_bytes = 0;
+                            tracker.current_file_total = 0;
+                        } else {
+                            tracker.current_item = name.to_string();
+                            tracker.current_file_total = file_total;
+                            if delta_bytes > 0 {
+                                tracker.bytes_copied = tracker.bytes_copied.saturating_add(delta_bytes);
+                                tracker.current_file_bytes = tracker.current_file_bytes.saturating_add(delta_bytes);
+                            }
+                            tracker.emit(false);
+                        }
+                        Ok(())
+                    };
+                    match windows_portable_devices::download_portable_to_local(
+                        &original_path,
+                        &destination,
+                        &mut check_cb,
+                    ) {
+                        Ok(()) => {
+                            if move_items {
+                                if let Err(remove_err) = windows_portable_devices::delete_portable_item(&original_path) {
+                                    let _ = remove_path_without_following_links(&destination);
+                                    tracker.bytes_copied = bytes_before;
+                                    tracker.items_completed = items_before;
+                                    failures.push(NativeOperationFailure {
+                                        path: original_path,
+                                        error: format!(
+                                            "The item was copied, but its original could not be removed ({remove_err})."
+                                        ),
+                                    });
+                                    continue;
+                                }
+                            }
+                            tracker.emit(true);
+                            completed_paths.push(display_path(&destination));
+                        }
+                        Err(error) => {
+                            tracker.bytes_copied = bytes_before;
+                            tracker.items_completed = items_before;
+                            let _ = remove_path_without_following_links(&destination);
+                            let cancelled = error.contains("cancelled");
+                            failures.push(NativeOperationFailure { path: original_path, error });
+                            if cancelled {
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    // Portable -> Portable (same device move when possible, else download-to-temp + upload)
+                    let src_name = portable_item_label(&original_path);
+                    let same_parent = windows_portable_devices::parse_portable_path(&original_path)
+                        .and_then(|(dev, mut segs)| {
+                            segs.pop();
+                            Some(windows_portable_devices::build_portable_path(&dev, &segs))
+                        })
+                        .is_some_and(|parent| parent.eq_ignore_ascii_case(target_path));
+                    if move_items && same_parent {
+                        tracker.bytes_copied = tracker.bytes_copied.saturating_add(bytes);
+                        tracker.items_completed = tracker.items_completed.saturating_add(items);
+                        tracker.emit(true);
+                        completed_paths.push(original_path);
+                        continue;
+                    }
+                    if move_items && src_name.eq_ignore_ascii_case(&destination_name) {
+                        if let Ok(Some(moved_path)) =
+                            windows_portable_devices::move_portable_same_device(&original_path, target_path)
+                        {
+                            tracker.bytes_copied = tracker.bytes_copied.saturating_add(bytes);
+                            tracker.items_completed = tracker.items_completed.saturating_add(items);
+                            tracker.emit(true);
+                            completed_paths.push(moved_path);
+                            continue;
+                        }
+                    }
+                    let temp_root = std::env::temp_dir()
+                        .join("CyberFiles")
+                        .join("portable-xfer")
+                        .join(format!(
+                            "{}-{}",
+                            std::process::id(),
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_nanos()
+                        ));
+                    if let Err(err) = fs::create_dir_all(&temp_root) {
+                        failures.push(NativeOperationFailure {
+                            path: original_path,
+                            error: format!("Could not prepare temporary transfer folder: {err}"),
+                        });
+                        continue;
+                    }
+                    let _temp_guard = TempTransferDir(temp_root.clone());
+                    let staged = temp_root.join(&destination_name);
+                    let mut dl_cb = |name: &str, _delta: u64, file_total: u64, _done: bool| -> Result<(), String> {
+                        wait_for_transfer_job(control)?;
+                        tracker.current_item = name.to_string();
+                        tracker.current_file_total = file_total;
+                        tracker.emit(false);
+                        Ok(())
+                    };
+                    if let Err(error) = windows_portable_devices::download_portable_to_local(
+                        &original_path,
+                        &staged,
+                        &mut dl_cb,
+                    ) {
+                        let cancelled = error.contains("cancelled");
+                        failures.push(NativeOperationFailure { path: original_path, error });
+                        if cancelled {
+                            break;
+                        }
+                        continue;
+                    }
+                    let mut ul_cb = |name: &str, delta_bytes: u64, file_total: u64, completed: bool| -> Result<(), String> {
+                        wait_for_transfer_job(control)?;
+                        if completed {
+                            tracker.current_file_bytes = file_total;
+                            tracker.items_completed = tracker.items_completed.saturating_add(1);
+                            tracker.emit(false);
+                            tracker.current_file_bytes = 0;
+                            tracker.current_file_total = 0;
+                        } else {
+                            tracker.current_item = name.to_string();
+                            tracker.current_file_total = file_total;
+                            if delta_bytes > 0 {
+                                tracker.bytes_copied = tracker.bytes_copied.saturating_add(delta_bytes);
+                                tracker.current_file_bytes = tracker.current_file_bytes.saturating_add(delta_bytes);
+                            }
+                            tracker.emit(false);
+                        }
+                        Ok(())
+                    };
+                    match windows_portable_devices::upload_local_to_portable(
+                        &staged,
+                        target_path,
+                        &destination_name,
+                        &mut ul_cb,
+                    ) {
+                        Ok(uploaded_path) => {
+                            if move_items {
+                                if let Err(remove_err) = windows_portable_devices::delete_portable_item(&original_path) {
+                                    let _ = windows_portable_devices::delete_portable_item(&uploaded_path);
+                                    tracker.bytes_copied = bytes_before;
+                                    tracker.items_completed = items_before;
+                                    failures.push(NativeOperationFailure {
+                                        path: original_path,
+                                        error: format!(
+                                            "The item was copied, but its original could not be removed ({remove_err})."
+                                        ),
+                                    });
+                                    continue;
+                                }
+                            }
+                            tracker.emit(true);
+                            completed_paths.push(uploaded_path);
+                        }
+                        Err(error) => {
+                            tracker.bytes_copied = bytes_before;
+                            tracker.items_completed = items_before;
+                            let cancelled = error.contains("cancelled");
+                            failures.push(NativeOperationFailure { path: original_path, error });
+                            if cancelled {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    NativeOperationResult { completed_paths, failures }
+}
+
 fn transfer_native_items_with_progress(
     app: tauri::AppHandle,
     paths: Vec<String>,
@@ -1054,6 +1586,19 @@ fn transfer_native_items_with_progress(
     preserve_names: bool,
     control: &TransferJobControl,
 ) -> NativeOperationResult {
+    if windows_portable_devices::is_portable_path(target_path)
+        || paths.iter().any(|path| windows_portable_devices::is_portable_path(path))
+    {
+        return transfer_portable_items_with_progress(
+            app,
+            paths,
+            target_path,
+            job_id,
+            move_items,
+            preserve_names,
+            control,
+        );
+    }
     let mut failures = Vec::new();
     let target = match canonical_directory(target_path) {
         Ok(target) => target,
@@ -1724,6 +2269,10 @@ fn remove_path_without_following_links(path: &Path) -> Result<(), String> {
 
 fn create_native_directory(parent_path: &str, name: &str) -> Result<NativeCreatedFolder, String> {
     validate_child_name(name)?;
+    if windows_portable_devices::is_portable_path(parent_path) {
+        let (path, name) = windows_portable_devices::create_portable_directory(parent_path, name)?;
+        return Ok(NativeCreatedFolder { path, name });
+    }
     let parent = canonical_directory(parent_path)?;
     let requested = unique_child_path(&parent, name);
     fs::create_dir(&requested).map_err(|e| {
@@ -1756,6 +2305,11 @@ fn created_native_entry(path: &Path, fallback_name: &str) -> Result<NativeCreate
 
 fn create_native_text_file(parent_path: &str, name: &str) -> Result<NativeCreatedFolder, String> {
     validate_child_name(name)?;
+    if windows_portable_devices::is_portable_path(parent_path) {
+        let (path, name, _) =
+            windows_portable_devices::create_portable_file_from_bytes(parent_path, name, &[])?;
+        return Ok(NativeCreatedFolder { path, name });
+    }
     let parent = canonical_directory(parent_path)?;
     let requested = unique_child_path(&parent, name);
     std::fs::OpenOptions::new()
@@ -1787,6 +2341,11 @@ fn create_native_shortcut(
     use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
 
     validate_child_name(name)?;
+    if windows_portable_devices::is_portable_path(parent_path)
+        || windows_portable_devices::is_portable_path(target_path)
+    {
+        return Err("Windows shortcuts cannot be created on portable devices.".to_string());
+    }
     let parent = canonical_directory(parent_path)?;
     let target = canonical_item(target_path)?;
     let requested = unique_child_path(&parent, name);
@@ -1835,6 +2394,9 @@ fn create_native_shortcut(
 
 fn rename_native_item(source_path: &str, new_name: &str) -> Result<String, String> {
     validate_child_name(new_name)?;
+    if windows_portable_devices::is_portable_path(source_path) {
+        return windows_portable_devices::rename_portable_item(source_path, new_name);
+    }
     let source = canonical_item(source_path)?;
     let parent = source
         .parent()
@@ -1989,6 +2551,95 @@ fn cancel_transfer_operation(job_id: String) -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
+#[derive(Clone)]
+struct PortableFileClipboard {
+    paths: Vec<String>,
+    is_cut: bool,
+    sequence_number: u32,
+}
+
+#[cfg(target_os = "windows")]
+static PORTABLE_FILE_CLIPBOARD: Mutex<Option<PortableFileClipboard>> = Mutex::new(None);
+
+#[cfg(target_os = "windows")]
+fn set_portable_file_clipboard(paths: &[String], is_cut: bool) -> Result<u32, String> {
+    use windows_sys::Win32::{
+        Foundation::GlobalFree,
+        System::{
+            DataExchange::{
+                CloseClipboard, EmptyClipboard, GetClipboardSequenceNumber, OpenClipboard,
+                RegisterClipboardFormatW, SetClipboardData,
+            },
+            Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE},
+        },
+    };
+
+    if paths.iter().any(|path| {
+        windows_portable_devices::is_portable_device_root(path)
+            || windows_portable_devices::is_portable_storage_root(path)
+    }) {
+        return Err("Portable device and storage roots cannot be copied to the clipboard.".to_string());
+    }
+    let format_name: Vec<u16> = "CyberFilesPortablePaths"
+        .encode_utf16()
+        .chain(Some(0))
+        .collect();
+    let format = unsafe { RegisterClipboardFormatW(format_name.as_ptr()) };
+    if format == 0 {
+        return Err("Windows could not register the portable clipboard format.".to_string());
+    }
+    let payload = paths.join("\n").into_bytes();
+    let handle = unsafe { GlobalAlloc(GMEM_MOVEABLE, payload.len().max(1)) };
+    if handle.is_null() {
+        return Err("Windows could not allocate clipboard data.".to_string());
+    }
+    let ptr = unsafe { GlobalLock(handle) }.cast::<u8>();
+    if ptr.is_null() {
+        unsafe { GlobalFree(handle) };
+        return Err("Windows could not lock clipboard data.".to_string());
+    }
+    unsafe {
+        if !payload.is_empty() {
+            std::ptr::copy_nonoverlapping(payload.as_ptr(), ptr, payload.len());
+        } else {
+            *ptr = 0;
+        }
+        GlobalUnlock(handle);
+    }
+    if unsafe { OpenClipboard(std::ptr::null_mut()) } == 0 {
+        unsafe { GlobalFree(handle) };
+        return Err("Windows could not open the clipboard. Try again shortly.".to_string());
+    }
+    let mut owns_handle = true;
+    let res = unsafe {
+        if EmptyClipboard() == 0 {
+            Err("Windows could not update the clipboard.".to_string())
+        } else if SetClipboardData(format, handle).is_null() {
+            Err("Windows could not place the portable items on the clipboard.".to_string())
+        } else {
+            owns_handle = false;
+            Ok(())
+        }
+    };
+    unsafe {
+        CloseClipboard();
+        if owns_handle {
+            GlobalFree(handle);
+        }
+    }
+    res?;
+    let sequence_number = unsafe { GetClipboardSequenceNumber() };
+    if let Ok(mut guard) = PORTABLE_FILE_CLIPBOARD.lock() {
+        *guard = Some(PortableFileClipboard {
+            paths: paths.to_vec(),
+            is_cut,
+            sequence_number,
+        });
+    }
+    Ok(sequence_number)
+}
+
+#[cfg(target_os = "windows")]
 fn set_windows_file_clipboard(paths: &[String], is_cut: bool) -> Result<u32, String> {
     use std::os::windows::ffi::OsStrExt;
     use windows_sys::Win32::{
@@ -2004,6 +2655,12 @@ fn set_windows_file_clipboard(paths: &[String], is_cut: bool) -> Result<u32, Str
     };
     if paths.is_empty() {
         return Err("There are no files to place on the clipboard.".to_string());
+    }
+    if paths.iter().any(|path| windows_portable_devices::is_portable_path(path)) {
+        return set_portable_file_clipboard(paths, is_cut);
+    }
+    if let Ok(mut guard) = PORTABLE_FILE_CLIPBOARD.lock() {
+        *guard = None;
     }
     let mut wide_paths = Vec::new();
     for path in paths {
@@ -2140,6 +2797,17 @@ fn get_windows_file_clipboard() -> Result<NativeFileClipboard, String> {
     let _guard = ClipboardGuard;
     let sequence_number = unsafe { GetClipboardSequenceNumber() };
     if unsafe { IsClipboardFormatAvailable(CF_HDROP) } == 0 {
+        if let Ok(guard) = PORTABLE_FILE_CLIPBOARD.lock() {
+            if let Some(portable) = guard.as_ref() {
+                if portable.sequence_number == sequence_number {
+                    return Ok(NativeFileClipboard {
+                        paths: portable.paths.clone(),
+                        is_cut: portable.is_cut,
+                        sequence_number,
+                    });
+                }
+            }
+        }
         return Ok(NativeFileClipboard {
             paths: Vec::new(),
             is_cut: false,
@@ -2279,6 +2947,16 @@ fn clear_windows_file_clipboard(expected_sequence_number: u32) -> Result<bool, S
         return Err(
             "Windows could not clear the completed file transfer from the clipboard.".to_string(),
         );
+    }
+    if same_contents {
+        if let Ok(mut guard) = PORTABLE_FILE_CLIPBOARD.lock() {
+            if guard
+                .as_ref()
+                .is_some_and(|portable| portable.sequence_number == expected_sequence_number)
+            {
+                *guard = None;
+            }
+        }
     }
     Ok(same_contents)
 }
@@ -2496,9 +3174,27 @@ fn create_native_clipboard_image(
     let Some(png_bytes) = read_windows_clipboard_image_png()? else {
         return Ok(None);
     };
-    let parent = canonical_directory(target_path)?;
     let base = base_name.trim();
     validate_child_name(base)?;
+    if windows_portable_devices::is_portable_path(target_path) {
+        let (path, name, size) = windows_portable_devices::create_portable_file_from_bytes(
+            target_path,
+            &format!("{base}.png"),
+            &png_bytes,
+        )?;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .and_then(|d| d.as_millis().try_into().ok());
+        return Ok(Some(NativeCreatedImage {
+            path,
+            name,
+            size,
+            modified_ms: now_ms,
+            created_ms: now_ms,
+        }));
+    }
+    let parent = canonical_directory(target_path)?;
 
     for index in 0..=1_000_000u32 {
         let name = if index == 0 {
@@ -2887,6 +3583,52 @@ fn list_unc_server_shares(_server_root: &str) -> Result<DirectoryListing, String
 async fn list_directory(path: String) -> Result<DirectoryListing, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let expanded = expand_windows_environment_path(&path);
+        if windows_portable_devices::is_portable_path(&expanded) {
+            let (root_path, root_name, portable_entries) =
+                windows_portable_devices::list_portable_directory(&expanded)?;
+            let mut counts = DirectoryCounts {
+                file_count: 0,
+                folder_count: 0,
+                visible_file_count: 0,
+                visible_folder_count: 0,
+                hidden_count: 0,
+            };
+            let mut entries = Vec::with_capacity(portable_entries.len());
+            for entry in portable_entries {
+                if entry.is_hidden {
+                    counts.hidden_count += 1;
+                }
+                if entry.is_folder {
+                    counts.folder_count += 1;
+                    if !entry.is_hidden {
+                        counts.visible_folder_count += 1;
+                    }
+                } else {
+                    counts.file_count += 1;
+                    if !entry.is_hidden {
+                        counts.visible_file_count += 1;
+                    }
+                }
+                entries.push(NativeFolderEntry {
+                    name: entry.name,
+                    path: entry.path,
+                    is_folder: entry.is_folder,
+                    is_hidden: entry.is_hidden,
+                    size: entry.size,
+                    modified_ms: entry.modified_ms,
+                    created_ms: entry.created_ms,
+                });
+            }
+            let next_offset = entries.len();
+            return Ok(DirectoryListing {
+                root_path,
+                root_name,
+                entries,
+                counts,
+                has_more: false,
+                next_offset,
+            });
+        }
         if let Some(server_root) = is_unc_server_root(&expanded) {
             return list_unc_server_shares(&server_root);
         }
@@ -2991,6 +3733,9 @@ static FLAT_SCAN_GENERATION: AtomicU64 = AtomicU64::new(0);
 async fn list_flat_directory(path: String) -> Result<FlatDirectoryListing, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let expanded = expand_windows_environment_path(&path);
+        if windows_portable_devices::is_portable_path(&expanded) {
+            return Err("Flat view is not supported on portable devices.".to_string());
+        }
         if let Some(server_root) = is_unc_server_root(&expanded) {
             let listing = list_unc_server_shares(&server_root)?;
             return Ok(FlatDirectoryListing {
@@ -3122,6 +3867,35 @@ struct FolderChildCounts {
 async fn count_folder_children(path: String) -> Result<FolderChildCounts, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let expanded = expand_windows_environment_path(&path);
+        if windows_portable_devices::is_portable_path(&expanded) {
+            if windows_portable_devices::is_portable_device_root(&expanded) {
+                return Ok(FolderChildCounts {
+                    file_count: 0,
+                    folder_count: 0,
+                    extension_counts: HashMap::new(),
+                });
+            }
+            let (_, _, entries) = windows_portable_devices::list_portable_directory(&expanded)?;
+            let mut counts = FolderChildCounts {
+                file_count: 0,
+                folder_count: 0,
+                extension_counts: HashMap::new(),
+            };
+            for entry in entries {
+                if entry.is_folder {
+                    counts.folder_count += 1;
+                } else {
+                    counts.file_count += 1;
+                    let ext = Path::new(&entry.name)
+                        .extension()
+                        .and_then(|v| v.to_str())
+                        .unwrap_or("")
+                        .to_ascii_lowercase();
+                    *counts.extension_counts.entry(ext).or_insert(0) += 1;
+                }
+            }
+            return Ok(counts);
+        }
         if let Some(server_root) = is_unc_server_root(&expanded) {
             let listing = list_unc_server_shares(&server_root)?;
             return Ok(FolderChildCounts {
@@ -3170,6 +3944,13 @@ async fn count_folder_children(path: String) -> Result<FolderChildCounts, String
 async fn count_hidden_items(path: String) -> Result<usize, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let expanded = expand_windows_environment_path(&path);
+        if windows_portable_devices::is_portable_path(&expanded) {
+            if windows_portable_devices::is_portable_device_root(&expanded) {
+                return Ok(0);
+            }
+            let (_, _, entries) = windows_portable_devices::list_portable_directory(&expanded)?;
+            return Ok(entries.into_iter().filter(|entry| entry.is_hidden).count());
+        }
         if let Some(server_root) = is_unc_server_root(&expanded) {
             let listing = list_unc_server_shares(&server_root)?;
             return Ok(listing.counts.hidden_count);
@@ -3307,6 +4088,9 @@ fn calculate_directory_size_controlled(
 #[tauri::command]
 fn start_folder_size_calculation(app: tauri::AppHandle, path: String, job_id: String) -> Result<(), String> {
     let expanded = expand_windows_environment_path(&path);
+    if windows_portable_devices::is_portable_path(&expanded) {
+        return Err("Folder size calculation is not supported on portable devices.".to_string());
+    }
     let root = fs::canonicalize(&expanded).map_err(|error| format!("Cannot access folder: {error}"))?;
     if !root.is_dir() {
         return Err("The selected location is not a folder.".to_string());
@@ -3431,6 +4215,9 @@ fn calculate_directory_size(
 async fn calculate_folder_size(path: String) -> Result<u64, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let expanded = expand_windows_environment_path(&path);
+        if windows_portable_devices::is_portable_path(&expanded) {
+            return Err("Folder size calculation is not supported on portable devices.".to_string());
+        }
         let root =
             fs::canonicalize(&expanded).map_err(|error| format!("Cannot access folder: {error}"))?;
         if !root.is_dir() {
@@ -3449,6 +4236,9 @@ async fn calculate_folder_size_bounded(
 ) -> Result<FolderSizeCalculation, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let expanded = expand_windows_environment_path(&path);
+        if windows_portable_devices::is_portable_path(&expanded) {
+            return Err("Folder size calculation is not supported on portable devices.".to_string());
+        }
         let root =
             fs::canonicalize(&expanded).map_err(|error| format!("Cannot access folder: {error}"))?;
         if !root.is_dir() {
@@ -4278,6 +5068,11 @@ async fn read_text_preview(path: String) -> Result<String, String> {
         if !is_text_preview_extension_allowed(file_path) {
             return Err("This file type is not supported for text preview.".to_string());
         }
+        if windows_portable_devices::is_portable_path(&path) {
+            let bytes =
+                windows_portable_devices::read_portable_file_bytes(&path, MAX_TEXT_PREVIEW_BYTES)?;
+            return Ok(decode_text_preview(bytes));
+        }
         let metadata = fs::symlink_metadata(file_path)
             .map_err(|error| format!("Cannot inspect preview file: {error}"))?;
         if metadata.file_type().is_symlink() || !metadata.is_file() {
@@ -4306,6 +5101,26 @@ async fn read_text_preview(path: String) -> Result<String, String> {
 async fn prepare_pdf_preview(app: tauri::AppHandle, path: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let source = Path::new(&path);
+        if windows_portable_devices::is_portable_path(&path) {
+            if source
+                .extension()
+                .and_then(|value| value.to_str())
+                .map_or(true, |extension| !extension.eq_ignore_ascii_case("pdf"))
+            {
+                return Err("Only PDF files can be previewed here.".to_string());
+            }
+            let staged = windows_portable_devices::stage_portable_file_to_temp(
+                &path,
+                Some(MAX_PDF_PREVIEW_BYTES),
+            )?;
+            let resolved = staged
+                .canonicalize()
+                .map_err(|error| format!("Could not resolve PDF preview file: {error}"))?;
+            app.asset_protocol_scope()
+                .allow_file(&resolved)
+                .map_err(|error| format!("Could not authorize PDF preview file: {error}"))?;
+            return Ok(resolved.to_string_lossy().into_owned());
+        }
         if !source.is_absolute() {
             return Err("Only fully qualified PDF paths can be previewed.".to_string());
         }
@@ -4384,6 +5199,30 @@ async fn prepare_media_preview(app: tauri::AppHandle, path: String) -> Result<St
     ];
     tauri::async_runtime::spawn_blocking(move || {
         let source = Path::new(&path);
+        if windows_portable_devices::is_portable_path(&path) {
+            if source
+                .extension()
+                .and_then(|value| value.to_str())
+                .map_or(true, |extension| {
+                    !MEDIA_PREVIEW_EXTENSIONS
+                        .iter()
+                        .any(|allowed| extension.eq_ignore_ascii_case(allowed))
+                })
+            {
+                return Err("Only audio and video files can be previewed here.".to_string());
+            }
+            let staged = windows_portable_devices::stage_portable_file_to_temp(
+                &path,
+                Some(256 * 1024 * 1024),
+            )?;
+            let resolved = staged
+                .canonicalize()
+                .map_err(|error| format!("Could not resolve media preview file: {error}"))?;
+            app.asset_protocol_scope()
+                .allow_file(&resolved)
+                .map_err(|error| format!("Could not authorize media preview file: {error}"))?;
+            return Ok(resolved.to_string_lossy().into_owned());
+        }
         if !source.is_absolute() {
             return Err("Only fully qualified media paths can be previewed.".to_string());
         }
@@ -4422,6 +5261,62 @@ async fn image_thumbnail(path: String) -> Option<String> {
             .extension()?
             .to_string_lossy()
             .to_ascii_lowercase();
+
+        if windows_portable_devices::is_portable_path(&path) {
+            if extension == "svg" {
+                let bytes = windows_portable_devices::read_portable_file_bytes(
+                    &path,
+                    MAX_SVG_PREVIEW_BYTES,
+                )
+                .ok()?;
+                if bytes.is_empty() {
+                    return None;
+                }
+                let head =
+                    String::from_utf8_lossy(&bytes[..bytes.len().min(4096)]).to_ascii_lowercase();
+                if !head.contains("<svg") {
+                    return None;
+                }
+                return Some(format!(
+                    "data:image/svg+xml;base64,{}",
+                    base64::engine::general_purpose::STANDARD.encode(&bytes)
+                ));
+            }
+            if !RASTER_IMAGE_EXTENSIONS.contains(&extension.as_str()) {
+                return None;
+            }
+            if let Some(thumb) = windows_portable_devices::get_portable_thumbnail(&path, 256) {
+                return Some(thumb);
+            }
+            let bytes =
+                windows_portable_devices::read_portable_file_bytes(&path, MAX_IMAGE_PREVIEW_BYTES)
+                    .ok()?;
+            let mut reader = image::ImageReader::new(Cursor::new(bytes))
+                .with_guessed_format()
+                .ok()?;
+            if extension == "cur" {
+                reader.set_format(image::ImageFormat::Ico);
+            }
+            let mut limits = image::Limits::default();
+            limits.max_image_width = Some(12_000);
+            limits.max_image_height = Some(12_000);
+            limits.max_alloc = Some(64 * 1024 * 1024);
+            reader.limits(limits);
+            let decoded = reader.decode().ok()?;
+            let thumbnail = if decoded.width() > THUMBNAIL_MAX_WIDTH
+                || decoded.height() > THUMBNAIL_MAX_HEIGHT
+            {
+                decoded.thumbnail(THUMBNAIL_MAX_WIDTH, THUMBNAIL_MAX_HEIGHT)
+            } else {
+                decoded
+            };
+            let mut png = Cursor::new(Vec::new());
+            thumbnail.write_to(&mut png, image::ImageFormat::Png).ok()?;
+            return Some(format!(
+                "data:image/png;base64,{}",
+                base64::engine::general_purpose::STANDARD.encode(png.into_inner())
+            ));
+        }
 
         if extension == "svg" {
             return svg_thumbnail_data_url(file_path);
@@ -4525,8 +5420,12 @@ async fn get_thumbnails(
             .iter()
             .filter(|item| item.path.len() <= 32_767 && item.id.len() <= 32_767)
             .collect();
+        let (portable_items, local_items): (Vec<&NativeFileIconRequest>, Vec<&NativeFileIconRequest>) =
+            valid
+                .into_iter()
+                .partition(|item| windows_portable_devices::is_portable_path(&item.path));
         let mut groups: Vec<NativeFileIconGroup> = Vec::new();
-        for chunk in valid.chunks(PARALLEL_THUMBNAIL_WORKERS) {
+        for chunk in local_items.chunks(PARALLEL_THUMBNAIL_WORKERS) {
             let results: Vec<Option<String>> = std::thread::scope(|scope| {
                 chunk
                     .iter()
@@ -4545,6 +5444,15 @@ async fn get_thumbnails(
                 if let Some(data_url) = thumbnail {
                     groups.push(NativeFileIconGroup { item_ids: vec![item.id.clone()], data_url });
                 }
+            }
+        }
+        // Portable devices share one USB MTP transport, so fetch thumbnails sequentially.
+        for item in portable_items {
+            if let Some(data_url) = windows_portable_devices::get_portable_thumbnail(&item.path, size) {
+                groups.push(NativeFileIconGroup {
+                    item_ids: vec![item.id.clone()],
+                    data_url,
+                });
             }
         }
         Ok(groups)
@@ -5516,6 +6424,12 @@ struct NativeDrive {
     total_bytes: u64,
     used_bytes: u64,
     kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    root_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    device_subtype: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    device_type_label: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -5599,6 +6513,22 @@ fn system_drives() -> Vec<NativeDrive> {
                 0
             },
             kind: kind.to_string(),
+            root_path: None,
+            device_subtype: None,
+            device_type_label: None,
+        });
+    }
+    for device in windows_portable_devices::list_portable_devices() {
+        drives.push(NativeDrive {
+            id: device.id,
+            letter: String::new(),
+            label: device.label,
+            total_bytes: device.total_bytes,
+            used_bytes: device.used_bytes,
+            kind: "portable".to_string(),
+            root_path: Some(device.root_path),
+            device_subtype: Some(device.device_subtype),
+            device_type_label: device.device_type_label,
         });
     }
     drives
@@ -5676,12 +6606,24 @@ fn active_drives_mask() -> u32 {
 #[cfg(target_os = "windows")]
 fn start_drive_change_watcher(app: tauri::AppHandle) {
     std::thread::spawn(move || {
+        let _shell_apartment = windows_file_icons::ShellApartment::initialize_background();
         let mut last_mask = active_drives_mask();
+        let mut last_portable_signature = windows_portable_devices::portable_devices_signature();
+        let mut tick = 0u8;
         loop {
             std::thread::sleep(std::time::Duration::from_millis(400));
+            tick = tick.wrapping_add(1);
             let mask = active_drives_mask();
-            if mask != last_mask {
-                last_mask = mask;
+            let mut changed = mask != last_mask;
+            last_mask = mask;
+            if tick % 3 == 0 {
+                let portable_sig = windows_portable_devices::portable_devices_signature();
+                if portable_sig != last_portable_signature {
+                    last_portable_signature = portable_sig;
+                    changed = true;
+                }
+            }
+            if changed {
                 let _ = app.emit("drives-changed", ());
             }
         }
@@ -7390,6 +8332,13 @@ fn recycle_paths(paths: Vec<String>) -> RecycleBinDeleteResult {
         if !seen.insert(path.replace('/', "\\").to_lowercase()) {
             continue;
         }
+        if windows_portable_devices::is_portable_path(&path) {
+            result.failures.push(RecycleBinFailure {
+                path,
+                error: "Portable devices do not support the Windows Recycle Bin. Use permanent delete instead.".to_string(),
+            });
+            continue;
+        }
         let source = Path::new(&path);
         let prepared = (|| -> Result<(PathBuf, String), String> {
             validate_recycle_source(source)?;
@@ -7622,6 +8571,9 @@ fn validate_permanent_delete_source(source: &Path) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 fn permanently_delete_path(path: &str) -> Result<(), String> {
+    if windows_portable_devices::is_portable_path(path) {
+        return windows_portable_devices::delete_portable_item(path);
+    }
     let source = Path::new(path);
     validate_permanent_delete_source(source)?;
     let metadata = fs::symlink_metadata(source).map_err(|error| error.to_string())?;
@@ -7708,6 +8660,9 @@ fn show_windows_file_properties(path: &str) -> Result<(), String> {
     use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED};
     use windows::Win32::UI::Shell::{SHObjectProperties, SHOP_FILEPATH};
 
+    if windows_portable_devices::is_portable_path(path) {
+        return windows_portable_devices::show_portable_properties(path);
+    }
     let item_path = Path::new(path);
     if !item_path.is_absolute() {
         return Err("Windows Properties requires a fully qualified filesystem path.".to_string());
@@ -7772,16 +8727,21 @@ fn open_file_using_windows_default_app(path: &str) -> Result<(), String> {
     use windows::Win32::UI::Shell::ShellExecuteW;
     use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
-    let source = Path::new(path);
-    if !source.is_absolute() {
-        return Err("Only fully qualified file paths can be opened.".to_string());
-    }
-    let resolved = source
-        .canonicalize()
-        .map_err(|error| format!("Could not resolve the selected file: {error}"))?;
-    if !resolved.is_file() {
-        return Err("The selected file is no longer available.".to_string());
-    }
+    let resolved = if windows_portable_devices::is_portable_path(path) {
+        windows_portable_devices::stage_portable_file_to_temp(path, None)?
+    } else {
+        let source = Path::new(path);
+        if !source.is_absolute() {
+            return Err("Only fully qualified file paths can be opened.".to_string());
+        }
+        let resolved = source
+            .canonicalize()
+            .map_err(|error| format!("Could not resolve the selected file: {error}"))?;
+        if !resolved.is_file() {
+            return Err("The selected file is no longer available.".to_string());
+        }
+        resolved
+    };
     let initialized =
         unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) };
     if initialized.is_err() {
@@ -7868,6 +8828,9 @@ fn reveal_folder_in_explorer(path: &str) -> Result<(), String> {
     };
     use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
+    if windows_portable_devices::is_portable_path(path) {
+        return windows_portable_devices::open_portable_in_windows_explorer(path);
+    }
     let folder = resolve_accessible_directory(path)?;
     let clean_folder = display_path(&folder);
     let initialized =

@@ -46,7 +46,7 @@ import {
 } from 'lucide-react';
 import { ArchiveExtractionMode, ContextMenuPosition, FileItem, GroupByField, SortField, SortOrder, ViewMode, type IconZoomLevel } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
-import { isUncPath, isUncServerRoot } from '../utils/fileSystem';
+import { isPortableDeviceRoot, isPortablePath, isPortableStorageRoot, isUncPath, isUncServerRoot } from '../utils/fileSystem';
 import type { NewItemKind } from './CreateItemModal';
 import { Tooltip } from './Tooltip';
 
@@ -100,6 +100,7 @@ interface ContextMenuProps {
   onPaste: () => void;
   onCreateItem: (kind: NewItemKind) => void;
   canModifyFolder: boolean;
+  supportsShortcutCreation?: boolean;
   fileClipboardSupported: boolean;
   onRename: (item: FileItem) => void;
   onBatchRename: () => void;
@@ -169,6 +170,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onPaste,
   onCreateItem,
   canModifyFolder,
+  supportsShortcutCreation = true,
   fileClipboardSupported,
   onRename,
   onBatchRename,
@@ -508,7 +510,14 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   if (!position) return null;
 
   const item = position.targetItem;
-  const isSystemLocation = Boolean(item && (item.id.startsWith('system-drive-') || item.id.startsWith('system-location-')));
+  const isSystemLocation = Boolean(
+    item && (
+      item.id.startsWith('system-drive-') ||
+      item.id.startsWith('system-location-') ||
+      isPortableDeviceRoot(item.path) ||
+      isPortableStorageRoot(item.path)
+    ),
+  );
   const archiveItem = Boolean(item && !item.isFolder && ['zip', 'rar'].includes(item.extension.toLowerCase()));
   const canRemoveFromRecent = Boolean(item && !item.isFolder && isRecentLocation && onRemoveFromRecent);
 
@@ -546,7 +555,9 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
           <>
             <MenuButton icon={<FolderPlus className="h-4 w-4 text-emerald-400" />} label={t.contextMenu.newFolder} shortcut="F7" disabled={!canModifyFolder} onClick={() => { onCreateItem('folder'); onClose(); }} />
             <MenuButton icon={<FilePlus2 className="h-4 w-4 text-cyan-300" />} label={t.contextMenu.newTextFile} disabled={!canModifyFolder} onClick={() => { onCreateItem('text-file'); onClose(); }} />
-            <MenuButton icon={<Link2 className="h-4 w-4 text-violet-300" />} label={t.contextMenu.newShortcut} disabled={!canModifyFolder} onClick={() => { onCreateItem('shortcut'); onClose(); }} />
+            {supportsShortcutCreation && (
+              <MenuButton icon={<Link2 className="h-4 w-4 text-violet-300" />} label={t.contextMenu.newShortcut} disabled={!canModifyFolder} onClick={() => { onCreateItem('shortcut'); onClose(); }} />
+            )}
           </>
         );
       case 'select':
@@ -640,7 +651,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                   onClick={() => { onCopyPath(); onClose(); }}
                 />
               )}
-              {canToggleExplorerException && onToggleExplorerException && item.isFolder && !item.path.startsWith('::') && !isUncServerRoot(item.path) && (
+              {canToggleExplorerException && onToggleExplorerException && item.isFolder && !item.path.startsWith('::') && !isPortablePath(item.path) && !isUncServerRoot(item.path) && (
                 <MenuButton
                   icon={<ExternalLink className={`h-4 w-4 ${isExplorerExceptionItem?.(item) ? 'text-amber-300' : 'text-cyan-300'}`} />}
                   label={isExplorerExceptionItem?.(item) ? t.contextMenu.removeExplorerException : t.contextMenu.addExplorerException}
@@ -801,7 +812,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                           onClick={() => { onCustomizeFolderIcon(item); onClose(); }}
                         />
                       )}
-                      {canToggleExplorerException && onToggleExplorerException && !item.path.startsWith('::') && !isUncServerRoot(item.path) && (
+                      {canToggleExplorerException && onToggleExplorerException && !item.path.startsWith('::') && !isPortablePath(item.path) && !isUncServerRoot(item.path) && (
                         <MenuButton
                           icon={<ExternalLink className={`h-4 w-4 ${isExplorerExceptionItem?.(item) ? 'text-amber-300' : 'text-cyan-300'}`} />}
                           label={isExplorerExceptionItem?.(item) ? t.contextMenu.removeExplorerException : t.contextMenu.addExplorerException}

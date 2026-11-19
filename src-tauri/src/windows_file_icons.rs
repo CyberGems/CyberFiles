@@ -298,8 +298,9 @@ mod windows_impl {
     }
 
     pub fn get_associated_file_icon(path: &str, size: ShellIconSize) -> Option<String> {
+        let is_portable = crate::windows_portable_devices::is_portable_path(path);
         let file_path = Path::new(path);
-        if !file_path.is_absolute() {
+        if !is_portable && !file_path.is_absolute() {
             return None;
         }
 
@@ -307,10 +308,11 @@ mod windows_impl {
             .extension()
             .map(|value| value.to_string_lossy().to_ascii_lowercase())
             .unwrap_or_default();
-        let path_specific = matches!(
-            extension.as_str(),
-            "com" | "dll" | "exe" | "ico" | "lnk" | "ocx" | "scr"
-        );
+        let path_specific = !is_portable
+            && matches!(
+                extension.as_str(),
+                "com" | "dll" | "exe" | "ico" | "lnk" | "ocx" | "scr"
+            );
         let (cache_key, icon_path, use_file_attributes) = if path_specific {
             let metadata = std::fs::symlink_metadata(file_path).ok()?;
             if !metadata.is_file() || metadata.file_type().is_symlink() {

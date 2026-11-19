@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle2, Clock, Eye, EyeOff, File, Folder, HardDrive, Keyboard, Link2, List, ListChecks, Network, PanelLeft, PanelRight } from 'lucide-react';
 import { DriveInfo, FileItem, TabState, ViewLayout, SYSTEM_HOME_PATH } from '../types';
-import { formatFileSize } from '../utils/fileSystem';
+import { formatFileSize, isPortablePath, isSameOrDescendantPath } from '../utils/fileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 import { TransferOperationView, operationActionLabel } from './FileOperationModal';
@@ -181,11 +181,12 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
   // Current path and length calculation (Windows MAX_PATH is 260 characters)
   const currentPath = currentTab.currentPath;
   const isSystemHome = currentPath === SYSTEM_HOME_PATH;
+  const isPortableLocation = isPortablePath(currentPath);
   const displayPath = isSystemHome ? t.sidebar.thisPc : currentPath;
   const pathLength = displayPath.length;
   const MAX_PATH_WINDOWS = 260;
-  const isNearMaxPath = pathLength >= 200;
-  const isExceedingMaxPath = pathLength > MAX_PATH_WINDOWS;
+  const isNearMaxPath = !isPortableLocation && pathLength >= 200;
+  const isExceedingMaxPath = !isPortableLocation && pathLength > MAX_PATH_WINDOWS;
 
   // Selected files metrics
   const selectedIds = currentTab.selectedIds;
@@ -198,11 +199,15 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
   const selectedTotalBytes = selectedFileItems.reduce((acc, f) => acc + (f.size || 0), 0);
   const folderTotalBytes = fileItems.reduce((acc, f) => acc + (f.size || 0), 0);
 
-  // Active drive information (e.g. C:)
+  // Active drive information (e.g. C: or portable device)
   const driveLetter = currentPath.match(/^[a-zA-Z]:/)?.[0]?.toUpperCase() ?? '';
-  const currentDrive = isSystemHome || !driveLetter
+  const currentDrive = isSystemHome
     ? undefined
-    : drives.find(drive => drive.letter.toUpperCase() === driveLetter);
+    : isPortableLocation
+      ? drives.find(drive => drive.type === 'portable' && drive.rootPath && isSameOrDescendantPath(currentPath, drive.rootPath))
+      : !driveLetter
+        ? undefined
+        : drives.find(drive => drive.letter.toUpperCase() === driveLetter);
   const capacityDrive = currentDrive && currentDrive.totalBytes > 0 ? currentDrive : null;
   const freeDriveBytes = capacityDrive ? Math.max(0, capacityDrive.totalBytes - capacityDrive.usedBytes) : 0;
   const driveUsedPct = currentDrive?.totalBytes
@@ -219,7 +224,7 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
       ? 'text-amber-300'
       : 'text-cyan-300';
 
-  const nonNetworkDrives = drives.filter(drive => drive.type !== 'network');
+  const nonNetworkDrives = drives.filter(drive => drive.type !== 'network' && drive.type !== 'portable');
   const networkDrives = drives.filter(drive => drive.type === 'network');
   const localCapacityDrives = nonNetworkDrives.filter(drive => drive.totalBytes > 0);
   const localTotalBytes = localCapacityDrives.reduce((total, drive) => total + drive.totalBytes, 0);

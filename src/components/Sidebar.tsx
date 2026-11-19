@@ -8,6 +8,8 @@ import {
   Music, 
   Video,
   Monitor, 
+  Smartphone,
+  Camera,
   FolderOpen, 
   ChevronDown,
   ChevronRight,
@@ -22,7 +24,7 @@ import {
   Unplug,
 } from 'lucide-react';
 import { DriveInfo, FileItem, NETWORK_PATH, QuickAccessItem, QuickAccessSortMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
-import { formatFileSize, isPathOnUnavailableDrive, isUncPath, normalizeDriveLetter } from '../utils/fileSystem';
+import { formatFileSize, isPathOnUnavailableDrive, isPathOnUnavailablePortableDevice, isSameOrDescendantPath, isUncPath, normalizeDriveLetter } from '../utils/fileSystem';
 import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
 import { FolderIconRenderer } from './folderIconsData';
@@ -114,19 +116,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
     () => new Set(drives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean)),
     [drives],
   );
+  const availablePortableRoots = React.useMemo(
+    () => new Set(drives.filter(drive => drive.type === 'portable' && drive.rootPath).map(drive => drive.rootPath!.toLowerCase())),
+    [drives],
+  );
+  const isSidebarPathOffline = React.useCallback((path: string) => (
+    (availableDriveLetters.size > 0 && isPathOnUnavailableDrive(path, availableDriveLetters)) ||
+    (drives.length > 0 && isPathOnUnavailablePortableDevice(path, availablePortableRoots))
+  ), [availableDriveLetters, availablePortableRoots, drives.length]);
 
   useEffect(() => {
-    if (availableDriveLetters.size === 0) return;
+    if (drives.length === 0) return;
     setExpandedFolderPaths(previous => {
-      if (![...previous].some(path => isPathOnUnavailableDrive(path, availableDriveLetters))) return previous;
-      return new Set([...previous].filter(path => !isPathOnUnavailableDrive(path, availableDriveLetters)));
+      if (![...previous].some(path => isSidebarPathOffline(path))) return previous;
+      return new Set([...previous].filter(path => !isSidebarPathOffline(path)));
     });
     setFolderTreeStates(previous => {
       const keys = Object.keys(previous);
-      if (!keys.some(path => isPathOnUnavailableDrive(path, availableDriveLetters))) return previous;
-      return Object.fromEntries(Object.entries(previous).filter(([path]) => !isPathOnUnavailableDrive(path, availableDriveLetters)));
+      if (!keys.some(path => isSidebarPathOffline(path))) return previous;
+      return Object.fromEntries(Object.entries(previous).filter(([path]) => !isSidebarPathOffline(path)));
     });
-  }, [availableDriveLetters]);
+  }, [drives.length, isSidebarPathOffline]);
 
   const loadFolderTreeChildren = async (path: string, offset = 0) => {
     setFolderTreeStates(previous => {
@@ -509,7 +519,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   );
                 }
 
-                const isOffline = availableDriveLetters.size > 0 && isPathOnUnavailableDrive(item.path, availableDriveLetters);
+                const isOffline = isSidebarPathOffline(item.path);
                 const isVirtualLocation = item.path === SYSTEM_HOME_PATH || item.path === NETWORK_PATH;
                 const canExpandTree = isTauriDesktop() && !isVirtualLocation && !isOffline;
                 const treeExpanded = !isOffline && expandedFolderPaths.has(item.path);
@@ -663,21 +673,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           {!collapsedSections.drives && <div className="space-y-1">
             {drives.map((drive) => {
+              const isPortable = drive.type === 'portable';
+              const driveRootPath = drive.rootPath ?? `${drive.letter}\\`;
               const hasCapacity = Number.isFinite(drive.totalBytes) && drive.totalBytes > 0;
               const usedPercentage = hasCapacity ? Math.min(100, Math.round((drive.usedBytes / drive.totalBytes) * 100)) : 0;
-              const isSelected = currentPath.startsWith(drive.letter);
+              const isSelected = drive.rootPath
+                ? isSameOrDescendantPath(currentPath, drive.rootPath)
+                : Boolean(drive.letter) && currentPath.toUpperCase().startsWith(`${drive.letter.toUpperCase()}\\`);
+              const portableIcon = drive.deviceSubtype === 'camera'
+                ? <Camera className={`w-3.5 h-3.5 flex-shrink-0 ${isSelected ? 'text-emerald-300' : 'text-emerald-400/80'}`} />
+                : drive.deviceSubtype === 'media'
+                  ? <Music className={`w-3.5 h-3.5 flex-shrink-0 ${isSelected ? 'text-emerald-300' : 'text-emerald-400/80'}`} />
+                  : <Smartphone className={`w-3.5 h-3.5 flex-shrink-0 ${isSelected ? 'text-emerald-300' : 'text-emerald-400/80'}`} />;
 
               return (
                 <div
                   key={drive.id}
                   role="button"
                   tabIndex={0}
-                  onClick={() => onOpenDrive ? onOpenDrive(drive.letter + '\\') : onNavigate(drive.letter + '\\')}
+                  onClick={() => onOpenDrive ? onOpenDrive(driveRootPath) : onNavigate(driveRootPath)}
                   onKeyDown={event => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault();
-                      if (onOpenDrive) onOpenDrive(drive.letter + '\\');
-                      else onNavigate(drive.letter + '\\');
+                      if (onOpenDrive) onOpenDrive(driveRootPath);
+                      else onNavigate(driveRootPath);
                     }
                   }}
                   className={`group w-full text-left p-2 rounded-lg border transition-all cursor-pointer ${
@@ -688,13 +707,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 >
                   <div className="flex items-center justify-between mb-1.5 gap-1">
                     <div className="flex min-w-0 items-center gap-1.5">
-                      {drive.type === 'network' ? (
+                      {isPortable ? (
+                        portableIcon
+                      ) : drive.type === 'network' ? (
                         <Network className={`w-3.5 h-3.5 flex-shrink-0 ${isSelected ? 'text-indigo-300' : 'text-indigo-400/80'}`} />
                       ) : (
                         <HardDrive className={`w-3.5 h-3.5 flex-shrink-0 ${isSelected ? 'text-cyan-400' : 'text-neutral-400'}`} />
                       )}
-                      <span className="font-sans font-bold text-xs flex-shrink-0">{drive.letter}</span>
-                      <span className="text-[11px] text-neutral-400 truncate max-w-[100px]">{drive.label}</span>
+                      {!isPortable && <span className="font-sans font-bold text-xs flex-shrink-0">{drive.letter}</span>}
+                      <span className={`truncate ${isPortable ? 'text-xs font-medium text-neutral-200' : 'text-[11px] text-neutral-400 max-w-[100px]'}`}>{drive.label}</span>
                     </div>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       {drive.type === 'network' && onDisconnectNetworkDrive && (
@@ -712,24 +733,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           </button>
                         </Tooltip>
                       )}
-                      <span className="text-[10px] text-neutral-400 font-sans">{hasCapacity ? `${usedPercentage}%` : '—'}</span>
+                      {(!isPortable || hasCapacity) && (
+                        <span className="text-[10px] text-neutral-400 font-sans">{hasCapacity ? `${usedPercentage}%` : '—'}</span>
+                      )}
                     </div>
                   </div>
 
-                  {/* Usage Meter Bar */}
-                  <div className="w-full h-1 bg-neutral-800 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${
-                        usedPercentage > 85 ? 'bg-rose-500' : usedPercentage > 65 ? 'bg-amber-400' : 'bg-cyan-500'
-                      }`}
-                      style={{ width: hasCapacity ? `${usedPercentage}%` : '0%' }}
-                    />
-                  </div>
+                  {isPortable && !hasCapacity ? (
+                    <div className="truncate text-[10px] text-neutral-400 font-sans">
+                      {drive.deviceTypeLabel || t.pane.portableDevice}
+                    </div>
+                  ) : (
+                    <>
+                      {/* Usage Meter Bar */}
+                      <div className="w-full h-1 bg-neutral-800 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full ${
+                            usedPercentage > 85 ? 'bg-rose-500' : usedPercentage > 65 ? 'bg-amber-400' : 'bg-cyan-500'
+                          }`}
+                          style={{ width: hasCapacity ? `${usedPercentage}%` : '0%' }}
+                        />
+                      </div>
 
-                  <div className="flex justify-between text-[9px] text-neutral-400 mt-1 font-sans">
-                    <span>{t.sidebar.freeOf.replace('{free}', hasCapacity ? formatFileSize(drive.totalBytes - drive.usedBytes) : '—')}</span>
-                    <span>{t.sidebar.totalOf.replace('{total}', hasCapacity ? formatFileSize(drive.totalBytes) : '—')}</span>
-                  </div>
+                      <div className="flex justify-between text-[9px] text-neutral-400 mt-1 font-sans">
+                        <span>{t.sidebar.freeOf.replace('{free}', hasCapacity ? formatFileSize(drive.totalBytes - drive.usedBytes) : '—')}</span>
+                        <span>{t.sidebar.totalOf.replace('{total}', hasCapacity ? formatFileSize(drive.totalBytes) : '—')}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               );
             })}

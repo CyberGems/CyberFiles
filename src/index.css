@@ -941,6 +941,7 @@ html[data-theme='gray'] {
   --color-amber-300: oklch(0.85 0 0);
   --color-amber-400: oklch(0.75 0 0);
   --color-amber-500: oklch(0.65 0 0);
+  --color-emerald-300: oklch(0.85 0 0);
   --color-emerald-400: oklch(0.75 0 0);
   --color-rose-200: oklch(0.90 0 0);
   --color-rose-300: oklch(0.80 0 0);
@@ -1260,6 +1261,11 @@ html[data-theme='light'] [data-system-home-icon='removable'] {
 html[data-theme='light'] [data-system-home-icon='network'] {
   color: #4f46e5 !important;
   background-color: rgb(99 102 241 / 13%) !important;
+}
+
+html[data-theme='light'] [data-system-home-icon='portable'] {
+  color: #047857 !important;
+  background-color: rgb(16 185 129 / 13%) !important;
 }
 
 .theme-preview {

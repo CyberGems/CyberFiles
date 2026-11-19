@@ -45,8 +45,13 @@ import {
   getItemsInTree,
   getUniqueName,
   getPathDriveLetter,
+  getPortableDeviceRoot,
   getUncHostRoot,
   isPathOnUnavailableDrive,
+  isPathOnUnavailablePortableDevice,
+  isPortableDeviceRoot,
+  isPortablePath,
+  isPortableStorageRoot,
   isSameOrDescendantPath,
   isTextPreviewableFile,
   isMediaPreviewPath,
@@ -1140,7 +1145,7 @@ export default function App() {
   const [quickAccessOrder, setQuickAccessOrder] = useState<string[]>(readQuickAccessOrder);
   const rememberRecentFolder = useCallback((value: string) => {
     const path = normalizeWindowsPath(value.trim());
-    if (!path || path.length > 32767 || path === SYSTEM_HOME_PATH || path === RECYCLE_BIN_PATH || path.startsWith('::')) return;
+    if (!path || path.length > 32767 || path === SYSTEM_HOME_PATH || path === RECYCLE_BIN_PATH || path.startsWith('::') || isPortablePath(path)) return;
     setRecentFolderPaths(previous => {
       return [path, ...previous.filter(existing => getPathKey(existing) !== getPathKey(path))].slice(0, 10);
     });
@@ -1186,18 +1191,22 @@ export default function App() {
       videos: t.sidebar.videos,
     };
     const items: FileItem[] = [
-      ...drives.map(drive => ({
-        id: `system-drive-${drive.id}`,
-        name: drive.label && drive.label.toLowerCase() !== drive.letter.toLowerCase()
-          ? `${drive.label} (${drive.letter})`
-          : drive.letter,
-        path: `${drive.letter}\\`,
-        isFolder: true,
-        type: 'folder' as const,
-        size: 0,
-        modifiedDate: '',
-        extension: '',
-      })),
+      ...drives
+        .filter(drive => drive.type !== 'portable' || Boolean(drive.rootPath))
+        .map(drive => ({
+          id: `system-drive-${drive.id}`,
+          name: drive.type === 'portable'
+            ? (drive.label || drive.id)
+            : (drive.label && drive.label.toLowerCase() !== drive.letter.toLowerCase()
+              ? `${drive.label} (${drive.letter})`
+              : drive.letter),
+          path: drive.type === 'portable' ? drive.rootPath! : `${drive.letter}\\`,
+          isFolder: true,
+          type: 'folder' as const,
+          size: 0,
+          modifiedDate: '',
+          extension: '',
+        })),
       ...systemLocations.map(location => ({
         id: `system-location-${location.id}`,
         name: locationLabels[location.id],
@@ -1409,7 +1418,7 @@ export default function App() {
   }, [folderHandlerExceptions]);
 
   const isExplorerExceptionFolder = useCallback((folderPath: string) => {
-    if (windowsFolderHandlerStatus !== 'on' || !folderPath || folderPath.startsWith('::')) return false;
+    if (windowsFolderHandlerStatus !== 'on' || !folderPath || folderPath.startsWith('::') || isPortablePath(folderPath)) return false;
     const normalizedTarget = getPathKey(folderPath);
     if (!normalizedTarget) return false;
     return folderHandlerExceptions.some(entry => {
@@ -1421,7 +1430,7 @@ export default function App() {
   }, [windowsFolderHandlerStatus, folderHandlerExceptions]);
 
   const handleToggleExplorerException = useCallback(async (item: FileItem) => {
-    if (!isTauriDesktop() || !item.isFolder || item.path.startsWith('::')) return;
+    if (!isTauriDesktop() || !item.isFolder || item.path.startsWith('::') || isPortablePath(item.path)) return;
     const key = getPathKey(item.path);
     const exists = folderHandlerExceptions.some(entry => getPathKey(entry.path) === key);
     const next = exists
@@ -1459,7 +1468,7 @@ export default function App() {
     recentFileActions.saveEntries(next);
   }, []);
   const recordRecentFile = useCallback((item: FileItem) => {
-    if (item.isFolder || item.recycleBinId || item.path.startsWith('::')) return;
+    if (item.isFolder || item.recycleBinId || item.path.startsWith('::') || isPortablePath(item.path)) return;
     setRecentEntries(previous => {
       const next = recordRecentEntry(previous, item);
       recentFileActions.saveEntries(next);
@@ -2705,69 +2714,88 @@ export default function App() {
   const savedFolderStylesRef = useRef(savedFolderStyles);
   savedFolderStylesRef.current = savedFolderStyles;
   const knownDriveLettersRef = useRef<Set<string> | null>(null);
+  const knownPortableDevicesRef = useRef<Map<string, string> | null>(null);
 
   const evictUnavailableDriveState = useCallback((availableDrives: DriveInfo[], resetHistory = false) => {
     if (availableDrives.length === 0) return;
     const availableLetters = new Set(availableDrives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean));
     if (availableLetters.size === 0) return;
+    const availablePortableRoots = new Set(
+      availableDrives
+        .filter(drive => drive.type === 'portable' && drive.rootPath)
+        .map(drive => getPathKey(drive.rootPath!)),
+    );
+    const isPathUnavailable = (path: string) => (
+      isPathOnUnavailableDrive(path, availableLetters)
+      || isPathOnUnavailablePortableDevice(path, availablePortableRoots)
+    );
 
     for (const key of [...nativeLoadedDirectories.current]) {
-      if (isPathOnUnavailableDrive(key, availableLetters)) {
+      if (isPathUnavailable(key)) {
         nativeLoadedDirectories.current.delete(key);
       }
     }
     for (const key of [...nativeInFlightDirectories.current.keys()]) {
-      if (isPathOnUnavailableDrive(key, availableLetters)) {
+      if (isPathUnavailable(key)) {
         nativeInFlightDirectories.current.delete(key);
       }
     }
     for (const entry of [...selectAllAfterLoad.current]) {
       const separator = entry.indexOf(':');
       const pathPart = separator >= 0 ? entry.slice(separator + 1) : entry;
-      if (isPathOnUnavailableDrive(pathPart, availableLetters)) {
+      if (isPathUnavailable(pathPart)) {
         selectAllAfterLoad.current.delete(entry);
       }
     }
     for (const entry of [...flatSelectAllAfterLoad.current]) {
       const separator = entry.indexOf('\u0000');
       const pathPart = separator >= 0 ? entry.slice(separator + 1) : entry;
-      if (isPathOnUnavailableDrive(pathPart, availableLetters)) {
+      if (isPathUnavailable(pathPart)) {
         flatSelectAllAfterLoad.current.delete(entry);
       }
     }
 
-    const staleFlatRoots = Object.keys(flatDirectoriesRef.current).filter(key => isPathOnUnavailableDrive(key, availableLetters));
+    const staleFlatRoots = Object.keys(flatDirectoriesRef.current).filter(key => isPathUnavailable(key));
     if (staleFlatRoots.length > 0) {
       invalidateFlatDirectories(staleFlatRoots);
     }
 
     setNativeDirectories(previous => {
       const keys = Object.keys(previous);
-      if (!keys.some(key => isPathOnUnavailableDrive(key, availableLetters))) return previous;
-      return Object.fromEntries(Object.entries(previous).filter(([key]) => !isPathOnUnavailableDrive(key, availableLetters)));
+      if (!keys.some(key => isPathUnavailable(key))) return previous;
+      return Object.fromEntries(Object.entries(previous).filter(([key]) => !isPathUnavailable(key)));
     });
 
     setAllFiles(previous => {
-      if (!previous.some(item => isPathOnUnavailableDrive(item.path, availableLetters))) return previous;
-      return previous.filter(item => !isPathOnUnavailableDrive(item.path, availableLetters));
+      if (!previous.some(item => isPathUnavailable(item.path))) return previous;
+      return previous.filter(item => !isPathUnavailable(item.path));
     });
 
     const redirectTabs = (tabs: TabState[], pane: 'left' | 'right') => {
-      if (!tabs.some(tab => isPathOnUnavailableDrive(tab.currentPath, availableLetters))) {
+      if (!tabs.some(tab => isPathUnavailable(tab.currentPath))) {
         return tabs;
       }
       systemHomeWorkspace.current = true;
       nativeRootPath.current = SYSTEM_HOME_PATH;
       return tabs.map(tab => {
-        if (!isPathOnUnavailableDrive(tab.currentPath, availableLetters)) return tab;
-        /* Capture the last path on the removed drive before the history is
-           rewritten, so reconnecting can offer to go back to it. */
+        if (!isPathUnavailable(tab.currentPath)) return tab;
+        /* Capture the last path on the removed drive or portable device before
+           history is rewritten, so reconnecting can offer to go back to it. */
         const match = tab.currentPath.match(/^([A-Z]):/i);
         if (match) {
           const key = match[1].toUpperCase();
           const existing = reconnectPathsRef.current.get(key);
           if (!existing || isSameOrDescendantPath(existing.path, tab.currentPath)) {
             reconnectPathsRef.current.set(key, { path: tab.currentPath, pane });
+          }
+        } else {
+          const portableRoot = getPortableDeviceRoot(tab.currentPath);
+          if (portableRoot) {
+            const key = getPathKey(portableRoot);
+            const existing = reconnectPathsRef.current.get(key);
+            if (!existing || isSameOrDescendantPath(existing.path, tab.currentPath)) {
+              reconnectPathsRef.current.set(key, { path: tab.currentPath, pane });
+            }
           }
         }
         const rememberedStyle = getNavigationFolderStyle(tab, folderStyleLockedRef.current, savedFolderStylesRef.current);
@@ -2776,7 +2804,7 @@ export default function App() {
           ? []
           : tab.history
               .slice(0, tab.historyIndex + 1)
-              .filter(entry => !isPathOnUnavailableDrive(entry, availableLetters));
+              .filter(entry => !isPathUnavailable(entry));
         const history = retainedHistory[retainedHistory.length - 1] === SYSTEM_HOME_PATH
           ? retainedHistory.slice(-MAX_TAB_HISTORY_ENTRIES)
           : [...retainedHistory, SYSTEM_HOME_PATH].slice(-MAX_TAB_HISTORY_ENTRIES);
@@ -2816,6 +2844,14 @@ export default function App() {
       const nextLetters = new Set(nextDrives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean));
       const previousLetters = knownDriveLettersRef.current;
       knownDriveLettersRef.current = nextLetters;
+      const nextPortableDevices = new Map<string, string>();
+      for (const drive of nextDrives) {
+        if (drive.type === 'portable' && drive.rootPath) {
+          nextPortableDevices.set(getPathKey(drive.rootPath), drive.label || drive.id);
+        }
+      }
+      const previousPortableDevices = knownPortableDevicesRef.current;
+      knownPortableDevicesRef.current = nextPortableDevices;
       if (notifyDriveChanges && previousLetters !== null && nextLetters.size > 0) {
         const currentLanguage = languageRef.current;
         const added = [...nextLetters].filter(letter => !previousLetters.has(letter)).map(letter => `${letter}:`);
@@ -2846,6 +2882,31 @@ export default function App() {
         if (removed.length > 0) {
           showToast(currentLanguage === 'es' ? `Unidad retirada: ${removed.join(', ')}` : `Drive removed: ${removed.join(', ')}`);
         }
+        if (previousPortableDevices !== null) {
+          const addedPortable = [...nextPortableDevices.entries()].filter(([key]) => !previousPortableDevices.has(key));
+          const removedPortable = [...previousPortableDevices.entries()].filter(([key]) => !nextPortableDevices.has(key));
+          for (const [key, label] of addedPortable) {
+            const remembered = reconnectPathsRef.current.get(key);
+            if (remembered) {
+              reconnectPathsRef.current.delete(key);
+              showToast(
+                t.core.deviceConnected.replace('{name}', label),
+                remembered.path,
+                {
+                  label: currentLanguage === 'es' ? 'Volver a la carpeta' : 'Back to folder',
+                  run: () => {
+                    void handleNavigateRef.current(remembered.path, remembered.pane, true);
+                  },
+                },
+              );
+              continue;
+            }
+            showToast(t.core.deviceConnected.replace('{name}', label));
+          }
+          if (removedPortable.length > 0) {
+            showToast(t.core.deviceDisconnected.replace('{name}', removedPortable.map(([, label]) => label).join(', ')));
+          }
+        }
       }
       drivesRef.current = nextDrives;
       setDrives(nextDrives);
@@ -2861,7 +2922,7 @@ export default function App() {
       if (notifyDriveChanges) suppressFolderErrorRef.current = false;
       setSystemHomeLoading(false);
     }
-  }, [evictUnavailableDriveState, language, showToast]);
+  }, [evictUnavailableDriveState, language, showToast, t]);
 
   useEffect(() => {
     void refreshSystemHome();
@@ -2987,9 +3048,14 @@ export default function App() {
         .sort((a, b) => {
           const letterA = a.path.match(/^([A-Z]):\\/i)?.[1]?.toUpperCase() ?? '';
           const letterB = b.path.match(/^([A-Z]):\\/i)?.[1]?.toUpperCase() ?? '';
-          if (letterA === 'C') return letterB === 'C' ? 0 : -1;
-          if (letterB === 'C') return 1;
-          return letterA.localeCompare(letterB);
+          if (letterA || letterB) {
+            if (!letterA) return 1;
+            if (!letterB) return -1;
+            if (letterA === 'C') return letterB === 'C' ? 0 : -1;
+            if (letterB === 'C') return 1;
+            return letterA.localeCompare(letterB);
+          }
+          return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
         });
       return [
         ...sortFiles(commonFolders, tabState.sortField, tabState.sortOrder),
@@ -3090,8 +3156,19 @@ export default function App() {
         return;
       }
     }
+    const targetPortableRoot = getPortableDeviceRoot(targetPath);
+    if (targetPortableRoot && drivesRef.current.length > 0) {
+      const targetPortableKey = getPathKey(targetPortableRoot);
+      const isPortableConnected = drivesRef.current.some(
+        drive => drive.type === 'portable' && drive.rootPath && getPathKey(drive.rootPath) === targetPortableKey,
+      );
+      if (!isPortableConnected) {
+        evictUnavailableDriveState(drivesRef.current);
+        return;
+      }
+    }
     if (forceRefresh && targetPath !== SYSTEM_HOME_PATH && targetPath !== RECYCLE_BIN_PATH && targetPath !== RECENT_PATH && targetPath !== NETWORK_PATH) invalidateFlatDirectories([targetPath]);
-    if (targetPath === SYSTEM_HOME_PATH || targetPath === NETWORK_PATH || isUncPath(targetPath)) {
+    if (targetPath === SYSTEM_HOME_PATH || targetPath === NETWORK_PATH || isUncPath(targetPath) || isPortablePath(targetPath)) {
       systemHomeWorkspace.current = true;
       nativeRootPath.current = SYSTEM_HOME_PATH;
     }
@@ -3341,12 +3418,20 @@ export default function App() {
            away so the tab moves to This PC immediately even before the
            background watcher poll fires. */
         const targetDrive = getPathDriveLetter(targetPath);
+        const failedPortableRoot = getPortableDeviceRoot(targetPath);
+        const hasPortableRoot = (list: DriveInfo[], root: string) => (
+          list.some(drive => drive.type === 'portable' && drive.rootPath && getPathKey(drive.rootPath) === getPathKey(root))
+        );
         let driveGone = targetDrive
           ? !drivesRef.current.some(drive => normalizeDriveLetter(drive.letter) === targetDrive)
-          : false;
-        if (targetDrive && !driveGone) {
+          : (failedPortableRoot && drivesRef.current.length > 0 ? !hasPortableRoot(drivesRef.current, failedPortableRoot) : false);
+        if ((targetDrive || failedPortableRoot) && !driveGone) {
           const latestDrives = await refreshSystemHomeRef.current(true);
-          driveGone = latestDrives.length > 0 && !latestDrives.some(drive => normalizeDriveLetter(drive.letter) === targetDrive);
+          driveGone = latestDrives.length > 0 && (
+            targetDrive
+              ? !latestDrives.some(drive => normalizeDriveLetter(drive.letter) === targetDrive)
+              : !hasPortableRoot(latestDrives, failedPortableRoot!)
+          );
         }
         if (driveGone) {
           evictUnavailableDriveState(drivesRef.current);
@@ -3713,7 +3798,23 @@ export default function App() {
     let cancelled = false;
     let unlisten: (() => void) | undefined;
     void listen('drives-changed', () => {
-      void refreshSystemHomeRef.current(true);
+      void refreshSystemHomeRef.current(true).then(nextDrives => {
+        const connectedPortableRoots = new Set(
+          nextDrives
+            .filter(drive => drive.type === 'portable' && drive.rootPath)
+            .map(drive => getPathKey(drive.rootPath!)),
+        );
+        if (connectedPortableRoots.size === 0) return;
+        const activeTabs: Array<{ pane: 'left' | 'right'; tab: TabState | undefined }> = [
+          { pane: 'left', tab: leftTabsRef.current[activeLeftTabIndexRef.current] },
+          { pane: 'right', tab: rightTabsRef.current[activeRightTabIndexRef.current] },
+        ];
+        for (const { pane, tab } of activeTabs) {
+          if (tab && isPortableDeviceRoot(tab.currentPath) && connectedPortableRoots.has(getPathKey(tab.currentPath))) {
+            void handleNavigateRef.current(tab.currentPath, pane, true);
+          }
+        }
+      });
     }).then(stop => {
       if (cancelled) stop();
       else unlisten = stop;
@@ -3733,6 +3834,13 @@ export default function App() {
     if (!isTauriDesktop() || systemHomeLoading || drives.length === 0) return;
     if (knownDriveLettersRef.current === null) {
       knownDriveLettersRef.current = new Set(drives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean));
+    }
+    if (knownPortableDevicesRef.current === null) {
+      knownPortableDevicesRef.current = new Map(
+        drives
+          .filter(drive => drive.type === 'portable' && drive.rootPath)
+          .map(drive => [getPathKey(drive.rootPath!), drive.label || drive.id]),
+      );
     }
     evictUnavailableDriveState(drives);
   }, [drives, systemHomeLoading, evictUnavailableDriveState]);
@@ -3858,7 +3966,7 @@ export default function App() {
       void handleNavigate(NETWORK_PATH, targetPane);
       return;
     }
-    if (isWindowsDriveRoot(currentPath)) {
+    if (isWindowsDriveRoot(currentPath) || isPortableDeviceRoot(currentPath)) {
       if (systemHomeWorkspace.current || activeTabObj.history.includes(SYSTEM_HOME_PATH)) {
         handleNavigate(SYSTEM_HOME_PATH, targetPane);
       }
@@ -4444,12 +4552,14 @@ export default function App() {
             } else if (result.completedPaths.length > 0) {
               const leafName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
               if (operation.kind === 'copy') {
+                const portableTargets = result.completedPaths.some(path => isPortablePath(path));
                 actions.pushUndoAction({
                   kind: 'copy',
                   name: leafName(result.completedPaths[0]),
                   count: result.completedPaths.length,
-                  canUndo: true,
-                  undo: { type: 'remove', paths: result.completedPaths },
+                  canUndo: !portableTargets,
+                  blockedReason: portableTargets ? actions.t.toolbar.undoRecycleUnavailable : undefined,
+                  undo: portableTargets ? null : { type: 'remove', paths: result.completedPaths },
                 });
               } else if (operation.kind === 'move') {
                 const allSucceeded = result.failures.length === 0 && result.completedPaths.length === operation.sourcePaths.length;
@@ -4991,7 +5101,12 @@ export default function App() {
       showToast(t.pane.chooseRealDestinationFolder);
       return;
     }
-    const roots = getRootItems(allFiles, selectedIds);
+    if (isPortableDeviceRoot(targetPath)) {
+      showToast(t.pane.portableChooseStorageFirst);
+      return;
+    }
+    const roots = getRootItems(allFiles, selectedIds)
+      .filter(root => !isPortableDeviceRoot(root.path) && !isPortableStorageRoot(root.path));
     if (roots.length === 0) return;
 
     if (roots.some(root => root.isFolder && isSameOrDescendantPath(targetPath, root.path))) {
@@ -5046,16 +5161,21 @@ export default function App() {
 
     updatePaneTab(sourcePane, tab => ({ ...tab, selectedIds: [], focusedId: null }));
     showToast(t.core.moved.replace('{count}', String(roots.length)).replace('{target}', targetPath));
-  }, [activePane, allFiles, pushUndoAction, queueNativeTransfer, t.core.cannotMoveIntoSelf, t.core.moved, t.pane.chooseRealDestinationFolder, showToast, updatePaneTab]);
+  }, [activePane, allFiles, pushUndoAction, queueNativeTransfer, t.core.cannotMoveIntoSelf, t.core.moved, t.pane.chooseRealDestinationFolder, t.pane.portableChooseStorageFirst, showToast, updatePaneTab]);
 
   const handleCopySelectedFromPane = useCallback((sourcePane: 'left' | 'right') => {
     const sourceTab = sourcePane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
     const destinationTab = sourcePane === 'left' ? rightTabs[activeRightTabIndex] : leftTabs[activeLeftTabIndex];
-    const roots = getRootItems(allFiles, sourceTab.selectedIds);
+    const roots = getRootItems(allFiles, sourceTab.selectedIds)
+      .filter(root => !isPortableDeviceRoot(root.path) && !isPortableStorageRoot(root.path));
     if (roots.length === 0) return;
     const targetPath = destinationTab.currentPath;
     if (targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH || targetPath === RECENT_PATH) {
       showToast(t.pane.chooseRealDestinationFolder);
+      return;
+    }
+    if (isPortableDeviceRoot(targetPath)) {
+      showToast(t.pane.portableChooseStorageFirst);
       return;
     }
     if (roots.some(root => root.isFolder && isSameOrDescendantPath(targetPath, root.path))) {
@@ -5086,7 +5206,7 @@ export default function App() {
 
     setAllFiles(prev => [...prev, ...newCopies]);
     showToast(t.core.copied.replace('{count}', String(roots.length)).replace('{target}', destinationTab.title));
-  }, [activeLeftTabIndex, activeRightTabIndex, allFiles, leftTabs, rightTabs, showToast, startCopyWithProgress, t.core.cannotCopyIntoSelf, t.core.copied, t.pane.chooseRealDestinationFolder]);
+  }, [activeLeftTabIndex, activeRightTabIndex, allFiles, leftTabs, rightTabs, showToast, startCopyWithProgress, t.core.cannotCopyIntoSelf, t.core.copied, t.pane.chooseRealDestinationFolder, t.pane.portableChooseStorageFirst]);
 
   const handleCopySelected = useCallback(() => {
     handleCopySelectedFromPane(activePane);
@@ -5111,7 +5231,9 @@ export default function App() {
     const selectedIds = item
       ? paneTab.selectedIds.includes(item.id) ? paneTab.selectedIds : [item.id]
       : paneTab.selectedIds;
-    const roots = getRootItems(allFiles, selectedIds).filter(file => !file.recycleBinId && !file.path.startsWith('::'));
+    const roots = getRootItems(allFiles, selectedIds).filter(
+      file => !file.recycleBinId && !file.path.startsWith('::') && !isPortableDeviceRoot(file.path) && !isPortableStorageRoot(file.path),
+    );
     if (roots.length === 0) {
       showToast(t.core.noSelection);
       return;
@@ -5134,6 +5256,10 @@ export default function App() {
     const targetPath = destinationOverride || paneTab.currentPath;
     if (!targetPath || targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH || targetPath === RECENT_PATH) {
       showToast(t.pane.chooseRealFolderFirst);
+      return;
+    }
+    if (isPortableDeviceRoot(targetPath)) {
+      showToast(t.pane.portableChooseStorageFirst);
       return;
     }
     try {
@@ -5165,12 +5291,14 @@ export default function App() {
           resultPath: pastedImage.path,
           completedPaths: [pastedImage.path],
         });
+        const isPortableTarget = isPortablePath(pastedImage.path);
         pushUndoAction({
           kind: 'create',
           name: pastedImage.name,
           count: 1,
-          canUndo: true,
-          undo: { type: 'remove', paths: [pastedImage.path] },
+          canUndo: !isPortableTarget,
+          blockedReason: isPortableTarget ? t.toolbar.undoRecycleUnavailable : undefined,
+          undo: isPortableTarget ? null : { type: 'remove', paths: [pastedImage.path] },
         });
         await refreshChangedDirectories([targetPath]);
         const createdAtMs = pastedImage.createdMs ?? pastedImage.modifiedMs ?? Date.now();
@@ -5201,14 +5329,20 @@ export default function App() {
     } catch (error) {
       showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
     }
-  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, pushUndoAction, queueNativeTransfer, recordTransferOperation, refreshChangedDirectories, rightTabs, showToast, t.core.clipboardImageFileBaseName, t.core.desktopFileOperationsOnly, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.pastedImage, t.pane.chooseRealFolderFirst, updatePaneTab]);
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, pushUndoAction, queueNativeTransfer, recordTransferOperation, refreshChangedDirectories, rightTabs, showToast, t.core.clipboardImageFileBaseName, t.core.desktopFileOperationsOnly, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.pastedImage, t.pane.chooseRealFolderFirst, t.pane.portableChooseStorageFirst, t.toolbar.undoRecycleUnavailable, updatePaneTab]);
   const handleDropFiles = useCallback((droppedItems: DraggedFileItem[], targetFolderPath: string, sourcePane: 'left' | 'right', operation: FileDropOperation) => {
     if (targetFolderPath === SYSTEM_HOME_PATH || targetFolderPath === RECYCLE_BIN_PATH || targetFolderPath === RECENT_PATH) {
       showToast(t.pane.chooseRealDestinationFolder);
       return;
     }
+    if (isPortableDeviceRoot(targetFolderPath)) {
+      showToast(t.pane.portableChooseStorageFirst);
+      return;
+    }
     const roots = droppedItems.filter(item =>
-      !droppedItems.some(other => other.id !== item.id && other.isFolder && isSameOrDescendantPath(item.path, other.path))
+      !isPortableDeviceRoot(item.path)
+      && !isPortableStorageRoot(item.path)
+      && !droppedItems.some(other => other.id !== item.id && other.isFolder && isSameOrDescendantPath(item.path, other.path))
     );
     if (roots.length === 0) return;
     if (roots.some(root => root.isFolder && isSameOrDescendantPath(targetFolderPath, root.path))) {
@@ -5241,10 +5375,13 @@ export default function App() {
       return;
     }
     void moveItemsToPath(roots.map(root => root.id), targetFolderPath, sourcePane);
-  }, [allFiles, moveItemsToPath, queueNativeTransfer, showToast, t.core.cannotCopyIntoSelf, t.core.cannotMoveIntoSelf, t.core.copied, t.pane.chooseRealDestinationFolder]);
+  }, [allFiles, moveItemsToPath, queueNativeTransfer, showToast, t.core.cannotCopyIntoSelf, t.core.cannotMoveIntoSelf, t.core.copied, t.pane.chooseRealDestinationFolder, t.pane.portableChooseStorageFirst]);
 
   const handleInlineRename = useCallback(async (itemId: string, newName: string, pane: 'left' | 'right' = activePane) => {
     const item = allFiles.find(file => file.id === itemId);
+    if (item && (isPortableDeviceRoot(item.path) || isPortableStorageRoot(item.path))) {
+      return;
+    }
     if (!item || !isValidFileName(newName)) {
       showToast(t.core.invalidName);
       return;
@@ -5357,6 +5494,9 @@ export default function App() {
   }, [activePane, allFiles, isFileOperationBusy, pushUndoAction, recordTransferOperation, refreshChangedDirectories, renameRecentPairs, showToast, t.core.conflict, t.core.invalidName, t.core.operationFailedWithReason, t.core.renamed, updatePaneTab]);
 
   const beginInlineRename = useCallback((item: FileItem, paneId: 'left' | 'right') => {
+    if (isPortableDeviceRoot(item.path) || isPortableStorageRoot(item.path)) {
+      return;
+    }
     if (item.recycleBinId) {
       showToast(t.core.recycleBinRestoreFirst);
       return;
@@ -5574,12 +5714,19 @@ export default function App() {
       showToast(t.pane.chooseRealFolderFirst);
       return;
     }
+    if (isPortableDeviceRoot(activePath)) {
+      showToast(t.pane.portableChooseStorageFirst);
+      return;
+    }
+    if (kind === 'shortcut' && isPortablePath(activePath)) {
+      return;
+    }
     if (kind !== 'folder' && !isTauriDesktop()) {
       showToast(t.core.desktopFileOperationsOnly);
       return;
     }
     setPendingCreateItem({ kind, pane, parentPath: activePath, suggestedName });
-  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, rightTabs, showToast, t.core.desktopFileOperationsOnly, t.pane.chooseRealFolderFirst, t.pane.noFolderOpen]);
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, rightTabs, showToast, t.core.desktopFileOperationsOnly, t.pane.chooseRealFolderFirst, t.pane.noFolderOpen, t.pane.portableChooseStorageFirst]);
 
 
   const openZipCreation = useCallback((items: FileItem[], targetPath: string, pane: 'left' | 'right') => {
@@ -5587,7 +5734,11 @@ export default function App() {
       showToast(t.core.desktopFileOperationsOnly);
       return;
     }
-    if (!targetPath || targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH || targetPath === RECENT_PATH) {
+    if (!targetPath || targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH || targetPath === RECENT_PATH || isPortablePath(targetPath)) {
+      showToast(t.pane.chooseRealFolderFirst);
+      return;
+    }
+    if (items.some(item => isPortablePath(item.path))) {
       showToast(t.pane.chooseRealFolderFirst);
       return;
     }
@@ -5613,7 +5764,7 @@ export default function App() {
   const handleCreateZip = useCallback((archiveName: string, targetPath: string) => {
     const request = pendingZipCreation;
     if (!request) return;
-    if (!targetPath || targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH || targetPath === RECENT_PATH) {
+    if (!targetPath || targetPath === SYSTEM_HOME_PATH || targetPath === RECYCLE_BIN_PATH || targetPath === RECENT_PATH || isPortablePath(targetPath) || request.sourcePaths.some(path => isPortablePath(path))) {
       showToast(t.pane.chooseRealFolderFirst);
       return;
     }
@@ -5686,12 +5837,14 @@ export default function App() {
           resultPath: created.path,
           completedPaths: [created.path],
         });
+        const isPortableTarget = isPortablePath(created.path);
         pushUndoAction({
           kind: 'create',
           name: created.name,
           count: 1,
-          canUndo: true,
-          undo: { type: 'remove', paths: [created.path] },
+          canUndo: !isPortableTarget,
+          blockedReason: isPortableTarget ? t.toolbar.undoRecycleUnavailable : undefined,
+          undo: isPortableTarget ? null : { type: 'remove', paths: [created.path] },
         });
         await refreshChangedDirectories([request.parentPath]);
         const refreshedListing = await listNativeDirectory(request.parentPath);
@@ -5779,7 +5932,7 @@ export default function App() {
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [allFiles, isFileOperationBusy, pendingCreateItem, pushUndoAction, recordTransferOperation, refreshChangedDirectories, showToast, t.core.createdFile, t.core.createdFolder, t.core.createdShortcut, t.core.desktopFileOperationsOnly, t.core.invalidName, t.core.operationFailedWithReason, t.core.shortcutTargetRequired, updatePaneTab]);
+  }, [allFiles, isFileOperationBusy, pendingCreateItem, pushUndoAction, recordTransferOperation, refreshChangedDirectories, showToast, t.core.createdFile, t.core.createdFolder, t.core.createdShortcut, t.core.desktopFileOperationsOnly, t.core.invalidName, t.core.operationFailedWithReason, t.core.shortcutTargetRequired, t.toolbar.undoRecycleUnavailable, updatePaneTab]);
 
   /* Deletes the given roots. Shared by the dialog and by the remembered answer, so both paths
      update the list, the toast and the undo stack in exactly the same way. */
@@ -5916,9 +6069,19 @@ export default function App() {
       return;
     }
     const idsToDelete = selectedItems.map(item => item.id);
-    const roots = getRootItems(allFiles, idsToDelete);
+    const roots = getRootItems(allFiles, idsToDelete)
+      .filter(item => !isPortableDeviceRoot(item.path) && !isPortableStorageRoot(item.path));
     if (roots.length === 0) {
       showToast(t.core.noSelection);
+      return;
+    }
+    if (roots.some(item => isPortablePath(item.path))) {
+      if (!deleteConfirmation.ask && deleteConfirmation.permanently) {
+        void performDelete(roots, true);
+        return;
+      }
+      setPendingDeletePermanent(true);
+      setPendingDeleteItems(roots);
       return;
     }
     /* The dialog was dismissed for good: run the remembered answer straight away. Shift does
@@ -6180,7 +6343,15 @@ export default function App() {
 
     if (drivesRef.current.length > 0) {
       const availableLetters = new Set(drivesRef.current.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean));
-      if (isPathOnUnavailableDrive(item.path, availableLetters)) {
+      const availablePortableRoots = new Set(
+        drivesRef.current
+          .filter(drive => drive.type === 'portable' && drive.rootPath)
+          .map(drive => getPathKey(drive.rootPath!)),
+      );
+      if (
+        isPathOnUnavailableDrive(item.path, availableLetters)
+        || isPathOnUnavailablePortableDevice(item.path, availablePortableRoots)
+      ) {
         showToast(t.sidebar.quickAccessDriveOfflineToast.replace('{name}', item.name));
         return;
       }
@@ -6442,7 +6613,7 @@ export default function App() {
       // Ctrl + B: Toggle Flat View
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')) {
         e.preventDefault();
-        const canToggleFlat = isTauriDesktop() && !!currentTab.currentPath && !currentTab.currentPath.startsWith('::');
+        const canToggleFlat = isTauriDesktop() && !!currentTab.currentPath && !currentTab.currentPath.startsWith('::') && !isPortablePath(currentTab.currentPath);
         if (canToggleFlat) {
           if (!currentTab.flatView && flatViewFolderCountRef.current >= FLAT_VIEW_CONFIRM_FOLDER_THRESHOLD) {
             setIsFlatViewConfirmOpen(true);
@@ -6611,7 +6782,7 @@ export default function App() {
   const currentDirectFolderCount = currentDirectCounts
     ? (showHiddenFiles ? currentDirectCounts.folderCount : currentDirectCounts.visibleFolderCount)
     : null;
-  const flatViewLocationAvailable = isTauriDesktop() && !!currentTab.currentPath && !currentTab.currentPath.startsWith('::') && !isUncServerRoot(currentTab.currentPath);
+  const flatViewLocationAvailable = isTauriDesktop() && !!currentTab.currentPath && !currentTab.currentPath.startsWith('::') && !isUncServerRoot(currentTab.currentPath) && !isPortablePath(currentTab.currentPath);
   const flatViewAvailable = flatViewLocationAvailable && (currentTab.flatView === true || (currentDirectFolderCount !== null && currentDirectFolderCount > 0));
   const flatViewTooltip = currentTab.flatView && flatViewLocationAvailable
     ? t.toolbar.flatViewDisableTooltip
@@ -6644,10 +6815,14 @@ export default function App() {
   const rightAtRecycleBin = rightTabs[activeRightTabIndex].currentPath === RECYCLE_BIN_PATH;
   const leftTransferTab = leftTabs[activeLeftTabIndex];
   const rightTransferTab = rightTabs[activeRightTabIndex];
-  const canTransferLeftToRight = effectiveLayout !== 'single' && getRootItems(allFiles, leftTransferTab.selectedIds).length > 0 &&
-    rightTransferTab.currentPath !== SYSTEM_HOME_PATH && rightTransferTab.currentPath !== RECYCLE_BIN_PATH;
-  const canTransferRightToLeft = effectiveLayout !== 'single' && getRootItems(allFiles, rightTransferTab.selectedIds).length > 0 &&
-    leftTransferTab.currentPath !== SYSTEM_HOME_PATH && leftTransferTab.currentPath !== RECYCLE_BIN_PATH;
+  const leftTransferRoots = getRootItems(allFiles, leftTransferTab.selectedIds)
+    .filter(item => !isPortableDeviceRoot(item.path) && !isPortableStorageRoot(item.path));
+  const rightTransferRoots = getRootItems(allFiles, rightTransferTab.selectedIds)
+    .filter(item => !isPortableDeviceRoot(item.path) && !isPortableStorageRoot(item.path));
+  const canTransferLeftToRight = effectiveLayout !== 'single' && leftTransferRoots.length > 0 &&
+    rightTransferTab.currentPath !== SYSTEM_HOME_PATH && rightTransferTab.currentPath !== RECYCLE_BIN_PATH && !isPortableDeviceRoot(rightTransferTab.currentPath);
+  const canTransferRightToLeft = effectiveLayout !== 'single' && rightTransferRoots.length > 0 &&
+    leftTransferTab.currentPath !== SYSTEM_HOME_PATH && leftTransferTab.currentPath !== RECYCLE_BIN_PATH && !isPortableDeviceRoot(leftTransferTab.currentPath);
   const contextPane = contextMenuPos?.paneId ?? activePane;
   const contextPaneTab = contextPane === 'left'
     ? leftTabs[activeLeftTabIndex]
@@ -6720,19 +6895,32 @@ export default function App() {
       ? currentTab.historyIndex > 0 || systemHomeWorkspace.current || currentTab.history.includes(SYSTEM_HOME_PATH)
       : currentTab.currentPath !== SYSTEM_HOME_PATH && (
         isUncServerRoot(currentTab.currentPath) ||
-        (isWindowsDriveRoot(currentTab.currentPath) && (systemHomeWorkspace.current || currentTab.history.includes(SYSTEM_HOME_PATH))) ||
+        ((isWindowsDriveRoot(currentTab.currentPath) || isPortableDeviceRoot(currentTab.currentPath)) && (systemHomeWorkspace.current || currentTab.history.includes(SYSTEM_HOME_PATH))) ||
         (Boolean(currentParentPath) && currentParentPath !== currentTab.currentPath && (
           systemHomeWorkspace.current || !activeWorkspaceRoot || isSameOrDescendantPath(currentParentPath, activeWorkspaceRoot)
         ))
       );
   const currentFolderIsReal = isCommandLocation(currentTab.currentPath);
   const oppositeFolderIsReal = isCommandLocation(inactiveTab.currentPath);
+  const canCreateInCurrentFolder = currentFolderIsReal && !isPortableDeviceRoot(currentTab.currentPath);
+  const oppositeFolderAcceptsTransfer = oppositeFolderIsReal && !isPortableDeviceRoot(inactiveTab.currentPath);
   const selectionDisabledReason = isFileOperationBusy
     ? t.commandPalette.disabled.operationBusy
     : selectedCount === 0 ? t.commandPalette.disabled.selectionRequired : undefined;
   const copyMoveDisabledReason = selectionDisabledReason ?? (
-    oppositeFolderIsReal ? undefined : t.commandPalette.disabled.destinationRequired
+    oppositeFolderAcceptsTransfer
+      ? undefined
+      : isPortableDeviceRoot(inactiveTab.currentPath)
+        ? t.pane.portableChooseStorageFirst
+        : t.commandPalette.disabled.destinationRequired
   );
+  const newFolderDisabledReason = isFileOperationBusy
+    ? t.commandPalette.disabled.operationBusy
+    : canCreateInCurrentFolder
+      ? undefined
+      : isPortableDeviceRoot(currentTab.currentPath)
+        ? t.pane.portableChooseStorageFirst
+        : t.commandPalette.disabled.realFolderRequired;
   const currentFolderDisabledReason = isFileOperationBusy
     ? t.commandPalette.disabled.operationBusy
     : currentFolderIsReal ? undefined : t.commandPalette.disabled.realFolderRequired;
@@ -6771,7 +6959,7 @@ export default function App() {
     { id: 'navigate-up', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.goUp, shortcut: 'Backspace', disabled: !canNavigateUpFromCurrent, disabledReason: canNavigateUpFromCurrent ? undefined : t.commandPalette.disabled.noParentFolder, keywords: 'parent folder back up', onSelect: () => handleNavigateUp(activePane) },
     { id: 'switch-pane', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.switchPane, shortcut: 'Tab', keywords: 'left right panel', onSelect: () => setActivePane(pane => pane === 'left' ? 'right' : 'left') },
     { id: 'select-all', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.selectAll, shortcut: 'Ctrl+A', disabled: activeDisplayFiles.length === 0 && !nativeDirectories[getPathKey(currentTab.currentPath)]?.loading, disabledReason: activeDisplayFiles.length === 0 && !nativeDirectories[getPathKey(currentTab.currentPath)]?.loading ? t.commandPalette.disabled.noVisibleItems : undefined, keywords: 'select everything', onSelect: handleSelectAllVisible },
-    { id: 'new-folder', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.newFolder, shortcut: 'F7', disabled: Boolean(currentFolderDisabledReason), disabledReason: currentFolderDisabledReason, keywords: 'create directory', onSelect: () => handleNewFolder() },
+    { id: 'new-folder', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.newFolder, shortcut: 'F7', disabled: Boolean(newFolderDisabledReason), disabledReason: newFolderDisabledReason, keywords: 'create directory', onSelect: () => handleNewFolder() },
     { id: 'copy-opposite', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.copyToOther, shortcut: 'F5', disabled: Boolean(copyMoveDisabledReason), disabledReason: copyMoveDisabledReason, keywords: 'duplicate copy files', onSelect: handleCopySelected },
     { id: 'move-opposite', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.moveToOther, shortcut: 'F6', disabled: Boolean(copyMoveDisabledReason), disabledReason: copyMoveDisabledReason, keywords: 'move files transfer', onSelect: handleMoveSelected },
     { id: 'rename-selection', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.rename, shortcut: 'F2', disabled: Boolean(selectionDisabledReason), disabledReason: selectionDisabledReason, keywords: 'change name', onSelect: handleRenameSelected },
@@ -6805,9 +6993,13 @@ export default function App() {
   ];
 
   const paletteAvailableDriveLetters = new Set(drives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean));
+  const paletteAvailablePortableRoots = new Set(
+    drives.filter(drive => drive.type === 'portable' && drive.rootPath).map(drive => getPathKey(drive.rootPath!)),
+  );
   const quickAccessPaths = new Set(sidebarQuickAccess.map(item => getPathKey(item.path)));
   const paletteQuickAccess: CommandPaletteCommand[] = sidebarQuickAccess.map(item => {
-    const isOffline = paletteAvailableDriveLetters.size > 0 && isPathOnUnavailableDrive(item.path, paletteAvailableDriveLetters);
+    const isOffline = (paletteAvailableDriveLetters.size > 0 && isPathOnUnavailableDrive(item.path, paletteAvailableDriveLetters))
+      || (drives.length > 0 && isPathOnUnavailablePortableDevice(item.path, paletteAvailablePortableRoots));
     const isVirtualSystemItem = item.path === SYSTEM_HOME_PATH || item.path === NETWORK_PATH;
     return {
       id: `quick-access-${item.id}`,
@@ -6825,17 +7017,29 @@ export default function App() {
     };
   });
   const paletteDrives: CommandPaletteCommand[] = drives
-    .filter(drive => !quickAccessPaths.has(getPathKey(`${drive.letter}\\`)))
-    .map(drive => ({
-      id: `drive-${drive.id}`,
-      group: t.commandPalette.groups.drives,
-      label: drive.label && drive.label.toLowerCase() !== drive.letter.toLowerCase() ? `${drive.label} (${drive.letter})` : drive.letter,
-      description: `${drive.letter}\\`,
-      keywords: `${drive.label} ${drive.letter} ${drive.type}`,
-      onSelect: () => handleOpenDrive(`${drive.letter}\\`, false),
-    }));
+    .filter(drive => {
+      const drivePath = drive.type === 'portable' ? drive.rootPath : `${drive.letter}\\`;
+      return Boolean(drivePath) && !quickAccessPaths.has(getPathKey(drivePath!));
+    })
+    .map(drive => {
+      const isPortable = drive.type === 'portable';
+      const drivePath = isPortable ? drive.rootPath! : `${drive.letter}\\`;
+      return {
+        id: `drive-${drive.id}`,
+        group: t.commandPalette.groups.drives,
+        label: isPortable
+          ? (drive.label || drive.id)
+          : (drive.label && drive.label.toLowerCase() !== drive.letter.toLowerCase() ? `${drive.label} (${drive.letter})` : drive.letter),
+        description: isPortable ? (drive.deviceTypeLabel || t.pane.portableDevice) : `${drive.letter}\\`,
+        keywords: `${drive.label} ${drive.letter} ${drive.type} ${drive.deviceTypeLabel ?? ''}`,
+        onSelect: () => handleOpenDrive(drivePath, false),
+      };
+    });
   const recentCommandPaths = new Set<string>(quickAccessPaths);
-  for (const drive of drives) recentCommandPaths.add(getPathKey(`${drive.letter}\\`));
+  for (const drive of drives) {
+    const drivePath = drive.type === 'portable' ? drive.rootPath : `${drive.letter}\\`;
+    if (drivePath) recentCommandPaths.add(getPathKey(drivePath));
+  }
   const paletteRecentFolders: CommandPaletteCommand[] = recentFolderPaths
     .filter(path => {
       const pathKey = getPathKey(path);
@@ -6845,7 +7049,8 @@ export default function App() {
     })
     .map((path, index) => {
       const name = path.split(/\\|\//).filter(Boolean).pop() || path;
-      const isOffline = paletteAvailableDriveLetters.size > 0 && isPathOnUnavailableDrive(path, paletteAvailableDriveLetters);
+      const isOffline = (paletteAvailableDriveLetters.size > 0 && isPathOnUnavailableDrive(path, paletteAvailableDriveLetters))
+        || (drives.length > 0 && isPathOnUnavailablePortableDevice(path, paletteAvailablePortableRoots));
       return {
         id: `recent-folder-${index}`,
         group: t.commandPalette.groups.recent,
@@ -6876,19 +7081,21 @@ export default function App() {
   const paletteWindowsCommands: CommandPaletteCommand[] = isTauriDesktop() && currentFolderIsReal
     ? [
       { id: 'show-in-explorer', group: t.commandPalette.groups.windows, label: t.commandPalette.commands.showInExplorer, keywords: 'windows explorer open folder', onSelect: handleShowCurrentFolderInExplorer },
-      { id: 'open-terminal', group: t.commandPalette.groups.windows, label: t.commandPalette.commands.openTerminal, description: lastTerminalLabel[lastTerminalOption], keywords: 'cmd command prompt powershell shell console', onSelect: () => handleLaunchWindowsTerminal(lastTerminalOption) },
-      ...([
-        ['cmd', t.toolbar.commandPromptHere],
-        ['cmd-admin', t.toolbar.commandPromptAdminHere],
-        ['powershell', t.toolbar.powerShellHere],
-        ['powershell-admin', t.toolbar.powerShellAdminHere],
-      ] as [WindowsTerminalOption, string][]).map(([option, label]) => ({
-        id: `terminal-${option}`,
-        group: t.commandPalette.groups.windows,
-        label,
-        keywords: `${label} ${option} cmd command prompt powershell shell console terminal`,
-        onSelect: () => { setLastTerminalOption(option); handleLaunchWindowsTerminal(option); },
-      })),
+      ...(!isPortablePath(currentTab.currentPath) ? [
+        { id: 'open-terminal', group: t.commandPalette.groups.windows, label: t.commandPalette.commands.openTerminal, description: lastTerminalLabel[lastTerminalOption], keywords: 'cmd command prompt powershell shell console', onSelect: () => handleLaunchWindowsTerminal(lastTerminalOption) },
+        ...([
+          ['cmd', t.toolbar.commandPromptHere],
+          ['cmd-admin', t.toolbar.commandPromptAdminHere],
+          ['powershell', t.toolbar.powerShellHere],
+          ['powershell-admin', t.toolbar.powerShellAdminHere],
+        ] as [WindowsTerminalOption, string][]).map(([option, label]) => ({
+          id: `terminal-${option}`,
+          group: t.commandPalette.groups.windows,
+          label,
+          keywords: `${label} ${option} cmd command prompt powershell shell console terminal`,
+          onSelect: () => { setLastTerminalOption(option); handleLaunchWindowsTerminal(option); },
+        })),
+      ] : []),
       ...windowsSpecialFolders.map(folder => {
         const label = windowsSpecialFolderLabels[folder.id];
         return {
@@ -6944,6 +7151,7 @@ export default function App() {
 
   const paneActionsFor = (pane: 'left' | 'right'): PaneSelectionActions => {
     const paneTab = pane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
+    const isPortableFolder = isPortablePath(paneTab.currentPath);
     const folderItem = isCommandLocation(paneTab.currentPath)
       ? folderItemsByPath.get(getPathKey(paneTab.currentPath)) ?? null
       : null;
@@ -6953,8 +7161,8 @@ export default function App() {
       isHorizontalDual: effectiveLayout === 'dual-horizontal',
       paneSide: pane,
       transferEnabled: pane === 'left' ? canTransferLeftToRight : canTransferRightToLeft,
-      supportsArchiveCreation: isTauriDesktop(),
-      supportsArchiveExtraction: isTauriDesktop(),
+      supportsArchiveCreation: isTauriDesktop() && !isPortableFolder,
+      supportsArchiveExtraction: isTauriDesktop() && !isPortableFolder,
       propertiesOpen: previewOpen,
       onDelete: items => handleDeleteSelected(items),
       onRename: item => beginInlineRename(item, pane),
@@ -6963,8 +7171,8 @@ export default function App() {
       onExtract: (item, mode) => queueNativeTransfer('extract', [item.path], getParentPath(item.path), { selectionPane: pane, extractionMode: mode }),
       onCopyPath: items => handleCopySelectedPaths(items),
       onCopyFolderPath: path => handleCopyFolderPath(path),
-      onCompressCurrentFolder: () => { if (folderItem) openZipCreation([folderItem], getParentPath(folderItem.path), pane); },
-      canCompressCurrentFolder: Boolean(folderItem),
+      onCompressCurrentFolder: () => { if (folderItem && !isPortableFolder) openZipCreation([folderItem], getParentPath(folderItem.path), pane); },
+      canCompressCurrentFolder: Boolean(folderItem) && !isPortableFolder,
       onCustomizeFolderIcon: item => handleOpenFolderIconModal({ path: item.path, name: item.name }),
       onCustomizeCurrentFolderIcon: () => handleOpenFolderIconModal({ path: paneTab.currentPath, name: folderName }),
       onRestore: items => { void handleRestoreRecycleBinItems(items); },
@@ -6973,6 +7181,8 @@ export default function App() {
       onToggleProperties: () => setPreviewOpen(value => !value),
     };
   };
+
+  const isPendingPortableDelete = pendingDeleteItems.some(item => isPortablePath(item.path));
 
   return (
     <TooltipPreferenceContext.Provider value={tooltipsEnabled}>
@@ -7696,7 +7906,7 @@ export default function App() {
         sortField={contextPaneTab.sortField}
         sortOrder={contextPaneTab.sortOrder}
         groupBy={contextPaneTab.groupBy ?? 'none'}
-        supportsGrouping={contextPaneTab.currentPath !== SYSTEM_HOME_PATH && contextPaneTab.currentPath !== RECYCLE_BIN_PATH && contextPaneTab.currentPath !== RECENT_PATH}
+        supportsGrouping={contextPaneTab.currentPath !== SYSTEM_HOME_PATH && contextPaneTab.currentPath !== RECYCLE_BIN_PATH && contextPaneTab.currentPath !== RECENT_PATH && !isPortableDeviceRoot(contextPaneTab.currentPath)}
         onSortFieldChange={field => updatePaneTab(contextPane, tab => {
           const sortOrder = tab.sortField === field ? tab.sortOrder : 'asc';
           return { ...tab, sortField: field, sortOrder, folderStyle: { ...getTabFolderStyle(tab), sortField: field, sortOrder } };
@@ -7704,7 +7914,8 @@ export default function App() {
         onSortOrderChange={order => updatePaneTab(contextPane, tab => ({ ...tab, sortOrder: order, folderStyle: { ...getTabFolderStyle(tab), sortOrder: order } }))}
         onGroupByChange={groupBy => updatePaneTab(contextPane, tab => ({ ...tab, groupBy, folderStyle: { ...getTabFolderStyle(tab), groupBy } }))}
         hasFolder={Boolean(contextPaneTab.currentPath)}
-        canModifyFolder={Boolean(contextPaneTab.currentPath) && !isDedicatedLayoutPath(contextPaneTab.currentPath) && contextPaneTab.currentPath !== RECYCLE_BIN_PATH && contextPaneTab.currentPath !== RECENT_PATH}
+        canModifyFolder={Boolean(contextPaneTab.currentPath) && !isDedicatedLayoutPath(contextPaneTab.currentPath) && contextPaneTab.currentPath !== RECYCLE_BIN_PATH && contextPaneTab.currentPath !== RECENT_PATH && !isPortableDeviceRoot(contextPaneTab.currentPath)}
+        supportsShortcutCreation={!isPortablePath(contextPaneTab.currentPath)}
         fileClipboardSupported={isTauriDesktop()}
         hasFilter={Boolean(contextPaneTab.filterQuery)}
         onClose={() => setContextMenuPos(null)}
@@ -7743,9 +7954,9 @@ export default function App() {
           recordRecentFile(item);
           setPreviewOpen(true);
         }}
-        supportsArchiveExtraction={isTauriDesktop()}
+        supportsArchiveExtraction={isTauriDesktop() && !isPortablePath(contextPaneTab.currentPath)}
         onExtractArchive={(item, mode) => queueNativeTransfer('extract', [item.path], getParentPath(item.path), { selectionPane: contextPane, extractionMode: mode })}
-        supportsArchiveCreation={isTauriDesktop()}
+        supportsArchiveCreation={isTauriDesktop() && !isPortablePath(contextPaneTab.currentPath)}
         onCompressToZip={item => openZipCreation([item], getParentPath(item.path), contextPane)}
         onCopyOpposite={() => handleCopySelected()}
         onMoveOpposite={() => handleMoveSelected()}
@@ -7779,16 +7990,17 @@ export default function App() {
           }
         }}
         onCustomizeFolderIcon={item => handleOpenFolderIconModal({ path: item.path, name: item.name })}
-        canToggleExplorerException={windowsFolderHandlerStatus === 'on'}
+        canToggleExplorerException={windowsFolderHandlerStatus === 'on' && !isPortablePath(contextPaneTab.currentPath)}
         isExplorerExceptionItem={isExplorerExceptionItem}
         onToggleExplorerException={item => { void handleToggleExplorerException(item); }}
         isCurrentFolderExplorerException={Boolean(
           contextPaneTab.currentPath &&
           !contextPaneTab.currentPath.startsWith('::') &&
+          !isPortablePath(contextPaneTab.currentPath) &&
           folderHandlerExceptions.some(entry => getPathKey(entry.path) === getPathKey(contextPaneTab.currentPath)),
         )}
         onToggleCurrentFolderExplorerException={
-          contextPaneTab.currentPath && !contextPaneTab.currentPath.startsWith('::') && !isUncServerRoot(contextPaneTab.currentPath)
+          contextPaneTab.currentPath && !contextPaneTab.currentPath.startsWith('::') && !isUncServerRoot(contextPaneTab.currentPath) && !isPortablePath(contextPaneTab.currentPath)
             ? () => {
                 void handleToggleExplorerException({
                   id: `current-folder:${contextPaneTab.currentPath}`,
@@ -7852,7 +8064,7 @@ export default function App() {
         <MapNetworkDriveModal
           key={`${pendingMapNetworkDrive.pane}:${pendingMapNetworkDrive.initialPath}`}
           initialPath={pendingMapNetworkDrive.initialPath}
-          usedDriveLetters={drives.map(drive => drive.letter)}
+          usedDriveLetters={drives.map(drive => drive.letter).filter(Boolean)}
           errorMessage={pendingMapNetworkDrive.errorMessage}
           isBusy={isMapNetworkDriveBusy}
           onClose={() => { if (!isMapNetworkDriveBusy) setPendingMapNetworkDrive(null); }}
@@ -7990,10 +8202,12 @@ export default function App() {
               onCancel={() => setPendingDeleteItems([])}
               onConfirm={handleConfirmDelete}
               isBusy={isFileOperationBusy}
-              allowPermanentDelete
-              showRememberOption
-              initialPermanentlyDelete={pendingDeletePermanent}
-              confirmVariant="secondary"
+              allowPermanentDelete={!isPendingPortableDelete}
+              forcePermanentDelete={isPendingPortableDelete}
+              showRememberOption={!isPendingPortableDelete}
+              initialPermanentlyDelete={pendingDeletePermanent || isPendingPortableDelete}
+              description={isPendingPortableDelete ? t.core.portableDeletePermanentlyMessage : undefined}
+              confirmVariant={isPendingPortableDelete ? 'danger' : 'secondary'}
             />
           )}
           {isEmptyRecycleBinConfirmOpen && (

@@ -1,11 +1,59 @@
 import { BatchRenameRule, FileItem, FileType, SortField, SortOrder } from '../types';
 
+export const PORTABLE_PATH_PREFIX = 'mtp:\\';
+
+export function isPortablePath(path?: string | null): boolean {
+  if (!path) return false;
+  return getPortablePathSegments(path).length > 0;
+}
+
+export function getPortablePathSegments(path: string): string[] {
+  const trimmed = path.trim();
+  if (!trimmed) return [];
+  const normalized = trimmed.replace(/\//g, '\\');
+  if (!/^mtp:\\/i.test(normalized)) return [];
+  const rest = normalized.slice(5).replace(/\\+$/, '');
+  if (!rest) return [];
+  const segments = rest.split('\\').filter(Boolean);
+  if (segments.some(segment => segment === '.' || segment === '..')) return [];
+  return segments;
+}
+
+export function getPortableDeviceRoot(path: string): string | null {
+  const segments = getPortablePathSegments(path);
+  return segments.length > 0 ? `${PORTABLE_PATH_PREFIX}${segments[0]}` : null;
+}
+
+export function isPortableDeviceRoot(path?: string | null): boolean {
+  if (!path) return false;
+  return getPortablePathSegments(path).length === 1;
+}
+
+export function isPortableStorageRoot(path?: string | null): boolean {
+  if (!path) return false;
+  return getPortablePathSegments(path).length === 2;
+}
+
+export function isPathOnUnavailablePortableDevice(path: string, availablePortableRoots: Set<string>): boolean {
+  const root = getPortableDeviceRoot(path);
+  return root !== null && !availablePortableRoots.has(root.toLowerCase());
+}
+
 /**
  * Windows path helpers live in one place so the UI and the future native
  * adapter use the same rules for roots, descendants and renames.
  */
 export function normalizeWindowsPath(path: string): string {
-  const normalized = path.replace(/\//g, '\\').trim();
+  const trimmed = path.trim();
+  if (/^mtp:[\\/]/i.test(trimmed)) {
+    const segments = getPortablePathSegments(trimmed);
+    if (segments.length > 0) {
+      return `${PORTABLE_PATH_PREFIX}${segments.join('\\')}`;
+    }
+    const rest = trimmed.replace(/\//g, '\\').slice(5).replace(/\\+/g, '\\').replace(/\\+$/, '');
+    return rest ? `${PORTABLE_PATH_PREFIX}${rest}` : PORTABLE_PATH_PREFIX;
+  }
+  const normalized = trimmed.replace(/\//g, '\\');
   const driveRoot = normalized.match(/^([a-zA-Z]:)\\*$/);
   if (driveRoot) return `${driveRoot[1]}\\`;
   if (normalized.startsWith('\\\\') && !normalized.startsWith('\\\\?\\')) {
@@ -38,7 +86,7 @@ export function getUncHostRoot(path: string): string | null {
 
 export function normalizeNetworkHostInput(input: string): string | null {
   const trimmed = input.trim();
-  if (!trimmed || trimmed.startsWith('::') || /^[a-zA-Z]:/.test(trimmed) || trimmed.startsWith('%')) {
+  if (!trimmed || trimmed.startsWith('::') || /^mtp:/i.test(trimmed) || /^[a-zA-Z]:/.test(trimmed) || trimmed.startsWith('%')) {
     return null;
   }
   const cleaned = trimmed
@@ -344,6 +392,12 @@ export function isTextPreviewableFile(item: Pick<FileItem, 'name' | 'extension'>
 export function getParentPath(currentPath: string): string {
   // Handle Windows paths: "C:\Users\Cali\Documents" -> "C:\Users\Cali"
   const normalizedPath = normalizeWindowsPath(currentPath);
+  if (isPortablePath(normalizedPath)) {
+    const segments = getPortablePathSegments(normalizedPath);
+    if (segments.length <= 1) return `${PORTABLE_PATH_PREFIX}${segments[0] ?? ''}`;
+    segments.pop();
+    return `${PORTABLE_PATH_PREFIX}${segments.join('\\')}`;
+  }
   if (/^[a-zA-Z]:\\?$/.test(normalizedPath)) return `${normalizedPath.slice(0, 2)}\\`;
 
   if (isUncPath(normalizedPath)) {

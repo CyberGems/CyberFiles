@@ -9,16 +9,23 @@ import {
   getFileExtension,
   getParentPath,
   getPathDriveLetter,
+  getPortableDeviceRoot,
+  getPortablePathSegments,
   getRootItems,
   getUncHostRoot,
   getUniqueName,
   isMediaPreviewPath,
   isPathOnUnavailableDrive,
+  isPathOnUnavailablePortableDevice,
+  isPortableDeviceRoot,
+  isPortablePath,
+  isPortableStorageRoot,
   isUncPath,
   isUncServerRoot,
   isWindowsDriveRoot,
   isSameOrDescendantPath,
   isValidFileName,
+  joinWindowsPath,
   normalizeDriveLetter,
   normalizeNetworkHostInput,
   normalizeWindowsPath,
@@ -190,4 +197,44 @@ test('applies every batch rename mode without touching the extension', () => {
     applyBatchRenamePreview(files, { ...base, mode: 'case', caseType: 'uppercase' }).map(preview => preview.renamed),
     ['PHOTO COPY.txt', 'PHOTO COPY 2.txt'],
   );
+});
+
+test('parses, normalizes, and resolves parents for portable device paths', () => {
+  assert.equal(isPortablePath('mtp:\\Carlos P30'), true);
+  assert.equal(isPortablePath('MTP:/Carlos P30/Almacenamiento interno/DCIM/'), true);
+  assert.equal(isPortablePath('mtp:\\'), false);
+  assert.equal(isPortablePath('mtp:\\Carlos P30\\..\\Other'), false);
+  assert.equal(isPortablePath('C:\\Users\\Carlos'), false);
+
+  assert.deepEqual(getPortablePathSegments('mtp:\\Carlos P30'), ['Carlos P30']);
+  assert.deepEqual(
+    getPortablePathSegments('MTP:/Carlos P30/Almacenamiento interno/DCIM/'),
+    ['Carlos P30', 'Almacenamiento interno', 'DCIM'],
+  );
+
+  assert.equal(getPortableDeviceRoot('mtp:\\Carlos P30\\Almacenamiento interno\\DCIM'), 'mtp:\\Carlos P30');
+  assert.equal(getPortableDeviceRoot('C:\\Users\\Carlos'), null);
+  assert.equal(isPortableDeviceRoot('mtp:\\Carlos P30'), true);
+  assert.equal(isPortableDeviceRoot('mtp:\\Carlos P30\\Almacenamiento interno'), false);
+  assert.equal(isPortableStorageRoot('mtp:\\Carlos P30\\Almacenamiento interno'), true);
+  assert.equal(isPortableStorageRoot('mtp:\\Carlos P30\\Almacenamiento interno\\DCIM'), false);
+
+  assert.equal(normalizeWindowsPath('MTP:/Carlos P30//Almacenamiento interno/'), 'mtp:\\Carlos P30\\Almacenamiento interno');
+  assert.equal(getParentPath('mtp:\\Carlos P30\\Almacenamiento interno\\DCIM'), 'mtp:\\Carlos P30\\Almacenamiento interno');
+  assert.equal(getParentPath('mtp:\\Carlos P30\\Almacenamiento interno'), 'mtp:\\Carlos P30');
+  assert.equal(getParentPath('mtp:\\Carlos P30'), 'mtp:\\Carlos P30');
+  assert.equal(joinWindowsPath('mtp:\\Carlos P30\\Almacenamiento interno', 'DCIM'), 'mtp:\\Carlos P30\\Almacenamiento interno\\DCIM');
+  assert.equal(isSameOrDescendantPath('mtp:\\Carlos P30\\Almacenamiento interno\\DCIM', 'mtp:\\Carlos P30'), true);
+  assert.equal(isSameOrDescendantPath('mtp:\\Carlos P30 2\\Internal', 'mtp:\\Carlos P30'), false);
+  assert.equal(
+    rewritePathPrefix('mtp:\\Carlos P30\\Almacenamiento interno\\Old\\a.jpg', 'mtp:\\Carlos P30\\Almacenamiento interno\\Old', 'mtp:\\Carlos P30\\Almacenamiento interno\\New'),
+    'mtp:\\Carlos P30\\Almacenamiento interno\\New\\a.jpg',
+  );
+  assert.equal(getPathDriveLetter('mtp:\\Carlos P30\\Almacenamiento interno'), null);
+  assert.equal(normalizeNetworkHostInput('mtp:\\Carlos P30'), null);
+
+  const connected = new Set(['mtp:\\carlos p30']);
+  assert.equal(isPathOnUnavailablePortableDevice('mtp:\\Carlos P30\\Almacenamiento interno', connected), false);
+  assert.equal(isPathOnUnavailablePortableDevice('mtp:\\Pixel 9\\Internal', connected), true);
+  assert.equal(isPathOnUnavailablePortableDevice('C:\\Users\\Carlos', connected), false);
 });

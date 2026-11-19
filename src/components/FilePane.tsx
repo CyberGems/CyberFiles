@@ -24,6 +24,8 @@ import {
   FileCheck,
   FolderOpen,
   Monitor,
+  Smartphone,
+  Camera,
   Download,
   HardDrive,
   Usb,
@@ -51,7 +53,7 @@ import { DriveInfo, FileItem, FileType, HiddenItemStyle, ICON_ZOOM_PRESETS, NETW
 import { isDedicatedLayoutPath } from '../utils/locations';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { listerTextScaleFactor, LISTER_TEXT_SCALE_CSS_VAR, type ListerTextScale } from '../utils/listerTextScale';
-import { formatFileSize, getFileExtension, getParentPath, isPathOnUnavailableDrive, isSameOrDescendantPath, isUncPath, isUncServerRoot, normalizeDriveLetter, normalizeWindowsPath } from '../utils/fileSystem';
+import { formatFileSize, getFileExtension, getParentPath, getPortablePathSegments, isPathOnUnavailableDrive, isPathOnUnavailablePortableDevice, isPortableDeviceRoot, isPortablePath, isPortableStorageRoot, isSameOrDescendantPath, isUncPath, isUncServerRoot, normalizeDriveLetter, normalizeWindowsPath, PORTABLE_PATH_PREFIX } from '../utils/fileSystem';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, getNativeFileThumbnails, isTauriDesktop, loadNativeImageThumbnail, loadNativeMediaPreviewUrl, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { advanceMouseGesturePath, MOUSE_GESTURE_MIN_DISTANCE, type MouseGesturePath } from '../utils/mouseGesture';
@@ -1070,6 +1072,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
     () => new Set(drives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean)),
     [drives],
   );
+  const availablePortableRoots = React.useMemo(
+    () => new Set(drives.filter(drive => drive.type === 'portable' && drive.rootPath).map(drive => drive.rootPath!.toLowerCase())),
+    [drives],
+  );
+  const isPathOffline = React.useCallback((path: string) => (
+    (availableDriveLetters.size > 0 && isPathOnUnavailableDrive(path, availableDriveLetters)) ||
+    (drives.length > 0 && isPathOnUnavailablePortableDevice(path, availablePortableRoots))
+  ), [availableDriveLetters, availablePortableRoots, drives.length]);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [columnWidths, setColumnWidths] = useState(() => columnPreferences.widths);
   const [columnLayout, setColumnLayout] = useState(() => columnPreferences.layout);
@@ -1123,6 +1133,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
      Shared by the click path and the external rename request so both leave the row in the same
      state — the draft ref is what the memoized row commits. */
   const beginLocalRename = (item: FileItem) => {
+    if (isPortableDeviceRoot(item.path) || isPortableStorageRoot(item.path)) return;
     renameCommitItemRef.current = item.id;
     renameDraftRef.current = item.name;
     setEditingItemId(item.id);
@@ -1710,6 +1721,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     if (thumbnailsEnabled && effectiveViewMode !== 'compact') {
       renderedFiles.forEach(item => {
         if (!isShellThumbnailCandidate(item)) return;
+        if (item.isFolder && isPortablePath(item.path)) return;
         if (item.isFolder && getCustomFolderIcon(item.path, customFolderIcons ?? {})) return;
         requests.push({ id: item.id, path: item.path });
         keyParts.push(`${item.id}\u0000${item.path}\u0000${item.modifiedAtMs ?? ''}`);
@@ -1871,7 +1883,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     setFolderChildCounts(previous => ({ ...previous, [item.id]: nextState }));
   };
   const handleFolderTooltipMouseEnter = (item: FileItem) => {
-    if (!item.isFolder || item.recycleBinId || isRecycleBin) return;
+    if (!item.isFolder || item.recycleBinId || isRecycleBin || isPortablePath(item.path)) return;
     folderItemPathsRef.current.set(item.id, item.path);
     void loadFolderChildCounts(item);
     hoveredFolderItemsRef.current.set(item.id, item);
@@ -2579,10 +2591,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
     );
   };
 
-  // Breadcrumbs generator for Windows and UNC paths
+  // Breadcrumbs generator for Windows, portable, and UNC paths
   const breadcrumbSegments = React.useMemo(() => {
     if (!tab.currentPath || isSystemHome || isNetworkLocation || isRecycleBin || isRecentLocation) return [];
     const normalized = normalizeWindowsPath(tab.currentPath);
+    if (isPortablePath(normalized)) {
+      const parts = getPortablePathSegments(normalized);
+      const result: { label: string; fullPath: string }[] = [];
+      let accumulated = '';
+      parts.forEach((seg, idx) => {
+        accumulated = idx === 0 ? `${PORTABLE_PATH_PREFIX}${seg}` : `${accumulated}\\${seg}`;
+        result.push({ label: seg, fullPath: accumulated });
+      });
+      return result;
+    }
     if (isUncPath(normalized)) {
       const parts = normalized.slice(2).split('\\').filter(Boolean);
       const result: { label: string; fullPath: string }[] = [];
@@ -3504,8 +3526,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const renderSystemHomeCard = (item: FileItem, index: number, category: 'folder' | 'drive' | 'network') => {
     const selected = visibleSelectedIdSet.has(item.id);
     const drive = category === 'folder' ? undefined : drives.find(candidate => item.id === `system-drive-${candidate.id}`);
+    const isPortableDrive = drive?.type === 'portable';
     let icon: React.ReactNode;
-    if (drive?.type === 'network') icon = <Network className="h-7 w-7" />;
+    if (isPortableDrive) {
+      icon = drive.deviceSubtype === 'camera'
+        ? <Camera className="h-7 w-7" />
+        : drive.deviceSubtype === 'media'
+          ? <Music className="h-7 w-7" />
+          : <Smartphone className="h-7 w-7" />;
+    }
+    else if (drive?.type === 'network') icon = <Network className="h-7 w-7" />;
     else if (drive?.type === 'removable') icon = <Usb className="h-7 w-7" />;
     else if (drive?.type === 'optical') icon = <Disc3 className="h-7 w-7" />;
     else if (drive) icon = <HardDrive className="h-7 w-7" />;
@@ -3521,6 +3551,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const usedPercent = hasCapacity && drive
       ? Math.min(100, Math.round((drive.usedBytes / drive.totalBytes) * 100))
       : 0;
+    const portableSubtitle = drive?.deviceTypeLabel || t.pane.portableDevice;
     const tooltipLabel = category === 'folder'
       ? renderItemTooltip(item)
       : renderItemTooltip(item, drive ? (
@@ -3529,7 +3560,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
             ? t.pane.availableOf
               .replace('{free}', formatFileSize(Math.max(0, drive.totalBytes - drive.usedBytes)))
               .replace('{total}', formatFileSize(drive.totalBytes))
-            : t.pane.capacityUnavailable}
+            : isPortableDrive
+              ? portableSubtitle
+              : t.pane.capacityUnavailable}
         </span>
       ) : undefined);
 
@@ -3563,11 +3596,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
           className={`cyberfiles-system-home-icon flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg ${
           category === 'folder'
             ? 'bg-amber-300/10 text-amber-300 group-hover:bg-amber-300/15'
-            : drive?.type === 'network'
-              ? 'bg-indigo-400/10 text-indigo-300'
-              : drive?.type === 'removable'
-                ? 'bg-violet-400/10 text-violet-300'
-                : 'bg-cyan-400/10 text-cyan-300'
+            : isPortableDrive
+              ? 'bg-emerald-400/10 text-emerald-300'
+              : drive?.type === 'network'
+                ? 'bg-indigo-400/10 text-indigo-300'
+                : drive?.type === 'removable'
+                  ? 'bg-violet-400/10 text-violet-300'
+                  : 'bg-cyan-400/10 text-cyan-300'
         }`}>
           {icon}
         </span>
@@ -3593,7 +3628,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
               </span>
             </>
           ) : (
-            <span className="mt-1 block truncate text-[10px] text-neutral-500">{t.pane.capacityUnavailable}</span>
+            <span className="mt-1 block truncate text-[10px] text-neutral-500">
+              {isPortableDrive ? portableSubtitle : t.pane.capacityUnavailable}
+            </span>
           )}
         </span>
         {drive?.type === 'network' && onDisconnectNetworkDrive && (
@@ -3646,7 +3683,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const renderQuickAccessCard = (item: QuickAccessItem) => {
     const customIcon = getCustomFolderIcon(item.path, customFolderIcons ?? {});
     const shortcutId = `quick-access:${item.id}`;
-    const isOffline = availableDriveLetters.size > 0 && isPathOnUnavailableDrive(item.path, availableDriveLetters);
+    const isOffline = isPathOffline(item.path);
     const isCurrentLocation = !isOffline && tab.currentPath.toLowerCase() === item.path.toLowerCase();
     const isSelected = !isOffline && (selectedSystemHomeShortcutId === shortcutId || isCurrentLocation);
     /* Same shape the default cards feed the rich tooltip and the hover scans,
@@ -4453,7 +4490,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           >
             <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.pane.recentFolders}</div>
             {recentFolderPaths.length > 0 ? recentFolderPaths.map(path => {
-              const isOffline = availableDriveLetters.size > 0 && isPathOnUnavailableDrive(path, availableDriveLetters);
+              const isOffline = isPathOffline(path);
               return (
                 <button
                   key={path}
@@ -4762,9 +4799,40 @@ export const FilePane: React.FC<FilePaneProps> = ({
             className="pointer-events-none absolute inset-y-0 left-0 z-10 flex flex-col items-center justify-center gap-2 px-6 text-center text-neutral-500"
             style={paneBoxWidth > 0 ? { width: paneBoxWidth } : undefined}
           >
-            {isLoadingDirectory ? <RotateCw className="w-7 h-7 text-cyan-500 animate-spin" /> : <Folder className="w-8 h-8 text-neutral-600 stroke-[1.5]" />}
-            <div className="text-xs">{isLoadingDirectory ? t.pane.loadingFolder : flatViewStatus?.error ? t.pane.flatViewLoadFailed : tab.filterQuery.trim() ? t.pane.filterNoResults : tab.currentPath ? (isRecentLocation ? t.pane.recentsEmpty : t.pane.emptyFolder) : t.pane.noFolderOpen}</div>
-            {!isLoadingDirectory && !tab.filterQuery && tab.currentPath && !isSystemHome && !isRecycleBin && !isRecentLocation && getParentPath(tab.currentPath) !== tab.currentPath && (
+            {isLoadingDirectory ? (
+              <RotateCw className="w-7 h-7 text-cyan-500 animate-spin" />
+            ) : isPortableDeviceRoot(tab.currentPath) && !tab.filterQuery.trim() ? (
+              <Smartphone className="w-8 h-8 text-emerald-400/70 stroke-[1.5]" />
+            ) : (
+              <Folder className="w-8 h-8 text-neutral-600 stroke-[1.5]" />
+            )}
+            <div className="text-xs">
+              {isLoadingDirectory
+                ? t.pane.loadingFolder
+                : flatViewStatus?.error
+                  ? t.pane.flatViewLoadFailed
+                  : tab.filterQuery.trim()
+                    ? t.pane.filterNoResults
+                    : isPortableDeviceRoot(tab.currentPath)
+                      ? t.pane.portableEmptyTitle
+                      : tab.currentPath
+                        ? (isRecentLocation ? t.pane.recentsEmpty : t.pane.emptyFolder)
+                        : t.pane.noFolderOpen}
+            </div>
+            {!isLoadingDirectory && !tab.filterQuery && isPortableDeviceRoot(tab.currentPath) && (
+              <>
+                <div className="max-w-xs text-[11px] text-neutral-400">{t.pane.portableEmptyHint}</div>
+                <button
+                  type="button"
+                  onClick={() => onRefresh ? onRefresh() : onNavigate(tab.currentPath)}
+                  className="pointer-events-auto mt-1 inline-flex items-center gap-1.5 rounded-md border border-neutral-700 bg-neutral-900/80 px-3 py-1.5 text-[11px] font-medium text-neutral-200 transition-colors hover:border-cyan-500/60 hover:text-cyan-200"
+                >
+                  <RotateCw className="h-3.5 w-3.5" />
+                  <span>{t.pane.portableEmptyRefresh}</span>
+                </button>
+              </>
+            )}
+            {!isLoadingDirectory && !tab.filterQuery && tab.currentPath && !isSystemHome && !isRecycleBin && !isRecentLocation && !isPortableDeviceRoot(tab.currentPath) && getParentPath(tab.currentPath) !== tab.currentPath && (
               <div className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-neutral-800 bg-neutral-900/60 px-2.5 py-1 text-[11px] tracking-wide text-neutral-500">
                 <CornerUpLeft className="h-3 w-3 text-cyan-500/80" aria-hidden="true" />
                 <span>{emptyAreaDoubleClickNavigatesUp ? t.pane.emptyFolderDoubleClickHint : t.pane.emptyFolderBackspaceHint}</span>

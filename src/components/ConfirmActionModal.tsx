@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AlertTriangle, File, Folder, X } from 'lucide-react';
 import { FileItem } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
@@ -15,6 +15,7 @@ interface ConfirmActionModalProps {
   busyLabel?: string;
   isBusy?: boolean;
   allowPermanentDelete?: boolean;
+  forcePermanentDelete?: boolean;
   confirmVariant?: 'primary' | 'secondary' | 'danger';
   /* Shift+Del: the permanent checkbox starts ticked instead of asking for a second click. */
   initialPermanentlyDelete?: boolean;
@@ -36,19 +37,27 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
   busyLabel,
   isBusy = false,
   allowPermanentDelete = false,
+  forcePermanentDelete = false,
   confirmVariant = 'danger',
   initialPermanentlyDelete = false,
   showRememberOption = false,
   errorMessage,
 }) => {
   const { t, language } = useLanguage();
-  const [permanentlyDelete, setPermanentlyDelete] = useState(initialPermanentlyDelete);
+  const [permanentlyDelete, setPermanentlyDelete] = useState(initialPermanentlyDelete || forcePermanentDelete);
   const [rememberChoice, setRememberChoice] = useState(false);
+
+  useEffect(() => {
+    setPermanentlyDelete(initialPermanentlyDelete || forcePermanentDelete);
+    setRememberChoice(false);
+  }, [items, initialPermanentlyDelete, forcePermanentDelete]);
+
   if (items.length === 0 && !title) return null;
 
-  const resolvedTitle = title ?? (allowPermanentDelete ? t.core.deleteItemsTitle : permanentlyDelete ? t.core.deletePermanentlyTitle : t.core.deleteTitle);
-  const resolvedDescription = description ?? (permanentlyDelete ? t.core.deletePermanentlyMessage : t.core.deleteMessage);
-  const resolvedConfirmLabel = confirmLabel ?? (permanentlyDelete ? t.core.deleteNow : t.core.delete);
+  const isPermanent = forcePermanentDelete || permanentlyDelete;
+  const resolvedTitle = title ?? (allowPermanentDelete ? t.core.deleteItemsTitle : isPermanent ? t.core.deletePermanentlyTitle : t.core.deleteTitle);
+  const resolvedDescription = description ?? (isPermanent ? t.core.deletePermanentlyMessage : t.core.deleteMessage);
+  const resolvedConfirmLabel = confirmLabel ?? (isPermanent ? t.core.deleteNow : t.core.delete);
 
   return (
     <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onMouseDown={event => { if (!isBusy && event.target === event.currentTarget) onCancel(); }}>
@@ -91,7 +100,7 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
           )}
           {/* Two lines are reserved: the sentence swaps for a shorter one when the permanent
               check is ticked, and a dialog that resizes under the pointer looks like it jumped. */}
-          <p className={`min-h-10 ${permanentlyDelete ? 'text-rose-200' : 'text-neutral-300'}`}>{resolvedDescription}</p>
+          <p className={`min-h-10 ${isPermanent ? 'text-rose-200' : 'text-neutral-300'}`}>{resolvedDescription}</p>
           {errorMessage && <p className="text-xs text-rose-300">{errorMessage}</p>}
           {allowPermanentDelete && (
             <Tooltip label={t.core.permanentDeleteCheckboxTooltip} placement="top">
@@ -138,8 +147,8 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
           <span><DialogButton size="compact" disabled={isBusy} onClick={onCancel}>{t.core.cancel}</DialogButton></span>
           {/* The tooltip only fills in when it states something the body does not show
               already: otherwise it would repeat resolvedDescription, visible above. */}
-          <Tooltip label={permanentlyDelete ? t.core.permanentDeleteConfirmTooltip : allowPermanentDelete ? t.core.recycleBinDeleteConfirmTooltip : ''} placement="top">
-            <span><DialogButton size="compact" variant={permanentlyDelete ? 'danger' : confirmVariant} disabled={isBusy} onClick={() => onConfirm(permanentlyDelete, rememberChoice)}>{isBusy ? busyLabel ?? t.core.operationInProgress : resolvedConfirmLabel}</DialogButton></span>
+          <Tooltip label={isPermanent ? t.core.permanentDeleteConfirmTooltip : allowPermanentDelete ? t.core.recycleBinDeleteConfirmTooltip : ''} placement="top">
+            <span><DialogButton size="compact" variant={isPermanent ? 'danger' : confirmVariant} disabled={isBusy} onClick={() => onConfirm(isPermanent, rememberChoice)}>{isBusy ? busyLabel ?? t.core.operationInProgress : resolvedConfirmLabel}</DialogButton></span>
           </Tooltip>
         </div>
       </section>

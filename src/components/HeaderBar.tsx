@@ -27,6 +27,7 @@ import {
   ClipboardCopy,
 } from 'lucide-react';
 import { ViewLayout, ViewMode, type IconZoomLevel } from '../types';
+import { isPortableDeviceRoot, isPortablePath } from '../utils/fileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 import type { WindowsTerminalOption } from '../utils/nativeFileSystem';
@@ -146,8 +147,9 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   const barRef = React.useRef<HTMLElement>(null);
   const [collapsedGroups, setCollapsedGroups] = React.useState<string[]>([]);
   const hasDriveRoot = /^[a-z]:/i.test(currentFolderPath) && (currentFolderPath[2] === '\\' || currentFolderPath[2] === '/');
-  const canUseFolderActions = windowsActionsAvailable && !currentFolderPath.startsWith('::') && (hasDriveRoot || currentFolderPath.startsWith('\\\\'));
-  const canCreateFolder = Boolean(currentFolderPath) && !currentFolderPath.startsWith('::');
+  const canOpenInExplorer = windowsActionsAvailable && !currentFolderPath.startsWith('::') && (hasDriveRoot || currentFolderPath.startsWith('\\\\') || isPortablePath(currentFolderPath));
+  const canOpenTerminal = windowsActionsAvailable && !currentFolderPath.startsWith('::') && (hasDriveRoot || currentFolderPath.startsWith('\\\\'));
+  const canCreateFolder = Boolean(currentFolderPath) && !currentFolderPath.startsWith('::') && !isPortableDeviceRoot(currentFolderPath);
   const labels = t.toolbar.buttonLabels;
   /* The view trigger names the active mode; on a location with a dedicated layout there is
      no mode to announce, so it names the section its dropdown still offers: the layouts. */
@@ -257,12 +259,12 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       id: 'windows-actions',
       label: t.toolbar.tools,
       entries: windowsActionsAvailable ? [
-        { id: 'show-in-explorer', label: t.toolbar.showInWindowsExplorer, icon: <ExternalLink className="h-4 w-4" />, disabled: !canUseFolderActions, onSelect: onShowInWindowsExplorer },
+        { id: 'show-in-explorer', label: t.toolbar.showInWindowsExplorer, icon: <ExternalLink className="h-4 w-4" />, disabled: !canOpenInExplorer, onSelect: onShowInWindowsExplorer },
         ...(['cmd', 'cmd-admin', 'powershell', 'powershell-admin'] as WindowsTerminalOption[]).map(option => ({
           id: 'terminal-' + option,
           label: terminalLabels[option],
           icon: <Terminal className="h-4 w-4" />,
-          disabled: !canUseFolderActions,
+          disabled: !canOpenTerminal,
           pressed: lastTerminalOption === option,
           onSelect: () => { onLastTerminalOptionChange(option); onLaunchTerminal(option); },
         })),
@@ -431,7 +433,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                 labelPosition={toolbarLabelPosition}
                 icon={<ExternalLink />}
                 onClick={onShowInWindowsExplorer}
-                disabled={!canUseFolderActions}
+                disabled={!canOpenInExplorer}
                 tooltip={t.toolbar.showInWindowsExplorer}
                 ariaLabel={t.toolbar.showInWindowsExplorer}
               />
@@ -444,9 +446,9 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
                   onClick={() => onLaunchTerminal(lastTerminalOption)}
                   tooltip={terminalLabels[lastTerminalOption]}
                   ariaLabel={terminalLabels[lastTerminalOption]}
-                  disabled={!canUseFolderActions}
+                  disabled={!canOpenTerminal}
                   caretLabel={t.toolbar.chooseTerminal}
-                  caretDisabled={!canUseFolderActions}
+                  caretDisabled={!canOpenTerminal}
                   caretExpanded={openToolbarMenu === 'terminal'}
                   onCaretClick={() => setOpenToolbarMenu(openToolbarMenu === 'terminal' ? null : 'terminal')}
                 />
