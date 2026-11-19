@@ -34,6 +34,7 @@ import {
   type TabSizePreferences,
 } from './types';
 import { lazyWithRetry, MODULE_LOAD_FAILED_EVENT } from './components/LazyModule';
+import { useExternalFileDrop, type ExternalInvalidDropReason } from './hooks/useExternalFileDrop';
 import {
   getChildItems, 
   getParentPath, 
@@ -5376,6 +5377,39 @@ export default function App() {
     }
     void moveItemsToPath(roots.map(root => root.id), targetFolderPath, sourcePane);
   }, [allFiles, moveItemsToPath, queueNativeTransfer, showToast, t.core.cannotCopyIntoSelf, t.core.cannotMoveIntoSelf, t.core.copied, t.pane.chooseRealDestinationFolder, t.pane.portableChooseStorageFirst]);
+
+  const handleExternalFileDrop = useCallback((paths: string[], targetFolderPath: string, operation: FileDropOperation, targetPane?: 'left' | 'right') => {
+    if (targetPane) {
+      setActivePane(targetPane);
+    }
+    queueNativeTransfer(operation, paths, targetFolderPath, targetPane ? { selectionPane: targetPane } : {});
+  }, [queueNativeTransfer]);
+
+  const handleInvalidExternalDrop = useCallback((reason: ExternalInvalidDropReason, operation: FileDropOperation) => {
+    if (reason === 'portable-root') {
+      showToast(t.pane.portableChooseStorageFirst);
+      return;
+    }
+    if (reason === 'self-or-descendant') {
+      showToast(operation === 'copy' ? t.core.cannotCopyIntoSelf : t.core.cannotMoveIntoSelf);
+      return;
+    }
+    if (reason === 'invalid-pane') {
+      showToast(t.pane.chooseRealDestinationFolder);
+    }
+  }, [showToast, t.core.cannotCopyIntoSelf, t.core.cannotMoveIntoSelf, t.pane.chooseRealDestinationFolder, t.pane.portableChooseStorageFirst]);
+
+  useExternalFileDrop({
+    tabSizePreferences,
+    labels: {
+      dragCopyTo: t.pane.dragCopyTo,
+      dragMoveTo: t.pane.dragMoveTo,
+      dragNotAllowed: t.pane.dragNotAllowed,
+      dragModifierHint: t.pane.dragModifierHint,
+    },
+    onDropExternalFiles: handleExternalFileDrop,
+    onInvalidDrop: handleInvalidExternalDrop,
+  });
 
   const handleInlineRename = useCallback(async (itemId: string, newName: string, pane: 'left' | 'right' = activePane) => {
     const item = allFiles.find(file => file.id === itemId);

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { DriveInfo, FileItem, NETWORK_PATH, QuickAccessItem, QuickAccessSortMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, isPathOnUnavailableDrive, isPathOnUnavailablePortableDevice, isSameOrDescendantPath, isUncPath, normalizeDriveLetter } from '../utils/fileSystem';
+import { isValidDropDestinationPath } from '../utils/externalDrop';
 import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
 import { FolderIconRenderer } from './folderIconsData';
@@ -232,6 +233,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <Tooltip label={t.sidebar.openTreeFolder.replace('{name}', folder.name)} placement="right">
                   <button
                     type="button"
+                    data-file-drop-path={isValidDropDestinationPath(folder.path) ? folder.path : undefined}
+                    data-file-drop-raw-path={folder.path || undefined}
                     onClick={() => onNavigate(folder.path)}
                     className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-1 text-left text-[10px] text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100"
                   >
@@ -585,6 +588,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <button
                         type="button"
                         draggable={false}
+                        data-file-drop-path={!isVirtualLocation && !isOffline && isValidDropDestinationPath(item.path) ? item.path : undefined}
+                        data-file-drop-raw-path={item.path || undefined}
                         aria-disabled={isOffline || undefined}
                         onClick={() => isVirtualLocation || item.isCustom ? onOpenCustomQuickAccess(item) : onNavigate(item.path)}
                         className={`flex min-w-0 flex-1 items-center justify-between rounded-md px-2.5 py-1.5 text-left transition-colors ${
@@ -691,6 +696,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   key={drive.id}
                   role="button"
                   tabIndex={0}
+                  data-file-drop-path={!isPortable && isValidDropDestinationPath(driveRootPath) ? driveRootPath : undefined}
+                  data-file-drop-raw-path={driveRootPath || undefined}
                   onClick={() => onOpenDrive ? onOpenDrive(driveRootPath) : onNavigate(driveRootPath)}
                   onKeyDown={event => {
                     if (event.key === 'Enter' || event.key === ' ') {

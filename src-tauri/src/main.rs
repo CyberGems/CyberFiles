@@ -9436,6 +9436,45 @@ fn ensure_vite_dev_server_for_cold_debug_launch() {
     }
 }
 
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ExternalFileDragPayload {
+    kind: &'static str,
+    paths: Vec<String>,
+    x: f64,
+    y: f64,
+    scale_factor: f64,
+    ctrl_key: bool,
+    shift_key: bool,
+    alt_key: bool,
+}
+
+#[cfg(target_os = "windows")]
+fn current_windows_modifier_keys() -> (bool, bool, bool) {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        GetAsyncKeyState, VK_CONTROL, VK_MENU, VK_SHIFT,
+    };
+    unsafe {
+        let ctrl = GetAsyncKeyState(i32::from(VK_CONTROL)) < 0;
+        let shift = GetAsyncKeyState(i32::from(VK_SHIFT)) < 0;
+        let alt = GetAsyncKeyState(i32::from(VK_MENU)) < 0;
+        (ctrl, shift, alt)
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn current_windows_modifier_keys() -> (bool, bool, bool) {
+    (false, false, false)
+}
+
+fn normalize_external_drop_paths(paths: &[PathBuf]) -> Vec<String> {
+    paths
+        .iter()
+        .map(|path| display_path(path))
+        .filter(|path| !path.trim().is_empty())
+        .collect()
+}
+
 fn main() {
     #[cfg(target_os = "windows")]
     if std::env::args_os().nth(1).is_some_and(|argument| argument == "--unregister-folder-handler") {
@@ -9629,6 +9668,56 @@ fn main() {
                         let _ = ensure_tray_icon_registered(&app_for_window_event);
                     }
                 }
+                tauri::WindowEvent::DragDrop(drag_event) => {
+                    let scale_factor = window_for_close.scale_factor().unwrap_or(1.0);
+                    let (ctrl_key, shift_key, alt_key) = current_windows_modifier_keys();
+                    let payload = match drag_event {
+                        tauri::DragDropEvent::Enter { paths, position } => Some(ExternalFileDragPayload {
+                            kind: "enter",
+                            paths: normalize_external_drop_paths(paths),
+                            x: position.x,
+                            y: position.y,
+                            scale_factor,
+                            ctrl_key,
+                            shift_key,
+                            alt_key,
+                        }),
+                        tauri::DragDropEvent::Over { position } => Some(ExternalFileDragPayload {
+                            kind: "over",
+                            paths: Vec::new(),
+                            x: position.x,
+                            y: position.y,
+                            scale_factor,
+                            ctrl_key,
+                            shift_key,
+                            alt_key,
+                        }),
+                        tauri::DragDropEvent::Drop { paths, position } => Some(ExternalFileDragPayload {
+                            kind: "drop",
+                            paths: normalize_external_drop_paths(paths),
+                            x: position.x,
+                            y: position.y,
+                            scale_factor,
+                            ctrl_key,
+                            shift_key,
+                            alt_key,
+                        }),
+                        tauri::DragDropEvent::Leave => Some(ExternalFileDragPayload {
+                            kind: "leave",
+                            paths: Vec::new(),
+                            x: 0.0,
+                            y: 0.0,
+                            scale_factor,
+                            ctrl_key: false,
+                            shift_key: false,
+                            alt_key: false,
+                        }),
+                        _ => None,
+                    };
+                    if let Some(payload) = payload {
+                        let _ = window_for_close.emit("external-file-drag", payload);
+                    }
+                }
                 _ => {}
             });
 
@@ -9748,10 +9837,10 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{
-        canonical_directory, expand_windows_environment_path, runtime_info, tray_menu_bounds,
-        tray_menu_flyout_canvas_bounds, validate_recycle_source,
+        canonical_directory, expand_windows_environment_path, normalize_external_drop_paths,
+        runtime_info, tray_menu_bounds, tray_menu_flyout_canvas_bounds, validate_recycle_source,
     };
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn leaves_tokens_that_are_not_environment_variables_untouched() {
@@ -9939,5 +10028,22 @@ mod tests {
         assert_eq!(rx + rw as i32, 1840 + 15); // flush with right work edge plus scaled shadow pad (12 * 1.25 = 15)
         assert!(ry >= -15);
         assert!(ry + rh as i32 <= 1080 + 15);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn normalizes_external_drag_drop_paths() {
+        let raw = vec![
+            PathBuf::from(r"\\?\C:\Users\Carlos\Desktop\report.pdf"),
+            PathBuf::from(r"\\?\UNC\NAS01\Share\photo.jpg"),
+            PathBuf::from("   "),
+        ];
+        assert_eq!(
+            normalize_external_drop_paths(&raw),
+            vec![
+                r"C:\Users\Carlos\Desktop\report.pdf".to_string(),
+                r"\\NAS01\Share\photo.jpg".to_string(),
+            ]
+        );
     }
 }

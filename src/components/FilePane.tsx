@@ -54,6 +54,7 @@ import { isDedicatedLayoutPath } from '../utils/locations';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { listerTextScaleFactor, LISTER_TEXT_SCALE_CSS_VAR, type ListerTextScale } from '../utils/listerTextScale';
 import { formatFileSize, getFileExtension, getParentPath, getPortablePathSegments, isPathOnUnavailableDrive, isPathOnUnavailablePortableDevice, isPortableDeviceRoot, isPortablePath, isPortableStorageRoot, isSameOrDescendantPath, isUncPath, isUncServerRoot, normalizeDriveLetter, normalizeWindowsPath, PORTABLE_PATH_PREFIX } from '../utils/fileSystem';
+import { isValidDropDestinationPath } from '../utils/externalDrop';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, getNativeFileThumbnails, isTauriDesktop, loadNativeImageThumbnail, loadNativeMediaPreviewUrl, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { advanceMouseGesturePath, MOUSE_GESTURE_MIN_DISTANCE, type MouseGesturePath } from '../utils/mouseGesture';
@@ -832,7 +833,8 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
       data-file-id={item.id}
       data-selected={isSelected ? 'true' : undefined}
       data-focused={isFocused ? 'true' : undefined}
-      data-file-drop-path={item.isFolder && !item.recycleBinId ? item.path : undefined}
+      data-file-drop-path={item.isFolder && !item.recycleBinId && isValidDropDestinationPath(item.path) ? item.path : undefined}
+      data-file-drop-raw-path={item.isFolder && !item.recycleBinId ? item.path : undefined}
       onPointerDown={event => handlers.onPointerDown(event, item)}
       onClick={event => { handlers.onClick(event, item, index); handlers.onSingleClick(event, item); }}
       onDoubleClick={() => handlers.onDoubleClick(item)}
@@ -2802,9 +2804,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
     };
     const resolveDropTarget = (clientX: number, clientY: number, operation: FileDropOperation) => {
       const hit = document.elementFromPoint(clientX, clientY);
-      const element = hit instanceof Element ? hit.closest<HTMLElement>('[data-file-drop-path]') : null;
+      const element = hit instanceof Element ? hit.closest<HTMLElement>('[data-file-drop-path], [data-file-drop-raw-path]') : null;
       const destinationPath = element?.dataset.fileDropPath;
-      if (!element || !destinationPath) return null;
+      if (!element || !destinationPath || !isValidDropDestinationPath(destinationPath)) return null;
       const normalizedDestination = normalizeWindowsPath(destinationPath).toLowerCase();
       if (operation === 'move' && normalizedDestination === normalizeWindowsPath(payload.sourcePath).toLowerCase()) return null;
       if (payload.items.some(source => source.isFolder && isSameOrDescendantPath(destinationPath, source.path))) return null;
@@ -3573,6 +3575,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
         tabIndex={0}
         data-file-item="true"
         data-file-id={item.id}
+        data-file-drop-path={isValidDropDestinationPath(item.path) ? item.path : undefined}
+        data-file-drop-raw-path={item.path || undefined}
         onClick={event => { handleItemClick(event as unknown as React.MouseEvent<HTMLElement>, item, index); handleConfiguredSingleClick(event as unknown as React.MouseEvent<HTMLElement>, item); }}
         onDoubleClick={() => handleConfiguredDoubleClick(item)}
         onContextMenu={event => handleFileItemContextMenu(event, item)}
@@ -3961,8 +3965,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
         aria-pressed={isTabActive}
         data-folder-tab="true"
         data-active-folder-tab={isTabActive ? 'true' : undefined}
-        data-file-drop-path={tabItem.currentPath}
+        data-file-drop-path={isValidDropDestinationPath(tabItem.currentPath) ? tabItem.currentPath : undefined}
+        data-file-drop-raw-path={tabItem.currentPath || undefined}
         data-file-drop-tab-id={`${paneId}:${tabItem.id}`}
+        data-file-drop-pane={paneId}
         aria-label={tabName}
         onClick={event => { event.stopPropagation(); onActivate(); onSelectTab(idx); }}
         onKeyDown={event => {
@@ -4300,7 +4306,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
     <div
       onClick={onActivate}
       data-active-pane={isActive ? 'true' : undefined}
-      data-file-drop-path={tab.currentPath}
+      data-file-drop-pane={paneId}
+      data-file-drop-path={isValidDropDestinationPath(tab.currentPath) ? tab.currentPath : undefined}
+      data-file-drop-raw-path={tab.currentPath || undefined}
       className={`cyberfiles-pane flex flex-col h-full bg-neutral-900/60 overflow-hidden relative border transition-colors ${
         isActive
           ? 'border-cyan-500/50 shadow-sm shadow-cyan-950/40'
@@ -4416,6 +4424,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   )}
                   <Tooltip label={seg.fullPath} placement="bottom">
                     <button
+                      data-file-drop-path={isValidDropDestinationPath(seg.fullPath) ? seg.fullPath : undefined}
+                      data-file-drop-raw-path={seg.fullPath || undefined}
                       onClick={(e) => {
                         e.stopPropagation();
                         /* The current folder is already open, so a click on it refreshes instead of
@@ -5526,7 +5536,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   data-file-id={item.id}
                   data-selected={isSelected ? 'true' : undefined}
                   data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
-                  data-file-drop-path={item.isFolder && !item.recycleBinId ? item.path : undefined}
+                  data-file-drop-path={item.isFolder && !item.recycleBinId && isValidDropDestinationPath(item.path) ? item.path : undefined}
+                  data-file-drop-raw-path={item.isFolder && !item.recycleBinId ? item.path : undefined}
                   onPointerDown={event => beginFilePointerDrag(event, item)}
                   onClick={event => { handleItemClick(event, item, idx); handleConfiguredSingleClick(event, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
@@ -5580,7 +5591,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   data-file-id={item.id}
                   data-selected={isSelected ? 'true' : undefined}
                   data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
-                  data-file-drop-path={item.isFolder && !item.recycleBinId ? item.path : undefined}
+                  data-file-drop-path={item.isFolder && !item.recycleBinId && isValidDropDestinationPath(item.path) ? item.path : undefined}
+                  data-file-drop-raw-path={item.isFolder && !item.recycleBinId ? item.path : undefined}
                   onPointerDown={event => beginFilePointerDrag(event, item)}
                   onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
@@ -5657,7 +5669,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   data-file-id={item.id}
                   data-selected={isSelected ? 'true' : undefined}
                   data-focused={isActive && tab.focusedId === item.id ? 'true' : undefined}
-                  data-file-drop-path={item.isFolder && !item.recycleBinId ? item.path : undefined}
+                  data-file-drop-path={item.isFolder && !item.recycleBinId && isValidDropDestinationPath(item.path) ? item.path : undefined}
+                  data-file-drop-raw-path={item.isFolder && !item.recycleBinId ? item.path : undefined}
                   onPointerDown={event => beginFilePointerDrag(event, item)}
                   onClick={(e) => { handleItemClick(e, item, idx); handleConfiguredSingleClick(e, item); }}
                   onDoubleClick={() => handleConfiguredDoubleClick(item)}
