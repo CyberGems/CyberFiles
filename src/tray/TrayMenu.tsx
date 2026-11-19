@@ -47,7 +47,7 @@ interface TrayFolderShortcut {
   path: string;
 }
 
-const FLYOUT_EXTRA_LOGICAL_WIDTH = 268; // 260px flyout card + 8px gap
+const FLYOUT_EXTRA_LOGICAL_WIDTH = 264; // 260px flyout card + 4px gap
 const CUSTOM_QUICK_ACCESS_KEY = 'cyberfiles_custom_quick_access_v1';
 const RECENT_FOLDER_PATHS_KEY = 'cyberfiles_recent_folder_paths_v1';
 
@@ -144,13 +144,17 @@ function readTheme() {
 
 export function TrayMenu() {
   const [snapshot, setSnapshot] = useState<TrayMenuSnapshot>(INITIAL_SNAPSHOT);
+  const [stageVisible, setStageVisible] = useState(false);
   const [language, setLanguage] = useState<Language>('es');
   const [activeFlyout, setActiveFlyout] = useState<TrayFlyoutId | null>(null);
   const [pinnedFolders, setPinnedFolders] = useState<TrayFolderShortcut[]>([]);
   const [recentFolders, setRecentFolders] = useState<TrayFolderShortcut[]>([]);
   const activeFlyoutRef = useRef<TrayFlyoutId | null>(null);
   activeFlyoutRef.current = activeFlyout;
+  const stageVisibleRef = useRef(false);
+  stageVisibleRef.current = stageVisible;
 
+  const stageRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const quickFlyoutRef = useRef<HTMLDivElement>(null);
   const helpFlyoutRef = useRef<HTMLDivElement>(null);
@@ -160,6 +164,12 @@ export function TrayMenu() {
   const suiteTriggerRef = useRef<HTMLButtonElement>(null);
   const lastReportedSizesRef = useRef<{ mainW: number; mainH: number; canvasH: number } | null>(null);
   const flyoutTimersRef = useRef<{ open: number | null; close: number | null }>({ open: null, close: null });
+  const reportSeqRef = useRef(0);
+  const reportTimersRef = useRef<{ raf1: number | null; raf2: number | null; fallback: number | null }>({
+    raf1: null,
+    raf2: null,
+    fallback: null,
+  });
 
   const t = translations[language].trayMenu;
   const isVisible = snapshot.windowState === 'visible';
@@ -234,7 +244,7 @@ export function TrayMenu() {
     return { width, height };
   };
 
-  const reportSizes = useCallback(() => {
+  const reportSizes = useCallback((force = false) => {
     const mainBox = measureElementLogicalBox(cardRef.current);
     if (!mainBox) return;
     const quickBox = measureElementLogicalBox(quickFlyoutRef.current);
@@ -243,7 +253,7 @@ export function TrayMenu() {
     const canvasH = Math.max(mainBox.height, quickBox?.height ?? 0, helpBox?.height ?? 0, suiteBox?.height ?? 0);
 
     const prev = lastReportedSizesRef.current;
-    if (prev && prev.mainW === mainBox.width && prev.mainH === mainBox.height && prev.canvasH === canvasH) {
+    if (!force && prev && prev.mainW === mainBox.width && prev.mainH === mainBox.height && prev.canvasH === canvasH) {
       return;
     }
     lastReportedSizesRef.current = { mainW: mainBox.width, mainH: mainBox.height, canvasH };
@@ -251,15 +261,44 @@ export function TrayMenu() {
     void invoke('tray_menu_ready', { width: FLYOUT_EXTRA_LOGICAL_WIDTH, height: canvasH, view: 'canvas' }).catch(() => {});
   }, []);
 
+  const cancelPendingReport = useCallback(() => {
+    const timers = reportTimersRef.current;
+    if (timers.raf1 !== null) window.cancelAnimationFrame(timers.raf1);
+    if (timers.raf2 !== null) window.cancelAnimationFrame(timers.raf2);
+    if (timers.fallback !== null) window.clearTimeout(timers.fallback);
+    reportTimersRef.current = { raf1: null, raf2: null, fallback: null };
+  }, []);
+
+  const schedulePaintedReport = useCallback((force = false) => {
+    cancelPendingReport();
+    const seq = ++reportSeqRef.current;
+    let sent = false;
+    const fire = () => {
+      if (sent || seq !== reportSeqRef.current) return;
+      sent = true;
+      cancelPendingReport();
+      reportSizes(force);
+    };
+    if (stageRef.current) void stageRef.current.offsetWidth;
+    reportTimersRef.current.fallback = window.setTimeout(fire, 60);
+    reportTimersRef.current.raf1 = window.requestAnimationFrame(() => {
+      reportTimersRef.current.raf1 = null;
+      reportTimersRef.current.raf2 = window.requestAnimationFrame(() => {
+        reportTimersRef.current.raf2 = null;
+        fire();
+      });
+    });
+  }, [cancelPendingReport, reportSizes]);
+
   const syncQuickFolders = useCallback(() => {
     const pinned = readPinnedQuickAccess();
     const pinnedSet = new Set(pinned.map(item => item.path.replace(/[\\/]+$/, '').toLowerCase()));
     setPinnedFolders(pinned);
     setRecentFolders(readRecentFolderShortcuts(pinnedSet));
-    window.requestAnimationFrame(() => window.requestAnimationFrame(() => reportSizes()));
-  }, [reportSizes]);
+    schedulePaintedReport(false);
+  }, [schedulePaintedReport]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (reveal = false) => {
     document.documentElement.dataset.theme = readTheme();
     cancelFlyoutTimers();
     setActiveFlyout(null);
@@ -274,8 +313,11 @@ export function TrayMenu() {
     } catch {
       setLanguage(readLanguage(false));
     }
-    window.requestAnimationFrame(() => window.requestAnimationFrame(() => reportSizes()));
-  }, [cancelFlyoutTimers, reportSizes]);
+    if (reveal) {
+      setStageVisible(true);
+    }
+    schedulePaintedReport(reveal);
+  }, [cancelFlyoutTimers, schedulePaintedReport]);
 
   const runAction = (action: string) => {
     cancelFlyoutTimers();
@@ -296,21 +338,34 @@ export function TrayMenu() {
   };
 
   useEffect(() => {
-    void refresh();
-    reportSizes();
+    void refresh(false);
     let cancelled = false;
     let stopListening: (() => void) | undefined;
     let stopHideListening: (() => void) | undefined;
     let stopQuickFoldersListening: (() => void) | undefined;
+    let dprMedia: MediaQueryList | null = null;
+    const onDprChange = () => {
+      if (stageVisibleRef.current) schedulePaintedReport(true);
+      watchDpr();
+    };
+    const watchDpr = () => {
+      if (dprMedia) dprMedia.removeEventListener('change', onDprChange);
+      dprMedia = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      dprMedia.addEventListener('change', onDprChange, { once: true });
+    };
+    watchDpr();
     void listen('tray-menu-show', () => {
-      void refresh();
+      void refresh(true);
     }).then(stop => {
       if (cancelled) stop();
       else stopListening = stop;
     });
     void listen('tray-menu-hide', () => {
+      reportSeqRef.current += 1;
+      cancelPendingReport();
       cancelFlyoutTimers();
       setActiveFlyout(null);
+      setStageVisible(false);
     }).then(stop => {
       if (cancelled) stop();
       else stopHideListening = stop;
@@ -329,25 +384,20 @@ export function TrayMenu() {
     window.addEventListener('storage', onStorage);
     return () => {
       cancelled = true;
+      cancelPendingReport();
       cancelFlyoutTimers();
+      if (dprMedia) dprMedia.removeEventListener('change', onDprChange);
       stopListening?.();
       stopHideListening?.();
       stopQuickFoldersListening?.();
       window.removeEventListener('storage', onStorage);
     };
-  }, [cancelFlyoutTimers, refresh, reportSizes, syncQuickFolders]);
+  }, [cancelFlyoutTimers, cancelPendingReport, refresh, schedulePaintedReport, syncQuickFolders]);
 
   useEffect(() => {
-    const onFocus = () => {
-      void refresh();
-    };
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [refresh]);
-
-  useEffect(() => {
-    window.requestAnimationFrame(() => window.requestAnimationFrame(() => reportSizes()));
-  }, [language, pinnedFolders.length, recentFolders.length, reportSizes]);
+    if (!stageVisible) return;
+    schedulePaintedReport(false);
+  }, [language, pinnedFolders.length, recentFolders.length, stageVisible, schedulePaintedReport]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -432,7 +482,8 @@ export function TrayMenu() {
       }}
     >
       <div
-        className="tray-stage"
+        ref={stageRef}
+        className={stageVisible ? 'tray-stage' : 'tray-stage is-offscreen'}
         data-flyout-side={flyoutSide}
         data-vertical-align={verticalAlign}
         onMouseLeave={scheduleFlyoutClose}
