@@ -5,12 +5,19 @@ import {
   getPortableDeviceRoot,
   isPortableDeviceRoot,
   isPortablePath,
+  isPortableStorageRoot,
   isSameOrDescendantPath,
   isUncPath,
   isUncServerRoot,
   normalizeWindowsPath,
   PORTABLE_PATH_PREFIX,
 } from './fileSystem';
+
+const PORTABLE_STAGING_CACHE_PATTERN = /[\\/]cyberfiles[\\/]portable-cache[\\/]/i;
+
+export function isPortableStagingCachePath(path?: string | null): boolean {
+  return Boolean(path && PORTABLE_STAGING_CACHE_PATTERN.test(normalizeWindowsPath(path)));
+}
 
 export type ExternalDropRejectionReason =
   | 'no-paths'
@@ -112,6 +119,7 @@ export function resolveExternalDropOperation(
   destinationPath: string,
   modifiers: { ctrlKey: boolean; shiftKey: boolean },
 ): FileDropOperation {
+  if (sourcePaths.some(source => isPortableStagingCachePath(source))) return 'copy';
   if (modifiers.ctrlKey && !modifiers.shiftKey) return 'copy';
   if (modifiers.shiftKey && !modifiers.ctrlKey) return 'move';
   if (isPortablePath(destinationPath)) return 'copy';
@@ -124,6 +132,44 @@ export function resolveExternalDropOperation(
     return 'move';
   }
   return 'copy';
+}
+
+export function filterOutboundDraggablePaths(
+  items: ReadonlyArray<{ path: string; isFolder?: boolean }>,
+): string[] {
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    let cleaned = item.path.trim().replace(/\//g, '\\');
+    if (!cleaned) continue;
+    if (/^\\\\\?\\UNC\\/i.test(cleaned)) {
+      cleaned = `\\\\${cleaned.slice(8)}`;
+    } else if (/^\\\\\?\\/.test(cleaned)) {
+      cleaned = cleaned.slice(4);
+    }
+    const normalized = normalizeWindowsPath(cleaned);
+    if (
+      !normalized
+      || normalized.startsWith('::')
+      || normalized === '\\\\'
+      || isUncServerRoot(normalized)
+      || isPortableDeviceRoot(normalized)
+      || isPortableStorageRoot(normalized)
+      || normalized === PORTABLE_PATH_PREFIX
+      || /^[a-zA-Z]:\\$/.test(normalized)
+    ) {
+      continue;
+    }
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push(normalized);
+  }
+  return candidates.filter((candidate, index) =>
+    !candidates.some(
+      (other, otherIndex) => otherIndex !== index && isSameOrDescendantPath(candidate, other),
+    ),
+  );
 }
 
 export function canDropExternalPathsOnDestination(

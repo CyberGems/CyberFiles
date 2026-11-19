@@ -35,6 +35,7 @@ import {
 } from './types';
 import { lazyWithRetry, MODULE_LOAD_FAILED_EVENT } from './components/LazyModule';
 import { useExternalFileDrop, type ExternalInvalidDropReason } from './hooks/useExternalFileDrop';
+import { filterOutboundDraggablePaths } from './utils/externalDrop';
 import {
   getChildItems, 
   getParentPath, 
@@ -129,7 +130,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, mapNativeNetworkDrive, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, parseNetworkMapFailedError, pasteNativeClipboardImage, probeNativeNetworkHosts, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, mapNativeNetworkDrive, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, parseNetworkMapFailedError, pasteNativeClipboardImage, probeNativeNetworkHosts, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, startNativeOutboundFileDrag, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { normalizeListerTextScale, type ListerTextScale } from './utils/listerTextScale';
 import {
@@ -5399,6 +5400,38 @@ export default function App() {
     }
   }, [showToast, t.core.cannotCopyIntoSelf, t.core.cannotMoveIntoSelf, t.pane.chooseRealDestinationFolder, t.pane.portableChooseStorageFirst]);
 
+  const outboundDragActiveRef = useRef(false);
+
+  const handleStartOutboundDrag = useCallback(async (items: DraggedFileItem[], sourcePane: 'left' | 'right') => {
+    if (!isTauriDesktop() || outboundDragActiveRef.current) return;
+    const paths = filterOutboundDraggablePaths(items);
+    if (paths.length === 0) return;
+
+    outboundDragActiveRef.current = true;
+    try {
+      const result = await startNativeOutboundFileDrag(paths);
+      if (result.outcome === 'dropped') {
+        const changedParents = [...new Set(result.sourcePaths.map(getParentPath).filter(Boolean))];
+        if (changedParents.length > 0) {
+          await refreshChangedDirectories(changedParents);
+        }
+        if (result.effect === 'move') {
+          const movedParentKeys = new Set(changedParents.map(getPathKey));
+          const paneTabs = sourcePane === 'left' ? leftTabsRef.current : rightTabsRef.current;
+          const activeIndex = sourcePane === 'left' ? activeLeftTabIndexRef.current : activeRightTabIndexRef.current;
+          const currentPanePath = paneTabs[activeIndex]?.currentPath || '';
+          if (currentPanePath && movedParentKeys.has(getPathKey(currentPanePath))) {
+            updatePaneTab(sourcePane, tab => ({ ...tab, selectedIds: [], focusedId: null }));
+          }
+        }
+      }
+    } catch (error) {
+      showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
+    } finally {
+      outboundDragActiveRef.current = false;
+    }
+  }, [refreshChangedDirectories, showToast, t.core.operationFailedWithReason, updatePaneTab]);
+
   useExternalFileDrop({
     tabSizePreferences,
     labels: {
@@ -7413,6 +7446,7 @@ export default function App() {
                   onBackgroundClick={(_event, pane) => handleSelectItems(pane, [])}
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFiles={handleDropFiles}
+                  onStartOutboundDrag={handleStartOutboundDrag}
                   onInlineRename={handleInlineRename}
                   renameRequest={renameRequest}
                   onRenameRequestHandled={handleRenameRequestHandled}
@@ -7510,6 +7544,7 @@ export default function App() {
                   onBackgroundClick={(_event, pane) => handleSelectItems(pane, [])}
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFiles={handleDropFiles}
+                  onStartOutboundDrag={handleStartOutboundDrag}
                   onInlineRename={handleInlineRename}
                   renameRequest={renameRequest}
                   onRenameRequestHandled={handleRenameRequestHandled}
@@ -7608,6 +7643,7 @@ export default function App() {
                   onBackgroundClick={(_event, pane) => handleSelectItems(pane, [])}
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFiles={handleDropFiles}
+                  onStartOutboundDrag={handleStartOutboundDrag}
                   onInlineRename={handleInlineRename}
                   renameRequest={renameRequest}
                   onRenameRequestHandled={handleRenameRequestHandled}
@@ -7701,6 +7737,7 @@ export default function App() {
                   onBackgroundClick={(_event, pane) => handleSelectItems(pane, [])}
                   onBackgroundDoubleClick={handleBackgroundDoubleClick}
                   onDropFiles={handleDropFiles}
+                  onStartOutboundDrag={handleStartOutboundDrag}
                   onInlineRename={handleInlineRename}
                   renameRequest={renameRequest}
                   onRenameRequestHandled={handleRenameRequestHandled}
@@ -7799,6 +7836,7 @@ export default function App() {
                 onBackgroundClick={(_event, pane) => handleSelectItems(pane, [])}
                 onBackgroundDoubleClick={handleBackgroundDoubleClick}
                 onDropFiles={handleDropFiles}
+                onStartOutboundDrag={handleStartOutboundDrag}
                 onInlineRename={handleInlineRename}
                 renameRequest={renameRequest}
                 onRenameRequestHandled={handleRenameRequestHandled}

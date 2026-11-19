@@ -26,6 +26,7 @@ use zip::{
 mod windows_file_icons;
 #[cfg(target_os = "windows")]
 mod windows_folder_handler;
+mod windows_outbound_drag;
 mod windows_portable_devices;
 mod windows_thumbnails;
 
@@ -9475,6 +9476,33 @@ fn normalize_external_drop_paths(paths: &[PathBuf]) -> Vec<String> {
         .collect()
 }
 
+#[tauri::command]
+async fn start_outbound_file_drag(
+    window: tauri::WebviewWindow,
+    paths: Vec<String>,
+) -> Result<windows_outbound_drag::OutboundFileDragResult, String> {
+    let prepared = tauri::async_runtime::spawn_blocking(move || {
+        windows_outbound_drag::prepare_outbound_drag_items(paths)
+    })
+    .await
+    .map_err(|error| format!("Drag preparation worker failed: {error}"))??;
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    window
+        .run_on_main_thread(move || {
+            let result = windows_outbound_drag::run_outbound_drag_on_ui_thread(prepared);
+            let _ = tx.send(result);
+        })
+        .map_err(|error| format!("Could not start system drag on window thread: {error}"))?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        rx.recv()
+            .map_err(|_| "System drag-and-drop did not return a result.".to_string())?
+    })
+    .await
+    .map_err(|error| format!("System drag worker failed: {error}"))?
+}
+
 fn main() {
     #[cfg(target_os = "windows")]
     if std::env::args_os().nth(1).is_some_and(|argument| argument == "--unregister-folder-handler") {
@@ -9768,6 +9796,7 @@ fn main() {
             rename_item,
             start_copy_operation,
             start_move_operation,
+            start_outbound_file_drag,
             pause_transfer_operation,
             resume_transfer_operation,
             cancel_transfer_operation,

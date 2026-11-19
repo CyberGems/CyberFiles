@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   canDropExternalPathsOnDestination,
+  filterOutboundDraggablePaths,
   getExternalDragLeafName,
   getVolumeTransferKey,
   isValidDropDestinationPath,
@@ -109,4 +110,33 @@ test('validates destination guards for self, same folder, and portable device ro
 
   assert.equal(getExternalDragLeafName('C:\\Users\\Carlos\\Desktop\\note.txt'), 'note.txt');
   assert.equal(getExternalDragLeafName('C:\\'), 'C:');
+});
+
+test('keeps portable staging cache drags as copy and filters outbound draggable paths', () => {
+  assert.equal(
+    resolveExternalDropOperation(
+      ['C:\\Users\\Carlos\\AppData\\Local\\Temp\\CyberFiles\\portable-cache\\abc123\\photo.jpg'],
+      'C:\\Users\\Carlos\\Desktop',
+      { ctrlKey: false, shiftKey: true },
+    ),
+    'copy',
+  );
+
+  assert.deepEqual(
+    filterOutboundDraggablePaths([
+      { path: 'C:\\' },
+      { path: '::cyberfiles-this-pc::' },
+      { path: '\\\\NAS01' },
+      { path: 'mtp:\\Carlos P30' },
+      { path: 'mtp:\\Carlos P30\\Internal storage' },
+      { path: 'mtp:\\Carlos P30\\Internal storage\\DCIM\\Camera\\IMG_01.jpg' },
+      { path: 'C:\\Projects\\Demo' },
+      { path: 'C:\\Projects\\Demo\\nested.txt' },
+      { path: 'c:\\projects\\demo' },
+    ]),
+    [
+      'mtp:\\Carlos P30\\Internal storage\\DCIM\\Camera\\IMG_01.jpg',
+      'C:\\Projects\\Demo',
+    ],
+  );
 });

@@ -584,3 +584,16 @@ export async function probeNativeNetworkHosts(hosts: string[]): Promise<NetworkH
   if (!isTauriDesktop() || hosts.length === 0) return [];
   return invoke<NetworkHostProbeStatus[]>('probe_network_hosts', { hosts });
 }
+
+export interface OutboundFileDragResult {
+  outcome: 'dropped' | 'cancelled';
+  effect: 'copy' | 'move' | 'link' | 'none';
+  sourcePaths: string[];
+}
+
+export async function startNativeOutboundFileDrag(paths: string[]): Promise<OutboundFileDragResult> {
+  if (!isTauriDesktop() || paths.length === 0) {
+    return { outcome: 'cancelled', effect: 'none', sourcePaths: [] };
+  }
+  return invoke<OutboundFileDragResult>('start_outbound_file_drag', { paths });
+}

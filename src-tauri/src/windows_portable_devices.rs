@@ -2193,6 +2193,40 @@ mod windows_impl {
         unsafe { ShellExecuteExW(&mut info) }
             .map_err(|error| format!("Windows could not open Properties for this device item: {error}"))
     }
+
+    pub fn inspect_portable_item_metadata(path: &str) -> Result<(bool, u64), String> {
+        let Some(_apartment) = ShellApartment::initialize() else {
+            return Err("Could not initialize Windows COM for portable devices.".to_string());
+        };
+        let (device_key, rel_segments) =
+            parse_portable_path(path).ok_or_else(|| "Invalid portable device path.".to_string())?;
+        if rel_segments.len() < 2 {
+            return Err("Portable device and storage roots cannot be dragged directly.".to_string());
+        }
+        let device = resolve_registered_device(&device_key)?;
+        let lock = device_lock(&device.pnp_device_id);
+        let _guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let opened = open_wpd_device(&device.pnp_device_id, GENERIC_READ.0)?;
+        let content = unsafe { opened.0.Content() }
+            .map_err(|error| format!("Could not access portable device content: {error}"))?;
+        let properties = unsafe { content.Properties() }
+            .map_err(|error| format!("Could not read portable device properties: {error}"))?;
+        let keys = build_object_property_keys(false)?;
+        let (object_id, _, _) = resolve_object_id_locked(&content, &device, &rel_segments)?;
+        let info = read_object_info(&properties, &keys, &object_id, false)
+            .ok_or_else(|| "The selected portable item is unavailable.".to_string())?;
+        Ok((info.is_folder, info.size))
+    }
+
+    pub fn resolve_portable_shell_pidl_raw(path: &str) -> Result<*mut ITEMIDLIST, String> {
+        let Some(_apartment) = ShellApartment::initialize() else {
+            return Err("Could not initialize Windows Shell apartment.".to_string());
+        };
+        let (_parsing_name, owned_pidl) = resolve_portable_shell_pidl(path)?;
+        let raw_pidl = std::mem::ManuallyDrop::new(owned_pidl).0;
+        Ok(raw_pidl)
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -2279,6 +2313,9 @@ mod non_windows_impl {
         Err("Portable devices are supported only on Windows.".to_string())
     }
     pub fn show_portable_properties(_path: &str) -> Result<(), String> {
+        Err("Portable devices are supported only on Windows.".to_string())
+    }
+    pub fn inspect_portable_item_metadata(_path: &str) -> Result<(bool, u64), String> {
         Err("Portable devices are supported only on Windows.".to_string())
     }
 }

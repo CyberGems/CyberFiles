@@ -54,7 +54,7 @@ import { isDedicatedLayoutPath } from '../utils/locations';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { listerTextScaleFactor, LISTER_TEXT_SCALE_CSS_VAR, type ListerTextScale } from '../utils/listerTextScale';
 import { formatFileSize, getFileExtension, getParentPath, getPortablePathSegments, isPathOnUnavailableDrive, isPathOnUnavailablePortableDevice, isPortableDeviceRoot, isPortablePath, isPortableStorageRoot, isSameOrDescendantPath, isUncPath, isUncServerRoot, normalizeDriveLetter, normalizeWindowsPath, PORTABLE_PATH_PREFIX } from '../utils/fileSystem';
-import { isValidDropDestinationPath } from '../utils/externalDrop';
+import { isValidDropDestinationPath, filterOutboundDraggablePaths } from '../utils/externalDrop';
 import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, getNativeFileThumbnails, isTauriDesktop, loadNativeImageThumbnail, loadNativeMediaPreviewUrl, pauseNativeFolderSizeCalculation, resumeNativeFolderSizeCalculation, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { advanceMouseGesturePath, MOUSE_GESTURE_MIN_DISTANCE, type MouseGesturePath } from '../utils/mouseGesture';
@@ -158,6 +158,7 @@ interface FilePaneProps {
   onBackgroundClick: (e: React.MouseEvent, pane: 'left' | 'right') => void;
   onBackgroundDoubleClick: (e: React.MouseEvent, pane: 'left' | 'right') => void;
   onDropFiles: (droppedItems: DraggedFileItem[], targetFolder: string, sourcePane: 'left' | 'right', operation: FileDropOperation) => void;
+  onStartOutboundDrag?: (items: DraggedFileItem[], sourcePane: 'left' | 'right') => void;
   onInlineRename: (itemId: string, newName: string, paneId: 'left' | 'right') => void;
   renameRequest: { requestId: number; itemId: string; paneId: 'left' | 'right' } | null;
   onRenameRequestHandled: (requestId: number) => void;
@@ -1003,6 +1004,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onBackgroundClick,
   onBackgroundDoubleClick,
   onDropFiles,
+  onStartOutboundDrag,
   onInlineRename,
   renameRequest,
   onRenameRequestHandled,
@@ -2732,6 +2734,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     const startX = event.clientX;
     const startY = event.clientY;
     let dragging = false;
+    let handedOffToNative = false;
     let highlightedTarget: HTMLElement | null = null;
     let hoveredTabKey: string | null = null;
     let tabActivationTimer: number | null = null;
@@ -2739,6 +2742,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     let lastClientX = startX;
     let lastClientY = startY;
     let requestedOperation: FileDropOperation = event.ctrlKey ? 'copy' : 'move';
+    const captureTarget = viewportRef.current;
 
     const createDragGhost = () => {
       if (dragGhost) return dragGhost;
@@ -2840,6 +2844,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
       document.removeEventListener('pointercancel', cancelPointerDrag, true);
       document.removeEventListener('keydown', handleModifierChange, true);
       document.removeEventListener('keyup', handleModifierChange, true);
+      document.documentElement.removeEventListener('mouseleave', handleDocumentMouseLeave, true);
+      try {
+        if (captureTarget?.hasPointerCapture(pointerId)) {
+          captureTarget.releasePointerCapture(pointerId);
+        }
+      } catch {
+        // Ignore release errors when the capture target has detached.
+      }
       clearTabActivationTimer();
       setHighlightedTarget(null);
       dragGhost?.remove();
@@ -2851,22 +2863,49 @@ export const FilePane: React.FC<FilePaneProps> = ({
         'cyberfiles-file-pointer-drag-move',
       );
     };
+    const tryHandoffToNativeDrag = () => {
+      if (handedOffToNative || !dragging || !isTauriDesktop() || !onStartOutboundDrag) return false;
+      if (filterOutboundDraggablePaths(payload.items).length === 0) return false;
+      handedOffToNative = true;
+      cleanup();
+      window.setTimeout(() => { suppressFileClickRef.current = false; }, 0);
+      onStartOutboundDrag(payload.items, payload.sourcePane);
+      return true;
+    };
+    const handleDocumentMouseLeave = (mouseEvent: MouseEvent) => {
+      if (!dragging || handedOffToNative) return;
+      if ((mouseEvent.buttons & 1) !== 1) return;
+      tryHandoffToNativeDrag();
+    };
     const handlePointerMove = (pointerEvent: PointerEvent) => {
-      if (pointerEvent.pointerId !== pointerId) return;
+      if (pointerEvent.pointerId !== pointerId || handedOffToNative) return;
       if (!dragging && Math.hypot(pointerEvent.clientX - startX, pointerEvent.clientY - startY) < FILE_DRAG_START_DISTANCE) return;
       if (!dragging) {
         dragging = true;
         suppressFileClickRef.current = true;
         document.body.classList.add('cyberfiles-file-pointer-drag');
+        try {
+          captureTarget?.setPointerCapture(pointerId);
+        } catch {
+          // Non-fatal if browser blocks pointer capture for synthetic pointers.
+        }
       }
       pointerEvent.preventDefault();
       lastClientX = pointerEvent.clientX;
       lastClientY = pointerEvent.clientY;
+      if (
+        lastClientX <= 1
+        || lastClientY <= 1
+        || lastClientX >= window.innerWidth - 2
+        || lastClientY >= window.innerHeight - 2
+      ) {
+        if (tryHandoffToNativeDrag()) return;
+      }
       requestedOperation = pointerEvent.ctrlKey ? 'copy' : 'move';
       updatePointerTarget(lastClientX, lastClientY, requestedOperation);
     };
     const finishPointerDrag = (pointerEvent: PointerEvent) => {
-      if (pointerEvent.pointerId !== pointerId) return;
+      if (pointerEvent.pointerId !== pointerId || handedOffToNative) return;
       requestedOperation = pointerEvent.ctrlKey ? 'copy' : 'move';
       const target = dragging ? updatePointerTarget(pointerEvent.clientX, pointerEvent.clientY, requestedOperation) : null;
       cleanup();
@@ -2877,12 +2916,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
       if (target) onDropFiles(payload.items, target.destinationPath, payload.sourcePane, requestedOperation);
     };
     const cancelPointerDrag = (pointerEvent: PointerEvent) => {
-      if (pointerEvent.pointerId !== pointerId) return;
+      if (pointerEvent.pointerId !== pointerId || handedOffToNative) return;
       cleanup();
       suppressFileClickRef.current = false;
     };
     const handleModifierChange = (keyboardEvent: KeyboardEvent) => {
-      if (keyboardEvent.key !== 'Control' || !dragging) return;
+      if (keyboardEvent.key !== 'Control' || !dragging || handedOffToNative) return;
       requestedOperation = keyboardEvent.ctrlKey ? 'copy' : 'move';
       updatePointerTarget(lastClientX, lastClientY, requestedOperation);
     };
@@ -2892,6 +2931,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     document.addEventListener('pointercancel', cancelPointerDrag, true);
     document.addEventListener('keydown', handleModifierChange, true);
     document.addEventListener('keyup', handleModifierChange, true);
+    document.documentElement.addEventListener('mouseleave', handleDocumentMouseLeave, true);
   };
 
   // Selection ranges follow the full displayed order, including virtual rows.
