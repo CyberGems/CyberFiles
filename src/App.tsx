@@ -6987,6 +6987,7 @@ export default function App() {
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onOpenAbout={() => setIsAboutOpen(true)}
+        onExit={() => requestQuitWithUnsavedChangesRef.current(false)}
         onWindowControlError={() => showToast(t.core.windowControlFailed)}
         updateVersion={pendingUpdate?.version ?? null}
         onOpenUpdate={() => setIsUpdateOpen(true)}

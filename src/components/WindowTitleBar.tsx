@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Globe, Info, Keyboard, Minus, MoreHorizontal, Search, Settings, X } from 'lucide-react';
+import { Globe, Info, Keyboard, Minus, MoreHorizontal, Power, Search, Settings, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { dismissAllTooltips, Tooltip } from './Tooltip';
 import { TitleBarUpdateButton } from './TitleBarUpdateButton';
@@ -13,13 +13,14 @@ interface WindowTitleBarProps {
   onOpenCommandPalette: () => void;
   onOpenShortcuts: () => void;
   onOpenAbout: () => void;
+  onExit: () => void;
   onWindowControlError: () => void;
   /** Version offered by the updater, when one is pending: shows the titlebar notice. */
   updateVersion?: string | null;
   onOpenUpdate?: () => void;
 }
 
-export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearch, onOpenCommandPalette, onOpenShortcuts, onOpenAbout, onWindowControlError, updateVersion, onOpenUpdate }: WindowTitleBarProps) {
+export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearch, onOpenCommandPalette, onOpenShortcuts, onOpenAbout, onExit, onWindowControlError, updateVersion, onOpenUpdate }: WindowTitleBarProps) {
   const { t, language, toggleLanguage } = useLanguage();
   const [appWindow, setAppWindow] = useState<ReturnType<typeof getCurrentWindow> | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
@@ -337,6 +338,18 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
                   >
                     <Info className="h-4 w-4 text-neutral-400" />
                     <span className="flex-1">{tTitlebar('Acerca de CyberFiles', 'About CyberFiles')}</span>
+                  </button>
+                </Tooltip>
+                <div className="mx-2 my-1 border-t border-neutral-800" />
+                <Tooltip label={t.closeWindow.exit} placement="left">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => closeMenuAnd(onExit)}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-neutral-300 transition-colors hover:bg-neutral-800 focus:bg-neutral-800 focus:outline-none"
+                  >
+                    <Power className="h-4 w-4 text-rose-400" />
+                    <span className="flex-1">{t.closeWindow.exit}</span>
                   </button>
                 </Tooltip>
               </div>
