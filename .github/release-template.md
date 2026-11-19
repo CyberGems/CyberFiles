@@ -8,7 +8,7 @@
 
 <!-- IMPORTANT FOR AGENTS & MAINTAINERS: Always rewrite this entire section and highlights with the ACTUAL release notes for this specific new version before tagging. NEVER leave or copy previous version notes! Use 25-45 words for the summary, lead with user-facing changes, and do not repeat the app name or version. Keep the Spanish mirror inside the details block in sync: translate the summary and rewrite the highlights. -->
 <!-- changelog-summary:start -->
-Windows folder replacement and Win+E handling now support per-folder Explorer exceptions, saved LAN hosts gain aliases, pinning and live SMB reachability badges, tray submenus expand into side-by-side flyouts with live-synced folders, and crash recovery shows friendly virtual folder names.
+Fixes system tray menu positioning, mixed-DPI scaling, and vertical taskbar anchoring across multi-monitor setups, tightens the tray flyout gap to 4px, and adds an Exit option to the titlebar More menu.
 <!-- changelog-summary:end -->
 
 > **New to CyberFiles?** A dual-pane Windows file manager with tabs, queued copy and move operations you can pause or undo, archive tools, and previews powered by the real Windows Shell.
@@ -17,18 +17,15 @@ Windows folder replacement and Win+E handling now support per-folder Explorer ex
 
 ### ✨ Key Features & Highlights
 
-- 🗂️ **Default folder handler and `Win+E` control**: Set CyberFiles as your default Windows folder opener alongside an independent `Win+E` shortcut toggle, configurable already-running behavior, per-folder Explorer exceptions via context menus, exclusion badges, Settings quick open, and JSON export/import.
-
-- 🌐 **Richer LAN hosts and recovery clarity**: Customize saved SMB hosts with aliases, notes, pinning, asynchronous reachability probes, and JSON backup; crash recovery displays localized names for This PC and Network.
-
-- 🪟 **Side-by-side tray flyout panels**: Tray submenus open beside the main card, including a new Quick Access and recent folders flyout synced live from the main window.
+- 🪟 **Accurate multi-monitor and mixed-DPI tray placement**: Reworked tray positioning in physical coordinates with per-monitor DPI handling and painted reveal so the menu opens cleanly beside vertical or horizontal taskbars with a `4px` flyout gap.
+- 🚪 **Exit from the titlebar menu**: Added an `Exit CyberFiles` item to the titlebar More menu for quick full shutdown without using the system tray.
 
 <details>
 <summary><b>🇪🇸 Ver notas de la versión en Español</b></summary>
 
 ### 🚀 Novedades de esta versión
 
-El reemplazo de carpetas de Windows y el atajo Win+E ahora admiten excepciones por carpeta hacia el Explorador, los hosts LAN suman alias, anclaje y estado SMB en vivo, los submenús de bandeja pasan a flyouts laterales sincronizados y la recuperación muestra nombres amigables.
+Corrige el posicionamiento del menú de bandeja, el escalado en monitores con DPI mixto y el anclaje en barras verticales, ajusta el espacio de los flyouts a 4px y añade la opción Salir al menú Más de la barra de título.
 
 > **¿Nuevo en CyberFiles?** Un gestor de archivos Windows de doble panel, con pestañas, operaciones de copia y movimiento en cola que puedes pausar o deshacer, herramientas de archivos comprimidos y vistas previas con el Shell real de Windows.
 
@@ -36,11 +33,8 @@ El reemplazo de carpetas de Windows y el atajo Win+E ahora admiten excepciones p
 
 ### ✨ Novedades destacadas
 
-- 🗂️ **Manejo predeterminado de carpetas y `Win+E`**: Configura CyberFiles para abrir carpetas por defecto junto a un ajuste independiente para `Win+E`, acción configurable si ya está abierto, excepciones por carpeta desde el menú contextual, insignias visuales, apertura rápida desde Ajustes y respaldo JSON.
-
-- 🌐 **Hosts LAN mejorados y recuperación clara**: Personaliza hosts SMB guardados con alias, notas, anclaje, comprobación asíncrona de estado y respaldo JSON; la recuperación tras fallo muestra nombres localizados para Este equipo y Red.
-
-- 🪟 **Paneles flyout laterales en la bandeja**: Los submenús se abren junto a la tarjeta principal, sumando un flyout de Acceso rápido y carpetas recientes sincronizado en tiempo real con la ventana principal.
+- 🪟 **Posicionamiento preciso en multimonitor y DPI mixto**: Se rehizo el cálculo de la bandeja en píxeles físicos con soporte DPI por monitor y revelado tras pintar, abriendo sin saltos junto a barras verticales u horizontales con un espacio de `4px` entre flyouts.
+- 🚪 **Opción Salir en la barra de título**: Se agregó `Salir de CyberFiles` al menú Más de la barra de título para cerrar la aplicación por completo sin pasar por la bandeja del sistema.
 
 ### ℹ️ Antes de instalar
 

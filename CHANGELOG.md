@@ -2,6 +2,18 @@
 
 All notable changes to CyberFiles are documented here.
 
+## [0.11.1] - 2026-11-19
+
+### 🇺🇸 English
+
+- Fix tray menu positioning, mixed-DPI scaling, and vertical taskbar anchoring across multi-monitor setups, and align the tray flyout gap to `4px`.
+- Add an `Exit CyberFiles` action to the titlebar More menu.
+
+### 🇪🇸 Español
+
+- Corrige el posicionamiento, escalado en DPI mixto y anclaje en barra de tareas vertical del menú de bandeja en configuraciones multimonitor, y ajusta el espacio de los flyouts a `4px`.
+- Añade la opción `Salir de CyberFiles` al menú Más de la barra de título.
+
 ## [0.11.0] - 2026-11-18
 
 ### 🇺🇸 English
