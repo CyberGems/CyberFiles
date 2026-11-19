@@ -107,7 +107,8 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Recuperación ante fallos**: las pestañas abiertas, su historial y los filtros activos se copian a disco de forma continua mediante escrituras atómicas, así que tras un cierre forzado o un corte de energía el siguiente arranque ofrece restaurarlos, comparando lo que estaba en curso contra la última sesión guardada; con varias instancias permitidas el snapshot es compartido y gana el último escritor
 
 ### 📁 Navegación y vistas
-- **Vista Este equipo**: unidades, carpetas habituales de Windows, ubicaciones de red y carpetas avanzadas de Windows en un solo lugar
+- **Vista Este equipo**: unidades, dispositivos portátiles conectados (MTP/PTP), carpetas habituales de Windows, ubicaciones de red y carpetas avanzadas de Windows en un solo lugar
+- **Dispositivos portátiles (MTP/PTP)**: teléfonos, tabletas y cámaras aparecen en Este equipo y en la barra lateral sin duplicar letras de unidad USB; explora rutas `mtp:\`, consulta miniaturas y vistas previas de archivos, lanza transferencias en cola con progreso, recibe avisos en vivo al conectar o desconectar (con actualización al cambiar de modo USB y guía si el dispositivo está bloqueado) y confirma explícitamente los borrados permanentes
 - **Unidades de red**: explora dispositivos LAN y recursos SMB, personaliza los hosts guardados con alias, notas, anclaje, insignias de disponibilidad SMB en vivo y exportación/importación en JSON, navega rutas UNC, conecta y desconecta unidades de red e inicia sesión con el diálogo nativo de credenciales; las direcciones aceptan variables de entorno como `%APPDATA%`
 - **Barra de direcciones**: la ruta de la carpeta actual con segmentos en los que puedes hacer clic; pulsa un nivel superior para volver, pulsa el segmento actual para actualizar la lista y abre carpetas recientes desde el chevron del borde derecho. Escribe o pega una ruta con variables de entorno como `%APPDATA%\CyberSnap\logs` y CyberFiles resuelve los tokens automáticamente
 - **Barra lateral**: solo ubicaciones, para que el árbol no salga nunca de la pantalla: acceso rápido con árbol de carpetas de carga diferida, unidades con barras de capacidad, carpetas avanzadas de Windows y estado de la Papelera de reciclaje
@@ -127,6 +128,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 
 ### 🚚 Operaciones con archivos
 - **Transferencias entre paneles**: copia con F5 o mueve con F6, o arrastra elementos entre paneles con la acción prevista visible antes de soltar
+- **Arrastrar y soltar con Windows**: arrastra archivos y carpetas desde el Escritorio o el Explorador de Windows hacia cualquier panel, fila o tarjeta de carpeta, miga de pan, pestaña (con activación al pasar el cursor), tarjeta de Este equipo o ubicación de la barra lateral, con desplazamiento automático en bordes, reglas de copia o movimiento del Explorador y cambio en vivo con Ctrl o Shift; arrastra elementos más allá del borde de la ventana de CyberFiles para soltarlos mediante Windows OLE en el Escritorio, el Explorador o apps externas (compatible con rutas locales, UNC y MTP)
 - **Portapapeles**: cortar, copiar y pegar con los atajos de Windows
 - **Centro de operaciones**: copia, movimiento, extracción y creación de ZIP pasan por una cola con progreso, pausa, reanudación, cancelación y errores por elemento; el botón de la barra de estado cuenta las operaciones completadas y fallidas desde tu última revisión, para que no se pase nada entre revisiones
 - **Historial de deshacer**: las últimas diez acciones compatibles se revierten desde la barra de herramientas o desde el menú contextual del panel, con el motivo indicado cuando una acción no se puede deshacer
@@ -240,7 +242,7 @@ Consulta [¿Cómo se usa CyberFiles?](https://github.com/CyberGems/CyberFiles/wi
 - **Plataforma:** Windows 10 y 11 (x64)
 - **Shell de escritorio:** Tauri 2 con Rust
 - **Interfaz:** React 19, TypeScript, Vite y Tailwind CSS 4
-- **Integración con Windows:** los crates `windows` y `windows-sys` para operaciones del Shell, extracción de iconos, información de unidades y la Papelera de reciclaje
+- **Integración con Windows:** los crates `windows` y `windows-sys` para operaciones del Shell, arrastrar y soltar OLE, acceso a dispositivos portátiles WPD (MTP/PTP), extracción de iconos, información de unidades y la Papelera de reciclaje
 - **Archivos comprimidos:** el crate `zip` (con AES) y `unrar-rs`
 - **Almacenamiento:** sin base de datos; las preferencias viven en el perfil de WebView y en pequeños archivos JSON de la carpeta de configuración
 - **Entorno de ejecución:** Microsoft Edge WebView2 Evergreen Runtime
@@ -249,6 +251,7 @@ Consulta [¿Cómo se usa CyberFiles?](https://github.com/CyberGems/CyberFiles/wi
 CyberFiles/
 ├── src/                        Frontend React
 │   ├── components/             Paneles, pestañas, diálogos, ajustes, vista previa
+│   ├── hooks/                  Hook de arrastre externo del sistema
 │   ├── locales/                Textos en inglés y español
 │   ├── themes/                 Contexto de temas
 │   ├── tray/                   Ventana de bandeja, catálogo de la suite y estilos
@@ -258,6 +261,8 @@ CyberFiles/
 ├── src-tauri/
 │   ├── src/main.rs             Comandos, integración con el Shell, bandeja y atajo global
 │   ├── src/windows_file_icons.rs
+│   ├── src/windows_outbound_drag.rs
+│   ├── src/windows_portable_devices.rs
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── scripts/                    Empaquetado portable y helper del servidor de desarrollo
@@ -324,9 +329,10 @@ Cada versión escribe además `latest.json` (versión, notas, URL del instalador
 
 CyberFiles es una versión preliminar temprana centrada en Windows. La versión actual valida el instalador empaquetado, la edición portable y los flujos ampliados de gestión de archivos. Otras plataformas de escritorio no se han validado.
 
-Dos limitaciones actuales son intencionadas y están documentadas:
+Tres limitaciones actuales son intencionadas y están documentadas:
 
 - **Las ubicaciones de red no se pueden usar como destino de borrado.** El borrado a la Papelera acepta solo rutas locales canónicas en unidades fijas o extraíbles; las rutas UNC, las unidades de red asignadas, los medios ópticos y las raíces del sistema de archivos se rechazan con un error por elemento. Usa el Explorador de Windows para borrar en red.
+- **Los dispositivos portátiles borran de forma permanente.** El almacenamiento MTP/PTP no tiene Papelera de reciclaje en Windows, así que eliminar elementos de un teléfono o cámara los borra de forma permanente tras una confirmación explícita.
 - **Vaciar la Papelera sigue el comportamiento de Windows.** Pasa una ruta nula al Shell, que vacía las Papeleras de todas las unidades, así que su alcance puede ser mayor que el del indicador de estado. Es permanente y no se puede deshacer.
 
 Consulta [Operaciones de archivos y seguridad](https://github.com/CyberGems/CyberFiles/wiki/File-Operations-and-Safety-es) para la lista completa de comportamientos.

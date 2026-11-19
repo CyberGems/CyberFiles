@@ -107,7 +107,8 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Crash recovery**: the open tabs, their history and active filters are snapshotted to disk continuously through atomic writes, so after a forced close or a power cut the next launch offers to restore them, comparing what was in flight against the last saved session; with multiple instances allowed, the snapshot is shared and the last writer wins
 
 ### 📁 Browsing & Views
-- **This PC view**: drives, common Windows folders, network locations and advanced Windows folders in one place
+- **This PC view**: drives, connected portable devices (MTP/PTP), common Windows folders, network locations and advanced Windows folders in one place
+- **Portable devices (MTP/PTP)**: phones, tablets and cameras appear in This PC and the sidebar without duplicating USB drive letters; browse `mtp:\` paths, view thumbnails and file previews, run queued transfers with progress, get live connect/disconnect notifications (with USB mode refresh and locked-device guidance), and confirm permanent deletions explicitly
 - **Network drives**: browse LAN devices and SMB shares, customize saved hosts with aliases, notes, pinning, live SMB reachability badges, and JSON export/import, navigate UNC paths, map and disconnect network drives, and sign in with the native credentials dialog; addresses accept environment variables such as `%APPDATA%`
 - **Address bar**: the current folder path with clickable segments; click a parent to jump back, click the current segment to refresh the listing, and open recent folders from the chevron at the right edge. Type or paste a path with environment variables such as `%APPDATA%\CyberSnap\logs` and CyberFiles resolves the tokens automatically
 - **Sidebar**: locations only, so the tree never leaves the screen: quick access with a lazy-loaded folder tree, drives with capacity bars, advanced Windows folders and Recycle Bin status
@@ -127,6 +128,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 
 ### 🚚 File Operations
 - **Two-pane transfers**: copy with F5 or move with F6, or drag items between panes with the intended action shown before you drop
+- **System drag-and-drop**: drag files and folders from the Windows Desktop or File Explorer into any pane, folder row, breadcrumb, tab (with hover activation), This PC card, or sidebar location, with edge auto-scrolling, Explorer copy/move rules, and live Ctrl/Shift overrides; drag items across the CyberFiles window edge to drop them via Windows OLE onto Desktop, Explorer, or external apps (local, UNC, and MTP items supported)
 - **Clipboard**: cut, copy and paste with Windows keyboard shortcuts
 - **Operations center**: copy, move, extraction and ZIP creation run through a queue with progress, pause, resume, cancel and per-item errors; the status bar button counts completed and failed operations since your last review, so nothing is missed between checks
 - **Undo history**: the last ten supported actions can be reversed from the toolbar or from the pane context menu, with clear reasons when an action cannot be undone
@@ -242,7 +244,7 @@ See [How Do You Use CyberFiles?](https://github.com/CyberGems/CyberFiles/wiki/Ho
 - **Platform:** Windows 10 and 11 (x64)
 - **Desktop shell:** Tauri 2 with Rust
 - **Interface:** React 19, TypeScript, Vite and Tailwind CSS 4
-- **Windows integration:** the `windows` and `windows-sys` crates for Shell file operations, icon extraction, drive information and the Recycle Bin
+- **Windows integration:** the `windows` and `windows-sys` crates for Shell file operations, OLE drag-and-drop, WPD portable device access (MTP/PTP), icon extraction, drive information and the Recycle Bin
 - **Archives:** the `zip` crate (including AES) and `unrar-rs`
 - **Storage:** no database; preferences live in the WebView profile and small JSON files in the app config folder
 - **Runtime:** Microsoft Edge WebView2 Evergreen Runtime
@@ -251,6 +253,7 @@ See [How Do You Use CyberFiles?](https://github.com/CyberGems/CyberFiles/wiki/Ho
 CyberFiles/
 ├── src/                        React frontend
 │   ├── components/             Panes, tabs, dialogs, settings, preview, tray-adjacent UI
+│   ├── hooks/                  External OS drag-and-drop hook
 │   ├── locales/                English and Spanish strings
 │   ├── themes/                 Theme context
 │   ├── tray/                   Tray window, suite catalog and styling
@@ -260,6 +263,8 @@ CyberFiles/
 ├── src-tauri/
 │   ├── src/main.rs             Commands, Windows Shell integration, tray and hotkey
 │   ├── src/windows_file_icons.rs
+│   ├── src/windows_outbound_drag.rs
+│   ├── src/windows_portable_devices.rs
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 ├── scripts/                    Portable packaging and dev server helper
@@ -326,9 +331,10 @@ Each release also writes `latest.json` (version, notes, installer URL and signat
 
 CyberFiles is an early Windows-first prerelease. The current release validates the packaged installer, the portable edition and the expanded file-management workflows. Other desktop platforms have not been validated.
 
-Two current limitations are intentional and documented:
+Three current limitations are intentional and documented:
 
 - **Network locations cannot be used as a delete target.** Recycle Bin deletion accepts only canonical local fixed and removable drives; UNC paths, mapped network drives, optical media and filesystem roots are rejected with a per-item error. Use Windows Explorer for network deletion.
+- **Portable devices delete permanently.** MTP/PTP device storage has no Windows Recycle Bin, so deleting items from a phone or camera always removes them permanently after explicit confirmation.
 - **Empty Recycle Bin follows Windows behavior.** It passes a null path to the Shell, which empties the Recycle Bins of all drives, so its scope can be wider than the status indicator. It is permanent and cannot be undone.
 
 See [File Operations and Safety](https://github.com/CyberGems/CyberFiles/wiki/File-Operations-and-Safety) for the full list of behaviors.
