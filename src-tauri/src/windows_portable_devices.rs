@@ -1373,6 +1373,24 @@ mod windows_impl {
         Ok(next_path)
     }
 
+    unsafe fn first_wpd_collection_error(
+        results: Option<&IPortableDevicePropVariantCollection>,
+    ) -> Option<i32> {
+        let res_coll = results?;
+        let mut count = 0u32;
+        if res_coll.GetCount(&mut count).is_ok() && count > 0 {
+            let mut item_pv = OwnedPropVariant(PROPVARIANT::default());
+            if res_coll.GetAt(0, &mut item_pv.0).is_ok() {
+                let inner = &*item_pv.0.Anonymous.Anonymous;
+                // VT_ERROR (10) holds SCODE / HRESULT in scode.
+                if inner.vt.0 == 10 && inner.Anonymous.scode < 0 {
+                    return Some(inner.Anonymous.scode);
+                }
+            }
+        }
+        None
+    }
+
     pub fn delete_portable_item(path: &str) -> Result<(), String> {
         let Some(_apartment) = ShellApartment::initialize() else {
             return Err("Could not initialize Windows COM for portable devices.".to_string());
@@ -1411,21 +1429,11 @@ mod windows_impl {
                     &mut results,
                 )
                 .map_err(|error| format!("Could not delete item on portable device: {error}"))?;
-            if let Some(res_coll) = results {
-                let mut count = 0u32;
-                if res_coll.GetCount(&mut count).is_ok() && count > 0 {
-                    let mut item_pv = OwnedPropVariant(PROPVARIANT::default());
-                    if res_coll.GetAt(0, &mut item_pv.0).is_ok() {
-                        let inner = &*item_pv.0.Anonymous.Anonymous;
-                        // VT_ERROR (10) holds SCODE / HRESULT in scode.
-                        if inner.vt.0 == 10 && inner.Anonymous.scode < 0 {
-                            return Err(format!(
-                                "Device rejected deletion (HRESULT 0x{:08X}).",
-                                inner.Anonymous.scode as u32
-                            ));
-                        }
-                    }
-                }
+            if let Some(scode) = first_wpd_collection_error(results.as_ref()) {
+                return Err(format!(
+                    "Device rejected deletion (HRESULT 0x{:08X}).",
+                    scode as u32
+                ));
             }
         }
 
@@ -1767,9 +1775,11 @@ mod windows_impl {
                 .Add(&pv.0)
                 .map_err(|error| format!("Could not queue item for move: {error}"))?;
             let mut results: Option<IPortableDevicePropVariantCollection> = None;
-            content.Move(&collection, PCWSTR(dst_wide.as_ptr()), &mut results)
+            content
+                .Move(&collection, PCWSTR(dst_wide.as_ptr()), &mut results)
+                .map(|()| first_wpd_collection_error(results.as_ref()).is_none())
         };
-        if move_res.is_err() {
+        if !matches!(move_res, Ok(true)) {
             return Ok(None);
         }
 
@@ -2338,5 +2348,293 @@ mod tests {
             assert!(!dev.label.is_empty());
             assert!(list_portable_directory(&dev.root_path).is_ok());
         }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    #[ignore = "Requires an unlocked MTP portable device with writable storage"]
+    fn live_portable_device_roundtrip_smoke_test() {
+        use std::{
+            fs,
+            path::{Path, PathBuf},
+            time::Instant,
+        };
+        let t0 = Instant::now();
+        macro_rules! step_log {
+            ($($arg:tt)*) => {
+                eprintln!("[+{:.2}s] {}", t0.elapsed().as_secs_f64(), format!($($arg)*));
+            };
+        }
+
+        struct PortableCleanupGuard(Option<String>);
+        impl Drop for PortableCleanupGuard {
+            fn drop(&mut self) {
+                if let Some(path) = self.0.take() {
+                    let _ = delete_portable_item(&path);
+                }
+            }
+        }
+        struct LocalDirGuard(PathBuf);
+        impl Drop for LocalDirGuard {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+
+        let is_sample_image = |name: &str| {
+            matches!(
+                Path::new(name)
+                    .extension()
+                    .and_then(|ext| ext.to_str())
+                    .map(|ext| ext.to_ascii_lowercase())
+                    .as_deref(),
+                Some("jpg" | "jpeg" | "png" | "webp")
+            )
+        };
+
+        let devices = list_portable_devices();
+        step_log!("Live MTP devices: {devices:?}");
+        let device = devices
+            .into_iter()
+            .find(|dev| dev.total_bytes > 0)
+            .expect("Expected at least one unlocked MTP device with reported capacity");
+
+        let (_, _, storages) =
+            list_portable_directory(&device.root_path).expect("list device root storages");
+        step_log!("Storages on {}: {storages:?}", device.label);
+        let first_storage = storages
+            .iter()
+            .find(|entry| entry.is_folder)
+            .expect("Expected at least one storage folder");
+
+        let (_, _, top_entries) =
+            list_portable_directory(&first_storage.path).expect("list storage root");
+        step_log!(
+            "Top-level items in {} ({}): {:?}",
+            first_storage.name,
+            top_entries.len(),
+            top_entries
+                .iter()
+                .take(10)
+                .map(|entry| entry.name.as_str())
+                .collect::<Vec<_>>()
+        );
+
+        // Search common media folders up to 2 levels deep for an existing image.
+        let mut existing_image: Option<PortableEntry> = None;
+        let preferred_roots = ["DCIM", "Pictures", "Download", "Downloads"];
+        'search: for folder in top_entries.iter().filter(|entry| {
+            entry.is_folder
+                && preferred_roots
+                    .iter()
+                    .any(|preferred| entry.name.eq_ignore_ascii_case(preferred))
+        }) {
+            step_log!("Listing media candidate folder: {}", folder.path);
+            if let Ok((_, _, level1)) = list_portable_directory(&folder.path) {
+                step_log!("Listed {} items in {}", level1.len(), folder.path);
+                for entry in &level1 {
+                    if !entry.is_folder && is_sample_image(&entry.name) && entry.size > 0 {
+                        existing_image = Some(entry.clone());
+                        break 'search;
+                    }
+                }
+                for sub in level1.iter().filter(|entry| entry.is_folder).take(5) {
+                    if let Ok((_, _, level2)) = list_portable_directory(&sub.path) {
+                        for entry in level2 {
+                            if !entry.is_folder && is_sample_image(&entry.name) && entry.size > 0 {
+                                existing_image = Some(entry);
+                                break 'search;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(image_entry) = existing_image {
+            step_log!("Existing phone image sampled: {:?}", image_entry.path);
+            let thumb = get_portable_thumbnail(&image_entry.path, 128);
+            step_log!(
+                "Existing image thumbnail present: {} (len={})",
+                thumb.is_some(),
+                thumb.as_ref().map(|s| s.len()).unwrap_or(0)
+            );
+            if image_entry.size <= 65_536 {
+                let head = read_portable_file_bytes(&image_entry.path, 65_536)
+                    .expect("read existing small phone image");
+                assert_eq!(head.len() as u64, image_entry.size);
+            }
+            if image_entry.size <= 15 * 1024 * 1024 {
+                let staged = stage_portable_file_to_temp(&image_entry.path, Some(15 * 1024 * 1024))
+                    .expect("stage existing phone image");
+                let meta = fs::metadata(&staged).expect("staged file metadata");
+                assert_eq!(meta.len(), image_entry.size);
+                if let Some(cache_entry_dir) = staged.parent() {
+                    let _ = fs::remove_dir_all(cache_entry_dir);
+                }
+                step_log!("Existing phone image staged & verified ({} bytes)", meta.len());
+            }
+        } else {
+            step_log!("No small sample image found in DCIM/Pictures/Download (will test uploaded PNG)");
+        }
+
+        let test_dir_name = format!("__cyberfiles_mtp_smoke_test_{}", std::process::id());
+        let (test_dir_path, actual_dir_name) =
+            create_portable_directory(&first_storage.path, &test_dir_name)
+                .expect("create temporary smoke test directory on phone");
+        let mut portable_guard = PortableCleanupGuard(Some(test_dir_path.clone()));
+        step_log!("Created temporary MTP test dir: {test_dir_path}");
+
+        // 1. Create file from bytes & read back
+        let hello_bytes = b"Hola Carlos P30 desde CyberFiles MTP smoke test!\n";
+        let (hello_path, _, hello_size) =
+            create_portable_file_from_bytes(&test_dir_path, "hello.txt", hello_bytes)
+                .expect("create_portable_file_from_bytes");
+        assert_eq!(hello_size, hello_bytes.len() as u64);
+        let read_back =
+            read_portable_file_bytes(&hello_path, 1024 * 1024).expect("read_portable_file_bytes");
+        assert_eq!(read_back, hello_bytes);
+        step_log!("Step 1 create/read hello.txt done");
+
+        // 2. Stage local source fixtures & upload to portable device
+        let local_src_root = LocalDirGuard(
+            std::env::temp_dir().join(format!("cyberfiles-mtp-src-{}", std::process::id())),
+        );
+        let local_dst_root = LocalDirGuard(
+            std::env::temp_dir().join(format!("cyberfiles-mtp-dst-{}", std::process::id())),
+        );
+        fs::create_dir_all(local_src_root.0.join("nested_dir")).expect("create local src dir");
+        fs::create_dir_all(&local_dst_root.0).expect("create local dst dir");
+
+        let binary_payload: Vec<u8> = (0..65_536u32)
+            .map(|idx| ((idx * 31 + 7) & 0xFF) as u8)
+            .collect();
+        let binary_src = local_src_root.0.join("binary.dat");
+        fs::write(&binary_src, &binary_payload).expect("write binary.dat");
+
+        let nested_src = local_src_root.0.join("nested_dir");
+        let inner_payload = b"Nested folder payload 1234567890";
+        fs::write(nested_src.join("inner.txt"), inner_payload).expect("write inner.txt");
+
+        let thumb_src = local_src_root.0.join("thumb.png");
+        let img_buf: image::RgbImage = image::ImageBuffer::from_fn(16, 16, |x, y| {
+            image::Rgb([(x * 16) as u8, (y * 16) as u8, 200])
+        });
+        image::DynamicImage::ImageRgb8(img_buf)
+            .save_with_format(&thumb_src, image::ImageFormat::Png)
+            .expect("save synthetic thumb.png");
+
+        let mut progress_bytes = 0u64;
+        let uploaded_binary_path = upload_local_to_portable(
+            &binary_src,
+            &test_dir_path,
+            "binary.dat",
+            &mut |_name, delta, _total, _done| {
+                progress_bytes += delta;
+                Ok(())
+            },
+        )
+        .expect("upload binary.dat");
+        assert!(progress_bytes >= binary_payload.len() as u64);
+
+        let uploaded_thumb_path = upload_local_to_portable(
+            &thumb_src,
+            &test_dir_path,
+            "thumb.png",
+            &mut |_name, _delta, _total, _done| Ok(()),
+        )
+        .expect("upload thumb.png");
+
+        let uploaded_nested_path = upload_local_to_portable(
+            &nested_src,
+            &test_dir_path,
+            "nested_dir",
+            &mut |_name, _delta, _total, _done| Ok(()),
+        )
+        .expect("upload nested_dir");
+        step_log!("Step 2 uploads done");
+
+        // 3. Verify thumbnail generation on uploaded image
+        let uploaded_thumb = get_portable_thumbnail(&uploaded_thumb_path, 128)
+            .expect("thumbnail data URL for uploaded PNG");
+        assert!(
+            uploaded_thumb.starts_with("data:image/"),
+            "unexpected thumbnail prefix: {}",
+            &uploaded_thumb[..uploaded_thumb.len().min(40)]
+        );
+        step_log!("Uploaded thumb.png thumbnail OK (len={})", uploaded_thumb.len());
+
+        // 4. Download binary & nested folder back to local disk and verify byte equality
+        let binary_dst = local_dst_root.0.join("binary.dat");
+        download_portable_to_local(
+            &uploaded_binary_path,
+            &binary_dst,
+            &mut |_name, _delta, _total, _done| Ok(()),
+        )
+        .expect("download binary.dat");
+        assert_eq!(
+            fs::read(&binary_dst).expect("read downloaded binary.dat"),
+            binary_payload
+        );
+
+        let nested_dst = local_dst_root.0.join("nested_dir");
+        download_portable_to_local(
+            &uploaded_nested_path,
+            &nested_dst,
+            &mut |_name, _delta, _total, _done| Ok(()),
+        )
+        .expect("download nested_dir");
+        assert_eq!(
+            fs::read(nested_dst.join("inner.txt")).expect("read downloaded inner.txt"),
+            inner_payload
+        );
+        step_log!("Step 4 downloads done");
+
+        // 5. Rename hello.txt -> hello_renamed.txt
+        let renamed_path =
+            rename_portable_item(&hello_path, "hello_renamed.txt").expect("rename_portable_item");
+        let (_, _, listed_after_rename) =
+            list_portable_directory(&test_dir_path).expect("list after rename");
+        assert!(
+            listed_after_rename
+                .iter()
+                .any(|entry| entry.name == "hello_renamed.txt"),
+            "renamed file missing from listing: {:?}",
+            listed_after_rename
+                .iter()
+                .map(|e| &e.name)
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            !listed_after_rename
+                .iter()
+                .any(|entry| entry.name == "hello.txt"),
+            "old filename still present after rename"
+        );
+        step_log!("Step 5 rename done");
+
+        // 6. Move within same device (native WPD MoveObjects or Ok(None) fallback signal)
+        let (moved_dest_path, _) =
+            create_portable_directory(&test_dir_path, "moved_dest").expect("create moved_dest");
+        let move_outcome = move_portable_same_device(&renamed_path, &moved_dest_path)
+            .expect("move_portable_same_device");
+        step_log!("move_portable_same_device outcome: {move_outcome:?}");
+        if move_outcome.is_some() {
+            assert!(
+                child_exists_on_portable(&moved_dest_path, "hello_renamed.txt")
+                    .expect("check moved child"),
+                "moved file missing inside moved_dest"
+            );
+        }
+
+        // 7. Delete test folder recursively and confirm removal
+        delete_portable_item(&test_dir_path).expect("delete_portable_item");
+        portable_guard.0 = None;
+        step_log!("Step 7 delete_portable_item done, checking existence");
+        assert!(
+            !child_exists_on_portable(&first_storage.path, &actual_dir_name)
+                .expect("verify test directory removed"),
+            "temporary smoke test folder still exists on portable device"
+        );
+        step_log!("Live MTP round-trip smoke test PASSED and cleaned up cleanly.");
     }
 }
