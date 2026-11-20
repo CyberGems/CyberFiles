@@ -117,7 +117,8 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Collapsible locations panel**: hide the sidebar with Ctrl+L, the button beside the properties toggle or the command palette, and both panes take the full width; the choice is part of saved layouts
 - **Recents**: a virtual location listing the files you opened or previewed in CyberFiles, sorted by last opened, with a last-opened column, per-item removal and a clear action
 - **Quick Access**: pin up to 100 folders, rename or remove shortcuts, and sort them A–Z, Z–A or manually by dragging (Alt+Up and Alt+Down also work)
-- **Views**: Details, List, Grid and Tiles, each with resizable columns, add or hide columns, sortable headers, and grouping by date or size; every folder remembers its own view, sorting and grouping, and Ctrl+1 to Ctrl+4 switch between the four views
+- **Views**: Details, List, Grid and Tiles, each with resizable columns, add or hide columns, sortable headers, and grouping by date or size; every folder remembers its own view, sorting and grouping, and Ctrl+1 to Ctrl+4 switch between the four views; folders without a saved style open with an automatic default view
+- **Automatic default views**: a folder without a saved style opens in Large Icons when it is a Pictures, Music or Videos folder, when Windows Explorer saved that view for it (desktop.ini), or when most of its content is media; everything else opens in Details, and changing the view or zoom yourself saves it for that folder automatically
 - **Explorer-style thumbnails**: the Grid and Tiles views draw the same previews Windows File Explorer shows, through the Shell's own thumbnail pipeline: video frames, PDF and Office first pages, audio album art, photo stacks for folders that contain images, and HEIC or AVIF when Windows has a codec for them; formats without a preview provider fall back to the file icon, and a Settings toggle turns item thumbnails off
 - **Preview zoom**: Ctrl+mouse wheel, or Ctrl+= / Ctrl+- , steps the Grid and Tiles preview cells through four sizes from small to extra large, remembered per folder; the view menus in the pane, the context menu and the header offer the same sizes
 - **Relative graphs**: optional bars behind sizes and dates that make the shape of a folder visible at a glance
@@ -125,7 +126,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Flat view**: recursively list every subfolder in one list, with a confirmation when the tree is large
 - **Filter**: narrow the current list as you type, without running a full search; typing fills the filter instead of jumping to a matching name, the query becomes a chip above the list while a selection is active, and Esc always leaves it
 - **Mouse gestures**: hold the right button and drag left or right to go back or forward, or up or down to jump to the start or end of the list; a normal right-click still opens the context menu
-- **Folder style Lock**: keep view, sorting and column widths while navigating, or let each folder use its own saved style
+- **Folder style Lock** (off by default): keep view, sorting and column widths while navigating, or let each folder use its own saved style
 - **Custom folder icons**: pick an icon, color and status badge for a folder, stored by CyberFiles and never written to Windows
 
 ### 🚚 File Operations
