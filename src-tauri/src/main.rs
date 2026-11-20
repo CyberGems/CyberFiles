@@ -5767,11 +5767,22 @@ fn restore_window_state(window: &tauri::WebviewWindow, path: &PathBuf) -> Result
     Ok(())
 }
 
+fn clamp_tray_tooltip(text: String) -> String {
+    if text.chars().count() > 63 {
+        format!("{}…", text.chars().take(62).collect::<String>())
+    } else {
+        text
+    }
+}
+
 fn format_tray_tooltip(shortcut: Option<&str>) -> String {
-    shortcut.map_or_else(
-        || "CyberFiles".to_string(),
-        |key| format!("CyberFiles · {key}"),
-    )
+    let clean = shortcut.unwrap_or("").trim();
+    let text = if clean.is_empty() {
+        "CyberFiles".to_string()
+    } else {
+        format!("CyberFiles · {clean}")
+    };
+    clamp_tray_tooltip(text)
 }
 
 #[cfg(target_os = "windows")]
