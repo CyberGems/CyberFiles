@@ -10087,3 +10087,31 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod tray_tooltip_tests {
+    use super::*;
+
+    #[test]
+    fn tray_tooltip_uses_the_suite_format() {
+        assert_eq!(
+            format_tray_tooltip(Some("Alt+Shift+F")),
+            "CyberFiles · Alt+Shift+F"
+        );
+    }
+
+    #[test]
+    fn tray_tooltip_without_shortcut_is_the_app_name() {
+        assert_eq!(format_tray_tooltip(None), "CyberFiles");
+        assert_eq!(format_tray_tooltip(Some("")), "CyberFiles");
+        assert_eq!(format_tray_tooltip(Some("   ")), "CyberFiles");
+    }
+
+    #[test]
+    fn tray_tooltip_is_capped_at_63_chars_with_an_ellipsis() {
+        let tooltip = format_tray_tooltip(Some(&"X".repeat(80)));
+        assert_eq!(tooltip.chars().count(), 63);
+        assert!(tooltip.ends_with('…'));
+        assert!(tooltip.starts_with("CyberFiles · "));
+    }
+}
