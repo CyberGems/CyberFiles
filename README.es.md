@@ -65,6 +65,8 @@ El Explorador de Windows te da un panel, una pestaña y un diálogo para cada co
 
 *Gratuito y de código abierto (GPLv3): sin anuncios, sin rastreo, sin telemetría y sin cuenta. Todo se ejecuta en tu PC.*
 
+- **Privacidad:** consulta [PRIVACY.es.md](PRIVACY.es.md). CyberFiles no envía tus datos por su cuenta. Las únicas conexiones automáticas están listadas ahí y ninguna contiene datos personales.
+
 ---
 
 <!-- Capturas: pendiente de la galería bilingüe ES/EN del plan en https://github.com/CyberGems/CyberGems.github.io/blob/main/docs/screenshots.md — sustituir la cita, conservar este título y su entrada en el índice. -->

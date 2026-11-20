@@ -65,6 +65,8 @@ Windows Explorer gives you one pane, one tab and a dialog for everything. CyberF
 
 *Free and open source (GPLv3): no ads, no tracking, no telemetry, no account. Everything runs on your PC.*
 
+- **Privacy:** see [PRIVACY.md](PRIVACY.md). CyberFiles does not send your data anywhere by itself. The only automatic connections are listed there, and none of them carries personal data.
+
 ---
 
 <!-- Screenshots: pending the bilingual EN/ES gallery in the capture plan at https://github.com/CyberGems/CyberGems.github.io/blob/main/docs/screenshots.md — replace the blockquote, keep this heading and the TOC entry. -->
