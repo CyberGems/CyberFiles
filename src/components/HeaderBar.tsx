@@ -276,7 +276,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
       entries: [{
         id: 'workspace-manager',
         label: t.workspaceProfiles.title,
-        shortcut: 'Ctrl+Shift+W',
+        shortcut: 'Alt+W',
         icon: <PanelsTopLeft className="h-4 w-4" />,
         onSelect: onOpenWorkspaceManager,
       }],
@@ -589,7 +589,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             icon={<PanelsTopLeft className="text-cyan-400" />}
             onClick={onOpenWorkspaceManager}
             tooltip={workspaceTooltip}
-            tooltipShortcut="Ctrl+Shift+W"
+            tooltipShortcut="Alt+W"
             ariaLabel={workspaceTooltip}
             badge={workspaceChangesPending}
           />

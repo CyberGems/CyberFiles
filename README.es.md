@@ -152,7 +152,7 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Buscador global de archivos**: busca por nombre o patrón, usa expresiones regulares, filtra por tamaño, tipo o categoría y localiza cualquier resultado en el panel activo
 - **Búsqueda en contenido**: busca texto que CyberFiles ya haya previsualizado, con una nota explícita sobre qué se busca
 - **Historial de búsquedas**: reutiliza o borra consultas recientes
-- **Chuleta de atajos (F1)**: el mapa de teclas completo, disponible desde la barra de herramientas y la barra de estado
+- **Chuleta de atajos (?)**: el mapa de teclas completo, disponible desde la barra de herramientas y la barra de estado; **F1** abre Acerca de
 - **Tamaño de carpetas**: mantén el puntero sobre una carpeta para calcular su total, o pídelo desde la columna; los contadores de la barra de estado abren los atajos de selección y explican el total de la carpeta
 
 ### 🖥️ Integración con Windows
@@ -231,7 +231,7 @@ CyberFiles se abre en **Este equipo**, mostrando unidades y carpetas habituales 
 
 1. Selecciona una unidad o carpeta para empezar a navegar; la barra lateral contiene ubicaciones, no archivos.
 2. Usa `Tab` para cambiar entre paneles y `F5` para copiar la selección al panel opuesto.
-3. Pulsa `F1` para ver la hoja de atajos completa o `Ctrl+L` para ocultar el panel de ubicaciones.
+3. Pulsa `?` para ver la hoja de atajos completa, `F1` para Acerca de o `Ctrl+L` para ocultar el panel de ubicaciones.
 
 Las preferencias de diseño se guardan en este equipo y las carpetas grandes se cargan progresivamente al desplazarte. Abrir una ubicación de la barra lateral en una pestaña nueva está activado por defecto y se puede cambiar en **Configuración**.
 
@@ -356,7 +356,8 @@ La compatibilidad con RAR incluye código fuente de UnRAR. Sus términos de lice
 | Tecla | Acción |
 |---|---|
 | `Tab` | Cambiar entre el panel izquierdo y el derecho |
-| `F1` | Abrir la chuleta de atajos de teclado |
+| `F1` | Abrir Acerca de |
+| `?` | Abrir la chuleta de atajos de teclado |
 | `F2` | Renombrar el elemento seleccionado |
 | `Ctrl+Shift+C` | Copiar la ruta de la selección, o la de la carpeta si no hay selección |
 | `F3` | Mostrar u ocultar el panel de propiedades |

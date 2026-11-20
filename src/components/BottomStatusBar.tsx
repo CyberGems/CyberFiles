@@ -381,7 +381,7 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
     <StatusTooltipCard
       icon={<Keyboard className="h-4 w-4" />}
       title={t.statusBar.quickShortcuts}
-      badge={<kbd className="keyboard-hint font-bold text-cyan-300">F1</kbd>}
+      badge={<kbd className="keyboard-hint font-bold text-cyan-300">?</kbd>}
       description={t.statusBar.openShortcutsDescription}
     />
   );

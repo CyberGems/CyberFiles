@@ -236,7 +236,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
       onDoubleClick={toggleFromTitlebarDoubleClick}
     >
       <div className="flex h-full min-w-0 flex-1 items-center">
-        <Tooltip label={tTitlebar('Acerca de CyberFiles', 'About CyberFiles')} placement="bottom">
+        <Tooltip label={tTitlebar('Acerca de CyberFiles', 'About CyberFiles')} shortcut="F1" placement="bottom">
           <button
             type="button"
             data-titlebar-no-drag=""
@@ -313,7 +313,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
                   >
                     <Keyboard className="h-4 w-4 text-cyan-400" />
                     <span className="flex-1">{tTitlebar('Atajos de teclado', 'Keyboard shortcuts')}</span>
-                    <kbd className="keyboard-hint">F1</kbd>
+                    <kbd className="keyboard-hint">?</kbd>
                   </button>
                 </Tooltip>
                 <div className="mx-2 my-1 border-t border-neutral-800" />

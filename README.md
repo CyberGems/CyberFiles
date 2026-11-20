@@ -152,7 +152,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Global file finder**: search by name or pattern, use regular expressions, filter by size, type or category, and locate any result in the active pane
 - **Content search**: search text that CyberFiles has already previewed, with an explicit note about what is searched
 - **Search history**: reuse or clear recent queries
-- **Shortcut cheat sheet (F1)**: the full key map, available from the toolbar and the status bar
+- **Shortcut cheat sheet (?)**: the full key map, available from the toolbar and the status bar; **F1** opens About
 - **Folder sizes**: hold the pointer over a folder to calculate its total, or request it from the column; the status-bar counters open the selection shortcuts and explain the folder total
 
 ### 🖥️ Windows Integration
@@ -233,7 +233,7 @@ CyberFiles opens on **This PC**, showing drives and common Windows folders inste
 
 1. Select a drive or folder to start browsing; the sidebar holds locations, not files.
 2. Use `Tab` to switch between panes and `F5` to copy the selection to the opposite one.
-3. Press `F1` for the full shortcut cheat sheet, or `Ctrl+L` to hide the locations panel.
+3. Press `?` for the full shortcut cheat sheet, `F1` for About, or `Ctrl+L` to hide the locations panel.
 
 Layout choices are saved on this device and large folders load progressively as you scroll. Opening a sidebar location in a new tab is enabled by default and can be changed in **Settings**.
 
@@ -358,7 +358,8 @@ The RAR support includes UnRAR source code. Its license terms are reproduced in 
 | Key | Action |
 |---|---|
 | `Tab` | Switch between the left and right pane |
-| `F1` | Open the keyboard shortcuts cheat sheet |
+| `F1` | Open About |
+| `?` | Open the keyboard shortcuts cheat sheet |
 | `F2` | Rename the selected item |
 | `Ctrl+Shift+C` | Copy the path of the selection, or of the folder when nothing is selected |
 | `F3` | Show or hide the properties panel |
