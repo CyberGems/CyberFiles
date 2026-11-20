@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Archive,
   ArrowDown,
@@ -139,12 +140,17 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
 }) => {
   const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPlacement, setMenuPlacement] = useState<{ top: number; right: number; maxHeight: number } | null>(null);
   const menuRootRef = useRef<HTMLDivElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!menuOpen) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!menuRootRef.current?.contains(event.target as Node)) setMenuOpen(false);
+      const target = event.target as Node;
+      if (menuRootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setMenuOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setMenuOpen(false);
@@ -156,6 +162,59 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [menuOpen]);
+
+  /* The menu is portalled to document.body with fixed positioning: the pane and
+     app shells clip their own overflow, so an inline menu gets cut off at the
+     pane bottom on short windows. It opens below the trigger and flips above
+     it when the measured height does not fit and there is more room above. */
+  const updateMenuPlacement = useCallback(() => {
+    if (!menuOpen) return;
+    const rect = menuTriggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const margin = 8;
+    const menuHeight = menuRef.current?.offsetHeight ?? 0;
+    const spaceBelow = window.innerHeight - rect.bottom - margin;
+    const spaceAbove = rect.top - margin;
+    const openAbove = menuHeight > spaceBelow && spaceAbove > spaceBelow;
+    const available = Math.max(openAbove ? spaceAbove : spaceBelow, 160);
+    const maxHeight = Math.min(available, Math.round(window.innerHeight * 0.7));
+    const top = openAbove
+      ? Math.max(margin, rect.top - Math.min(menuHeight, maxHeight) - 6)
+      : Math.min(rect.bottom + 6, Math.max(margin, window.innerHeight - 160 - margin));
+    setMenuPlacement({ top, right: Math.max(margin, window.innerWidth - rect.right), maxHeight });
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    updateMenuPlacement();
+    const menuEl = menuRef.current;
+    if (!menuEl || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => updateMenuPlacement());
+    observer.observe(menuEl);
+    window.addEventListener('resize', updateMenuPlacement);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateMenuPlacement);
+    };
+  }, [menuOpen, updateMenuPlacement]);
+
+  const toggleMoreActionsMenu = () => {
+    if (menuOpen) {
+      setMenuOpen(false);
+      return;
+    }
+    const rect = menuTriggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      const margin = 8;
+      const spaceBelow = window.innerHeight - rect.bottom - margin;
+      setMenuPlacement({
+        top: rect.bottom + 6,
+        right: Math.max(margin, window.innerWidth - rect.right),
+        maxHeight: Math.min(Math.max(spaceBelow, 160), Math.round(window.innerHeight * 0.7)),
+      });
+    }
+    setMenuOpen(true);
+  };
 
   const hasSelection = selectedItems.length > 0;
   const singleItem = selectedItems.length === 1 ? selectedItems[0] : null;
@@ -579,18 +638,25 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
             floating over the menu it just opened is pure noise. */}
         <Tooltip label={t.toolbar.moreActions} placement="bottom" disabled={menuOpen}>
           <button
+            ref={menuTriggerRef}
             type="button"
             aria-label={t.toolbar.moreActions}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
-            onClick={() => setMenuOpen(open => !open)}
+            onClick={toggleMoreActionsMenu}
             className={`flex h-6 w-6 items-center justify-center rounded-md border transition-colors ${menuOpen ? 'border-cyan-700/70 bg-cyan-950/60 text-cyan-200' : 'border-neutral-800 bg-neutral-900/70 text-neutral-400 hover:border-cyan-800/70 hover:bg-neutral-800 hover:text-cyan-200'}`}
           >
             <MoreHorizontal className="h-3.5 w-3.5" />
           </button>
         </Tooltip>
-        {menuOpen && (
-          <div role="menu" aria-label={t.toolbar.moreActions} className="absolute right-0 top-full z-50 mt-1 max-h-[70vh] min-w-56 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-2xl">
+        {menuOpen && menuPlacement && createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label={t.toolbar.moreActions}
+            style={{ position: 'fixed', top: menuPlacement.top, right: menuPlacement.right, maxHeight: menuPlacement.maxHeight }}
+            className="z-[90] min-w-56 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-2xl"
+          >
             {menuGroups.map((group, groupIndex) => (
               <React.Fragment key={groupIndex}>
                 {groupIndex > 0 && <div className="my-1 h-px bg-neutral-800" />}
@@ -611,7 +677,8 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
                 ))}
               </React.Fragment>
             ))}
-          </div>
+          </div>,
+          document.body,
         )}
       </div>
 
