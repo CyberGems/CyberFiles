@@ -1,5 +1,5 @@
 import type { GroupByField, IconZoomLevel, SortField, SortOrder, ViewMode } from '../types';
-import { isMediaPreviewPath, normalizeWindowsPath } from './fileSystem';
+import { isMediaStylePath, normalizeFolderPathKey, normalizeWindowsPath } from './fileSystem';
 
 export interface FolderStylePreference {
   viewMode: ViewMode;
@@ -17,7 +17,7 @@ const SORT_FIELDS: SortField[] = ['name', 'size', 'type', 'createdDate', 'modifi
 const GROUP_FIELDS: GroupByField[] = ['none', 'name', 'modifiedDate', 'type', 'size'];
 
 export function folderStylePathKey(path: string): string {
-  return normalizeWindowsPath(path).replace(/[\\/]+$/, '').toLowerCase();
+  return normalizeFolderPathKey(path);
 }
 
 export function savedFolderStyleForPath(path: string, savedStyles: SavedFolderStyles): FolderStylePreference | undefined {
@@ -35,7 +35,7 @@ export function savedFolderStyleForPath(path: string, savedStyles: SavedFolderSt
 export function resolveFolderStyle(path: string, inherited: FolderStylePreference, savedStyles: SavedFolderStyles): FolderStylePreference {
   return savedFolderStyleForPath(path, savedStyles) ?? {
     ...inherited,
-    viewMode: isMediaPreviewPath(path) ? 'icons' : inherited.viewMode,
+    viewMode: isMediaStylePath(path) ? 'icons' : inherited.viewMode,
   };
 }
 

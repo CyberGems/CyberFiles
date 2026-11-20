@@ -67,6 +67,14 @@ export function isWindowsDriveRoot(path: string): boolean {
   return /^[a-zA-Z]:\\$/.test(normalizeWindowsPath(path));
 }
 
+/**
+ * Canonical storage key for a folder path: normalized, trailing separators
+ * removed and lowercased, so style lookups survive case and slash drift.
+ */
+export function normalizeFolderPathKey(path: string): string {
+  return normalizeWindowsPath(path).replace(/[\\/]+$/, '').toLowerCase();
+}
+
 export function isUncPath(path: string): boolean {
   if (!path || path.startsWith('::')) return false;
   return /^\\\\[^\\?]+/.test(normalizeWindowsPath(path));
@@ -129,6 +137,19 @@ export function isMediaPreviewPath(path: string): boolean {
   const folderName = normalized.split('\\').filter(Boolean).pop() || '';
   const key = folderName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   return MEDIA_PREVIEW_FOLDER_NAMES.has(key);
+}
+
+/* Real Pictures/Music/Videos known folders register their paths at runtime,
+   so the media default view also covers folders the user renamed, which the
+   name check alone cannot detect. */
+let knownMediaFolderPaths = new Set<string>();
+
+export function registerKnownMediaFolderPaths(paths: string[]): void {
+  knownMediaFolderPaths = new Set(paths.map(normalizeFolderPathKey).filter(Boolean));
+}
+
+export function isMediaStylePath(path: string): boolean {
+  return isMediaPreviewPath(path) || knownMediaFolderPaths.has(normalizeFolderPathKey(path));
 }
 
 export function isSameOrDescendantPath(candidatePath: string, rootPath: string): boolean {

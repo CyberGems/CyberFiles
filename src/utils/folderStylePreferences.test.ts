@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { registerKnownMediaFolderPaths } from './fileSystem';
 import { folderStylePathKey, folderStyleToCarry, readSavedFolderStyles, resolveFolderStyle, savedFolderStyleForPath, writeSavedFolderStyles, type FolderStylePreference } from './folderStylePreferences';
 
 const defaultStyle: FolderStylePreference = { viewMode: 'details', sortField: 'name', sortOrder: 'asc', groupBy: 'none' };
@@ -19,6 +20,24 @@ test('leaving a saved folder restores the style brought into it', () => {
   assert.deepEqual(folderStyleToCarry(downloadsPath, downloadsStyle, inheritedStyle, true, styles, defaultStyle), inheritedStyle);
   assert.deepEqual(folderStyleToCarry(downloadsPath, downloadsStyle, inheritedStyle, false, styles, defaultStyle), defaultStyle);
   assert.deepEqual(folderStyleToCarry('C:/Other', inheritedStyle, defaultStyle, true, styles, defaultStyle), inheritedStyle);
+});
+
+test('registered known media folders default to icons, saved styles still win', () => {
+  const renamedPictures = 'C:/Users/Carlos/Mis fotos';
+  const savedMediaStyle: FolderStylePreference = { viewMode: 'details', sortField: 'size', sortOrder: 'desc', groupBy: 'type' };
+  registerKnownMediaFolderPaths([renamedPictures, '']);
+  try {
+    assert.equal(resolveFolderStyle(renamedPictures, inheritedStyle, {}).viewMode, 'icons');
+    assert.equal(resolveFolderStyle('c:/users/carlos/MIS FOTOS/', inheritedStyle, {}).viewMode, 'icons');
+    assert.equal(resolveFolderStyle(`${renamedPictures}/2020`, inheritedStyle, {}).viewMode, 'compact');
+    assert.deepEqual(
+      resolveFolderStyle(renamedPictures, inheritedStyle, { [folderStylePathKey(renamedPictures)]: savedMediaStyle }),
+      savedMediaStyle,
+    );
+  } finally {
+    registerKnownMediaFolderPaths([]);
+  }
+  assert.equal(resolveFolderStyle(renamedPictures, inheritedStyle, {}).viewMode, 'compact');
 });
 
 test('folder styles persist by path and invalid entries are ignored', () => {

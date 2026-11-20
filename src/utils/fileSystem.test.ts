@@ -15,6 +15,7 @@ import {
   getUncHostRoot,
   getUniqueName,
   isMediaPreviewPath,
+  isMediaStylePath,
   isPathOnUnavailableDrive,
   isPathOnUnavailablePortableDevice,
   isPortableDeviceRoot,
@@ -29,6 +30,7 @@ import {
   normalizeDriveLetter,
   normalizeNetworkHostInput,
   normalizeWindowsPath,
+  registerKnownMediaFolderPaths,
   rewritePathPrefix,
   sortFiles,
 } from './fileSystem';
@@ -96,6 +98,20 @@ test('recognizes common localized media folders for their thumbnail view default
   assert.equal(isMediaPreviewPath('D:\\Media\\Música'), true);
   assert.equal(isMediaPreviewPath('D:\\Media\\Videos'), true);
   assert.equal(isMediaPreviewPath('D:\\Media\\Projects'), false);
+});
+
+test('registered known media folders count as media even when renamed', () => {
+  registerKnownMediaFolderPaths(['C:\\Users\\Cali\\Mis fotos']);
+  try {
+    assert.equal(isMediaStylePath('C:\\Users\\Cali\\Mis fotos'), true);
+    assert.equal(isMediaStylePath('c:/users/cali/MIS FOTOS/'), true);
+    assert.equal(isMediaStylePath('C:\\Users\\Cali\\Mis fotos\\2020'), false);
+    assert.equal(isMediaStylePath('C:\\Users\\Cali\\Downloads'), false);
+    assert.equal(isMediaStylePath('C:\\Users\\Cali\\Pictures'), true);
+  } finally {
+    registerKnownMediaFolderPaths([]);
+  }
+  assert.equal(isMediaStylePath('C:\\Users\\Cali\\Mis fotos'), false);
 });
 
 test('classifies every previewable image format as an image', () => {

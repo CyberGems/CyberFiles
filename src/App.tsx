@@ -56,7 +56,7 @@ import {
   isPortableStorageRoot,
   isSameOrDescendantPath,
   isTextPreviewableFile,
-  isMediaPreviewPath,
+  isMediaStylePath,
   isUncPath,
   isUncServerRoot,
   isWindowsDriveRoot,
@@ -66,6 +66,7 @@ import {
   normalizeNetworkHostInput,
   rewritePathPrefix,
   normalizeWindowsPath,
+  registerKnownMediaFolderPaths,
 } from './utils/fileSystem';
 import { HeaderBar } from './components/HeaderBar';
 import {
@@ -439,10 +440,17 @@ function readTypingActivatesFilterPreference(): boolean {
 
 function readFolderStyleLockPreference(): boolean {
   try {
-    return window.localStorage.getItem(FOLDER_STYLE_LOCKED_KEY) !== 'false';
+    return window.localStorage.getItem(FOLDER_STYLE_LOCKED_KEY) === 'true';
   } catch {
-    return true;
+    return false;
   }
+}
+
+/* Locations allowed to store a folder style: excludes the dedicated layouts,
+   the recycle bin, recents and portable device roots, matching the
+   canModifyFolder guard the context menu uses. */
+function canSaveFolderStyle(path: string): boolean {
+  return Boolean(path) && !isDedicatedLayoutPath(path) && path !== RECYCLE_BIN_PATH && path !== RECENT_PATH && !isPortableDeviceRoot(path);
 }
 
 function readBooleanPreference(key: string, defaultValue: boolean): boolean {
@@ -675,7 +683,7 @@ function readQuickAccessOrder(): string[] {
 type FolderStyle = { viewMode: ViewMode; sortField: SortField; sortOrder: SortOrder; groupBy: GroupByField; iconZoom?: IconZoomLevel };
 
 function styleForPath(path: string, style: FolderStyle) {
-  return { ...style, viewMode: isMediaPreviewPath(path) ? 'icons' as ViewMode : style.viewMode };
+  return { ...style, viewMode: isMediaStylePath(path) ? 'icons' as ViewMode : style.viewMode };
 }
 
 function displayedStyleForPath(path: string, style: FolderStyle, savedStyles: SavedFolderStyles, styleLocked = false): FolderStyle {
@@ -754,10 +762,6 @@ function getTabFolderStyle(tab: TabState): FolderStyle {
     groupBy: tab.folderStyle?.groupBy ?? tab.groupBy ?? 'none',
     ...(tab.folderStyle?.iconZoom ? { iconZoom: tab.folderStyle.iconZoom } : {}),
   };
-}
-
-function getCurrentFolderStyle(tab: TabState): FolderStyle {
-  return { viewMode: tab.viewMode, sortField: tab.sortField, sortOrder: tab.sortOrder, groupBy: tab.groupBy ?? 'none' };
 }
 
 function getNavigationFolderStyle(tab: TabState, locked: boolean, savedStyles: SavedFolderStyles): FolderStyle {
@@ -1604,11 +1608,28 @@ export default function App() {
     handleFolderStyleLockChange(!folderStyleLocked);
   }, [folderStyleLocked, handleFolderStyleLockChange]);
 
+  const resetTabsToDefaultFolderStyleRef = useRef(resetTabsToDefaultFolderStyle);
+  resetTabsToDefaultFolderStyleRef.current = resetTabsToDefaultFolderStyle;
+
+  // When the style lock is off, tabs show the per-type defaults. Re-run this
+  // only on lock transitions: re-running it whenever a style is saved would
+  // clobber manual view changes in the other open tabs.
   useEffect(() => {
     if (folderStyleLocked) return;
-    setLeftTabs(resetTabsToDefaultFolderStyle);
-    setRightTabs(resetTabsToDefaultFolderStyle);
-  }, [folderStyleLocked, resetTabsToDefaultFolderStyle]);
+    const reset = resetTabsToDefaultFolderStyleRef.current;
+    setLeftTabs(reset);
+    setRightTabs(reset);
+  }, [folderStyleLocked]);
+
+  // Real Pictures/Music/Videos known folders drive the media default view for
+  // folders the user renamed, which the name-based check cannot detect.
+  useEffect(() => {
+    registerKnownMediaFolderPaths(
+      systemLocations
+        .filter(location => location.id === 'pictures' || location.id === 'music' || location.id === 'videos')
+        .map(location => location.path),
+    );
+  }, [systemLocations]);
 
   useEffect(() => {
     const recycleBinOpen = [...leftTabs, ...rightTabs].some(tab => tab.currentPath === RECYCLE_BIN_PATH);
@@ -1652,6 +1673,9 @@ export default function App() {
   const [pendingWorkspaceAction, setPendingWorkspaceAction] = useState<PendingWorkspaceAction | null>(null);
   const closeActionInProgress = useRef(false);
   const requestQuitWithUnsavedChangesRef = useRef<(remember: boolean) => void>(() => {});
+  /* Alt+F4 is the Windows quit gesture: it leaves straight away instead of
+     opening the unsaved layout/session prompt that the X goes through. */
+  const quitWithoutPromptRef = useRef<() => void>(() => {});
   /* X with no remembered choice: resolves pending changes first (the data decision
      gates everything), then opens the tray-or-quit dialog. The ref bridges the
      onCloseRequested listener to callbacks defined later in the render. */
@@ -2242,6 +2266,7 @@ export default function App() {
   }, [pendingWorkspaceAction, activeLayoutProfile, activeSessionProfile, applyLayoutSnapshot, applySessionSnapshot, startsAtSystemHome, t.sidebar.thisPc, executeWorkspaceAction]);
 
   requestQuitWithUnsavedChangesRef.current = remember => requestWorkspaceAction({ type: 'quit', remember });
+  quitWithoutPromptRef.current = () => executeWorkspaceAction({ type: 'quit', remember: false });
   requestCloseDialogGateRef.current = () => requestWorkspaceAction({ type: 'close' });
 
   /* Crash recovery. The live session snapshot is written to an atomically updated file every
@@ -2651,13 +2676,37 @@ export default function App() {
     });
   }, [setActiveTabs, activeTabIndex]);
 
-  const handleViewModeChange = useCallback((mode: ViewMode) => {
-    updateActiveTab(tab => isDedicatedLayoutPath(tab.currentPath) ? tab : setTabViewMode(tab, mode));
-  }, [updateActiveTab]);
+  /* View and zoom changes land on the pane's active tab and then auto-save the
+     full current style for that folder: silent, and only when the style lock is
+     off and the location is allowed to store styles. The updated tab is computed
+     outside the state updater because StrictMode runs updaters twice in dev. */
+  const autoSaveFolderStyleForTab = (tab: TabState) => {
+    if (folderStyleLockedRef.current) return;
+    if (!canSaveFolderStyle(tab.currentPath)) return;
+    saveFolderStyleForPath(tab.currentPath, getTabFolderStyle(tab), { silent: true });
+  };
 
-  const handleIconZoomChange = useCallback((zoom: IconZoomLevel) => {
-    updateActiveTab(tab => setTabIconZoom(tab, zoom));
-  }, [updateActiveTab]);
+  const changePaneViewMode = (pane: 'left' | 'right', mode: ViewMode) => {
+    const paneTabs = pane === 'left' ? leftTabs : rightTabs;
+    const activeTab = paneTabs[pane === 'left' ? activeLeftTabIndex : activeRightTabIndex];
+    if (!activeTab || isDedicatedLayoutPath(activeTab.currentPath)) return;
+    const updatedTab = setTabViewMode(activeTab, mode);
+    updatePaneTab(pane, () => updatedTab);
+    autoSaveFolderStyleForTab(updatedTab);
+  };
+
+  const changePaneIconZoom = (pane: 'left' | 'right', zoom: IconZoomLevel) => {
+    const paneTabs = pane === 'left' ? leftTabs : rightTabs;
+    const activeTab = paneTabs[pane === 'left' ? activeLeftTabIndex : activeRightTabIndex];
+    if (!activeTab) return;
+    const updatedTab = setTabIconZoom(activeTab, zoom);
+    updatePaneTab(pane, () => updatedTab);
+    autoSaveFolderStyleForTab(updatedTab);
+  };
+
+  const handleViewModeChange = (mode: ViewMode) => changePaneViewMode(activePane, mode);
+
+  const handleIconZoomChange = (zoom: IconZoomLevel) => changePaneIconZoom(activePane, zoom);
 
   // Helper to update specific pane's active tab
   const updatePaneTab = useCallback((pane: 'left' | 'right', updater: (prevTab: TabState) => TabState) => {
@@ -6469,7 +6518,7 @@ export default function App() {
       if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && (e.key === 'F4' || e.code === 'F4')) {
         e.preventDefault();
         e.stopPropagation();
-        if (isTauriDesktop()) requestQuitWithUnsavedChangesRef.current(true);
+        if (isTauriDesktop()) quitWithoutPromptRef.current();
         return;
       }
 
@@ -6932,10 +6981,16 @@ export default function App() {
     ? leftTabs[activeLeftTabIndex]
     : rightTabs[activeRightTabIndex];
 
-  const saveFolderStyleForPath = (path: string, style: FolderStyle) => {
+  const saveFolderStyleForPath = (path: string, style: FolderStyle, options?: { silent?: boolean }) => {
     const key = folderStylePathKey(path);
     if (!path || path.startsWith('::')) return false;
-    const folderStyle = { viewMode: style.viewMode, sortField: style.sortField, sortOrder: style.sortOrder, groupBy: style.groupBy };
+    const folderStyle: FolderStyle = {
+      viewMode: style.viewMode,
+      sortField: style.sortField,
+      sortOrder: style.sortOrder,
+      groupBy: style.groupBy,
+      ...(style.iconZoom ? { iconZoom: style.iconZoom } : {}),
+    };
     const nextStyles = { ...savedFolderStyles, [key]: { ...folderStyle, displayPath: normalizeWindowsPath(path) } };
     try {
       writeSavedFolderStyles(nextStyles);
@@ -6955,7 +7010,7 @@ export default function App() {
     setSavedFolderStyles(nextStyles);
     setLeftTabs(updateOpenTabs);
     setRightTabs(updateOpenTabs);
-    showToast(t.contextMenu.folderStyleSaved);
+    if (!options?.silent) showToast(t.contextMenu.folderStyleSaved);
     return true;
   };
 
@@ -6987,7 +7042,7 @@ export default function App() {
     return true;
   };
 
-  const saveCurrentFolderStyle = () => saveFolderStyleForPath(contextPaneTab.currentPath, getCurrentFolderStyle(contextPaneTab));
+  const saveCurrentFolderStyle = () => saveFolderStyleForPath(contextPaneTab.currentPath, getTabFolderStyle(contextPaneTab));
   const removeCurrentFolderStyle = () => removeFolderStyleForPath(contextPaneTab.currentPath);
 
   const isCommandLocation = (path: string) => Boolean(path) && path !== SYSTEM_HOME_PATH && path !== RECYCLE_BIN_PATH && !path.startsWith('::') && !isUncServerRoot(path);
@@ -7475,8 +7530,8 @@ export default function App() {
                   onFilterChange={(q) => updatePaneTab('left', t => ({ ...t, filterQuery: q }))}
                   onSelectItems={(ids, additive, range, replaceExactly, focusedId) => handleSelectItems('left', ids, additive, range, replaceExactly, focusedId)}
                   onSortChange={field => updatePaneTab('left', tab => toggleTabSort(tab, field))}
-                  onViewModeChange={mode => updatePaneTab('left', tab => setTabViewMode(tab, mode))}
-                  onIconZoomChange={zoom => updatePaneTab('left', tab => setTabIconZoom(tab, zoom))}
+                  onViewModeChange={mode => changePaneViewMode('left', mode)}
+                  onIconZoomChange={zoom => changePaneIconZoom('left', zoom)}
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'left')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'left')}
                   onBackgroundContextMenu={handleBackgroundContextMenu}
@@ -7573,8 +7628,8 @@ export default function App() {
                   onFilterChange={(q) => updatePaneTab('right', t => ({ ...t, filterQuery: q }))}
                   onSelectItems={(ids, additive, range, replaceExactly, focusedId) => handleSelectItems('right', ids, additive, range, replaceExactly, focusedId)}
                   onSortChange={field => updatePaneTab('right', tab => toggleTabSort(tab, field))}
-                  onViewModeChange={mode => updatePaneTab('right', tab => setTabViewMode(tab, mode))}
-                  onIconZoomChange={zoom => updatePaneTab('right', tab => setTabIconZoom(tab, zoom))}
+                  onViewModeChange={mode => changePaneViewMode('right', mode)}
+                  onIconZoomChange={zoom => changePaneIconZoom('right', zoom)}
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'right')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'right')}
                   onBackgroundContextMenu={handleBackgroundContextMenu}
@@ -7672,8 +7727,8 @@ export default function App() {
                   onFilterChange={(q) => updatePaneTab('left', t => ({ ...t, filterQuery: q }))}
                   onSelectItems={(ids, additive, range, replaceExactly, focusedId) => handleSelectItems('left', ids, additive, range, replaceExactly, focusedId)}
                   onSortChange={field => updatePaneTab('left', tab => toggleTabSort(tab, field))}
-                  onViewModeChange={mode => updatePaneTab('left', tab => setTabViewMode(tab, mode))}
-                  onIconZoomChange={zoom => updatePaneTab('left', tab => setTabIconZoom(tab, zoom))}
+                  onViewModeChange={mode => changePaneViewMode('left', mode)}
+                  onIconZoomChange={zoom => changePaneIconZoom('left', zoom)}
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'left')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'left')}
                   onBackgroundContextMenu={handleBackgroundContextMenu}
@@ -7766,8 +7821,8 @@ export default function App() {
                   onFilterChange={(q) => updatePaneTab('right', t => ({ ...t, filterQuery: q }))}
                   onSelectItems={(ids, additive, range, replaceExactly, focusedId) => handleSelectItems('right', ids, additive, range, replaceExactly, focusedId)}
                   onSortChange={field => updatePaneTab('right', tab => toggleTabSort(tab, field))}
-                  onViewModeChange={mode => updatePaneTab('right', tab => setTabViewMode(tab, mode))}
-                  onIconZoomChange={zoom => updatePaneTab('right', tab => setTabIconZoom(tab, zoom))}
+                  onViewModeChange={mode => changePaneViewMode('right', mode)}
+                  onIconZoomChange={zoom => changePaneIconZoom('right', zoom)}
                   onItemDoubleClick={(item) => handleItemDoubleClick(item, 'right')}
                   onItemContextMenu={(e, item) => handleItemContextMenu(e, item, 'right')}
                   onBackgroundContextMenu={handleBackgroundContextMenu}
@@ -8010,7 +8065,7 @@ export default function App() {
         position={contextMenuPos}
         viewMode={contextPaneTab.viewMode}
         iconZoom={contextPaneTab.folderStyle?.iconZoom}
-        onIconZoomChange={zoom => updatePaneTab(contextPane, tab => setTabIconZoom(tab, zoom))}
+        onIconZoomChange={zoom => changePaneIconZoom(contextPane, zoom)}
         isDedicatedLayout={isDedicatedLayoutPath(contextPaneTab.currentPath)}
         sortField={contextPaneTab.sortField}
         sortOrder={contextPaneTab.sortOrder}
@@ -8023,7 +8078,7 @@ export default function App() {
         onSortOrderChange={order => updatePaneTab(contextPane, tab => ({ ...tab, sortOrder: order, folderStyle: { ...getTabFolderStyle(tab), sortOrder: order } }))}
         onGroupByChange={groupBy => updatePaneTab(contextPane, tab => ({ ...tab, groupBy, folderStyle: { ...getTabFolderStyle(tab), groupBy } }))}
         hasFolder={Boolean(contextPaneTab.currentPath)}
-        canModifyFolder={Boolean(contextPaneTab.currentPath) && !isDedicatedLayoutPath(contextPaneTab.currentPath) && contextPaneTab.currentPath !== RECYCLE_BIN_PATH && contextPaneTab.currentPath !== RECENT_PATH && !isPortableDeviceRoot(contextPaneTab.currentPath)}
+        canModifyFolder={canSaveFolderStyle(contextPaneTab.currentPath)}
         supportsShortcutCreation={!isPortablePath(contextPaneTab.currentPath)}
         fileClipboardSupported={isTauriDesktop()}
         hasFilter={Boolean(contextPaneTab.filterQuery)}
@@ -8054,7 +8109,7 @@ export default function App() {
           );
         }}
         onClearFilter={() => updatePaneTab(contextPane, tab => ({ ...tab, filterQuery: '' }))}
-        onViewModeChange={mode => updatePaneTab(contextPane, tab => setTabViewMode(tab, mode))}
+        onViewModeChange={mode => changePaneViewMode(contextPane, mode)}
         hasSavedFolderStyle={Boolean(savedFolderStyles[folderStylePathKey(contextPaneTab.currentPath)])}
         onSaveFolderStyle={saveCurrentFolderStyle}
         onRemoveFolderStyle={removeCurrentFolderStyle}
