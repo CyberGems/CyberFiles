@@ -99,7 +99,7 @@ import type { UndoHistoryItem } from './components/UndoHistoryMenu';
 import { useLanguage } from './locales/LanguageContext';
 import { readPaneColumnPreferences, writePaneColumnPreferences } from './utils/fileColumnPreferences';
 import { readDeleteConfirmation, writeDeleteConfirmation, type DeleteConfirmationPreference } from './utils/deletePreferences';
-import { folderStylePathKey, folderStyleToCarry, readSavedFolderStyles, resolveFolderStyle, savedFolderStyleForPath, writeSavedFolderStyles, type SavedFolderStyles } from './utils/folderStylePreferences';
+import { folderStylePathKey, folderStyleToCarry, readSavedFolderStyles, resolveAutoViewMode, resolveFolderStyle, savedFolderStyleForPath, writeSavedFolderStyles, type SavedFolderStyles } from './utils/folderStylePreferences';
 import { FolderIconModal } from './components/FolderIconModal';
 import {
   readCustomFolderIcons,
@@ -3268,10 +3268,15 @@ export default function App() {
             : isUncServerRoot(targetPath)
               ? targetPath
               : targetPath.split(/\\|\//).filter(Boolean).pop() || targetPath;
+    // View mode the pre-listing style resolution picked (saved style, media
+    // name or known folder). The post-listing stage only refines it when the
+    // user has not picked a different one meanwhile.
+    let preListViewMode: ViewMode | undefined;
     if (openInNewTab) {
       const sourceTab = targetTab ?? createEmptyTab(`tab-source-${Date.now()}`);
       const rememberedStyle = getNavigationFolderStyle(sourceTab, folderStyleLocked, savedFolderStyles);
       const targetStyle = displayedStyleForPath(targetPath, rememberedStyle, savedFolderStyles, folderStyleLocked);
+      preListViewMode = targetStyle.viewMode;
       const newHistory = getPathKey(sourceTab.currentPath) === pathKey
         ? sourceTab.history.slice()
         : [...sourceTab.history.slice(0, sourceTab.historyIndex + 1), targetPath].slice(-MAX_TAB_HISTORY_ENTRIES);
@@ -3321,6 +3326,7 @@ export default function App() {
           : tab.history;
         const rememberedStyle = getNavigationFolderStyle(tab, folderStyleLocked, savedFolderStyles);
         const targetStyle = displayedStyleForPath(targetPath, rememberedStyle, savedFolderStyles, folderStyleLocked);
+        preListViewMode = targetStyle.viewMode;
         return {
           ...tab,
           currentPath: targetPath,
@@ -3425,6 +3431,23 @@ export default function App() {
           counts: listing.counts,
         },
       }));
+
+      // Second stage of the automatic default view (Files-style): once the real
+      // listing is known, let Explorer's saved view (desktop.ini) or the folder
+      // content refine the pre-listing guess. Never runs under the style lock,
+      // for flat view tabs, or when the user already picked a view meanwhile.
+      if (!folderStyleLockedRef.current && preListViewMode !== undefined) {
+        const preListViewModeAtNav = preListViewMode;
+        const autoViewMode = resolveAutoViewMode(listing.viewStateMode, listing.entries);
+        if (autoViewMode) {
+          updatePaneTab(targetPane, tab => {
+            if (getPathKey(tab.currentPath) !== pathKey) return tab;
+            if (tab.flatView || tab.viewMode !== preListViewModeAtNav) return tab;
+            if (savedFolderStyleForPath(tab.currentPath, savedFolderStylesRef.current)) return tab;
+            return setTabViewMode(tab, autoViewMode);
+          });
+        }
+      }
 
       const pendingSelectionKey = `${targetPane}:${pathKey}`;
       if (selectAllAfterLoad.current.delete(pendingSelectionKey)) {

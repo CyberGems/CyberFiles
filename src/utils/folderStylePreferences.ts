@@ -1,4 +1,4 @@
-import type { GroupByField, IconZoomLevel, SortField, SortOrder, ViewMode } from '../types';
+import type { FileType, GroupByField, IconZoomLevel, SortField, SortOrder, ViewMode } from '../types';
 import { isMediaStylePath, normalizeFolderPathKey, normalizeWindowsPath } from './fileSystem';
 
 export interface FolderStylePreference {
@@ -49,6 +49,22 @@ export function folderStyleToCarry(
 ): FolderStylePreference {
   if (!locked) return defaultStyle;
   return savedStyles[folderStylePathKey(path)] ? styleOnEntry ?? defaultStyle : current;
+}
+
+/* Second stage of the automatic default view, mirroring the Files app: the
+   view Windows Explorer saved for the folder (desktop.ini [ViewState] Mode=)
+   wins when present, otherwise the content decides. Media-heavy folders open
+   in the icons view. Returns null when there is no decision (empty folder,
+   no signal), leaving the pre-listing default in place. */
+const AUTO_VIEW_SAMPLE_SIZE = 200;
+
+export function resolveAutoViewMode(viewStateMode: string | null | undefined, entries: Array<{ type: FileType }>): ViewMode | null {
+  const mode = viewStateMode?.trim().toLowerCase();
+  if (mode) return mode === 'pictures' || mode === 'videos' || mode === 'music' ? 'icons' : 'details';
+  const sample = entries.slice(0, AUTO_VIEW_SAMPLE_SIZE);
+  if (sample.length === 0) return null;
+  const media = sample.filter(item => item.type === 'image' || item.type === 'audio' || item.type === 'video').length;
+  return media * 100 / sample.length > 60 ? 'icons' : 'details';
 }
 
 function isFolderStylePreference(value: unknown): value is FolderStylePreference {

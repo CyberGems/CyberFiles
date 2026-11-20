@@ -818,6 +818,9 @@ struct DirectoryListing {
     counts: DirectoryCounts,
     has_more: bool,
     next_offset: usize,
+    /// Raw `Mode=` value from the folder's `desktop.ini` `[ViewState]` section,
+    /// when Explorer saved one: the frontend uses it to pick the default view.
+    view_state_mode: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -3572,12 +3575,70 @@ fn list_unc_server_shares(server_root: &str) -> Result<DirectoryListing, String>
         counts,
         has_more: false,
         next_offset,
+        view_state_mode: None,
     })
 }
 
 #[cfg(not(target_os = "windows"))]
 fn list_unc_server_shares(_server_root: &str) -> Result<DirectoryListing, String> {
     Err("SMB share enumeration is available only on Windows.".to_string())
+}
+
+/// Reads the view mode Windows Explorer saved for a folder from its
+/// `desktop.ini` (`[ViewState]` section, `Mode=` key). Explorer writes that
+/// file as UTF-16, so the BOM decides the decoding before the INI scan.
+/// Returns None when the file is missing, unreadable, oversized, or carries
+/// no Mode value.
+fn read_view_state_mode(root: &Path) -> Option<String> {
+    let bytes = std::fs::read(root.join("desktop.ini")).ok()?;
+    if bytes.len() > 64 * 1024 {
+        return None;
+    }
+    let text = match (bytes.first(), bytes.get(1)) {
+        (Some(0xFF), Some(0xFE)) => {
+            let units: Vec<u16> = bytes[2..]
+                .chunks(2)
+                .map(|pair| {
+                    let low = pair.get(1).copied().unwrap_or(0);
+                    u16::from_le_bytes([pair[0], low])
+                })
+                .collect();
+            String::from_utf16_lossy(&units)
+        }
+        (Some(0xFE), Some(0xFF)) => {
+            let units: Vec<u16> = bytes[2..]
+                .chunks(2)
+                .map(|pair| {
+                    let low = pair.get(1).copied().unwrap_or(0);
+                    u16::from_be_bytes([pair[0], low])
+                })
+                .collect();
+            String::from_utf16_lossy(&units)
+        }
+        _ => String::from_utf8_lossy(&bytes).into_owned(),
+    };
+    let mut inside_view_state = false;
+    let mut mode = None;
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            inside_view_state = trimmed[1..trimmed.len() - 1].eq_ignore_ascii_case("ViewState");
+            continue;
+        }
+        if !inside_view_state {
+            continue;
+        }
+        if let Some((key, value)) = trimmed.split_once('=') {
+            if key.trim().eq_ignore_ascii_case("Mode") {
+                mode = Some(value.trim().to_string());
+                break;
+            }
+        }
+    }
+    match mode {
+        Some(value) if !value.is_empty() => Some(value),
+        _ => None,
+    }
 }
 
 #[tauri::command]
@@ -3628,12 +3689,21 @@ async fn list_directory(path: String) -> Result<DirectoryListing, String> {
                 counts,
                 has_more: false,
                 next_offset,
+                view_state_mode: None,
             });
         }
         if let Some(server_root) = is_unc_server_root(&expanded) {
             return list_unc_server_shares(&server_root);
         }
         let root = resolve_accessible_directory(&expanded)?;
+
+        // UNC shares skip the desktop.ini probe: one extra network round trip
+        // per navigation is not worth the signal.
+        let view_state_mode = if expanded.starts_with("\\\\") {
+            None
+        } else {
+            read_view_state_mode(&root)
+        };
 
         let root_name = root
             .file_name()
@@ -3716,6 +3786,7 @@ async fn list_directory(path: String) -> Result<DirectoryListing, String> {
             counts,
             has_more: false,
             next_offset,
+            view_state_mode,
         })
     })
     .await
@@ -9878,9 +9949,40 @@ fn main() {
 mod tests {
     use super::{
         canonical_directory, expand_windows_environment_path, normalize_external_drop_paths,
-        runtime_info, tray_menu_bounds, tray_menu_flyout_canvas_bounds, validate_recycle_source,
+        read_view_state_mode, runtime_info, tray_menu_bounds, tray_menu_flyout_canvas_bounds,
+        validate_recycle_source,
     };
     use std::path::{Path, PathBuf};
+
+    #[test]
+    fn reads_view_state_mode_from_desktop_ini() {
+        let dir = std::env::temp_dir().join(format!("cyberfiles-view-state-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp folder should create");
+        let ini = dir.join("desktop.ini");
+        // Explorer writes desktop.ini as UTF-16 LE with a BOM.
+        let mut utf16_bytes = vec![0xFF_u8, 0xFE];
+        for unit in "[ViewState]\r\nMode=Pictures\r\n".encode_utf16() {
+            utf16_bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+        std::fs::write(&ini, &utf16_bytes).expect("utf16 desktop.ini should write");
+        assert_eq!(read_view_state_mode(&dir).as_deref(), Some("Pictures"));
+
+        std::fs::write(&ini, "[ViewState]\r\nMode=Documents\r\n").expect("utf8 desktop.ini should write");
+        assert_eq!(read_view_state_mode(&dir).as_deref(), Some("Documents"));
+
+        // A Mode outside the [ViewState] section is not a view state signal.
+        std::fs::write(&ini, "[Generic]\r\nMode=Pictures\r\n").expect("generic desktop.ini should write");
+        assert_eq!(read_view_state_mode(&dir), None);
+
+        // Section and key matching is case-insensitive; empty values mean no signal.
+        std::fs::write(&ini, "[viewstate]\r\nmode=Videos\r\n").expect("lowercase desktop.ini should write");
+        assert_eq!(read_view_state_mode(&dir).as_deref(), Some("Videos"));
+        std::fs::write(&ini, "[ViewState]\r\nMode=\r\n").expect("empty mode desktop.ini should write");
+        assert_eq!(read_view_state_mode(&dir), None);
+
+        let _ = std::fs::remove_file(&ini);
+        let _ = std::fs::remove_dir(&dir);
+    }
 
     #[test]
     fn leaves_tokens_that_are_not_environment_variables_untouched() {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { registerKnownMediaFolderPaths } from './fileSystem';
-import { folderStylePathKey, folderStyleToCarry, readSavedFolderStyles, resolveFolderStyle, savedFolderStyleForPath, writeSavedFolderStyles, type FolderStylePreference } from './folderStylePreferences';
+import { folderStylePathKey, folderStyleToCarry, readSavedFolderStyles, resolveAutoViewMode, resolveFolderStyle, savedFolderStyleForPath, writeSavedFolderStyles, type FolderStylePreference } from './folderStylePreferences';
 
 const defaultStyle: FolderStylePreference = { viewMode: 'details', sortField: 'name', sortOrder: 'asc', groupBy: 'none' };
 const downloadsStyle: FolderStylePreference = { viewMode: 'details', sortField: 'modifiedDate', sortOrder: 'desc', groupBy: 'modifiedDate' };
@@ -38,6 +38,27 @@ test('registered known media folders default to icons, saved styles still win', 
     registerKnownMediaFolderPaths([]);
   }
   assert.equal(resolveFolderStyle(renamedPictures, inheritedStyle, {}).viewMode, 'compact');
+});
+
+test('Explorer saved view mode drives the automatic default view', () => {
+  const entry = (type: 'image' | 'audio' | 'video' | 'text' | 'folder') => ({ type });
+  assert.equal(resolveAutoViewMode('Pictures', []), 'icons');
+  assert.equal(resolveAutoViewMode('videos', []), 'icons');
+  assert.equal(resolveAutoViewMode('  Music  ', []), 'icons');
+  assert.equal(resolveAutoViewMode('Documents', []), 'details');
+  assert.equal(resolveAutoViewMode('NotSpecified', []), 'details');
+  assert.equal(resolveAutoViewMode(null, []), null);
+  assert.equal(resolveAutoViewMode(undefined, []), null);
+  // Mostly media content flips to icons; folders never count as media.
+  const mostlyMedia = Array.from({ length: 10 }, (_, i) => entry(i < 7 ? 'image' : 'text'));
+  assert.equal(resolveAutoViewMode(null, mostlyMedia), 'icons');
+  // Exactly 60% media is not "mostly media" (Files uses a strict >60%).
+  const atThreshold = Array.from({ length: 10 }, (_, i) => entry(i < 6 ? 'audio' : 'text'));
+  assert.equal(resolveAutoViewMode(null, atThreshold), 'details');
+  const mixedWithFolders = [...Array.from({ length: 5 }, () => entry('folder')), ...Array.from({ length: 5 }, () => entry('text'))];
+  assert.equal(resolveAutoViewMode(null, mixedWithFolders), 'details');
+  const empty: Array<{ type: 'image' }> = [];
+  assert.equal(resolveAutoViewMode(null, empty), null);
 });
 
 test('folder styles persist by path and invalid entries are ignored', () => {

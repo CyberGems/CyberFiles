@@ -42,6 +42,8 @@ interface LoadedNativeFolder {
   counts: NativeDirectoryCounts;
   hasMore: boolean;
   nextOffset: number;
+  /** Raw `Mode=` from the folder's desktop.ini [ViewState] section, when Explorer saved one. */
+  viewStateMode?: string | null;
 }
 
 interface LoadedNativeFlatFolder {
@@ -245,7 +247,7 @@ export async function expandNativeEnvironmentPath(path: string): Promise<string>
   return invoke<string>('expand_environment_path', { path });
 }
 
-export async function listNativeDirectory(path: string): Promise<{ rootPath: string; rootName: string; entries: FileItem[]; counts: NativeDirectoryCounts; hasMore: boolean; nextOffset: number }> {
+export async function listNativeDirectory(path: string): Promise<{ rootPath: string; rootName: string; entries: FileItem[]; counts: NativeDirectoryCounts; hasMore: boolean; nextOffset: number; viewStateMode?: string | null }> {
   const result = await invoke<LoadedNativeFolder>('list_directory', { path });
   return {
     rootPath: result.rootPath,
@@ -254,6 +256,7 @@ export async function listNativeDirectory(path: string): Promise<{ rootPath: str
     counts: result.counts,
     hasMore: result.hasMore,
     nextOffset: result.nextOffset,
+    viewStateMode: result.viewStateMode ?? null,
   };
 }
 
