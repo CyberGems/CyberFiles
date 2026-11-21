@@ -375,7 +375,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
               </button>
             </Tooltip>
 
-            <Tooltip label={isMaximized ? tTitlebar('Restaurar', 'Restore') : tTitlebar('Maximizar', 'Maximize')} shortcut="Win+↑" placement="bottom">
+            <Tooltip label={isMaximized ? tTitlebar('Restaurar', 'Restore') : tTitlebar('Maximizar', 'Maximize')} shortcut={isMaximized ? 'Win+↓' : 'Win+↑'} placement="bottom">
               <button
                 type="button"
                 aria-label={isMaximized ? tTitlebar('Restaurar', 'Restore') : tTitlebar('Maximizar', 'Maximize')}
