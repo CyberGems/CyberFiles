@@ -9769,9 +9769,16 @@ fn main() {
             let window_for_close = main_window.clone();
             let app_for_window_event = app.handle().clone();
             main_window.on_window_event(move |event| match event {
-                tauri::WindowEvent::CloseRequested { .. } => {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
                     let _ = ensure_tray_icon_registered(&app_for_window_event);
                     let _ = save_window_state(&window_for_close, &state_path);
+                    // Alt+F4 is the Windows quit gesture. The webview usually receives
+                    // the key first; when Windows closes the window natively instead,
+                    // forward it so the renderer still runs the guarded quit path.
+                    if current_windows_modifier_keys().2 {
+                        api.prevent_close();
+                        let _ = window_for_close.emit("main:alt-f4", ());
+                    }
                 }
                 tauri::WindowEvent::Resized(_) => {
                     if window_for_close.is_minimized().unwrap_or(false) {

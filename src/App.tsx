@@ -4766,6 +4766,22 @@ export default function App() {
     };
   }, [language, showToast, t.core.operationFailedWithReason]);
 
+  /* Native Alt+F4 fallback: Windows can close the window before WebView2 delivers the key,
+     so Rust forwards the gesture and it takes the same guarded quit path as the keydown. */
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void listen('main:alt-f4', () => quitWithoutPromptRef.current()).then(stop => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
   /* Background half of the "automatic update checks" preference the About window owns: on start
      and every six hours, as the hint there promises. The start-up check opens the update window
      once, so the user sees what changed before deciding; the six-hour ones only raise a toast,
