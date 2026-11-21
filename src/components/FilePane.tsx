@@ -1213,14 +1213,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
      view as its width settles (startup, session restore, splitter drag); it
      clears once the tab is fully visible or when the user scrolls the strip. */
   const stripStartupAlignRef = useRef(true);
+  const stripFirstAlignRef = useRef(true);
+  const stripSettleDisarmTimerRef = useRef<number | null>(null);
   const alignActiveTabIntoView = useCallback((instant: boolean) => {
     const list = horizontalTabListRef.current;
     const active = list?.querySelector<HTMLElement>('[data-active-folder-tab="true"]');
     if (!list || !active) return;
     const listBounds = list.getBoundingClientRect();
     const activeBounds = active.getBoundingClientRect();
-    if (activeBounds.left < listBounds.left) list.scrollBy({ left: activeBounds.left - listBounds.left, behavior: instant ? 'auto' : 'smooth' });
-    else if (activeBounds.right > listBounds.right) list.scrollBy({ left: activeBounds.right - listBounds.right, behavior: instant ? 'auto' : 'smooth' });
+    /* 'instant' instead of 'auto': the strip carries the CSS scroll-smooth
+       class, so 'auto' would inherit it and animate what the caller asked to
+       be instant. */
+    if (activeBounds.left < listBounds.left) list.scrollBy({ left: activeBounds.left - listBounds.left, behavior: instant ? 'instant' : 'smooth' });
+    else if (activeBounds.right > listBounds.right) list.scrollBy({ left: activeBounds.right - listBounds.right, behavior: instant ? 'instant' : 'smooth' });
   }, []);
   const toggleTabsList = () => {
     if (tabsListOpen) {
@@ -1277,15 +1282,30 @@ export const FilePane: React.FC<FilePaneProps> = ({
         canScrollRight: overflowing && el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
       });
       /* Startup settle: keep pulling the active tab into view while the pane
-         width is still finding its final size, then stop once it is in view. */
+         width is still finding its final size. Disarm only after the strip has
+         held still for a beat while the tab stays in view: sidebar and preview
+         splits keep shifting widths for a few frames at startup, and stopping
+         at the first sight of the tab let a later shrink leave it out of view. */
       if (stripStartupAlignRef.current && (tabStripPosition === 'top' || tabStripPosition === 'bottom')) {
         const active = el.querySelector<HTMLElement>('[data-active-folder-tab="true"]');
         if (active) {
           const listBounds = el.getBoundingClientRect();
           const activeBounds = active.getBoundingClientRect();
           const fullyVisible = activeBounds.left >= listBounds.left - 1 && activeBounds.right <= listBounds.right + 1;
-          if (fullyVisible) stripStartupAlignRef.current = false;
-          else alignActiveTabIntoView(true);
+          if (fullyVisible) {
+            if (stripSettleDisarmTimerRef.current === null) {
+              stripSettleDisarmTimerRef.current = window.setTimeout(() => {
+                stripSettleDisarmTimerRef.current = null;
+                stripStartupAlignRef.current = false;
+              }, 300);
+            }
+          } else {
+            if (stripSettleDisarmTimerRef.current !== null) {
+              window.clearTimeout(stripSettleDisarmTimerRef.current);
+              stripSettleDisarmTimerRef.current = null;
+            }
+            alignActiveTabIntoView(true);
+          }
         }
       }
     };
@@ -1296,6 +1316,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
     return () => {
       observer.disconnect();
       el.removeEventListener('scroll', measure);
+      if (stripSettleDisarmTimerRef.current !== null) {
+        window.clearTimeout(stripSettleDisarmTimerRef.current);
+        stripSettleDisarmTimerRef.current = null;
+      }
     };
   }, [tabs, tabStripPosition, tabStripScroll.overflowing, alignActiveTabIntoView]);
   /* The caret starts in the search field and the active tab is in view: once per open. */
@@ -1391,9 +1415,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
   useLayoutEffect(() => {
     if (tabStripPosition !== 'top' && tabStripPosition !== 'bottom') return;
     /* A new active tab re-arms the startup alignment in case the pane width is
-       still settling around the switch. */
+       still settling around the switch. The very first run restores the
+       previous session's active tab at startup: jump there instantly, because
+       a smooth glide would race the initial paint and the width-settle snaps,
+       which read as a slow, laggy crawl on sessions with many tabs. Later
+       active-tab changes keep the smooth glide. */
     stripStartupAlignRef.current = true;
-    alignActiveTabIntoView(false);
+    const firstAlign = stripFirstAlignRef.current;
+    stripFirstAlignRef.current = false;
+    alignActiveTabIntoView(firstAlign);
   }, [activeTabIndex, tabStripPosition, tabSizePreferences, tabs[activeTabIndex]?.id, alignActiveTabIntoView]);
 
   const visibleFileColumns = React.useMemo(() => columnLayout.order.filter(column =>
