@@ -117,10 +117,10 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Collapsible locations panel**: hide the sidebar with Ctrl+L, the button beside the properties toggle or the command palette, and both panes take the full width; the choice is part of saved layouts
 - **Recents**: a virtual location listing the files you opened or previewed in CyberFiles, sorted by last opened, with a last-opened column, per-item removal and a clear action
 - **Quick Access**: pin up to 100 folders, rename or remove shortcuts, and sort them A–Z, Z–A or manually by dragging (Alt+Up and Alt+Down also work)
-- **Views**: Details, List, Grid and Tiles, each with resizable columns, add or hide columns, sortable headers, and grouping by date or size; every folder remembers its own view, sorting and grouping, and Ctrl+1 to Ctrl+4 switch between the four views; folders without a saved style open with an automatic default view
+- **Views**: Details, List, Large Icons and Tiles, each with resizable columns, add or hide columns, sortable headers, and grouping by date or size; every folder remembers its own view, sorting and grouping, and Ctrl+1 to Ctrl+4 switch between the four views; folders without a saved style open with an automatic default view
 - **Automatic default views**: a folder without a saved style opens in Large Icons when it is a Pictures, Music or Videos folder, when Windows Explorer saved that view for it (desktop.ini), or when most of its content is media; everything else opens in Details, and changing the view or zoom yourself saves it for that folder automatically
-- **Explorer-style thumbnails**: the Grid and Tiles views draw the same previews Windows File Explorer shows, through the Shell's own thumbnail pipeline: video frames, PDF and Office first pages, audio album art, photo stacks for folders that contain images, and HEIC or AVIF when Windows has a codec for them; formats without a preview provider fall back to the file icon, and a Settings toggle turns item thumbnails off
-- **Preview zoom**: Ctrl+mouse wheel, or Ctrl+= / Ctrl+- , steps the Grid and Tiles preview cells through four sizes from small to extra large, remembered per folder; the view menus in the pane, the context menu and the header offer the same sizes
+- **Explorer-style thumbnails**: the Large Icons and Tiles views draw the same previews Windows File Explorer shows, through the Shell's own thumbnail pipeline: video frames, PDF and Office first pages, audio album art, photo stacks for folders that contain images, and HEIC or AVIF when Windows has a codec for them; formats without a preview provider fall back to the file icon, and a Settings toggle turns item thumbnails off
+- **Preview zoom**: Ctrl+mouse wheel, or Ctrl+= / Ctrl+- , steps the Large Icons and Tiles preview cells through four sizes from small to extra large, remembered per folder; the view menus in the pane, the context menu and the header offer the same sizes
 - **Relative graphs**: optional bars behind sizes and dates that make the shape of a folder visible at a glance
 - **Progressive loading**: large folders load as you scroll while the status bar keeps accurate file, folder and item totals
 - **Flat view**: recursively list every subfolder in one list, with a confirmation when the tree is large
@@ -373,8 +373,8 @@ The RAR support includes UnRAR source code. Its license terms are reproduced in 
 | `Ctrl+F` | Search by name, path or available content |
 | `Ctrl+K` | Open the command palette for commands and locations |
 | `Ctrl+T` / `Ctrl+W` | Open a tab / close the active tab |
-| `Ctrl+1` to `Ctrl+4` | Switch between the Details, List, Grid and Tiles views |
-| `Ctrl+=` / `Ctrl+-` | Zoom the Grid or Tiles preview cells in or out |
+| `Ctrl+1` to `Ctrl+4` | Switch between the Details, List, Large Icons and Tiles views |
+| `Ctrl+=` / `Ctrl+-` | Zoom the Large Icons or Tiles preview cells in or out |
 | `Ctrl+A` | Select all visible items |
 | `Shift+Arrow keys` | Extend or shrink the selection |
 | `Shift+Home` / `Shift+End` | Select to the beginning or end of the list |
@@ -385,7 +385,7 @@ The RAR support includes UnRAR source code. Its license terms are reproduced in 
 | `Esc` | Close dialogs and leave the filter |
 | `Alt+Shift+F` | Show or hide CyberFiles (global, configurable) |
 
-With the file list focused, typing letters fills the filter by default, or jumps to a matching name when that option is turned off in Settings › Navigation; in the jump mode, repeating the letter cycles through matches. In Manual Quick Access ordering, Alt+Up and Alt+Down move the focused shortcut. Context menus and tab menus are fully keyboard navigable: arrow keys move between items and bands, Enter or Space activates the focused item, and submenus open as anchored flyouts next to their trigger. In the Grid and Tiles views, holding Ctrl while spinning the mouse wheel steps the preview cells through the same four sizes as the Ctrl+= and Ctrl+- shortcuts, including pinch gestures on precision touchpads.
+With the file list focused, typing letters fills the filter by default, or jumps to a matching name when that option is turned off in Settings › Navigation; in the jump mode, repeating the letter cycles through matches. In Manual Quick Access ordering, Alt+Up and Alt+Down move the focused shortcut. Context menus and tab menus are fully keyboard navigable: arrow keys move between items and bands, Enter or Space activates the focused item, and submenus open as anchored flyouts next to their trigger. In the Large Icons and Tiles views, holding Ctrl while spinning the mouse wheel steps the preview cells through the same four sizes as the Ctrl+= and Ctrl+- shortcuts, including pinch gestures on precision touchpads.
 
 ---
 

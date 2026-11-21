@@ -117,10 +117,10 @@ La mayoría de los gestores de archivos de Windows esconden el segundo panel tra
 - **Panel de ubicaciones plegable**: oculta la barra lateral con Ctrl+L, con el botón junto al de propiedades o desde la paleta de comandos, y ambos paneles ocupan todo el ancho; la elección forma parte de los diseños guardados
 - **Recientes**: una ubicación virtual que lista los archivos abiertos o previsualizados en CyberFiles, ordenados por última apertura, con columna de última apertura, eliminación por elemento y una acción para vaciar el historial
 - **Acceso rápido**: fija hasta 100 carpetas, renombra o elimina accesos y ordénalos A–Z, Z–A o manualmente arrastrando (Alt+Arriba y Alt+Abajo también funcionan)
-- **Vistas**: Detalles, Lista, Cuadrícula y Mosaicos, cada una con columnas redimensionables, columnas que se añaden u ocultan, encabezados ordenables y agrupación por fecha o tamaño; cada carpeta recuerda su propia vista, orden y agrupación, y Ctrl+1 a Ctrl+4 cambia entre las cuatro vistas; las carpetas sin estilo guardado abren con una vista por defecto automática
+- **Vistas**: Detalles, Lista, Iconos grandes y Mosaicos, cada una con columnas redimensionables, columnas que se añaden u ocultan, encabezados ordenables y agrupación por fecha o tamaño; cada carpeta recuerda su propia vista, orden y agrupación, y Ctrl+1 a Ctrl+4 cambia entre las cuatro vistas; las carpetas sin estilo guardado abren con una vista por defecto automática
 - **Vistas por defecto automáticas**: una carpeta sin estilo guardado abre en Iconos grandes cuando es una carpeta de Imágenes, Música o Vídeos, cuando el Explorador de Windows guardó esa vista para ella (desktop.ini), o cuando la mayoría de su contenido es multimedia; todo lo demás abre en Detalles, y cambiar tú la vista o el zoom la guarda automáticamente para esa carpeta
-- **Miniaturas al estilo del Explorador**: las vistas Cuadrícula y Mosaicos dibujan las mismas vistas previas que muestra el Explorador de archivos de Windows, a través del propio pipeline de miniaturas del Shell: fotogramas de vídeo, primeras páginas de PDF y Office, portadas de audio, pilas de fotos para carpetas con imágenes y HEIC o AVIF cuando Windows tiene el códec; los formatos sin proveedor de vistas previas vuelven al icono del archivo, y un interruptor en Configuración desactiva las miniaturas
-- **Zoom de vista previa**: Ctrl+rueda del ratón, o Ctrl+= / Ctrl+- , recorre las celdas de Cuadrícula y Mosaicos por cuatro tamaños de pequeño a muy grande, recordado por carpeta; los menús de vistas del panel, del menú contextual y de la cabecera ofrecen los mismos tamaños
+- **Miniaturas al estilo del Explorador**: las vistas Iconos grandes y Mosaicos dibujan las mismas vistas previas que muestra el Explorador de archivos de Windows, a través del propio pipeline de miniaturas del Shell: fotogramas de vídeo, primeras páginas de PDF y Office, portadas de audio, pilas de fotos para carpetas con imágenes y HEIC o AVIF cuando Windows tiene el códec; los formatos sin proveedor de vistas previas vuelven al icono del archivo, y un interruptor en Configuración desactiva las miniaturas
+- **Zoom de vista previa**: Ctrl+rueda del ratón, o Ctrl+= / Ctrl+- , recorre las celdas de Iconos grandes y Mosaicos por cuatro tamaños de pequeño a muy grande, recordado por carpeta; los menús de vistas del panel, del menú contextual y de la cabecera ofrecen los mismos tamaños
 - **Gráficos relativos**: barras opcionales detrás de tamaños y fechas que muestran de un vistazo la forma de una carpeta
 - **Carga progresiva**: las carpetas grandes cargan mientras te desplazas y la barra de estado mantiene totales exactos de archivos, carpetas y elementos
 - **Vista plana**: lista de forma recursiva todas las subcarpetas en una sola lista, con confirmación cuando el árbol es grande
@@ -371,8 +371,8 @@ La compatibilidad con RAR incluye código fuente de UnRAR. Sus términos de lice
 | `Ctrl+F` | Buscar por nombre, ruta o contenido disponible |
 | `Ctrl+K` | Abrir la paleta de comandos y ubicaciones |
 | `Ctrl+T` / `Ctrl+W` | Abrir una pestaña / cerrar la pestaña activa |
-| `Ctrl+1` a `Ctrl+4` | Cambiar entre las vistas Detalles, Lista, Cuadrícula y Mosaicos |
-| `Ctrl+=` / `Ctrl+-` | Ampliar o reducir las celdas de las vistas Cuadrícula y Mosaicos |
+| `Ctrl+1` a `Ctrl+4` | Cambiar entre las vistas Detalles, Lista, Iconos grandes y Mosaicos |
+| `Ctrl+=` / `Ctrl+-` | Ampliar o reducir las celdas de las vistas Iconos grandes y Mosaicos |
 | `Ctrl+A` | Seleccionar todos los elementos visibles |
 | `Shift+flechas` | Ampliar o reducir la selección |
 | `Shift+Inicio` / `Shift+Fin` | Seleccionar hasta el principio o el final de la lista |
@@ -383,7 +383,7 @@ La compatibilidad con RAR incluye código fuente de UnRAR. Sus términos de lice
 | `Esc` | Cerrar diálogos y salir del filtro |
 | `Alt+Shift+F` | Mostrar u ocultar CyberFiles (global, configurable) |
 
-Con la lista de archivos enfocada, escribir letras rellena el filtro de forma predeterminada, o salta a un nombre coincidente si desactivas esa opción en Configuración › Navegación; en el modo de salto, repetir la letra recorre las coincidencias. Con el orden manual del Acceso rápido, Alt+Arriba y Alt+Abajo mueven el acceso enfocado. Los menús contextuales y de pestañas se navegan por completo con el teclado: las flechas mueven entre elementos y bandas, Enter o Espacio activan el elemento enfocado y los submenús se abren como ventanas ancladas junto a su origen. En las vistas Cuadrícula y Mosaicos, mantener Ctrl mientras giras la rueda del ratón recorre las celdas de vista previa por los mismos cuatro tamaños que los atajos Ctrl+= y Ctrl+- , incluidos los gestos de pellizco en touchpads de precisión.
+Con la lista de archivos enfocada, escribir letras rellena el filtro de forma predeterminada, o salta a un nombre coincidente si desactivas esa opción en Configuración › Navegación; en el modo de salto, repetir la letra recorre las coincidencias. Con el orden manual del Acceso rápido, Alt+Arriba y Alt+Abajo mueven el acceso enfocado. Los menús contextuales y de pestañas se navegan por completo con el teclado: las flechas mueven entre elementos y bandas, Enter o Espacio activan el elemento enfocado y los submenús se abren como ventanas ancladas junto a su origen. En las vistas Iconos grandes y Mosaicos, mantener Ctrl mientras giras la rueda del ratón recorre las celdas de vista previa por los mismos cuatro tamaños que los atajos Ctrl+= y Ctrl+- , incluidos los gestos de pellizco en touchpads de precisión.
 
 ---
 
