@@ -364,7 +364,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
             <>
             <div className="mx-1 h-6 w-px bg-neutral-800" />
 
-            <Tooltip label={tTitlebar('Minimizar', 'Minimize')} placement="bottom">
+            <Tooltip label={tTitlebar('Minimizar', 'Minimize')} shortcut="Win+↓" placement="bottom">
               <button
                 type="button"
                 aria-label={tTitlebar('Minimizar', 'Minimize')}
@@ -375,7 +375,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
               </button>
             </Tooltip>
 
-            <Tooltip label={isMaximized ? tTitlebar('Restaurar', 'Restore') : tTitlebar('Maximizar', 'Maximize')} placement="bottom">
+            <Tooltip label={isMaximized ? tTitlebar('Restaurar', 'Restore') : tTitlebar('Maximizar', 'Maximize')} shortcut="Win+↑" placement="bottom">
               <button
                 type="button"
                 aria-label={isMaximized ? tTitlebar('Restaurar', 'Restore') : tTitlebar('Maximizar', 'Maximize')}
@@ -400,7 +400,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
               </button>
             </Tooltip>
 
-            <Tooltip label={tTitlebar('Cerrar', 'Close')} placement="bottom">
+            <Tooltip label={tTitlebar('Cerrar', 'Close')} shortcut="Alt+F4" placement="bottom">
               <button
                 type="button"
                 aria-label={tTitlebar('Cerrar', 'Close')}
