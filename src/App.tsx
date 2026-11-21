@@ -226,6 +226,10 @@ const AUTO_FOLDER_SIZE_ENABLED_KEY = 'cyberfiles_auto_folder_size_enabled_v1';
 const MAX_CUSTOM_QUICK_ACCESS_ITEMS = 100;
 const MAX_TEXT_PREVIEW_BYTES = 200_000;
 const TOAST_DURATION_MS = 3200;
+// One Alt+F4 can reach the app twice: WebView2 delivers the keydown, and Windows can still
+// close the window natively, where Rust forwards the gesture back as main:alt-f4. A gesture
+// that starts within this window of the first one is the same key press, not a new quit.
+const ALT_F4_GESTURE_WINDOW_MS = 1000;
 const DEFAULT_FOLDER_STYLE = { viewMode: 'details' as ViewMode, sortField: 'name' as SortField, sortOrder: 'asc' as SortOrder, groupBy: 'none' as GroupByField };
 const DEFAULT_TAB_SIZE_PREFERENCES: TabSizePreferences = {
   horizontalMode: 'automatic',
@@ -1676,6 +1680,7 @@ export default function App() {
   /* Alt+F4 is the Windows quit gesture: it leaves straight away instead of
      opening the unsaved layout/session prompt that the X goes through. */
   const quitWithoutPromptRef = useRef<() => void>(() => {});
+  const altF4QuitHandledAtRef = useRef(0);
   /* X with no remembered choice: resolves pending changes first (the data decision
      gates everything), then opens the tray-or-quit dialog. The ref bridges the
      onCloseRequested listener to callbacks defined later in the render. */
@@ -2266,7 +2271,12 @@ export default function App() {
   }, [pendingWorkspaceAction, activeLayoutProfile, activeSessionProfile, applyLayoutSnapshot, applySessionSnapshot, startsAtSystemHome, t.sidebar.thisPc, executeWorkspaceAction]);
 
   requestQuitWithUnsavedChangesRef.current = remember => requestWorkspaceAction({ type: 'quit', remember });
-  quitWithoutPromptRef.current = () => executeWorkspaceAction({ type: 'quit', remember: false });
+  quitWithoutPromptRef.current = () => {
+    const now = Date.now();
+    if (now - altF4QuitHandledAtRef.current < ALT_F4_GESTURE_WINDOW_MS) return;
+    altF4QuitHandledAtRef.current = now;
+    executeWorkspaceAction({ type: 'quit', remember: false });
+  };
   requestCloseDialogGateRef.current = () => requestWorkspaceAction({ type: 'close' });
 
   /* Crash recovery. The live session snapshot is written to an atomically updated file every

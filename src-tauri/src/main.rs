@@ -9774,7 +9774,8 @@ fn main() {
                     let _ = save_window_state(&window_for_close, &state_path);
                     // Alt+F4 is the Windows quit gesture. The webview usually receives
                     // the key first; when Windows closes the window natively instead,
-                    // forward it so the renderer still runs the guarded quit path.
+                    // forward it so the renderer still runs the guarded quit path. The
+                    // renderer folds both arrivals of one gesture into a single quit.
                     if current_windows_modifier_keys().2 {
                         api.prevent_close();
                         let _ = window_for_close.emit("main:alt-f4", ());
