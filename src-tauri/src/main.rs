@@ -560,8 +560,15 @@ fn single_instance_pipe_name(portable: bool) -> String {
 /// Dev convenience: `cargo run` under `tauri dev` does not propagate the
 /// terminal's Ctrl+C to the GUI child on Windows, leaving an orphaned app
 /// whose devUrl server is gone (blank gray window on the next `npm run dev`).
-/// A console control handler makes the app exit with the terminal instead.
-/// Windowed release builds have no console, so the handler never fires there.
+/// Two guards make the app exit with the terminal instead:
+/// 1. A console control handler. The npm/node chain can leave the child
+///    inheriting the console's "ignore Ctrl+C" state, so re-enable delivery
+///    before registering the handler.
+/// 2. A parent-death watchdog (debug builds only): the terminal side (npm,
+///    tauri CLI, cargo) always dies on Ctrl+C even when the console event
+///    never reaches this GUI child, so watching the parent is the
+///    deterministic path. A production app must not die with whatever
+///    launched it, which is why this is debug-only.
 #[cfg(windows)]
 fn install_console_exit_handler(app: tauri::AppHandle) {
     use std::sync::OnceLock;
@@ -570,7 +577,13 @@ fn install_console_exit_handler(app: tauri::AppHandle) {
     };
 
     static EXITING_APP: OnceLock<tauri::AppHandle> = OnceLock::new();
+    let watchdog_app = app.clone();
     let _ = EXITING_APP.set(app);
+
+    unsafe {
+        // Undo the inherited ignore state so CTRL_C_EVENT reaches the handler.
+        SetConsoleCtrlHandler(None, 0);
+    }
 
     unsafe extern "system" fn handle_console_ctrl(ctrl_type: u32) -> i32 {
         if matches!(ctrl_type, CTRL_C_EVENT | CTRL_BREAK_EVENT | CTRL_CLOSE_EVENT) {
@@ -585,6 +598,63 @@ fn install_console_exit_handler(app: tauri::AppHandle) {
     unsafe {
         SetConsoleCtrlHandler(Some(handle_console_ctrl), 1);
     }
+
+    #[cfg(debug_assertions)]
+    start_parent_death_watchdog(watchdog_app);
+}
+
+/// Watches the direct parent process (cargo under `tauri dev`) and exits the
+/// app when it disappears. Debug builds only.
+#[cfg(all(windows, debug_assertions))]
+fn start_parent_death_watchdog(app: tauri::AppHandle) {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+    use windows_sys::Win32::System::Threading::{GetCurrentProcessId, OpenProcess, WaitForSingleObject};
+
+    let current_pid = unsafe { GetCurrentProcessId() };
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snapshot.is_null() || snapshot == INVALID_HANDLE_VALUE {
+        return;
+    }
+    let mut parent_pid: Option<u32> = None;
+    unsafe {
+        let mut entry = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..std::mem::zeroed()
+        };
+        if Process32FirstW(snapshot, &mut entry) != 0 {
+            loop {
+                if entry.th32ProcessID == current_pid {
+                    parent_pid = Some(entry.th32ParentProcessID);
+                    break;
+                }
+                if Process32NextW(snapshot, &mut entry) == 0 {
+                    break;
+                }
+            }
+        }
+        CloseHandle(snapshot);
+    }
+    let Some(parent_pid) = parent_pid else {
+        return;
+    };
+    std::thread::spawn(move || {
+        // 0x00100000 = SYNCHRONIZE.
+        let parent_handle = unsafe { OpenProcess(0x00100000, 0, parent_pid) };
+        if parent_handle.is_null() {
+            // Parent already gone: the app is an orphan right now.
+            app.exit(0);
+            return;
+        }
+        unsafe {
+            WaitForSingleObject(parent_handle, 0xFFFFFFFF);
+            CloseHandle(parent_handle);
+        }
+        app.exit(0);
+    });
 }
 
 #[cfg(target_os = "windows")]
