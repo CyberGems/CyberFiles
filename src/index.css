@@ -1424,7 +1424,7 @@ html[data-theme='light'] [data-system-home-icon='portable'] {
 
 .cyberfiles-about-switch.is-on {
   background: currentColor;
-  box-shadow: 0 0 10px rgba(34, 211, 238, 0.45);
+  box-shadow: 0 0 10px color-mix(in srgb, currentColor 45%, transparent);
 }
 
 .cyberfiles-about-switch.is-on::after {
