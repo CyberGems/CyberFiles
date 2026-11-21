@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   HardDrive, 
   Download, 
@@ -113,6 +114,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [folderTreeStates, setFolderTreeStates] = useState<Record<string, FolderTreeState>>({});
   const [quickAccessSortOpen, setQuickAccessSortOpen] = useState(false);
   const quickAccessSortRef = React.useRef<HTMLDivElement>(null);
+  const quickAccessSortTriggerRef = React.useRef<HTMLButtonElement>(null);
+  const quickAccessSortMenuRef = React.useRef<HTMLDivElement>(null);
+  const [quickAccessSortPlacement, setQuickAccessSortPlacement] = useState<{ top: number; right: number; maxHeight: number } | null>(null);
   const availableDriveLetters = React.useMemo(
     () => new Set(drives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean)),
     [drives],
@@ -293,7 +297,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   useEffect(() => {
     if (!quickAccessSortOpen) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (!quickAccessSortRef.current?.contains(event.target as Node)) setQuickAccessSortOpen(false);
+      const target = event.target as Node;
+      if (quickAccessSortRef.current?.contains(target) || quickAccessSortMenuRef.current?.contains(target)) return;
+      setQuickAccessSortOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setQuickAccessSortOpen(false);
@@ -305,6 +311,40 @@ export const Sidebar: React.FC<SidebarProps> = ({
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [quickAccessSortOpen]);
+
+  /* Portalled with fixed positioning: the sidebar clips its own overflow, so an
+     inline menu gets cut off at the sidebar bottom on short windows. It opens
+     below the trigger and flips above it when there is more room above. */
+  const updateQuickAccessSortPlacement = React.useCallback(() => {
+    if (!quickAccessSortOpen) return;
+    const rect = quickAccessSortTriggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const margin = 8;
+    const menuHeight = quickAccessSortMenuRef.current?.offsetHeight ?? 0;
+    const spaceBelow = window.innerHeight - rect.bottom - margin;
+    const spaceAbove = rect.top - margin;
+    const openAbove = menuHeight > spaceBelow && spaceAbove > spaceBelow;
+    const available = Math.max(openAbove ? spaceAbove : spaceBelow, 120);
+    const maxHeight = Math.min(available, Math.round(window.innerHeight * 0.7));
+    const top = openAbove
+      ? Math.max(margin, rect.top - Math.min(menuHeight, maxHeight) - 6)
+      : Math.min(rect.bottom + 6, Math.max(margin, window.innerHeight - 120 - margin));
+    setQuickAccessSortPlacement({ top, right: Math.max(margin, window.innerWidth - rect.right), maxHeight });
+  }, [quickAccessSortOpen]);
+
+  useEffect(() => {
+    if (!quickAccessSortOpen) return;
+    updateQuickAccessSortPlacement();
+    const menuEl = quickAccessSortMenuRef.current;
+    if (!menuEl || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => updateQuickAccessSortPlacement());
+    observer.observe(menuEl);
+    window.addEventListener('resize', updateQuickAccessSortPlacement);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateQuickAccessSortPlacement);
+    };
+  }, [quickAccessSortOpen, updateQuickAccessSortPlacement]);
 
   const toggleSection = (section: 'drives' | 'quickAccess' | 'advancedWindowsFolders') => {
     setCollapsedSections(previous => ({ ...previous, [section]: !previous[section] }));
@@ -418,19 +458,41 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div ref={quickAccessSortRef} className="relative">
                 <Tooltip label={t.sidebar.quickAccessSort} placement="right">
                   <button
+                    ref={quickAccessSortTriggerRef}
                     type="button"
                     aria-label={t.sidebar.quickAccessSort}
                     aria-haspopup="menu"
                     aria-expanded={quickAccessSortOpen}
-                    onClick={() => setQuickAccessSortOpen(open => !open)}
+                    onClick={() => {
+                      if (quickAccessSortOpen) {
+                        setQuickAccessSortOpen(false);
+                        return;
+                      }
+                      const rect = quickAccessSortTriggerRef.current?.getBoundingClientRect();
+                      if (rect) {
+                        const margin = 8;
+                        const spaceBelow = window.innerHeight - rect.bottom - margin;
+                        setQuickAccessSortPlacement({
+                          top: rect.bottom + 6,
+                          right: Math.max(margin, window.innerWidth - rect.right),
+                          maxHeight: Math.min(Math.max(spaceBelow, 120), Math.round(window.innerHeight * 0.7)),
+                        });
+                      }
+                      setQuickAccessSortOpen(true);
+                    }}
                     className="flex max-w-[68px] items-center gap-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-[9px] text-neutral-300 outline-none transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-100 focus-visible:ring-1 focus-visible:ring-cyan-500/70"
                   >
                     <span>{quickAccessSortMode === 'manual' ? t.sidebar.quickAccessSortManual : quickAccessSortMode === 'name' ? t.sidebar.quickAccessSortName : t.sidebar.quickAccessSortNameDescending}</span>
                     <ChevronDown className="h-3 w-3 flex-shrink-0 text-neutral-500" />
                   </button>
                 </Tooltip>
-                {quickAccessSortOpen && (
-                  <div role="menu" aria-label={t.sidebar.quickAccessSort} className="absolute right-0 top-full z-40 mt-1 w-28 overflow-hidden rounded-md border border-neutral-700 bg-neutral-900 py-1 shadow-xl">
+                {quickAccessSortOpen && quickAccessSortPlacement && createPortal(
+                  <div
+                    role="menu"
+                    aria-label={t.sidebar.quickAccessSort}
+                    style={{ position: 'fixed', top: quickAccessSortPlacement.top, right: quickAccessSortPlacement.right, maxHeight: quickAccessSortPlacement.maxHeight }}
+                    className="z-[90] w-28 overflow-y-auto rounded-md border border-neutral-700 bg-neutral-900 py-1 shadow-xl"
+                  >
                     {([
                       ['manual', t.sidebar.quickAccessSortManual],
                       ['name', t.sidebar.quickAccessSortName],
@@ -448,7 +510,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         {quickAccessSortMode === mode && <Check className="h-3 w-3 text-cyan-300" />}
                       </button>
                     ))}
-                  </div>
+                  </div>,
+                  document.body,
                 )}
               </div>
               {onAddQuickAccess && (
