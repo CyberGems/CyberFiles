@@ -364,7 +364,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
             <>
             <div className="mx-1 h-6 w-px bg-neutral-800" />
 
-            <Tooltip label={tTitlebar('Minimizar', 'Minimize')} shortcut="Win+↓" placement="bottom">
+            <Tooltip label={tTitlebar('Minimizar', 'Minimize')} shortcut={isMaximized ? undefined : 'Win+↓'} placement="bottom">
               <button
                 type="button"
                 aria-label={tTitlebar('Minimizar', 'Minimize')}
