@@ -1214,7 +1214,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
      clears once the tab is fully visible or when the user scrolls the strip. */
   const stripStartupAlignRef = useRef(true);
   const stripFirstAlignRef = useRef(true);
-  const stripSettleDisarmTimerRef = useRef<number | null>(null);
   const alignActiveTabIntoView = useCallback((instant: boolean) => {
     const list = horizontalTabListRef.current;
     const active = list?.querySelector<HTMLElement>('[data-active-folder-tab="true"]');
@@ -1270,56 +1269,72 @@ export const FilePane: React.FC<FilePaneProps> = ({
   useEffect(() => {
     const el = horizontalTabListRef.current;
     if (!el) return;
+    let cancelled = false;
+    let lastMeasureVisible = false;
+    let settleIntervalId: number | null = null;
+    /* Web fonts land after first paint on a cold start and reflow the tab
+       titles, so the settle only disarms once the fonts are ready AND the tab
+       has held still in view for two consecutive measures (4s hard ceiling in
+       case a font stalls). */
+    let fontsSettled = false;
+    void document.fonts.ready.then(() => { fontsSettled = true; if (!cancelled) measure(); });
+    window.setTimeout(() => { fontsSettled = true; }, 4000);
     const measure = () => {
+      if (cancelled) return;
       /* Tabs only, so the inline add button can never flip this measurement back
          and forth: the last tab's layout box against the visible width decides. */
       const tabEls = el.querySelectorAll<HTMLElement>('[data-folder-tab]');
       const last = tabEls[tabEls.length - 1];
       const overflowing = last ? last.offsetLeft + last.offsetWidth > el.clientWidth + 1 : false;
-      setTabStripScroll({
-        overflowing,
-        canScrollLeft: el.scrollLeft > 1,
-        canScrollRight: overflowing && el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
-      });
-      /* Startup settle: keep pulling the active tab into view while the pane
-         width is still finding its final size. Disarm only after the strip has
-         held still for a beat while the tab stays in view: sidebar and preview
-         splits keep shifting widths for a few frames at startup, and stopping
-         at the first sight of the tab let a later shrink leave it out of view. */
-      if (stripStartupAlignRef.current && (tabStripPosition === 'top' || tabStripPosition === 'bottom')) {
-        const active = el.querySelector<HTMLElement>('[data-active-folder-tab="true"]');
-        if (active) {
-          const listBounds = el.getBoundingClientRect();
-          const activeBounds = active.getBoundingClientRect();
-          const fullyVisible = activeBounds.left >= listBounds.left - 1 && activeBounds.right <= listBounds.right + 1;
-          if (fullyVisible) {
-            if (stripSettleDisarmTimerRef.current === null) {
-              stripSettleDisarmTimerRef.current = window.setTimeout(() => {
-                stripSettleDisarmTimerRef.current = null;
-                stripStartupAlignRef.current = false;
-              }, 300);
-            }
-          } else {
-            if (stripSettleDisarmTimerRef.current !== null) {
-              window.clearTimeout(stripSettleDisarmTimerRef.current);
-              stripSettleDisarmTimerRef.current = null;
-            }
-            alignActiveTabIntoView(true);
+      const canScrollLeft = el.scrollLeft > 1;
+      const canScrollRight = overflowing && el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+      /* Bail out on identical values: the settle interval below calls this on a
+         timer, and unconditional state writes would re-render every tick. */
+      setTabStripScroll(previous =>
+        previous.overflowing === overflowing && previous.canScrollLeft === canScrollLeft && previous.canScrollRight === canScrollRight
+          ? previous
+          : { overflowing, canScrollLeft, canScrollRight },
+      );
+      if (tabStripPosition !== 'top' && tabStripPosition !== 'bottom') return;
+      const active = el.querySelector<HTMLElement>('[data-active-folder-tab="true"]');
+      if (!active) return;
+      const listBounds = el.getBoundingClientRect();
+      const activeBounds = active.getBoundingClientRect();
+      const fullyVisible = activeBounds.left >= listBounds.left - 1 && activeBounds.right <= listBounds.right + 1;
+      /* Startup settle: keep pulling the active tab into view while the strip
+         content is still settling. The ResizeObserver only fires when the strip
+         box itself resizes, never when its content reflows (web fonts landing
+         after first paint, per-tab metric text), so the interval is what
+         guarantees convergence. */
+      if (stripStartupAlignRef.current) {
+        if (!fullyVisible) {
+          lastMeasureVisible = false;
+          alignActiveTabIntoView(true);
+        } else if (lastMeasureVisible && fontsSettled) {
+          stripStartupAlignRef.current = false;
+          if (settleIntervalId !== null) {
+            window.clearInterval(settleIntervalId);
+            settleIntervalId = null;
           }
         }
+        lastMeasureVisible = fullyVisible;
       }
     };
-    measure();
+    const startSettle = () => {
+      stripStartupAlignRef.current = true;
+      lastMeasureVisible = false;
+      if (settleIntervalId === null) settleIntervalId = window.setInterval(measure, 150);
+      measure();
+    };
+    startSettle();
     const observer = new ResizeObserver(measure);
     observer.observe(el);
     el.addEventListener('scroll', measure, { passive: true });
     return () => {
+      cancelled = true;
+      if (settleIntervalId !== null) window.clearInterval(settleIntervalId);
       observer.disconnect();
       el.removeEventListener('scroll', measure);
-      if (stripSettleDisarmTimerRef.current !== null) {
-        window.clearTimeout(stripSettleDisarmTimerRef.current);
-        stripSettleDisarmTimerRef.current = null;
-      }
     };
   }, [tabs, tabStripPosition, tabStripScroll.overflowing, alignActiveTabIntoView]);
   /* The caret starts in the search field and the active tab is in view: once per open. */
