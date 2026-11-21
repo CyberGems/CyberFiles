@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Archive,
@@ -34,6 +34,7 @@ import { ArchiveExtractionMode, FileItem, ViewMode, type IconZoomLevel } from '.
 import { KeyboardShortcutContent } from './KeyboardShortcut';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
+import { usePortalMenuPlacement } from '../hooks/usePortalMenuPlacement';
 
 /* Pane-scoped callbacks. Everything here must act on the pane that renders the bar, never on
    whichever pane happens to be active, so each one receives the pane from the caller. */
@@ -140,7 +141,6 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
 }) => {
   const { t } = useLanguage();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [menuPlacement, setMenuPlacement] = useState<{ top: number; right: number; maxHeight: number } | null>(null);
   const menuRootRef = useRef<HTMLDivElement>(null);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -165,54 +165,15 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
 
   /* The menu is portalled to document.body with fixed positioning: the pane and
      app shells clip their own overflow, so an inline menu gets cut off at the
-     pane bottom on short windows. It opens below the trigger and flips above
-     it when the measured height does not fit and there is more room above. */
-  const updateMenuPlacement = useCallback(() => {
-    if (!menuOpen) return;
-    const rect = menuTriggerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const margin = 8;
-    const menuHeight = menuRef.current?.offsetHeight ?? 0;
-    const spaceBelow = window.innerHeight - rect.bottom - margin;
-    const spaceAbove = rect.top - margin;
-    const openAbove = menuHeight > spaceBelow && spaceAbove > spaceBelow;
-    const available = Math.max(openAbove ? spaceAbove : spaceBelow, 160);
-    const maxHeight = Math.min(available, Math.round(window.innerHeight * 0.7));
-    const top = openAbove
-      ? Math.max(margin, rect.top - Math.min(menuHeight, maxHeight) - 6)
-      : Math.min(rect.bottom + 6, Math.max(margin, window.innerHeight - 160 - margin));
-    setMenuPlacement({ top, right: Math.max(margin, window.innerWidth - rect.right), maxHeight });
-  }, [menuOpen]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    updateMenuPlacement();
-    const menuEl = menuRef.current;
-    if (!menuEl || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => updateMenuPlacement());
-    observer.observe(menuEl);
-    window.addEventListener('resize', updateMenuPlacement);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateMenuPlacement);
-    };
-  }, [menuOpen, updateMenuPlacement]);
+     pane bottom on short windows. */
+  const { placement: menuPlacement, armPlacement } = usePortalMenuPlacement({ open: menuOpen, triggerRef: menuTriggerRef, menuRef });
 
   const toggleMoreActionsMenu = () => {
     if (menuOpen) {
       setMenuOpen(false);
       return;
     }
-    const rect = menuTriggerRef.current?.getBoundingClientRect();
-    if (rect) {
-      const margin = 8;
-      const spaceBelow = window.innerHeight - rect.bottom - margin;
-      setMenuPlacement({
-        top: rect.bottom + 6,
-        right: Math.max(margin, window.innerWidth - rect.right),
-        maxHeight: Math.min(Math.max(spaceBelow, 160), Math.round(window.innerHeight * 0.7)),
-      });
-    }
+    armPlacement();
     setMenuOpen(true);
   };
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { usePortalMenuPlacement } from '../hooks/usePortalMenuPlacement';
 import { 
   HardDrive, 
   Download, 
@@ -116,7 +117,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const quickAccessSortRef = React.useRef<HTMLDivElement>(null);
   const quickAccessSortTriggerRef = React.useRef<HTMLButtonElement>(null);
   const quickAccessSortMenuRef = React.useRef<HTMLDivElement>(null);
-  const [quickAccessSortPlacement, setQuickAccessSortPlacement] = useState<{ top: number; right: number; maxHeight: number } | null>(null);
   const availableDriveLetters = React.useMemo(
     () => new Set(drives.map(drive => normalizeDriveLetter(drive.letter)).filter(Boolean)),
     [drives],
@@ -313,38 +313,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, [quickAccessSortOpen]);
 
   /* Portalled with fixed positioning: the sidebar clips its own overflow, so an
-     inline menu gets cut off at the sidebar bottom on short windows. It opens
-     below the trigger and flips above it when there is more room above. */
-  const updateQuickAccessSortPlacement = React.useCallback(() => {
-    if (!quickAccessSortOpen) return;
-    const rect = quickAccessSortTriggerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const margin = 8;
-    const menuHeight = quickAccessSortMenuRef.current?.offsetHeight ?? 0;
-    const spaceBelow = window.innerHeight - rect.bottom - margin;
-    const spaceAbove = rect.top - margin;
-    const openAbove = menuHeight > spaceBelow && spaceAbove > spaceBelow;
-    const available = Math.max(openAbove ? spaceAbove : spaceBelow, 120);
-    const maxHeight = Math.min(available, Math.round(window.innerHeight * 0.7));
-    const top = openAbove
-      ? Math.max(margin, rect.top - Math.min(menuHeight, maxHeight) - 6)
-      : Math.min(rect.bottom + 6, Math.max(margin, window.innerHeight - 120 - margin));
-    setQuickAccessSortPlacement({ top, right: Math.max(margin, window.innerWidth - rect.right), maxHeight });
-  }, [quickAccessSortOpen]);
-
-  useEffect(() => {
-    if (!quickAccessSortOpen) return;
-    updateQuickAccessSortPlacement();
-    const menuEl = quickAccessSortMenuRef.current;
-    if (!menuEl || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => updateQuickAccessSortPlacement());
-    observer.observe(menuEl);
-    window.addEventListener('resize', updateQuickAccessSortPlacement);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener('resize', updateQuickAccessSortPlacement);
-    };
-  }, [quickAccessSortOpen, updateQuickAccessSortPlacement]);
+     inline menu gets cut off at the sidebar bottom on short windows. */
+  const { placement: quickAccessSortPlacement, armPlacement: armQuickAccessSortPlacement } = usePortalMenuPlacement({
+    open: quickAccessSortOpen,
+    triggerRef: quickAccessSortTriggerRef,
+    menuRef: quickAccessSortMenuRef,
+    minHeight: 120,
+  });
 
   const toggleSection = (section: 'drives' | 'quickAccess' | 'advancedWindowsFolders') => {
     setCollapsedSections(previous => ({ ...previous, [section]: !previous[section] }));
@@ -468,16 +443,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         setQuickAccessSortOpen(false);
                         return;
                       }
-                      const rect = quickAccessSortTriggerRef.current?.getBoundingClientRect();
-                      if (rect) {
-                        const margin = 8;
-                        const spaceBelow = window.innerHeight - rect.bottom - margin;
-                        setQuickAccessSortPlacement({
-                          top: rect.bottom + 6,
-                          right: Math.max(margin, window.innerWidth - rect.right),
-                          maxHeight: Math.min(Math.max(spaceBelow, 120), Math.round(window.innerHeight * 0.7)),
-                        });
-                      }
+                      armQuickAccessSortPlacement();
                       setQuickAccessSortOpen(true);
                     }}
                     className="flex max-w-[68px] items-center gap-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-[9px] text-neutral-300 outline-none transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-100 focus-visible:ring-1 focus-visible:ring-cyan-500/70"

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronsRight } from 'lucide-react';
 import { KeyboardShortcutContent } from './KeyboardShortcut';
+import { usePortalMenuPlacement } from '../hooks/usePortalMenuPlacement';
 
 export interface ToolbarOverflowEntry {
   id: string;
@@ -37,7 +38,7 @@ export const ToolbarOverflowMenu: React.FC<ToolbarOverflowMenuProps> = ({ label,
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const [placement, setPlacement] = useState<{ top: number; right: number; maxHeight: number } | null>(null);
+  const { placement, armPlacement } = usePortalMenuPlacement({ open, triggerRef, menuRef, minHeight: 200, flip: false });
 
   const hasCollapsed = collapsedIds.length > 0;
 
@@ -46,14 +47,7 @@ export const ToolbarOverflowMenu: React.FC<ToolbarOverflowMenuProps> = ({ label,
   }, [open, hasCollapsed]);
 
   const openMenu = () => {
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const top = Math.min(rect.bottom + 6, window.innerHeight - 200);
-    setPlacement({
-      top,
-      right: Math.max(8, window.innerWidth - rect.right),
-      maxHeight: Math.max(160, Math.min(window.innerHeight - top - 12, Math.round(window.innerHeight * 0.7), 512)),
-    });
+    armPlacement();
     setOpen(true);
   };
 
