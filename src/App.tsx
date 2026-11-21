@@ -1937,14 +1937,17 @@ export default function App() {
       ...baseSidebarQuickAccess,
       ...customQuickAccess.filter(item => !baseQuickAccessPaths.has(getPathKey(item.path))),
     ];
-    const pinned = combined.filter(item => isPinnedQuickAccessPath(item.path));
-    const sortable = combined.filter(item => !isPinnedQuickAccessPath(item.path));
+    // Explorer-style sidebar order: This PC first, the user's quick access in
+    // the middle, and Network always last, whatever sort mode is active.
+    const homeEntry = combined.find(item => getPathKey(item.path) === getPathKey(SYSTEM_HOME_PATH)) ?? null;
+    const networkEntry = combined.find(item => getPathKey(item.path) === getPathKey(NETWORK_PATH)) ?? null;
+    const sortable = combined.filter(item => item !== homeEntry && item !== networkEntry);
     if (quickAccessSortMode === 'name' || quickAccessSortMode === 'name-desc') {
       const direction = quickAccessSortMode === 'name' ? 1 : -1;
       sortable.sort((a, b) =>
         direction * (a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }) || a.id.localeCompare(b.id)),
       );
-      return [...pinned, ...sortable];
+      return [...(homeEntry ? [homeEntry] : []), ...sortable, ...(networkEntry ? [networkEntry] : [])];
     }
 
     const orderById = new Map(quickAccessOrder.map((id, index) => [id, index]));
@@ -1957,8 +1960,8 @@ export default function App() {
         return a.order - b.order || a.index - b.index;
       })
       .map(entry => entry.item);
-    return [...pinned, ...manuallySorted];
-  }, [baseSidebarQuickAccess, customQuickAccess, isPinnedQuickAccessPath, quickAccessOrder, quickAccessSortMode]);
+    return [...(homeEntry ? [homeEntry] : []), ...manuallySorted, ...(networkEntry ? [networkEntry] : [])];
+  }, [baseSidebarQuickAccess, customQuickAccess, quickAccessOrder, quickAccessSortMode]);
   const leftViewMode = leftTabs[activeLeftTabIndex]?.viewMode ?? initialPanelPreferences.leftViewMode;
   const rightViewMode = rightTabs[activeRightTabIndex]?.viewMode ?? initialPanelPreferences.rightViewMode;
   const leftSort = leftTabs[activeLeftTabIndex] ?? leftTabs[0];
