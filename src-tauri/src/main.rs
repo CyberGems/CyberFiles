@@ -557,6 +557,36 @@ fn single_instance_pipe_name(portable: bool) -> String {
     }
 }
 
+/// Dev convenience: `cargo run` under `tauri dev` does not propagate the
+/// terminal's Ctrl+C to the GUI child on Windows, leaving an orphaned app
+/// whose devUrl server is gone (blank gray window on the next `npm run dev`).
+/// A console control handler makes the app exit with the terminal instead.
+/// Windowed release builds have no console, so the handler never fires there.
+#[cfg(windows)]
+fn install_console_exit_handler(app: tauri::AppHandle) {
+    use std::sync::OnceLock;
+    use windows_sys::Win32::System::Console::{
+        SetConsoleCtrlHandler, CTRL_BREAK_EVENT, CTRL_C_EVENT, CTRL_CLOSE_EVENT,
+    };
+
+    static EXITING_APP: OnceLock<tauri::AppHandle> = OnceLock::new();
+    let _ = EXITING_APP.set(app);
+
+    unsafe extern "system" fn handle_console_ctrl(ctrl_type: u32) -> i32 {
+        if matches!(ctrl_type, CTRL_C_EVENT | CTRL_BREAK_EVENT | CTRL_CLOSE_EVENT) {
+            if let Some(app) = EXITING_APP.get() {
+                app.exit(0);
+            }
+            return 1;
+        }
+        0
+    }
+
+    unsafe {
+        SetConsoleCtrlHandler(Some(handle_console_ctrl), 1);
+    }
+}
+
 #[cfg(target_os = "windows")]
 fn send_message_to_existing_instance(portable: bool, message: &str) -> bool {
     let pipe_name = single_instance_pipe_name(portable);
@@ -9689,6 +9719,9 @@ fn main() {
                 .build(),
         )
         .setup(move |app| {
+            #[cfg(windows)]
+            install_console_exit_handler(app.handle().clone());
+
             #[cfg(target_os = "windows")]
             {
                 let portable = portable_data_directory_from_executable().is_some();
