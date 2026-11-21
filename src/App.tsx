@@ -147,7 +147,7 @@ import {
 import { isDedicatedLayoutPath } from './utils/locations';
 import { bootRecoveryResult, clearRecoverySnapshot, compareSnapshots, writeRecoverySnapshot, type RecoverySnapshot } from './utils/recoverySnapshot';
 import { recentFileActions, recordRecentEntry, removeRecentEntry, renameRecentEntries, toRecentFileItem, type RecentEntry } from './utils/recentFiles';
-import { AUTO_CHECK_INTERVAL_MS, checkForUpdate, getAutoCheckUpdates, getNotifiedVersion, isSkippedVersion, setNotifiedVersion, setSkippedVersion, type AvailableUpdate } from './utils/updates';
+import { AUTO_CHECK_INTERVAL_MS, checkForUpdate, getAutoCheckUpdates, getNotifiedVersion, isSkippedVersion, setAutoCheckUpdates, setNotifiedVersion, setSkippedVersion, type AvailableUpdate } from './utils/updates';
 
 const AboutModal = lazyWithRetry(() => import('./components/AboutModal').then(module => ({ default: module.AboutModal })));
 const UpdateModal = lazyWithRetry(() => import('./components/UpdateModal').then(module => ({ default: module.UpdateModal })));
@@ -1667,6 +1667,11 @@ export default function App() {
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   /* The release the updater found. It is kept here rather than inside the window so the
      automatic check, the About window and the toast all describe the same release. */
+  const [updateNotifications, setUpdateNotifications] = useState(getAutoCheckUpdates);
+  const changeUpdateNotifications = (enabled: boolean) => {
+    setAutoCheckUpdates(enabled);
+    setUpdateNotifications(enabled);
+  };
   const [pendingUpdate, setPendingUpdate] = useState<AvailableUpdate | null>(null);
   const [isUpdateOpen, setIsUpdateOpen] = useState(false);
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
@@ -4804,12 +4809,12 @@ export default function App() {
   const updateToastRef = useRef({ message: t.updates.availableToast, detail: t.updates.availableToastDetail });
   updateToastRef.current = { message: t.updates.availableToast, detail: t.updates.availableToastDetail };
   useEffect(() => {
-    if (!getAutoCheckUpdates()) return;
     let cancelled = false;
     const runCheck = async (announce: 'window' | 'toast') => {
+      if (!getAutoCheckUpdates()) return;
       try {
         const update = await checkForUpdate();
-        if (cancelled || !update) return;
+        if (cancelled || !update || !getAutoCheckUpdates()) return;
         if (isSkippedVersion(update.version)) return;
         setPendingUpdate(update);
         if (announce === 'window') {
@@ -8478,6 +8483,8 @@ export default function App() {
         <Suspense fallback={null}>
           <SettingsModal
             isOpen={isSettingsOpen}
+            updateNotifications={updateNotifications}
+            onUpdateNotificationsChange={changeUpdateNotifications}
             focusTabSettingsRequest={focusTabSettingsRequest}
             onClose={() => { setIsSettingsOpen(false); setFocusTabSettingsRequest(0); }}
             emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
@@ -8574,6 +8581,8 @@ export default function App() {
         <Suspense fallback={null}>
           <AboutModal
             isOpen={isAboutOpen}
+            autoUpdate={updateNotifications}
+            onAutoUpdateChange={changeUpdateNotifications}
             onClose={() => setIsAboutOpen(false)}
             onNotify={message => showToast(message)}
             onInstallUpdate={handleInstallUpdate}

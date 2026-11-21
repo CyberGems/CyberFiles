@@ -19,6 +19,8 @@ import { TOOLBAR_LABEL_POSITIONS, type ToolbarLabelPosition } from './CommandBar
 import { readPreserveSearchPreference, writePreserveSearchPreference, type PreserveSearchPreference } from './FindFilesModal';
 import { LISTER_TEXT_SCALES, listerTextScaleFactor, LISTER_TEXT_SCALE_CSS_VAR, type ListerTextScale } from '../utils/listerTextScale';
 
+import { getUpdateSupport } from '../utils/updates';
+
 interface GlobalShortcutSettingsState {
   enabled: boolean;
   shortcut: string;
@@ -32,6 +34,8 @@ interface InstancePreferencesState {
 
 interface SettingsModalProps {
   isOpen: boolean;
+  updateNotifications: boolean;
+  onUpdateNotificationsChange: (enabled: boolean) => void;
   focusTabSettingsRequest: number;
   onClose: () => void;
   onShowOnboarding?: () => void;
@@ -154,6 +158,8 @@ function keyFromEvent(event: KeyboardEvent): string | null {
 
 export function SettingsModal({
   isOpen,
+  updateNotifications,
+  onUpdateNotificationsChange,
   focusTabSettingsRequest,
   onClose,
   onShowOnboarding = () => {},
@@ -239,6 +245,15 @@ export function SettingsModal({
   onTabSizePreferencesChange,
 }: SettingsModalProps) {
   const { t, language, setLanguage } = useLanguage();
+  const [supportsUpdateNotifications, setSupportsUpdateNotifications] = useState(false);
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    void getUpdateSupport().then(support => {
+      if (active) setSupportsUpdateNotifications(support === 'supported');
+    });
+    return () => { active = false; };
+  }, [isOpen]);
   const displayScale = Math.max(1, window.devicePixelRatio || 1);
   const [tab, setTab] = useState<SettingsTab>('general');
   const [folderStyleDrafts, setFolderStyleDrafts] = useState<Record<string, FolderStylePreference>>({});
@@ -2279,6 +2294,24 @@ export function SettingsModal({
           </section>
           </div>
           <div data-settings-tab-content="general" hidden={!searchActive && tab !== 'general'} className="space-y-3">
+          {supportsUpdateNotifications && (
+            <button
+              type="button"
+              data-settings-search-unit
+              role="switch"
+              className="flex w-full items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2.5 text-left text-cyan-400 focus-visible:outline-2 focus-visible:outline-cyan-400"
+              aria-checked={updateNotifications}
+              aria-labelledby="files-update-notifications-title"
+              aria-describedby="files-update-notifications-desc"
+              onClick={() => onUpdateNotificationsChange(!updateNotifications)}
+            >
+              <span className="flex min-w-0 flex-col gap-1">
+                <span id="files-update-notifications-title" className="text-xs font-medium text-neutral-200">{t.about.autoUpdates}</span>
+                <span id="files-update-notifications-desc" className="text-[11px] text-neutral-400">{t.about.autoUpdatesHint}</span>
+              </span>
+              <span aria-hidden="true" className={`cyberfiles-about-switch ${updateNotifications ? 'is-on' : ''}`} />
+            </button>
+          )}
           {/* The old card here was a paragraph listing every preference; it said nothing a user
               could act on. The space now holds the action the list was standing in for. */}
           <div data-settings-search-unit className="border-t border-neutral-800 pt-4">

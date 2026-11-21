@@ -11,10 +11,8 @@ import {
   RELEASES_PAGE_URL,
   checkForUpdate,
   formatUpdaterError,
-  getAutoCheckUpdates,
   getUpdateSupport,
   releasePageUrl,
-  setAutoCheckUpdates,
   type AvailableUpdate,
   type UpdateSupport,
 } from '../utils/updates';
@@ -34,6 +32,8 @@ type UpdateStatus =
 
 interface AboutModalProps {
   isOpen: boolean;
+  autoUpdate: boolean;
+  onAutoUpdateChange: (enabled: boolean) => void;
   onClose: () => void;
   /** Toast channel of the main window, so a failure is reported instead of silently ignored. */
   onNotify?: (message: string) => void;
@@ -67,11 +67,10 @@ function collectDiagnostics(language: 'es' | 'en'): Promise<string> {
     });
 }
 
-export function AboutModal({ isOpen, onClose, onNotify, onInstallUpdate }: AboutModalProps) {
+export function AboutModal({ isOpen, autoUpdate, onAutoUpdateChange, onClose, onNotify, onInstallUpdate }: AboutModalProps) {
   const { language, t } = useLanguage();
   const [status, setStatus] = useState<UpdateStatus>({ state: 'idle' });
   const [support, setSupport] = useState<UpdateSupport | null>(null);
-  const [autoUpdate, setAutoUpdate] = useState(() => getAutoCheckUpdates());
   const [showDetails, setShowDetails] = useState(false);
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<number | null>(null);
@@ -134,12 +133,6 @@ export function AboutModal({ isOpen, onClose, onNotify, onInstallUpdate }: About
       setStatus({ state: 'error', message: formatUpdaterError(error) });
     }
   }, []);
-
-  const handleToggleAutoUpdate = () => {
-    const next = !autoUpdate;
-    setAutoUpdate(next);
-    setAutoCheckUpdates(next);
-  };
 
   const handleCopyDiagnostics = useCallback(async () => {
     try {
@@ -253,7 +246,7 @@ export function AboutModal({ isOpen, onClose, onNotify, onInstallUpdate }: About
                     role="switch"
                     aria-checked={autoUpdate}
                     aria-label={t.about.autoUpdates}
-                    onClick={handleToggleAutoUpdate}
+                    onClick={() => onAutoUpdateChange(!autoUpdate)}
                     className="mx-auto flex cursor-pointer items-center gap-2 border-0 bg-transparent p-0 pt-0.5 text-cyan-400 focus-visible:outline-2 focus-visible:outline-offset-[3px] focus-visible:outline-cyan-400"
                     style={{ font: 'inherit' }}
                   >
