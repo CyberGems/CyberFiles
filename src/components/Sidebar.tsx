@@ -22,6 +22,8 @@ import {
   Pencil,
   Check,
   Clock,
+  Copy,
+  ExternalLink,
   Network,
   Unplug,
 } from 'lucide-react';
@@ -31,6 +33,7 @@ import { isValidDropDestinationPath } from '../utils/externalDrop';
 import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
 import { FolderIconRenderer } from './folderIconsData';
+import { SidebarContextMenu, type SidebarContextMenuItem, type SidebarContextMenuState } from './SidebarContextMenu';
 import { useLanguage } from '../locales/LanguageContext';
 import { dismissAllTooltips, Tooltip } from './Tooltip';
 
@@ -51,12 +54,14 @@ interface SidebarProps {
   onQuickAccessSortModeChange: (mode: QuickAccessSortMode) => void;
   onReorderQuickAccess: (draggedId: string, targetId: string) => void;
   onMoveQuickAccess: (itemId: string, direction: -1 | 1) => void;
-  onOpenCustomQuickAccess: (item: QuickAccessItem) => void;
+  onOpenCustomQuickAccess: (item: QuickAccessItem, openInNewTab?: boolean) => void;
   onRenameQuickAccess: (id: string, name: string) => void;
   onRemoveQuickAccess: (id: string) => void;
   currentPath: string;
   onNavigate: (path: string) => void;
-  onOpenDrive?: (path: string) => void;
+  onOpenInNewTab: (path: string) => void;
+  onCopyPath: (path: string) => void;
+  onOpenDrive?: (path: string, openInNewTab?: boolean) => void;
   onDisconnectNetworkDrive?: (driveLetter: string) => void;
   windowsSpecialFolders: WindowsSpecialFolder[];
   onOpenWindowsSpecialFolder: (folder: WindowsSpecialFolder) => void;
@@ -82,6 +87,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onRemoveQuickAccess,
   currentPath,
   onNavigate,
+  onOpenInNewTab,
+  onCopyPath,
   onOpenDrive,
   onDisconnectNetworkDrive,
   windowsSpecialFolders,
@@ -450,6 +457,79 @@ export const Sidebar: React.FC<SidebarProps> = ({
             .replace('{count}', new Intl.NumberFormat(language === 'es' ? 'es' : 'en').format(recycleBinStatus.itemCount))
             .replace('{size}', formatFileSize(recycleBinStatus.totalBytes));
 
+  /* Right-click menus: every sidebar element builds its own action list, mirroring the
+     inline affordances each row already offers. */
+  const [sidebarContextMenu, setSidebarContextMenu] = useState<SidebarContextMenuState | null>(null);
+  const openSidebarContextMenu = (event: React.MouseEvent, title: string, items: SidebarContextMenuItem[]) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dismissAllTooltips();
+    setSidebarContextMenu({ x: event.clientX, y: event.clientY, title, items });
+  };
+
+  const buildQuickAccessMenuItems = (item: QuickAccessItem): SidebarContextMenuItem[] => {
+    const isVirtualLocation = item.path === SYSTEM_HOME_PATH || item.path === NETWORK_PATH;
+    const items: SidebarContextMenuItem[] = [
+      {
+        id: 'open',
+        label: t.sidebar.contextOpen,
+        icon: <FolderOpen className="h-4 w-4" />,
+        onSelect: () => isVirtualLocation || item.isCustom ? onOpenCustomQuickAccess(item) : onNavigate(item.path),
+      },
+      {
+        id: 'open-new-tab',
+        label: t.sidebar.contextOpenInNewTab,
+        icon: <ExternalLink className="h-4 w-4" />,
+        onSelect: () => item.isCustom ? onOpenCustomQuickAccess(item, true) : onOpenInNewTab(item.path),
+      },
+    ];
+    if (!isVirtualLocation) {
+      items.push({ id: 'copy-path', label: t.sidebar.contextCopyPath, icon: <Copy className="h-4 w-4" />, onSelect: () => onCopyPath(item.path) });
+    }
+    if (item.isCustom) {
+      items.push(
+        { id: 'quick-access-separator', separator: true },
+        { id: 'rename', label: t.sidebar.renameQuickAccess, icon: <Pencil className="h-4 w-4" />, onSelect: () => startQuickAccessRename(item) },
+        { id: 'remove', label: t.sidebar.removeQuickAccess, icon: <Trash2 className="h-4 w-4" />, danger: true, onSelect: () => onRemoveQuickAccess(item.id) },
+      );
+    }
+    return items;
+  };
+
+  const buildRecentsMenuItems = (): SidebarContextMenuItem[] => [
+    { id: 'open', label: t.sidebar.contextOpen, icon: <Clock className="h-4 w-4" />, onSelect: onOpenRecents },
+    { id: 'open-new-tab', label: t.sidebar.contextOpenInNewTab, icon: <ExternalLink className="h-4 w-4" />, onSelect: () => onOpenInNewTab(RECENT_PATH) },
+  ];
+
+  const buildRecycleBinMenuItems = (): SidebarContextMenuItem[] => [
+    { id: 'open', label: t.sidebar.contextOpen, icon: <Trash2 className="h-4 w-4" />, disabled: !recycleBinSupported, onSelect: onOpenRecycleBin },
+    { id: 'open-new-tab', label: t.sidebar.contextOpenInNewTab, icon: <ExternalLink className="h-4 w-4" />, disabled: !recycleBinSupported, onSelect: () => onOpenInNewTab(RECYCLE_BIN_PATH) },
+    { id: 'recycle-bin-separator', separator: true },
+    { id: 'empty', label: t.sidebar.emptyRecycleBinAction, icon: <Trash2 className="h-4 w-4" />, danger: true, disabled: !canEmptyRecycleBin, onSelect: onRequestEmptyRecycleBin },
+  ];
+
+  const buildDriveMenuItems = (drive: DriveInfo): SidebarContextMenuItem[] => {
+    const rootPath = drive.rootPath ?? `${drive.letter}\\`;
+    const items: SidebarContextMenuItem[] = [
+      { id: 'open', label: t.sidebar.contextOpen, icon: <HardDrive className="h-4 w-4" />, onSelect: () => onOpenDrive ? onOpenDrive(rootPath) : onNavigate(rootPath) },
+      { id: 'open-new-tab', label: t.sidebar.contextOpenInNewTab, icon: <ExternalLink className="h-4 w-4" />, onSelect: () => onOpenDrive ? onOpenDrive(rootPath, true) : onOpenInNewTab(rootPath) },
+      { id: 'copy-path', label: t.sidebar.contextCopyPath, icon: <Copy className="h-4 w-4" />, onSelect: () => onCopyPath(rootPath) },
+    ];
+    if (drive.type === 'network' && onDisconnectNetworkDrive) {
+      items.push(
+        { id: 'drive-separator', separator: true },
+        { id: 'disconnect', label: t.sidebar.contextDisconnectDrive, icon: <Unplug className="h-4 w-4" />, danger: true, onSelect: () => onDisconnectNetworkDrive(drive.letter) },
+      );
+    }
+    return items;
+  };
+
+  const buildSpecialFolderMenuItems = (folder: WindowsSpecialFolder): SidebarContextMenuItem[] => [
+    { id: 'open', label: t.sidebar.contextOpen, icon: <FolderOpen className="h-4 w-4" />, onSelect: () => onOpenWindowsSpecialFolder(folder) },
+    { id: 'open-new-tab', label: t.sidebar.contextOpenInNewTab, icon: <ExternalLink className="h-4 w-4" />, onSelect: () => onOpenInNewTab(folder.path) },
+    { id: 'copy-path', label: t.sidebar.contextCopyPath, icon: <Copy className="h-4 w-4" />, onSelect: () => onCopyPath(folder.path) },
+  ];
+
   /* The section-wide sort and add controls sit on the "Este equipo" row when that row exists
      (desktop builds); the web layout keeps them on the section header. */
   const homeRowHostsControls = quickAccess.some(item => item.path === SYSTEM_HOME_PATH);
@@ -521,7 +601,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     </>
   );
   return (
-    <aside className="cyberfiles-sidebar h-full w-full min-w-0 overflow-hidden bg-neutral-950 border-r border-neutral-800/80 flex flex-col justify-between select-none flex-shrink-0 text-xs">
+    <aside
+      className="cyberfiles-sidebar h-full w-full min-w-0 overflow-hidden bg-neutral-950 border-r border-neutral-800/80 flex flex-col justify-between select-none flex-shrink-0 text-xs"
+      onContextMenu={event => event.preventDefault()}
+    >
       <div className="p-3 space-y-5 overflow-y-auto flex-1">
         {(quickAccess.length > 0 || onAddQuickAccess) && (
           <div className="space-y-1">
@@ -605,6 +688,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <React.Fragment key={item.id}>
                   <div
                     data-quick-access-drop-id={isVirtualLocation ? undefined : item.id}
+                    onContextMenu={event => openSidebarContextMenu(event, item.name, buildQuickAccessMenuItems(item))}
                     className={"group flex min-w-0 items-center gap-0.5 rounded " + (dragTargetQuickAccessId === item.id ? "ring-1 ring-cyan-500/60 bg-cyan-950/20 " : "") + (draggingQuickAccessId === item.id ? "opacity-50" : "")}
                   >
                     {quickAccessSortMode === 'manual' && !isVirtualLocation && (
@@ -743,6 +827,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   type="button"
                   onClick={onOpenRecents}
+                  onContextMenu={event => openSidebarContextMenu(event, t.sidebar.recentsTitle, buildRecentsMenuItems())}
                   aria-label={t.sidebar.recentsTitle}
                   aria-current={currentPath === RECENT_PATH ? 'page' : undefined}
                   className={"flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors " + (currentPath === RECENT_PATH ? "bg-neutral-800/90 text-cyan-300 font-medium" : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100")}
@@ -751,7 +836,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span className="min-w-0 truncate text-[11px]">{t.sidebar.recentsTitle}</span>
                 </button>
               </Tooltip>
-              <div className="group flex min-w-0 items-center gap-1" data-file-drop-recycle-bin={recycleBinSupported ? 'true' : undefined}>
+              <div
+                className="group flex min-w-0 items-center gap-1"
+                data-file-drop-recycle-bin={recycleBinSupported ? 'true' : undefined}
+                onContextMenu={event => openSidebarContextMenu(event, t.sidebar.recycleBinTitle, buildRecycleBinMenuItems())}
+              >
                 <Tooltip label={!recycleBinSupported ? t.sidebar.recycleBinDesktopOnly : recycleBinStateLabel} placement="right">
                   <button
                     type="button"
@@ -815,6 +904,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   key={drive.id}
                   role="button"
                   tabIndex={0}
+                  onContextMenu={event => openSidebarContextMenu(event, drive.label, buildDriveMenuItems(drive))}
                   data-file-drop-path={!isPortable && isValidDropDestinationPath(driveRootPath) ? driveRootPath : undefined}
                   data-file-drop-raw-path={driveRootPath || undefined}
                   onClick={() => onOpenDrive ? onOpenDrive(driveRootPath) : onNavigate(driveRootPath)}
@@ -915,6 +1005,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <button
                       type="button"
                       onClick={() => onOpenWindowsSpecialFolder(folder)}
+                      onContextMenu={event => openSidebarContextMenu(event, label, buildSpecialFolderMenuItems(folder))}
                       aria-label={`${label}: ${folder.path}`}
                       aria-current={isSelected ? 'location' : undefined}
                       className={`flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors ${isSelected ? 'bg-neutral-800/90 font-medium text-cyan-300' : 'text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100'}`}
@@ -929,6 +1020,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </section>
         )}
       </div>
+      {sidebarContextMenu && (
+        <SidebarContextMenu menu={sidebarContextMenu} onClose={() => setSidebarContextMenu(null)} />
+      )}
     </aside>
   );
 };

@@ -7487,12 +7487,14 @@ export default function App() {
           onQuickAccessSortModeChange={setQuickAccessSortMode}
           onReorderQuickAccess={handleReorderQuickAccess}
           onMoveQuickAccess={handleMoveQuickAccess}
-          onOpenCustomQuickAccess={item => { handleOpenCustomQuickAccess(item); if (isCompactWindow) setSidebarDrawerOpen(false); }}
+          onOpenCustomQuickAccess={(item, openInNewTab) => { handleOpenCustomQuickAccess(item, openInNewTab); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           onRenameQuickAccess={handleRenameCustomQuickAccess}
           onRemoveQuickAccess={handleRemoveCustomQuickAccess}
           currentPath={currentTab.currentPath}
           onNavigate={(path) => { handleNavigate(path, activePane, false, sidebarLocationsOpenInNewTab); if (isCompactWindow) setSidebarDrawerOpen(false); }}
-          onOpenDrive={path => { handleOpenDrive(path); if (isCompactWindow) setSidebarDrawerOpen(false); }}
+          onOpenInNewTab={(path) => { handleNavigate(path, activePane, false, true); if (isCompactWindow) setSidebarDrawerOpen(false); }}
+          onCopyPath={handleCopyFolderPath}
+          onOpenDrive={(path, openInNewTab) => { handleOpenDrive(path, openInNewTab); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           onDisconnectNetworkDrive={letter => { void handleDisconnectNetworkDrive(letter); }}
           windowsSpecialFolders={windowsSpecialFolders}
           onOpenWindowsSpecialFolder={folder => { handleOpenWindowsSpecialFolder(folder); if (isCompactWindow) setSidebarDrawerOpen(false); }}
