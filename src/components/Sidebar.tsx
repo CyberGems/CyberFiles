@@ -479,6 +479,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </Tooltip>
         {quickAccessSortOpen && quickAccessSortPlacement && createPortal(
           <div
+            ref={quickAccessSortMenuRef}
             role="menu"
             aria-label={t.sidebar.quickAccessSort}
             style={{ position: 'fixed', top: quickAccessSortPlacement.top, right: quickAccessSortPlacement.right, maxHeight: quickAccessSortPlacement.maxHeight }}
