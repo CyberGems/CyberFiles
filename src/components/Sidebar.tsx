@@ -688,6 +688,45 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </React.Fragment>
                 );
               })}
+              <Tooltip label={t.sidebar.recentsHint} placement="right">
+                <button
+                  type="button"
+                  onClick={onOpenRecents}
+                  aria-label={t.sidebar.recentsTitle}
+                  aria-current={currentPath === RECENT_PATH ? 'page' : undefined}
+                  className={"flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors " + (currentPath === RECENT_PATH ? "bg-neutral-800/90 text-cyan-300 font-medium" : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100")}
+                >
+                  <Clock className={"h-3.5 w-3.5 flex-shrink-0 " + (currentPath === RECENT_PATH ? "text-cyan-400" : "text-neutral-400")} />
+                  <span className="min-w-0 truncate text-[11px]">{t.sidebar.recentsTitle}</span>
+                </button>
+              </Tooltip>
+              <div className="group flex min-w-0 items-center gap-1">
+                <Tooltip label={!recycleBinSupported ? t.sidebar.recycleBinDesktopOnly : recycleBinStateLabel} placement="right">
+                  <button
+                    type="button"
+                    disabled={!recycleBinSupported}
+                    onClick={onOpenRecycleBin}
+                    aria-label={t.sidebar.recycleBinTitle}
+                    aria-current={currentPath === RECYCLE_BIN_PATH ? 'page' : undefined}
+                    className={"flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 " + (currentPath === RECYCLE_BIN_PATH ? "bg-neutral-800/90 text-cyan-300 font-medium" : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100")}
+                  >
+                    <Trash2 className={"h-3.5 w-3.5 flex-shrink-0 " + (currentPath === RECYCLE_BIN_PATH ? "text-cyan-400" : "text-neutral-400")} />
+                    <span className="min-w-0 truncate text-[11px]">{t.sidebar.recycleBinTitle}</span>
+                  </button>
+                </Tooltip>
+                {canEmptyRecycleBin && (
+                  <Tooltip label={t.sidebar.emptyRecycleBinAction} placement="right">
+                    <button
+                      type="button"
+                      onClick={onRequestEmptyRecycleBin}
+                      aria-label={t.sidebar.emptyRecycleBinAction}
+                      className="flex-shrink-0 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-1 text-[9px] text-neutral-400 opacity-0 transition hover:border-rose-800/70 hover:bg-rose-950/30 hover:text-rose-200 group-hover:opacity-100 group-focus-within:opacity-100"
+                    >
+                      {t.sidebar.emptyRecycleBinButton}
+                    </button>
+                  </Tooltip>
+                )}
+              </div>
             </div>}
           </div>
         )}
@@ -838,54 +877,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>}
           </section>
         )}
-        <div className="flex items-center gap-1">
-          <Tooltip label={t.sidebar.recentsHint} placement="right">
-            <button
-              type="button"
-              onClick={onOpenRecents}
-              aria-label={t.sidebar.recentsTitle}
-              aria-current={currentPath === RECENT_PATH ? 'page' : undefined}
-              className={"flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors " + (currentPath === RECENT_PATH ? "bg-neutral-800/90 text-cyan-300 font-medium" : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100")}
-            >
-              <Clock className={"h-4 w-4 flex-shrink-0 " + (currentPath === RECENT_PATH ? "text-cyan-300" : "text-neutral-500")} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[11px]">{t.sidebar.recentsTitle}</span>
-                <span className="block truncate text-[9px] text-neutral-500">{t.sidebar.recentsHint}</span>
-              </span>
-            </button>
-          </Tooltip>
-        </div>
-        <div className="flex items-center gap-1">
-          <Tooltip label={recycleBinSupported ? t.sidebar.openRecycleBinAction : t.sidebar.recycleBinDesktopOnly} placement="right">
-            <button
-              type="button"
-              disabled={!recycleBinSupported}
-              onClick={onOpenRecycleBin}
-              aria-label={t.sidebar.openRecycleBinAction}
-              aria-current={currentPath === RECYCLE_BIN_PATH ? 'page' : undefined}
-              className={"flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 " + (currentPath === RECYCLE_BIN_PATH ? "bg-neutral-800/90 text-cyan-300 font-medium" : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100")}
-            >
-              <Trash2 className={"h-4 w-4 flex-shrink-0 " + (currentPath === RECYCLE_BIN_PATH ? "text-cyan-300" : "text-neutral-500")} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[11px]">{t.sidebar.recycleBinTitle}</span>
-                <span className="block truncate text-[9px] text-neutral-500">{recycleBinStateLabel}</span>
-              </span>
-            </button>
-          </Tooltip>
-          {canEmptyRecycleBin && (
-            <Tooltip label={t.sidebar.emptyRecycleBinAction} placement="right">
-              <button
-                type="button"
-                onClick={onRequestEmptyRecycleBin}
-                aria-label={t.sidebar.emptyRecycleBinAction}
-                className="flex-shrink-0 rounded-md border border-neutral-800 bg-neutral-900/70 px-2 py-1.5 text-[9px] text-neutral-400 transition-colors hover:border-rose-800/70 hover:bg-rose-950/30 hover:text-rose-200"
-              >
-                {t.sidebar.emptyRecycleBinButton}
-              </button>
-            </Tooltip>
-          )}
-        </div>
-
       </div>
     </aside>
   );
