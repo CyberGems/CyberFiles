@@ -1059,6 +1059,18 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
               </div>
             </>
           )}
+
+          {onShowMoreOptions && (
+            <>
+              <MenuDivider />
+              <MenuButton
+                icon={<MoreHorizontal className="h-4 w-4 text-neutral-300" />}
+                label={t.contextMenu.showMoreOptions}
+                trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
+                onClick={() => { onShowMoreOptions(); onClose(); }}
+              />
+            </>
+          )}
         </>
       )}
     </div>

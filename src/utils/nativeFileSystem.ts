@@ -1,6 +1,6 @@
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import type { DriveInfo, FileItem, NetworkResource } from '../types';
+import { NETWORK_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, type DriveInfo, type FileItem, type NetworkResource } from '../types';
 import { detectFileType, getFileExtension } from './fileSystem';
 import { formatLocalDateTime } from './dateTime';
 
@@ -472,10 +472,21 @@ export async function openNativeRecycleBinInExplorer(): Promise<void> {
   await invoke('open_recycle_bin_in_explorer');
 }
 
+/* CyberFiles' virtual locations have Shell namespace equivalents, so their rows can
+   hand Explorer's own context menu too. Recents stays out: CyberFiles tracks files it
+   opened itself, not the Windows Recent shell folder. */
+const VIRTUAL_SHELL_PARSING_NAMES: Record<string, string> = {
+  [SYSTEM_HOME_PATH]: '::{20D04FE0-3AEA-1069-A2D8-08002B30309D}',
+  [NETWORK_PATH]: '::{F02C1A0D-BD21-4E75-9E85-5BCB4F52F3BE}',
+  [RECYCLE_BIN_PATH]: '::{645FF040-5081-101B-9F08-00AA002F954E}',
+};
+
 /** Shows the real Windows Shell context menu (Explorer's own, including third-party
-    extensions) for the paths at the given physical screen coordinates. */
+    extensions) for the paths at the given physical screen coordinates. Virtual
+    locations are translated to their Shell namespace parsing names first. */
 export async function showNativeShellContextMenu(paths: string[], x: number, y: number): Promise<void> {
-  await invoke('show_shell_context_menu', { paths, x: Math.round(x), y: Math.round(y) });
+  const shellPaths = paths.map(path => VIRTUAL_SHELL_PARSING_NAMES[path] ?? path);
+  await invoke('show_shell_context_menu', { paths: shellPaths, x: Math.round(x), y: Math.round(y) });
 }
 
 /** Asks Windows to eject the portable device behind a `mtp:\` root path. */

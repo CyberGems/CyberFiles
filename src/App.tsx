@@ -5720,9 +5720,14 @@ export default function App() {
     }
   }, [showToast, t.sidebar.copyPathFailure, t.sidebar.copyPathSuccess]);
 
-  /* Items eligible for Explorer's own Shell context menu: plain filesystem paths,
-     never Shell-namespace locations, recycle bin entries or portable devices. */
-  const shellMenuSupportedPath = useCallback((path: string) => isUncPath(path) || /^[a-zA-Z]:[\\/]/.test(path), []);
+  /* Items eligible for Explorer's own Shell context menu: plain filesystem paths, the
+     Shell-backed virtual locations (This PC, Network, Recycle Bin), never recycle bin
+     entries or portable devices. */
+  const shellMenuSupportedPath = useCallback((path: string) => isUncPath(path)
+    || /^[a-zA-Z]:[\\/]/.test(path)
+    || path === SYSTEM_HOME_PATH
+    || path === NETWORK_PATH
+    || path === RECYCLE_BIN_PATH, []);
 
   const handleEjectPortableDrive = useCallback(async (rootPath: string) => {
     if (!isTauriDesktop()) return;
@@ -7056,6 +7061,22 @@ export default function App() {
     ? leftTabs[activeLeftTabIndex]
     : rightTabs[activeRightTabIndex];
 
+  /* Paths handed to Explorer's Shell context menu from the pane menu: the selection (or
+     the clicked item) for item menus, the folder or virtual location itself for the
+     empty-area background menu. Null hides the "Show more options" entry. */
+  const contextMenuShellTargets = (() => {
+    if (!contextMenuPos) return null;
+    if (contextMenuPos.targetItem) {
+      if (!shellMenuSupportedPath(contextMenuPos.targetItem.path)) return null;
+      const targets = selectedItemsForDelete.some(item => item.id === contextMenuPos.targetItem?.id)
+        ? selectedItemsForDelete
+        : [contextMenuPos.targetItem];
+      const paths = targets.map(item => item.path).filter(shellMenuSupportedPath);
+      return paths.length > 0 ? paths : null;
+    }
+    return shellMenuSupportedPath(contextPaneTab.currentPath) ? [contextPaneTab.currentPath] : null;
+  })();
+
   const saveFolderStyleForPath = (path: string, style: FolderStyle, options?: { silent?: boolean }) => {
     const key = folderStylePathKey(path);
     if (!path || path.startsWith('::')) return false;
@@ -8232,14 +8253,9 @@ export default function App() {
             void handleCopyFolderPath(contextPaneTab.currentPath);
           }
         }}
-        onShowMoreOptions={contextMenuPos?.targetItem && shellMenuSupportedPath(contextMenuPos.targetItem.path) ? () => {
-          if (!contextMenuPos.targetItem) return;
-          const targets = selectedItemsForDelete.some(item => item.id === contextMenuPos.targetItem?.id)
-            ? selectedItemsForDelete
-            : [contextMenuPos.targetItem];
-          const paths = targets.map(item => item.path).filter(shellMenuSupportedPath);
-          if (paths.length === 0) return;
-          void showNativeShellContextMenu(paths, contextMenuPos.x, contextMenuPos.y);
+        onShowMoreOptions={contextMenuShellTargets ? () => {
+          if (!contextMenuPos || contextMenuShellTargets.length === 0) return;
+          void showNativeShellContextMenu(contextMenuShellTargets, contextMenuPos.x, contextMenuPos.y);
         } : undefined}
         onCustomizeFolderIcon={item => handleOpenFolderIconModal({ path: item.path, name: item.name })}
         canToggleExplorerException={windowsFolderHandlerStatus === 'on' && !isPortablePath(contextPaneTab.currentPath)}

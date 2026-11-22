@@ -471,8 +471,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setSidebarContextMenu({ x: event.clientX, y: event.clientY, title, items });
   };
 
-  /* Plain filesystem paths can be handed to Explorer's own Shell context menu. */
-  const shellMenuSupportedPath = (path: string) => isUncPath(path) || /^[a-zA-Z]:[\\/]/.test(path);
+  /* Plain filesystem paths and the Shell-backed virtual locations can be handed to
+     Explorer's own Shell context menu (Recents has no Shell equivalent). */
+  const shellMenuSupportedPath = (path: string) => isUncPath(path)
+    || /^[a-zA-Z]:[\\/]/.test(path)
+    || path === SYSTEM_HOME_PATH
+    || path === NETWORK_PATH
+    || path === RECYCLE_BIN_PATH;
   const buildMoreOptionsItem = (paths: string[], origin: { x: number; y: number }): SidebarContextMenuItem => ({
     id: 'more-options',
     label: t.contextMenu.showMoreOptions,
@@ -502,6 +507,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ];
     if (!isVirtualLocation) {
       items.push({ id: 'copy-path', label: t.sidebar.contextCopyPath, icon: <Copy className="h-4 w-4" />, onSelect: () => onCopyPath(item.path) });
+    }
+    if (shellMenuSupportedPath(item.path)) {
       items.push({ id: 'quick-access-separator', separator: true }, buildMoreOptionsItem([item.path], origin));
     }
     if (item.isCustom) {
@@ -518,12 +525,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'open-new-tab', label: t.sidebar.contextOpenInNewTab, icon: <ExternalLink className="h-4 w-4" />, onSelect: () => onOpenInNewTab(RECENT_PATH) },
   ];
 
-  const buildRecycleBinMenuItems = (): SidebarContextMenuItem[] => [
-    { id: 'open', label: t.sidebar.contextOpen, icon: <Trash2 className="h-4 w-4" />, disabled: !recycleBinSupported, onSelect: onOpenRecycleBin },
-    { id: 'open-new-tab', label: t.sidebar.contextOpenInNewTab, icon: <ExternalLink className="h-4 w-4" />, disabled: !recycleBinSupported, onSelect: () => onOpenInNewTab(RECYCLE_BIN_PATH) },
-    { id: 'recycle-bin-separator', separator: true },
-    { id: 'empty', label: t.sidebar.emptyRecycleBinAction, icon: <Trash2 className="h-4 w-4" />, danger: true, disabled: !canEmptyRecycleBin, onSelect: onRequestEmptyRecycleBin },
-  ];
+  const buildRecycleBinMenuItems = (origin: { x: number; y: number }): SidebarContextMenuItem[] => {
+    const items: SidebarContextMenuItem[] = [
+      { id: 'open', label: t.sidebar.contextOpen, icon: <Trash2 className="h-4 w-4" />, disabled: !recycleBinSupported, onSelect: onOpenRecycleBin },
+      { id: 'open-new-tab', label: t.sidebar.contextOpenInNewTab, icon: <ExternalLink className="h-4 w-4" />, disabled: !recycleBinSupported, onSelect: () => onOpenInNewTab(RECYCLE_BIN_PATH) },
+      { id: 'recycle-bin-separator', separator: true },
+      { id: 'empty', label: t.sidebar.emptyRecycleBinAction, icon: <Trash2 className="h-4 w-4" />, danger: true, disabled: !canEmptyRecycleBin, onSelect: onRequestEmptyRecycleBin },
+    ];
+    if (recycleBinSupported) {
+      items.push({ id: 'recycle-bin-more-options-separator', separator: true }, buildMoreOptionsItem([RECYCLE_BIN_PATH], origin));
+    }
+    return items;
+  };
 
   const buildDriveMenuItems = (drive: DriveInfo, origin: { x: number; y: number }): SidebarContextMenuItem[] => {
     const rootPath = drive.rootPath ?? `${drive.letter}\\`;
@@ -879,7 +892,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div
                 className="group flex min-w-0 items-center gap-1"
                 data-file-drop-recycle-bin={recycleBinSupported ? 'true' : undefined}
-                onContextMenu={event => openSidebarContextMenu(event, t.sidebar.recycleBinTitle, buildRecycleBinMenuItems())}
+                onContextMenu={event => openSidebarContextMenu(event, t.sidebar.recycleBinTitle, buildRecycleBinMenuItems({ x: event.clientX, y: event.clientY }))}
               >
                 <Tooltip label={!recycleBinSupported ? t.sidebar.recycleBinDesktopOnly : recycleBinStateLabel} placement="right">
                   <button
