@@ -225,8 +225,9 @@ export function useExternalFileDrop({
       }
       const hint = ghost.querySelector<HTMLElement>('.cyberfiles-file-drag-ghost-hint');
       if (hint) {
-        hint.textContent = allowed ? currentLabels.dragModifierHint : '';
-        hint.style.display = allowed ? '' : 'none';
+        const showModifierHint = allowed && destinationPath !== RECYCLE_BIN_PATH;
+        hint.textContent = showModifierHint ? currentLabels.dragModifierHint : '';
+        hint.style.display = showModifierHint ? '' : 'none';
       }
 
       const maxLeft = Math.max(8, window.innerWidth - ghost.offsetWidth - 8);
