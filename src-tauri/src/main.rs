@@ -603,23 +603,30 @@ fn install_console_exit_handler(app: tauri::AppHandle) {
     start_parent_death_watchdog(watchdog_app);
 }
 
-/// Watches the direct parent process (cargo under `tauri dev`) and exits the
-/// app when it disappears. Debug builds only.
+/// Watches the dev toolchain ancestors and exits the app when the first of
+/// them disappears. Debug builds only. The direct parent alone is not enough:
+/// under `tauri dev` the chain is npm/node → cargo → cargo → app, and on
+/// Ctrl+C the cargos can outlive the terminal side while keeping the app
+/// alive, so the whole chain up to the shell is watched.
 #[cfg(all(windows, debug_assertions))]
 fn start_parent_death_watchdog(app: tauri::AppHandle) {
+    use std::collections::{HashMap, HashSet};
     use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
     };
-    use windows_sys::Win32::System::Threading::{GetCurrentProcessId, OpenProcess, WaitForSingleObject};
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentProcessId, OpenProcess, WaitForMultipleObjects,
+    };
 
     let current_pid = unsafe { GetCurrentProcessId() };
     let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
     if snapshot.is_null() || snapshot == INVALID_HANDLE_VALUE {
         return;
     }
-    let mut parent_pid: Option<u32> = None;
+    // pid -> (parent pid, name) for every living process.
+    let mut processes: HashMap<u32, (u32, String)> = HashMap::new();
     unsafe {
         let mut entry = PROCESSENTRY32W {
             dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
@@ -627,10 +634,13 @@ fn start_parent_death_watchdog(app: tauri::AppHandle) {
         };
         if Process32FirstW(snapshot, &mut entry) != 0 {
             loop {
-                if entry.th32ProcessID == current_pid {
-                    parent_pid = Some(entry.th32ParentProcessID);
-                    break;
-                }
+                processes.insert(
+                    entry.th32ProcessID,
+                    (
+                        entry.th32ParentProcessID,
+                        String::from_utf16_lossy(&entry.szExeFile).trim_end_matches('\0').to_string(),
+                    ),
+                );
                 if Process32NextW(snapshot, &mut entry) == 0 {
                     break;
                 }
@@ -638,20 +648,58 @@ fn start_parent_death_watchdog(app: tauri::AppHandle) {
         }
         CloseHandle(snapshot);
     }
-    let Some(parent_pid) = parent_pid else {
+
+    // Walk the ancestor chain from the app up to the shell (or explorer).
+    let mut ancestor_handles: Vec<usize> = Vec::new();
+    let mut visited: HashSet<u32> = HashSet::new();
+    let mut current = current_pid;
+    for _ in 0..15 {
+        let Some(&(parent_pid, ref parent_name)) = processes.get(&current) else {
+            break;
+        };
+        if visited.contains(&parent_pid) || parent_name.eq_ignore_ascii_case("explorer.exe") {
+            break;
+        }
+        visited.insert(parent_pid);
+        // 0x00100000 = SYNCHRONIZE. A missing parent already died; it cannot
+        // be watched, so keep walking past it.
+        let handle = unsafe { OpenProcess(0x00100000, 0, parent_pid) };
+        if !handle.is_null() {
+            ancestor_handles.push(handle as usize);
+        }
+        current = parent_pid;
+    }
+
+    if ancestor_handles.is_empty() {
+        // Nothing watchable (launched directly under explorer): run without
+        // the watchdog instead of exiting.
         return;
-    };
+    }
+    #[cfg(debug_assertions)]
+    {
+        if let Ok(mut log) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("cyberfiles-watchdog.log")) {
+            use std::io::Write;
+            let _ = writeln!(log, "[watchdog] watching {} ancestors", ancestor_handles.len());
+        }
+    }
     std::thread::spawn(move || {
-        // 0x00100000 = SYNCHRONIZE.
-        let parent_handle = unsafe { OpenProcess(0x00100000, 0, parent_pid) };
-        if parent_handle.is_null() {
-            // Parent already gone: the app is an orphan right now.
-            app.exit(0);
-            return;
+        // Wait until ANY watched ancestor exits. Raw HANDLEs are not Send, so
+        // they travel as usize and are restored here.
+        let handles: Vec<*mut std::ffi::c_void> = ancestor_handles.iter().map(|&handle| handle as *mut std::ffi::c_void).collect();
+        unsafe {
+            WaitForMultipleObjects(handles.len() as u32, handles.as_ptr(), 0, 0xFFFFFFFF);
+        }
+        #[cfg(debug_assertions)]
+        {
+            if let Ok(mut log) = std::fs::OpenOptions::new().create(true).append(true).open(std::env::temp_dir().join("cyberfiles-watchdog.log")) {
+                use std::io::Write;
+                let _ = writeln!(log, "[watchdog] an ancestor died; exiting");
+            }
         }
         unsafe {
-            WaitForSingleObject(parent_handle, 0xFFFFFFFF);
-            CloseHandle(parent_handle);
+            for handle in handles {
+                CloseHandle(handle);
+            }
         }
         app.exit(0);
     });
