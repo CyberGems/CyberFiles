@@ -2828,7 +2828,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
       const action = ghost.querySelector<HTMLElement>('.cyberfiles-file-drag-ghost-action');
       if (action) {
         action.textContent = target
-          ? (operation === 'copy' ? t.pane.dragCopyTo : t.pane.dragMoveTo).replace('{target}', target.destinationPath)
+          ? target.destinationPath === RECYCLE_BIN_PATH
+            ? t.pane.dragSendToRecycleBin
+            : (operation === 'copy' ? t.pane.dragCopyTo : t.pane.dragMoveTo).replace('{target}', target.destinationPath)
           : t.pane.dragNotAllowed;
       }
       const maxLeft = Math.max(8, window.innerWidth - ghost.offsetWidth - 8);
@@ -2853,6 +2855,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
     };
     const resolveDropTarget = (clientX: number, clientY: number, operation: FileDropOperation) => {
       const hit = document.elementFromPoint(clientX, clientY);
+      /* The Recycle Bin row is a virtual location without a real path, so it carries its own
+         marker attribute and is resolved before the folder-based drop destinations. */
+      const recycleTarget = hit instanceof Element ? hit.closest<HTMLElement>('[data-file-drop-recycle-bin]') : null;
+      if (recycleTarget) {
+        const canRecycle = payload.items.every(item =>
+          !isPortableDeviceRoot(item.path) && !/^[a-zA-Z]:\\$/i.test(item.path));
+        return canRecycle ? { element: recycleTarget, destinationPath: RECYCLE_BIN_PATH } : null;
+      }
       const element = hit instanceof Element ? hit.closest<HTMLElement>('[data-file-drop-path], [data-file-drop-raw-path]') : null;
       const destinationPath = element?.dataset.fileDropPath;
       if (!element || !destinationPath || !isValidDropDestinationPath(destinationPath)) return null;

@@ -26,7 +26,7 @@ import {
   Unplug,
 } from 'lucide-react';
 import { DriveInfo, FileItem, NETWORK_PATH, QuickAccessItem, QuickAccessSortMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
-import { formatFileSize, isPathOnUnavailableDrive, isPathOnUnavailablePortableDevice, isSameOrDescendantPath, isUncPath, normalizeDriveLetter } from '../utils/fileSystem';
+import { formatFileSize, isPathOnUnavailableDrive, isPathOnUnavailablePortableDevice, isPortableDeviceRoot, isSameOrDescendantPath, isUncPath, normalizeDriveLetter } from '../utils/fileSystem';
 import { isValidDropDestinationPath } from '../utils/externalDrop';
 import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
@@ -60,6 +60,7 @@ interface SidebarProps {
   onDisconnectNetworkDrive?: (driveLetter: string) => void;
   windowsSpecialFolders: WindowsSpecialFolder[];
   onOpenWindowsSpecialFolder: (folder: WindowsSpecialFolder) => void;
+  systemHomeTreeItems?: FileItem[];
   recycleBinSupported: boolean;
   recycleBinStatus: RecycleBinStatus | null;
   onOpenRecycleBin: () => void;
@@ -85,6 +86,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onDisconnectNetworkDrive,
   windowsSpecialFolders,
   onOpenWindowsSpecialFolder,
+  systemHomeTreeItems,
   recycleBinSupported,
   recycleBinStatus,
   onOpenRecycleBin,
@@ -144,6 +146,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, [drives.length, isSidebarPathOffline]);
 
   const loadFolderTreeChildren = async (path: string, offset = 0) => {
+    /* "Este equipo" is a virtual location the backend cannot list: the tree shows the same
+       drive and system-location children the main view composes for it. */
+    if (path === SYSTEM_HOME_PATH) {
+      const folders = systemHomeTreeItems ?? [];
+      setFolderTreeStates(previous => ({
+        ...previous,
+        [path]: {
+          folders,
+          hasMore: false,
+          nextOffset: folders.length,
+          loading: false,
+          loaded: true,
+          error: false,
+        },
+      }));
+      return;
+    }
     setFolderTreeStates(previous => {
       const current = previous[path];
       if (current?.loading) return previous;
@@ -203,6 +222,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (willExpand && !state?.loaded && !state?.loading) void loadFolderTreeChildren(path);
   };
 
+  /* The "Este equipo" children come from app state instead of a directory listing, so a tree
+     expanded before the drive enumeration finished must refresh once the items arrive. */
+  useEffect(() => {
+    if (!expandedFolderPaths.has(SYSTEM_HOME_PATH)) return;
+    const items = systemHomeTreeItems ?? [];
+    setFolderTreeStates(previous => {
+      const current = previous[SYSTEM_HOME_PATH];
+      if (!current?.loaded || current.loading) return previous;
+      if (current.folders.length === items.length) return previous;
+      return { ...previous, [SYSTEM_HOME_PATH]: { ...current, folders: items } };
+    });
+  }, [systemHomeTreeItems, expandedFolderPaths]);
+
   const renderFolderTreeChildren = (path: string, depth: number): React.ReactNode => {
     const state = folderTreeStates[path];
     if (!state) return null;
@@ -220,6 +252,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {state.folders.map(folder => {
           const childExpanded = expandedFolderPaths.has(folder.path);
           const childState = folderTreeStates[folder.path];
+          const isDriveRootChild = /^[a-zA-Z]:\\$/i.test(folder.path) || isPortableDeviceRoot(folder.path);
           return (
             <div key={folder.path}>
               <div className="flex min-w-0 items-center gap-0.5" style={{ paddingLeft: String(Math.min(depth, 12) * 10) + 'px' }}>
@@ -245,7 +278,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <FolderIconRenderer
                       config={getCustomFolderIcon(folder.path, customFolderIcons ?? {})}
                       size="small"
-                      fallbackIcon={<FolderOpen className="h-3 w-3 flex-shrink-0 text-amber-300" />}
+                      fallbackIcon={isDriveRootChild
+                        ? <HardDrive className="h-3 w-3 flex-shrink-0 text-cyan-300" />
+                        : <FolderOpen className="h-3 w-3 flex-shrink-0 text-amber-300" />}
                     />
                     <span className="truncate">{folder.name}</span>
                   </button>
@@ -414,6 +449,76 @@ export const Sidebar: React.FC<SidebarProps> = ({
           : t.sidebar.recycleBinContents
             .replace('{count}', new Intl.NumberFormat(language === 'es' ? 'es' : 'en').format(recycleBinStatus.itemCount))
             .replace('{size}', formatFileSize(recycleBinStatus.totalBytes));
+
+  /* The section-wide sort and add controls sit on the "Este equipo" row when that row exists
+     (desktop builds); the web layout keeps them on the section header. */
+  const homeRowHostsControls = quickAccess.some(item => item.path === SYSTEM_HOME_PATH);
+  const quickAccessControls = (
+    <>
+      <div ref={quickAccessSortRef} className="relative">
+        <Tooltip label={t.sidebar.quickAccessSort} placement="right">
+          <button
+            ref={quickAccessSortTriggerRef}
+            type="button"
+            aria-label={t.sidebar.quickAccessSort}
+            aria-haspopup="menu"
+            aria-expanded={quickAccessSortOpen}
+            onClick={() => {
+              if (quickAccessSortOpen) {
+                setQuickAccessSortOpen(false);
+                return;
+              }
+              armQuickAccessSortPlacement();
+              setQuickAccessSortOpen(true);
+            }}
+            className="flex max-w-[68px] items-center gap-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-[9px] text-neutral-300 outline-none transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-100 focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+          >
+            <span>{quickAccessSortMode === 'manual' ? t.sidebar.quickAccessSortManual : quickAccessSortMode === 'name' ? t.sidebar.quickAccessSortName : t.sidebar.quickAccessSortNameDescending}</span>
+            <ChevronDown className="h-3 w-3 flex-shrink-0 text-neutral-500" />
+          </button>
+        </Tooltip>
+        {quickAccessSortOpen && quickAccessSortPlacement && createPortal(
+          <div
+            role="menu"
+            aria-label={t.sidebar.quickAccessSort}
+            style={{ position: 'fixed', top: quickAccessSortPlacement.top, right: quickAccessSortPlacement.right, maxHeight: quickAccessSortPlacement.maxHeight }}
+            className="z-[90] w-28 overflow-y-auto rounded-md border border-neutral-700 bg-neutral-900 py-1 shadow-xl"
+          >
+            {([
+              ['manual', t.sidebar.quickAccessSortManual],
+              ['name', t.sidebar.quickAccessSortName],
+              ['name-desc', t.sidebar.quickAccessSortNameDescending],
+            ] as const).map(([mode, label]) => (
+              <button
+                key={mode}
+                type="button"
+                role="menuitemradio"
+                aria-checked={quickAccessSortMode === mode}
+                onClick={() => { onQuickAccessSortModeChange(mode); setQuickAccessSortOpen(false); }}
+                className={"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[10px] transition-colors " + (quickAccessSortMode === mode ? "bg-neutral-800 text-cyan-200" : "text-neutral-300 hover:bg-neutral-800/70 hover:text-neutral-100")}
+              >
+                <span>{label}</span>
+                {quickAccessSortMode === mode && <Check className="h-3 w-3 text-cyan-300" />}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
+      </div>
+      {onAddQuickAccess && (
+        <Tooltip label={t.sidebar.addQuickAccess} placement="right">
+          <button
+            type="button"
+            onClick={onAddQuickAccess}
+            aria-label={t.sidebar.addQuickAccess}
+            className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        </Tooltip>
+      )}
+    </>
+  );
   return (
     <aside className="cyberfiles-sidebar h-full w-full min-w-0 overflow-hidden bg-neutral-950 border-r border-neutral-800/80 flex flex-col justify-between select-none flex-shrink-0 text-xs">
       <div className="p-3 space-y-5 overflow-y-auto flex-1">
@@ -430,68 +535,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 {collapsedSections.quickAccess ? <ChevronRight data-collapse-chevron="true" className="h-3 w-3" /> : <ChevronDown data-collapse-chevron="true" className="h-3 w-3" />}
                 <span>{t.sidebar.quickAccessTitle}</span>
               </button>
-              <div ref={quickAccessSortRef} className="relative">
-                <Tooltip label={t.sidebar.quickAccessSort} placement="right">
-                  <button
-                    ref={quickAccessSortTriggerRef}
-                    type="button"
-                    aria-label={t.sidebar.quickAccessSort}
-                    aria-haspopup="menu"
-                    aria-expanded={quickAccessSortOpen}
-                    onClick={() => {
-                      if (quickAccessSortOpen) {
-                        setQuickAccessSortOpen(false);
-                        return;
-                      }
-                      armQuickAccessSortPlacement();
-                      setQuickAccessSortOpen(true);
-                    }}
-                    className="flex max-w-[68px] items-center gap-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-[9px] text-neutral-300 outline-none transition-colors hover:border-cyan-800 hover:bg-neutral-800 hover:text-cyan-100 focus-visible:ring-1 focus-visible:ring-cyan-500/70"
-                  >
-                    <span>{quickAccessSortMode === 'manual' ? t.sidebar.quickAccessSortManual : quickAccessSortMode === 'name' ? t.sidebar.quickAccessSortName : t.sidebar.quickAccessSortNameDescending}</span>
-                    <ChevronDown className="h-3 w-3 flex-shrink-0 text-neutral-500" />
-                  </button>
-                </Tooltip>
-                {quickAccessSortOpen && quickAccessSortPlacement && createPortal(
-                  <div
-                    role="menu"
-                    aria-label={t.sidebar.quickAccessSort}
-                    style={{ position: 'fixed', top: quickAccessSortPlacement.top, right: quickAccessSortPlacement.right, maxHeight: quickAccessSortPlacement.maxHeight }}
-                    className="z-[90] w-28 overflow-y-auto rounded-md border border-neutral-700 bg-neutral-900 py-1 shadow-xl"
-                  >
-                    {([
-                      ['manual', t.sidebar.quickAccessSortManual],
-                      ['name', t.sidebar.quickAccessSortName],
-                      ['name-desc', t.sidebar.quickAccessSortNameDescending],
-                    ] as const).map(([mode, label]) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={quickAccessSortMode === mode}
-                        onClick={() => { onQuickAccessSortModeChange(mode); setQuickAccessSortOpen(false); }}
-                        className={"flex w-full items-center justify-between px-2.5 py-1.5 text-left text-[10px] transition-colors " + (quickAccessSortMode === mode ? "bg-neutral-800 text-cyan-200" : "text-neutral-300 hover:bg-neutral-800/70 hover:text-neutral-100")}
-                      >
-                        <span>{label}</span>
-                        {quickAccessSortMode === mode && <Check className="h-3 w-3 text-cyan-300" />}
-                      </button>
-                    ))}
-                  </div>,
-                  document.body,
-                )}
-              </div>
-              {onAddQuickAccess && (
-                <Tooltip label={t.sidebar.addQuickAccess} placement="right">
-                  <button
-                    type="button"
-                    onClick={onAddQuickAccess}
-                    aria-label={t.sidebar.addQuickAccess}
-                    className="rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-cyan-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </button>
-                </Tooltip>
-              )}
+              {!homeRowHostsControls && quickAccessControls}
             </div>
 
             {!collapsedSections.quickAccess && <div className="space-y-0.5">
@@ -553,7 +597,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                 const isOffline = isSidebarPathOffline(item.path);
                 const isVirtualLocation = item.path === SYSTEM_HOME_PATH || item.path === NETWORK_PATH;
-                const canExpandTree = isTauriDesktop() && !isVirtualLocation && !isOffline;
+                const canExpandTree = isTauriDesktop() && !isOffline && (item.path === SYSTEM_HOME_PATH || !isVirtualLocation);
                 const treeExpanded = !isOffline && expandedFolderPaths.has(item.path);
 
                 return (
@@ -655,6 +699,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </button>
                     </Tooltip>
 
+                    {item.path === SYSTEM_HOME_PATH && (
+                      <div className="flex flex-shrink-0 items-center gap-0.5">
+                        {quickAccessControls}
+                      </div>
+                    )}
+
                     {item.isCustom && (
                       <div className="flex flex-shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                         <Tooltip label={t.sidebar.renameQuickAccess} placement="right">
@@ -700,7 +750,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span className="min-w-0 truncate text-[11px]">{t.sidebar.recentsTitle}</span>
                 </button>
               </Tooltip>
-              <div className="group flex min-w-0 items-center gap-1">
+              <div className="group flex min-w-0 items-center gap-1" data-file-drop-recycle-bin={recycleBinSupported ? 'true' : undefined}>
                 <Tooltip label={!recycleBinSupported ? t.sidebar.recycleBinDesktopOnly : recycleBinStateLabel} placement="right">
                   <button
                     type="button"

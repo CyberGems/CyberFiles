@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { FileDropOperation, type TabSizePreferences } from '../types';
+import { FileDropOperation, RECYCLE_BIN_PATH, type TabSizePreferences } from '../types';
 import { isTauriDesktop } from '../utils/nativeFileSystem';
 import { isPortableDeviceRoot } from '../utils/fileSystem';
 import {
@@ -31,6 +31,7 @@ interface UseExternalFileDropOptions {
   labels: {
     dragCopyTo: string;
     dragMoveTo: string;
+    dragSendToRecycleBin: string;
     dragNotAllowed: string;
     dragModifierHint: string;
   };
@@ -217,7 +218,9 @@ export function useExternalFileDrop({
       const action = ghost.querySelector<HTMLElement>('.cyberfiles-file-drag-ghost-action');
       if (action) {
         action.textContent = allowed && destinationPath
-          ? (operation === 'copy' ? currentLabels.dragCopyTo : currentLabels.dragMoveTo).replace('{target}', destinationPath)
+          ? destinationPath === RECYCLE_BIN_PATH
+            ? currentLabels.dragSendToRecycleBin
+            : (operation === 'copy' ? currentLabels.dragCopyTo : currentLabels.dragMoveTo).replace('{target}', destinationPath)
           : currentLabels.dragNotAllowed;
       }
       const hint = ghost.querySelector<HTMLElement>('.cyberfiles-file-drag-ghost-hint');
@@ -276,6 +279,23 @@ export function useExternalFileDrop({
           targetPane: undefined as 'left' | 'right' | undefined,
           operation: 'copy' as FileDropOperation,
           allowed: false,
+          invalidReason: undefined as ExternalInvalidDropReason | undefined,
+        };
+      }
+
+      /* The Recycle Bin row is a virtual location without a real path, so it carries its own
+         marker attribute and is resolved before the folder-based drop destinations. Drive and
+         device roots cannot be recycled, so the row rejects them like any other destination. */
+      const recycleElement = hit.closest<HTMLElement>('[data-file-drop-recycle-bin]');
+      if (recycleElement) {
+        const canRecycle = paths.every(path =>
+          !isPortableDeviceRoot(path) && !/^[a-zA-Z]:\\$/i.test(path));
+        return {
+          element: canRecycle ? recycleElement : null,
+          destinationPath: RECYCLE_BIN_PATH,
+          targetPane: undefined as 'left' | 'right' | undefined,
+          operation: 'move' as FileDropOperation,
+          allowed: canRecycle,
           invalidReason: undefined as ExternalInvalidDropReason | undefined,
         };
       }

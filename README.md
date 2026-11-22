@@ -137,7 +137,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Undo history**: the last ten supported actions can be reversed from the toolbar or from the pane context menu, with clear reasons when an action cannot be undone
 - **Create and rename**: new folder, new text document, new shortcut, single rename and a batch rename studio with search and replace, prefix, suffix, sequential numbering and case changes; rename and copy path sit in the pane action bar, the name field fills the row, and clicking the name of a selected item starts an inline rename
 - **Copy path**: Ctrl+Shift+C copies the path of the selection, or of the current folder when nothing is selected, from the action bar, the context menu or the command palette
-- **Delete with your rules**: deletions go to the Windows Recycle Bin through the Shell, and Shift+Del opens the dialog with permanent deletion already ticked; the dialog can remember the chosen mode so later deletions skip it, and Settings › Deletion restores the confirmation or makes permanent deletion the default. The sidebar shows Recycle Bin contents with restore and empty actions
+- **Delete with your rules**: deletions go to the Windows Recycle Bin through the Shell, and Shift+Del opens the dialog with permanent deletion already ticked; the dialog can remember the chosen mode so later deletions skip it, and Settings › Deletion restores the confirmation or makes permanent deletion the default. The sidebar shows Recycle Bin contents with restore and empty actions, and accepts files dropped on its Recycle Bin row by sending them to the bin
 - **No silent overwrites**: name conflicts receive a distinct name instead of replacing an existing item
 
 ### 🗜️ Archives & Preview

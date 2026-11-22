@@ -1725,7 +1725,7 @@ export default function App() {
   const [undoBusy, setUndoBusy] = useState(false);
   const archivePasswordsRef = useRef(new Map<string, string>());
   const activeTransferIdRef = useRef<string | null>(null);
-  const performDeleteRef = useRef<((roots: FileItem[], permanentlyDelete: boolean) => Promise<void>) | null>(null);
+  const performDeleteRef = useRef<((paths: string[], permanentlyDelete: boolean) => Promise<void>) | null>(null);
   const [transferEventsReady, setTransferEventsReady] = useState(!isTauriDesktop());
   const [renameRequest, setRenameRequest] = useState<{ requestId: number; itemId: string; paneId: 'left' | 'right' } | null>(null);
   const renameRequestSequence = useRef(0);
@@ -4983,20 +4983,10 @@ export default function App() {
       const remainingPaths = operation.failures && operation.failures.length > 0
         ? operation.failures.map(f => f.path)
         : operation.sourcePaths;
-      const rootsToRetry = remainingPaths.map(p => ({
-        id: `retry-${p}`,
-        name: p.split(/[\\/]/).filter(Boolean).pop() ?? p,
-        path: p,
-        isDirectory: false,
-        size: 0,
-        modified: new Date(),
-        extension: '',
-        permissions: '',
-      } as unknown as FileItem));
       const next = transferOperationsRef.current.filter(op => op.jobId !== operation.jobId);
       transferOperationsRef.current = next;
       setTransferOperations(next);
-      void performDeleteRef.current?.(rootsToRetry, operation.kind === 'delete');
+      void performDeleteRef.current?.(remainingPaths, operation.kind === 'delete');
       return;
     }
     queueNativeTransfer(
@@ -5439,7 +5429,17 @@ export default function App() {
     }
   }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, pushUndoAction, queueNativeTransfer, recordTransferOperation, refreshChangedDirectories, rightTabs, showToast, t.core.clipboardImageFileBaseName, t.core.desktopFileOperationsOnly, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.pastedImage, t.pane.chooseRealFolderFirst, t.pane.portableChooseStorageFirst, t.toolbar.undoRecycleUnavailable, updatePaneTab]);
   const handleDropFiles = useCallback((droppedItems: DraggedFileItem[], targetFolderPath: string, sourcePane: 'left' | 'right', operation: FileDropOperation) => {
-    if (targetFolderPath === SYSTEM_HOME_PATH || targetFolderPath === RECYCLE_BIN_PATH || targetFolderPath === RECENT_PATH) {
+    if (targetFolderPath === RECYCLE_BIN_PATH) {
+      const recycleRoots = droppedItems.filter(item =>
+        !isPortableDeviceRoot(item.path)
+        && !isPortableStorageRoot(item.path)
+        && !/^[a-zA-Z]:\\$/i.test(item.path)
+        && !droppedItems.some(other => other.id !== item.id && other.isFolder && isSameOrDescendantPath(item.path, other.path))
+      );
+      void performDeleteRef.current?.(recycleRoots.map(item => item.path), false);
+      return;
+    }
+    if (targetFolderPath === SYSTEM_HOME_PATH || targetFolderPath === RECENT_PATH) {
       showToast(t.pane.chooseRealDestinationFolder);
       return;
     }
@@ -5488,6 +5488,10 @@ export default function App() {
   const handleExternalFileDrop = useCallback((paths: string[], targetFolderPath: string, operation: FileDropOperation, targetPane?: 'left' | 'right') => {
     if (targetPane) {
       setActivePane(targetPane);
+    }
+    if (targetFolderPath === RECYCLE_BIN_PATH) {
+      void performDeleteRef.current?.(paths, false);
+      return;
     }
     queueNativeTransfer(operation, paths, targetFolderPath, targetPane ? { selectionPane: targetPane } : {});
   }, [queueNativeTransfer]);
@@ -5543,6 +5547,7 @@ export default function App() {
     labels: {
       dragCopyTo: t.pane.dragCopyTo,
       dragMoveTo: t.pane.dragMoveTo,
+      dragSendToRecycleBin: t.pane.dragSendToRecycleBin,
       dragNotAllowed: t.pane.dragNotAllowed,
       dragModifierHint: t.pane.dragModifierHint,
     },
@@ -6107,12 +6112,11 @@ export default function App() {
     }
   }, [allFiles, isFileOperationBusy, pendingCreateItem, pushUndoAction, recordTransferOperation, refreshChangedDirectories, showToast, t.core.createdFile, t.core.createdFolder, t.core.createdShortcut, t.core.desktopFileOperationsOnly, t.core.invalidName, t.core.operationFailedWithReason, t.core.shortcutTargetRequired, t.toolbar.undoRecycleUnavailable, updatePaneTab]);
 
-  /* Deletes the given roots. Shared by the dialog and by the remembered answer, so both paths
-     update the list, the toast and the undo stack in exactly the same way. */
-  const performDelete = useCallback(async (roots: FileItem[], permanentlyDelete: boolean) => {
-    if (isFileOperationBusy || roots.length === 0) return;
+  /* Deletes the given paths. Shared by the dialog, the remembered answer and the drop-to-recycle
+     flows, so all of them update the list, the toast and the undo stack in exactly the same way. */
+  const performDelete = useCallback(async (paths: string[], permanentlyDelete: boolean) => {
+    if (isFileOperationBusy || paths.length === 0) return;
     setIsFileOperationBusy(true);
-    const paths = roots.map(item => item.path);
     const jobId = recordTransferOperation({
       kind: permanentlyDelete ? 'delete' : 'recycle',
       sourcePaths: paths,
@@ -6250,7 +6254,7 @@ export default function App() {
     }
     if (roots.some(item => isPortablePath(item.path))) {
       if (!deleteConfirmation.ask && deleteConfirmation.permanently) {
-        void performDelete(roots, true);
+        void performDelete(roots.map(item => item.path), true);
         return;
       }
       setPendingDeletePermanent(true);
@@ -6261,7 +6265,7 @@ export default function App() {
        not override it — the promise made when the box was ticked was "always do this", and a
        silent switch to permanent deletion would break it. */
     if (!deleteConfirmation.ask) {
-      void performDelete(roots, deleteConfirmation.permanently);
+      void performDelete(roots.map(item => item.path), deleteConfirmation.permanently);
       return;
     }
     setPendingDeletePermanent(options.permanently ?? false);
@@ -6274,7 +6278,7 @@ export default function App() {
       setDeleteConfirmation(next);
       writeDeleteConfirmation(next);
     }
-    void performDelete(pendingDeleteItems, permanentlyDelete);
+    void performDelete(pendingDeleteItems.map(item => item.path), permanentlyDelete);
   }, [pendingDeleteItems, performDelete]);
 
   const handleDeleteConfirmationChange = useCallback((next: DeleteConfirmationPreference) => {
@@ -7492,6 +7496,7 @@ export default function App() {
           onDisconnectNetworkDrive={letter => { void handleDisconnectNetworkDrive(letter); }}
           windowsSpecialFolders={windowsSpecialFolders}
           onOpenWindowsSpecialFolder={folder => { handleOpenWindowsSpecialFolder(folder); if (isCompactWindow) setSidebarDrawerOpen(false); }}
+          systemHomeTreeItems={systemHomeItems}
           recycleBinSupported={isTauriDesktop()}
           recycleBinStatus={recycleBinStatus}
           onOpenRecycleBin={() => { void handleOpenRecycleBin(); if (isCompactWindow) setSidebarDrawerOpen(false); }}
