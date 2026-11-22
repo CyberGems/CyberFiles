@@ -9764,6 +9764,45 @@ async fn eject_portable_device(root_path: String) -> Result<(), String> {
     .map_err(|error| format!("Device eject worker failed: {error}"))?
 }
 
+#[tauri::command]
+async fn build_shell_context_menu(
+    window: tauri::WebviewWindow,
+    paths: Vec<String>,
+    x: f64,
+    y: f64,
+) -> Result<crate::windows_shell_menu::BuiltShellMenuPayload, String> {
+    /* The frontend reports CSS pixels inside the webview; the Shell menu is
+       positioned in absolute screen coordinates, so translate through the window. */
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let origin = window.outer_position().map_err(|error| error.to_string())?;
+    let screen_x = origin.x + (x * scale).round() as i32;
+    let screen_y = origin.y + (y * scale).round() as i32;
+    tauri::async_runtime::spawn_blocking(move || {
+        windows_shell_menu::build_shell_context_menu(&paths, screen_x, screen_y)
+    })
+    .await
+    .map_err(|error| format!("Shell menu worker failed: {error}"))?
+}
+
+#[tauri::command]
+async fn invoke_shell_context_menu_verb(token: u32, verb_id: u32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        windows_shell_menu::invoke_shell_context_menu_verb(token, verb_id)
+    })
+    .await
+    .map_err(|error| format!("Shell menu worker failed: {error}"))?
+}
+
+#[tauri::command]
+async fn drop_shell_context_menu(token: u32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        windows_shell_menu::drop_shell_context_menu(token);
+        Ok(())
+    })
+    .await
+    .map_err(|error| format!("Shell menu worker failed: {error}"))?
+}
+
 fn main() {
     #[cfg(target_os = "windows")]
     if std::env::args_os().nth(1).is_some_and(|argument| argument == "--unregister-folder-handler") {
@@ -10070,6 +10109,9 @@ fn main() {
             start_move_operation,
             start_outbound_file_drag,
             show_shell_context_menu,
+            build_shell_context_menu,
+            invoke_shell_context_menu_verb,
+            drop_shell_context_menu,
             eject_portable_device,
             pause_transfer_operation,
             resume_transfer_operation,

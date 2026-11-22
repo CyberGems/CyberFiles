@@ -131,7 +131,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, ejectNativePortableDevice, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, mapNativeNetworkDrive, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, parseNetworkMapFailedError, pasteNativeClipboardImage, probeNativeNetworkHosts, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, showNativeShellContextMenu, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, startNativeOutboundFileDrag, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, ejectNativePortableDevice, emptyNativeRecycleBin, getNativeFileClipboard, invokeNativeShellMenuVerb, getWindowsSpecialFolders, mapNativeNetworkDrive, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, parseNetworkMapFailedError, pasteNativeClipboardImage, probeNativeNetworkHosts, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, buildNativeShellMenu, dropNativeShellMenu, showNativeFileProperties, showNativeShellContextMenu, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, startNativeOutboundFileDrag, pauseNativeTransferOperation, resumeNativeTransferOperation, type BuiltNativeShellMenu, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { normalizeListerTextScale, type ListerTextScale } from './utils/listerTextScale';
 import {
@@ -7077,6 +7077,55 @@ export default function App() {
     return shellMenuSupportedPath(contextPaneTab.currentPath) ? [contextPaneTab.currentPath] : null;
   })();
 
+  /* The enumerated Shell menu for the open pane context menu, rebuilt every time the
+     menu opens so entries never outlive the folder state they were built from. */
+  const shellMenuTargetsRef = useRef<Array<string> | null>(null);
+  shellMenuTargetsRef.current = contextMenuShellTargets;
+  const [shellMenuModel, setShellMenuModel] = useState<BuiltNativeShellMenu | null>(null);
+  useEffect(() => {
+    if (!contextMenuPos) return;
+    const targets = shellMenuTargetsRef.current;
+    if (!targets) {
+      setShellMenuModel(null);
+      return;
+    }
+    let cancelled = false;
+    void buildNativeShellMenu(targets, contextMenuPos.x, contextMenuPos.y)
+      .then(model => {
+        if (!cancelled) setShellMenuModel(model);
+      })
+      .catch(error => {
+        console.error('[shell-menu] build failed', error);
+        if (!cancelled) setShellMenuModel(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [contextMenuPos]);
+
+  const closePaneContextMenu = useCallback(() => {
+    setContextMenuPos(null);
+    setShellMenuModel(previous => {
+      if (previous) void dropNativeShellMenu(previous.token);
+      return null;
+    });
+  }, []);
+
+  const handleShellMenuVerb = useCallback((verbId: number) => {
+    if (!shellMenuModel) return;
+    void invokeNativeShellMenuVerb(shellMenuModel.token, verbId)
+      .then(() => {
+        /* Shell verbs can modify the folders they ran on; refresh the context pane
+           the same way F5 does so listings never go stale after an operation. */
+        if (contextMenuPos) void handleNavigate(contextPaneTab.currentPath, contextPane, true);
+        closePaneContextMenu();
+      })
+      .catch(error => {
+        console.error('[shell-menu] verb failed', verbId, error);
+        showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
+      });
+  }, [closePaneContextMenu, contextPane, contextPaneTab.currentPath, contextMenuPos, handleNavigate, shellMenuModel, showToast, t.core.operationFailedWithReason]);
+
   const saveFolderStyleForPath = (path: string, style: FolderStyle, options?: { silent?: boolean }) => {
     const key = folderStylePathKey(path);
     if (!path || path.startsWith('::')) return false;
@@ -8182,7 +8231,7 @@ export default function App() {
         supportsShortcutCreation={!isPortablePath(contextPaneTab.currentPath)}
         fileClipboardSupported={isTauriDesktop()}
         hasFilter={Boolean(contextPaneTab.filterQuery)}
-        onClose={() => setContextMenuPos(null)}
+        onClose={closePaneContextMenu}
         onOpenLocation={item => { void handleNavigate(item.path, contextPane); }}
         onOpenItem={item => handleItemDoubleClick(item, contextPane)}
         onOpenInNewTab={item => {
@@ -8253,7 +8302,9 @@ export default function App() {
             void handleCopyFolderPath(contextPaneTab.currentPath);
           }
         }}
-        onShowMoreOptions={contextMenuShellTargets ? () => {
+        shellMenuItems={shellMenuModel?.items}
+        onShellVerb={handleShellMenuVerb}
+        onShowMoreOptions={contextMenuShellTargets && !shellMenuModel ? () => {
           if (!contextMenuPos || contextMenuShellTargets.length === 0) return;
           void showNativeShellContextMenu(contextMenuShellTargets, contextMenuPos.x, contextMenuPos.y);
         } : undefined}

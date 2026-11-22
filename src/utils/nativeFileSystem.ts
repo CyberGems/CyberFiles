@@ -489,6 +489,36 @@ export async function showNativeShellContextMenu(paths: string[], x: number, y: 
   await invoke('show_shell_context_menu', { paths: shellPaths, x: Math.round(x), y: Math.round(y) });
 }
 
+export interface NativeShellMenuEntry {
+  kind: 'entry' | 'submenu' | 'separator';
+  label?: string;
+  verbId?: number;
+  disabled: boolean;
+  checked: boolean;
+  items?: NativeShellMenuEntry[];
+}
+
+export interface BuiltNativeShellMenu {
+  token: number;
+  items: NativeShellMenuEntry[];
+}
+
+/** Builds Explorer's Shell context menu for the paths and returns it as a renderable
+    model; the Shell-side object stays alive on a dedicated STA host until dropped, so
+    the frontend can render the entries in its own styled menus and invoke verbs. */
+export async function buildNativeShellMenu(paths: string[], x: number, y: number): Promise<BuiltNativeShellMenu> {
+  const shellPaths = paths.map(path => VIRTUAL_SHELL_PARSING_NAMES[path] ?? path);
+  return invoke<BuiltNativeShellMenu>('build_shell_context_menu', { paths: shellPaths, x: Math.round(x), y: Math.round(y) });
+}
+
+export async function invokeNativeShellMenuVerb(token: number, verbId: number): Promise<void> {
+  await invoke('invoke_shell_context_menu_verb', { token, verbId });
+}
+
+export async function dropNativeShellMenu(token: number): Promise<void> {
+  await invoke('drop_shell_context_menu', { token });
+}
+
 /** Asks Windows to eject the portable device behind a `mtp:\` root path. */
 export async function ejectNativePortableDevice(rootPath: string): Promise<void> {
   await invoke('eject_portable_device', { rootPath });
