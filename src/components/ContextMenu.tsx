@@ -19,6 +19,7 @@ import {
   LayoutGrid,
   List,
   Link2,
+  MoreHorizontal,
   MoveRight,
   StretchHorizontal,
   Trash2,
@@ -121,6 +122,9 @@ interface ContextMenuProps {
   onUndo?: () => void;
   undoAvailable?: boolean;
   onRefresh?: () => void;
+  /* Opens Explorer's own Shell context menu for the same targets; the entry hides
+     when the right-clicked item cannot be handed to the Shell. */
+  onShowMoreOptions?: () => void;
 }
 
 export const ContextMenu: React.FC<ContextMenuProps> = ({
@@ -189,6 +193,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   onUndo,
   undoAvailable = false,
   onRefresh,
+  onShowMoreOptions,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   /* Submenus render as flyout panels anchored to their trigger, like native
@@ -871,6 +876,19 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             )}
 
             {undoGroup}
+
+            {/* Explorer's full Shell context menu, including third-party extensions */}
+            {onShowMoreOptions && (
+              <>
+                <MenuDivider />
+                <MenuButton
+                  icon={<MoreHorizontal className="h-4 w-4 text-neutral-300" />}
+                  label={t.contextMenu.showMoreOptions}
+                  trailing={<ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
+                  onClick={() => { onShowMoreOptions(); onClose(); }}
+                />
+              </>
+            )}
           </>
         )
       ) : (

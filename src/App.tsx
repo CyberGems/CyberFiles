@@ -131,7 +131,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, mapNativeNetworkDrive, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, parseNetworkMapFailedError, pasteNativeClipboardImage, probeNativeNetworkHosts, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, startNativeOutboundFileDrag, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, ejectNativePortableDevice, emptyNativeRecycleBin, getNativeFileClipboard, getWindowsSpecialFolders, mapNativeNetworkDrive, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, parseNetworkMapFailedError, pasteNativeClipboardImage, probeNativeNetworkHosts, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, showNativeFileProperties, showNativeShellContextMenu, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, startNativeOutboundFileDrag, pauseNativeTransferOperation, resumeNativeTransferOperation, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { normalizeListerTextScale, type ListerTextScale } from './utils/listerTextScale';
 import {
@@ -5720,6 +5720,20 @@ export default function App() {
     }
   }, [showToast, t.sidebar.copyPathFailure, t.sidebar.copyPathSuccess]);
 
+  /* Items eligible for Explorer's own Shell context menu: plain filesystem paths,
+     never Shell-namespace locations, recycle bin entries or portable devices. */
+  const shellMenuSupportedPath = useCallback((path: string) => isUncPath(path) || /^[a-zA-Z]:[\\/]/.test(path), []);
+
+  const handleEjectPortableDrive = useCallback(async (rootPath: string) => {
+    if (!isTauriDesktop()) return;
+    try {
+      await ejectNativePortableDevice(rootPath);
+      showToast(t.core.driveEjected);
+    } catch (error) {
+      showToast(t.core.driveEjectFailed.replace('{reason}', String(error)));
+    }
+  }, [showToast, t.core.driveEjected, t.core.driveEjectFailed]);
+
   /* Copy path from the toolbar or Ctrl+Shift+C: the selection when there is one, the folder
      otherwise, which is what Explorer's own "Copy as path" does on an empty background. */
   const handleCopyPath = useCallback(() => {
@@ -7494,6 +7508,7 @@ export default function App() {
           onNavigate={(path) => { handleNavigate(path, activePane, false, sidebarLocationsOpenInNewTab); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           onOpenInNewTab={(path) => { handleNavigate(path, activePane, false, true); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           onCopyPath={handleCopyFolderPath}
+          onEjectPortableDrive={rootPath => { void handleEjectPortableDrive(rootPath); }}
           onOpenDrive={(path, openInNewTab) => { handleOpenDrive(path, openInNewTab); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           onDisconnectNetworkDrive={letter => { void handleDisconnectNetworkDrive(letter); }}
           windowsSpecialFolders={windowsSpecialFolders}
@@ -8217,6 +8232,15 @@ export default function App() {
             void handleCopyFolderPath(contextPaneTab.currentPath);
           }
         }}
+        onShowMoreOptions={contextMenuPos?.targetItem && shellMenuSupportedPath(contextMenuPos.targetItem.path) ? () => {
+          if (!contextMenuPos.targetItem) return;
+          const targets = selectedItemsForDelete.some(item => item.id === contextMenuPos.targetItem?.id)
+            ? selectedItemsForDelete
+            : [contextMenuPos.targetItem];
+          const paths = targets.map(item => item.path).filter(shellMenuSupportedPath);
+          if (paths.length === 0) return;
+          void showNativeShellContextMenu(paths, contextMenuPos.x, contextMenuPos.y);
+        } : undefined}
         onCustomizeFolderIcon={item => handleOpenFolderIconModal({ path: item.path, name: item.name })}
         canToggleExplorerException={windowsFolderHandlerStatus === 'on' && !isPortablePath(contextPaneTab.currentPath)}
         isExplorerExceptionItem={isExplorerExceptionItem}

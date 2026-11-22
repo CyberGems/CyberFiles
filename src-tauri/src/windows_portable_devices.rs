@@ -172,6 +172,10 @@ mod windows_impl {
             },
         },
     };
+    use windows::Win32::Devices::DeviceAndDriverInstallation::{
+        CM_Locate_DevNodeW, CM_Request_Device_EjectW, CM_LOCATE_DEVNODE_NORMAL, CR_SUCCESS,
+        PNP_VETO_TYPE,
+    };
 
     /// Standard Windows property `System.ItemTypeText` (`{B725F130-47EF-101A-A5F1-02608C9EEBAC}, 4`),
     /// which returns Explorer's localized device type string (e.g. "Teléfono celular" / "Mobile phone").
@@ -2227,6 +2231,59 @@ mod windows_impl {
         let raw_pidl = std::mem::ManuallyDrop::new(owned_pidl).0;
         Ok(raw_pidl)
     }
+
+    /// Ejects the portable device behind a `mtp:\` root path: resolves the device
+    /// registry entry to its PnP id and asks Windows to eject it. Fails with the
+    /// system's veto reason when something keeps the device busy.
+    pub fn eject_portable_device(root_path: &str) -> Result<(), String> {
+        let Some((device_key, _)) = parse_portable_path(root_path) else {
+            return Err(format!("'{root_path}' is not a portable device path"));
+        };
+        let reg_key = device_key.to_ascii_lowercase();
+        let resolve_pnp_id = || {
+            device_registry()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .get(&reg_key)
+                .map(|device| device.pnp_device_id.clone())
+        };
+        let pnp_device_id = resolve_pnp_id().or_else(|| {
+            // The registry entry only exists after a listing; refresh it once if
+            // the app never listed devices in this session.
+            list_portable_devices();
+            resolve_pnp_id()
+        });
+        let Some(pnp_device_id) = pnp_device_id else {
+            return Err("The device is no longer connected.".to_string());
+        };
+        unsafe {
+            let wide_id: Vec<u16> = pnp_device_id.encode_utf16().chain(Some(0)).collect();
+            let mut devinst: u32 = 0;
+            let located = CM_Locate_DevNodeW(&mut devinst, PCWSTR(wide_id.as_ptr()), CM_LOCATE_DEVNODE_NORMAL);
+            if located != CR_SUCCESS {
+                return Err("Could not locate the device.".to_string());
+            }
+            let mut veto_type = PNP_VETO_TYPE(0);
+            let mut veto_name = [0u16; 160];
+            let result = CM_Request_Device_EjectW(
+                devinst,
+                Some(&mut veto_type),
+                Some(&mut veto_name),
+                0,
+            );
+            if result != CR_SUCCESS {
+                let veto = String::from_utf16_lossy(&veto_name)
+                    .trim_end_matches('\0')
+                    .trim()
+                    .to_string();
+                if veto.is_empty() {
+                    return Err(format!("Windows rejected the eject (code {})", result.0));
+                }
+                return Err(veto);
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -2236,6 +2293,9 @@ mod non_windows_impl {
 
     pub fn list_portable_devices() -> Vec<PortableDeviceSummary> {
         Vec::new()
+    }
+    pub fn eject_portable_device(_root_path: &str) -> Result<(), String> {
+        Err("Portable device eject is only available on Windows".to_string())
     }
     pub fn portable_devices_signature() -> Vec<String> {
         Vec::new()

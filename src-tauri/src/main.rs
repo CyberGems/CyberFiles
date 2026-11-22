@@ -28,6 +28,7 @@ mod windows_file_icons;
 mod windows_folder_handler;
 mod windows_outbound_drag;
 mod windows_portable_devices;
+mod windows_shell_menu;
 mod windows_thumbnails;
 
 #[derive(Serialize)]
@@ -9733,6 +9734,36 @@ async fn start_outbound_file_drag(
     .map_err(|error| format!("System drag worker failed: {error}"))?
 }
 
+#[tauri::command]
+async fn show_shell_context_menu(
+    window: tauri::WebviewWindow,
+    paths: Vec<String>,
+    x: f64,
+    y: f64,
+) -> Result<(), String> {
+    /* The frontend reports CSS pixels inside the webview; TrackPopupMenu needs
+       absolute screen coordinates, so translate through the window position. */
+    let scale = window.scale_factor().map_err(|error| error.to_string())?;
+    let origin = window.outer_position().map_err(|error| error.to_string())?;
+    let screen_x = origin.x + (x * scale).round() as i32;
+    let screen_y = origin.y + (y * scale).round() as i32;
+    tauri::async_runtime::spawn_blocking(move || {
+        windows_shell_menu::show_shell_context_menu(&paths, screen_x, screen_y)?;
+        Ok(())
+    })
+    .await
+    .map_err(|error| format!("Shell menu worker failed: {error}"))?
+}
+
+#[tauri::command]
+async fn eject_portable_device(root_path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        windows_portable_devices::eject_portable_device(&root_path)
+    })
+    .await
+    .map_err(|error| format!("Device eject worker failed: {error}"))?
+}
+
 fn main() {
     #[cfg(target_os = "windows")]
     if std::env::args_os().nth(1).is_some_and(|argument| argument == "--unregister-folder-handler") {
@@ -10038,6 +10069,8 @@ fn main() {
             start_copy_operation,
             start_move_operation,
             start_outbound_file_drag,
+            show_shell_context_menu,
+            eject_portable_device,
             pause_transfer_operation,
             resume_transfer_operation,
             cancel_transfer_operation,

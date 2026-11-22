@@ -472,6 +472,17 @@ export async function openNativeRecycleBinInExplorer(): Promise<void> {
   await invoke('open_recycle_bin_in_explorer');
 }
 
+/** Shows the real Windows Shell context menu (Explorer's own, including third-party
+    extensions) for the paths at the given physical screen coordinates. */
+export async function showNativeShellContextMenu(paths: string[], x: number, y: number): Promise<void> {
+  await invoke('show_shell_context_menu', { paths, x: Math.round(x), y: Math.round(y) });
+}
+
+/** Asks Windows to eject the portable device behind a `mtp:\` root path. */
+export async function ejectNativePortableDevice(rootPath: string): Promise<void> {
+  await invoke('eject_portable_device', { rootPath });
+}
+
 export async function openNativeFileWithDefaultApp(path: string): Promise<void> {
   await invoke('open_file_with_default_app', { path });
 }

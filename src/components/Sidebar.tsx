@@ -24,13 +24,14 @@ import {
   Clock,
   Copy,
   ExternalLink,
+  MoreHorizontal,
   Network,
   Unplug,
 } from 'lucide-react';
 import { DriveInfo, FileItem, NETWORK_PATH, QuickAccessItem, QuickAccessSortMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, isPathOnUnavailableDrive, isPathOnUnavailablePortableDevice, isPortableDeviceRoot, isSameOrDescendantPath, isUncPath, normalizeDriveLetter } from '../utils/fileSystem';
 import { isValidDropDestinationPath } from '../utils/externalDrop';
-import { isTauriDesktop, listNativeDirectory, type RecycleBinStatus, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
+import { isTauriDesktop, listNativeDirectory, showNativeShellContextMenu, type RecycleBinStatus, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
 import { FolderIconRenderer } from './folderIconsData';
 import { SidebarContextMenu, type SidebarContextMenuItem, type SidebarContextMenuState } from './SidebarContextMenu';
@@ -63,6 +64,7 @@ interface SidebarProps {
   onCopyPath: (path: string) => void;
   onOpenDrive?: (path: string, openInNewTab?: boolean) => void;
   onDisconnectNetworkDrive?: (driveLetter: string) => void;
+  onEjectPortableDrive?: (rootPath: string) => void;
   windowsSpecialFolders: WindowsSpecialFolder[];
   onOpenWindowsSpecialFolder: (folder: WindowsSpecialFolder) => void;
   systemHomeTreeItems?: FileItem[];
@@ -91,6 +93,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCopyPath,
   onOpenDrive,
   onDisconnectNetworkDrive,
+  onEjectPortableDrive,
   windowsSpecialFolders,
   onOpenWindowsSpecialFolder,
   systemHomeTreeItems,
@@ -274,14 +277,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {childExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                   </button>
                 </Tooltip>
-                <Tooltip label={t.sidebar.openTreeFolder.replace('{name}', folder.name)} placement="right">
-                  <button
-                    type="button"
-                    data-file-drop-path={isValidDropDestinationPath(folder.path) ? folder.path : undefined}
-                    data-file-drop-raw-path={folder.path || undefined}
-                    onClick={() => onNavigate(folder.path)}
-                    className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-1 text-left text-[10px] text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100"
-                  >
+                  <Tooltip label={t.sidebar.openTreeFolder.replace('{name}', folder.name)} placement="right">
+                    <button
+                      type="button"
+                      data-file-drop-path={isValidDropDestinationPath(folder.path) ? folder.path : undefined}
+                      data-file-drop-raw-path={folder.path || undefined}
+                      onClick={() => onNavigate(folder.path)}
+                      onContextMenu={event => openSidebarContextMenu(event, folder.name, buildTreeChildMenuItems(folder, { x: event.clientX, y: event.clientY }))}
+                      className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-1 text-left text-[10px] text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100"
+                    >
                     <FolderIconRenderer
                       config={getCustomFolderIcon(folder.path, customFolderIcons ?? {})}
                       size="small"
@@ -467,7 +471,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setSidebarContextMenu({ x: event.clientX, y: event.clientY, title, items });
   };
 
-  const buildQuickAccessMenuItems = (item: QuickAccessItem): SidebarContextMenuItem[] => {
+  /* Plain filesystem paths can be handed to Explorer's own Shell context menu. */
+  const shellMenuSupportedPath = (path: string) => isUncPath(path) || /^[a-zA-Z]:[\\/]/.test(path);
+  const buildMoreOptionsItem = (paths: string[], origin: { x: number; y: number }): SidebarContextMenuItem => ({
+    id: 'more-options',
+    label: t.contextMenu.showMoreOptions,
+    icon: <MoreHorizontal className="h-4 w-4" />,
+    onSelect: () => {
+      const supported = paths.filter(shellMenuSupportedPath);
+      if (supported.length === 0) return;
+      void showNativeShellContextMenu(supported, origin.x, origin.y);
+    },
+  });
+
+  const buildQuickAccessMenuItems = (item: QuickAccessItem, origin: { x: number; y: number }): SidebarContextMenuItem[] => {
     const isVirtualLocation = item.path === SYSTEM_HOME_PATH || item.path === NETWORK_PATH;
     const items: SidebarContextMenuItem[] = [
       {
@@ -485,10 +502,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ];
     if (!isVirtualLocation) {
       items.push({ id: 'copy-path', label: t.sidebar.contextCopyPath, icon: <Copy className="h-4 w-4" />, onSelect: () => onCopyPath(item.path) });
+      items.push({ id: 'quick-access-separator', separator: true }, buildMoreOptionsItem([item.path], origin));
     }
     if (item.isCustom) {
       items.push(
-        { id: 'quick-access-separator', separator: true },
         { id: 'rename', label: t.sidebar.renameQuickAccess, icon: <Pencil className="h-4 w-4" />, onSelect: () => startQuickAccessRename(item) },
         { id: 'remove', label: t.sidebar.removeQuickAccess, icon: <Trash2 className="h-4 w-4" />, danger: true, onSelect: () => onRemoveQuickAccess(item.id) },
       );
@@ -508,13 +525,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'empty', label: t.sidebar.emptyRecycleBinAction, icon: <Trash2 className="h-4 w-4" />, danger: true, disabled: !canEmptyRecycleBin, onSelect: onRequestEmptyRecycleBin },
   ];
 
-  const buildDriveMenuItems = (drive: DriveInfo): SidebarContextMenuItem[] => {
+  const buildDriveMenuItems = (drive: DriveInfo, origin: { x: number; y: number }): SidebarContextMenuItem[] => {
     const rootPath = drive.rootPath ?? `${drive.letter}\\`;
     const items: SidebarContextMenuItem[] = [
       { id: 'open', label: t.sidebar.contextOpen, icon: <HardDrive className="h-4 w-4" />, onSelect: () => onOpenDrive ? onOpenDrive(rootPath) : onNavigate(rootPath) },
       { id: 'open-new-tab', label: t.sidebar.contextOpenInNewTab, icon: <ExternalLink className="h-4 w-4" />, onSelect: () => onOpenDrive ? onOpenDrive(rootPath, true) : onOpenInNewTab(rootPath) },
       { id: 'copy-path', label: t.sidebar.contextCopyPath, icon: <Copy className="h-4 w-4" />, onSelect: () => onCopyPath(rootPath) },
     ];
+    if (shellMenuSupportedPath(rootPath)) {
+      items.push({ id: 'drive-more-options-separator', separator: true }, buildMoreOptionsItem([rootPath], origin));
+    }
+    if (drive.type === 'portable' && drive.rootPath && onEjectPortableDrive) {
+      items.push(
+        { id: 'eject-separator', separator: true },
+        { id: 'eject', label: t.sidebar.contextEjectDrive, icon: <Unplug className="h-4 w-4" />, danger: true, onSelect: () => onEjectPortableDrive(drive.rootPath!) },
+      );
+    }
     if (drive.type === 'network' && onDisconnectNetworkDrive) {
       items.push(
         { id: 'drive-separator', separator: true },
@@ -524,11 +550,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return items;
   };
 
-  const buildSpecialFolderMenuItems = (folder: WindowsSpecialFolder): SidebarContextMenuItem[] => [
+  const buildSpecialFolderMenuItems = (folder: WindowsSpecialFolder, origin: { x: number; y: number }): SidebarContextMenuItem[] => [
     { id: 'open', label: t.sidebar.contextOpen, icon: <FolderOpen className="h-4 w-4" />, onSelect: () => onOpenWindowsSpecialFolder(folder) },
     { id: 'open-new-tab', label: t.sidebar.contextOpenInNewTab, icon: <ExternalLink className="h-4 w-4" />, onSelect: () => onOpenInNewTab(folder.path) },
     { id: 'copy-path', label: t.sidebar.contextCopyPath, icon: <Copy className="h-4 w-4" />, onSelect: () => onCopyPath(folder.path) },
+    { id: 'special-folder-separator', separator: true },
+    buildMoreOptionsItem([folder.path], origin),
   ];
+
+  const buildTreeChildMenuItems = (folder: FileItem, origin: { x: number; y: number }): SidebarContextMenuItem[] => {
+    const items: SidebarContextMenuItem[] = [
+      { id: 'open', label: t.sidebar.contextOpen, icon: <FolderOpen className="h-4 w-4" />, onSelect: () => onNavigate(folder.path) },
+      { id: 'open-new-tab', label: t.sidebar.contextOpenInNewTab, icon: <ExternalLink className="h-4 w-4" />, onSelect: () => onOpenInNewTab(folder.path) },
+      { id: 'copy-path', label: t.sidebar.contextCopyPath, icon: <Copy className="h-4 w-4" />, onSelect: () => onCopyPath(folder.path) },
+    ];
+    if (shellMenuSupportedPath(folder.path)) {
+      items.push({ id: 'tree-child-separator', separator: true }, buildMoreOptionsItem([folder.path], origin));
+    }
+    return items;
+  };
 
   /* The section-wide sort and add controls sit on the "Este equipo" row when that row exists
      (desktop builds); the web layout keeps them on the section header. */
@@ -688,7 +728,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <React.Fragment key={item.id}>
                   <div
                     data-quick-access-drop-id={isVirtualLocation ? undefined : item.id}
-                    onContextMenu={event => openSidebarContextMenu(event, item.name, buildQuickAccessMenuItems(item))}
+                    onContextMenu={event => openSidebarContextMenu(event, item.name, buildQuickAccessMenuItems(item, { x: event.clientX, y: event.clientY }))}
                     className={"group flex min-w-0 items-center gap-0.5 rounded " + (dragTargetQuickAccessId === item.id ? "ring-1 ring-cyan-500/60 bg-cyan-950/20 " : "") + (draggingQuickAccessId === item.id ? "opacity-50" : "")}
                   >
                     {quickAccessSortMode === 'manual' && !isVirtualLocation && (
@@ -904,7 +944,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   key={drive.id}
                   role="button"
                   tabIndex={0}
-                  onContextMenu={event => openSidebarContextMenu(event, drive.label, buildDriveMenuItems(drive))}
+                  onContextMenu={event => openSidebarContextMenu(event, drive.label, buildDriveMenuItems(drive, { x: event.clientX, y: event.clientY }))}
                   data-file-drop-path={!isPortable && isValidDropDestinationPath(driveRootPath) ? driveRootPath : undefined}
                   data-file-drop-raw-path={driveRootPath || undefined}
                   onClick={() => onOpenDrive ? onOpenDrive(driveRootPath) : onNavigate(driveRootPath)}
@@ -1005,7 +1045,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <button
                       type="button"
                       onClick={() => onOpenWindowsSpecialFolder(folder)}
-                      onContextMenu={event => openSidebarContextMenu(event, label, buildSpecialFolderMenuItems(folder))}
+                      onContextMenu={event => openSidebarContextMenu(event, label, buildSpecialFolderMenuItems(folder, { x: event.clientX, y: event.clientY }))}
                       aria-label={`${label}: ${folder.path}`}
                       aria-current={isSelected ? 'location' : undefined}
                       className={`flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors ${isSelected ? 'bg-neutral-800/90 font-medium text-cyan-300' : 'text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100'}`}
