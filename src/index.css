@@ -475,6 +475,31 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar 
   background: linear-gradient(180deg, #174764 0%, #0d3047 100%);
 }
 
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar button[aria-pressed='true']:not(.view-choice):not([data-folder-tab]),
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .header-action[aria-pressed='true'] {
+  background: rgba(16, 185, 129, 0.16) !important;
+  border-color: transparent !important;
+  color: #6ee7b7 !important;
+  box-shadow: none !important;
+}
+
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar button[aria-pressed='true']:not(.view-choice):not([data-folder-tab]) svg,
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .header-action[aria-pressed='true'] svg {
+  color: #6ee7b7 !important;
+}
+
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar button[aria-pressed='true']:not(.view-choice):not([data-folder-tab]):hover:not(:disabled),
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .header-action[aria-pressed='true']:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.24) !important;
+  border-color: transparent !important;
+  color: #a7f3d0 !important;
+}
+
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar button[aria-pressed='true']:not(.view-choice):not([data-folder-tab]):hover:not(:disabled) svg,
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .header-action[aria-pressed='true']:hover:not(:disabled) svg {
+  color: #a7f3d0 !important;
+}
+
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-command-bar .command-split {
   border-color: transparent;
   background: transparent;
@@ -998,6 +1023,31 @@ html[data-theme='gray'] .header-action[aria-pressed='true'] svg {
   color: #ffffff !important;
 }
 
+html[data-theme='gray'] .cyberfiles-command-bar button[aria-pressed='true']:not(.view-choice),
+html[data-theme='gray'] .cyberfiles-command-bar .header-action[aria-pressed='true'] {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: transparent !important;
+  color: #f5f5f5 !important;
+  box-shadow: none !important;
+}
+
+html[data-theme='gray'] .cyberfiles-command-bar button[aria-pressed='true']:not(.view-choice) svg,
+html[data-theme='gray'] .cyberfiles-command-bar .header-action[aria-pressed='true'] svg {
+  color: #f5f5f5 !important;
+}
+
+html[data-theme='gray'] .cyberfiles-command-bar button[aria-pressed='true']:not(.view-choice):hover:not(:disabled),
+html[data-theme='gray'] .cyberfiles-command-bar .header-action[aria-pressed='true']:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+}
+
+html[data-theme='gray'] .cyberfiles-command-bar button[aria-pressed='true']:not(.view-choice):hover:not(:disabled) svg,
+html[data-theme='gray'] .cyberfiles-command-bar .header-action[aria-pressed='true']:hover:not(:disabled) svg {
+  color: #ffffff !important;
+}
+
 /* View choice and layout mode toggles in HeaderBar */
 html[data-theme='gray'] .view-choice[aria-pressed='true'] {
   border-color: #737373 !important;
@@ -1191,6 +1241,31 @@ html[data-theme='light'] .header-action[aria-pressed='true'] {
 html[data-theme='light'] button[aria-pressed='true']:not(.view-choice):not([data-folder-tab]) svg,
 html[data-theme='light'] .header-action[aria-pressed='true'] svg {
   color: var(--color-cyan-800) !important;
+}
+
+html[data-theme='light'] .cyberfiles-command-bar button[aria-pressed='true']:not(.view-choice):not([data-folder-tab]),
+html[data-theme='light'] .cyberfiles-command-bar .header-action[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--color-cyan-500) 14%, transparent) !important;
+  border-color: transparent !important;
+  color: var(--color-cyan-800) !important;
+  box-shadow: none !important;
+}
+
+html[data-theme='light'] .cyberfiles-command-bar button[aria-pressed='true']:not(.view-choice):not([data-folder-tab]) svg,
+html[data-theme='light'] .cyberfiles-command-bar .header-action[aria-pressed='true'] svg {
+  color: var(--color-cyan-800) !important;
+}
+
+html[data-theme='light'] .cyberfiles-command-bar button[aria-pressed='true']:not(.view-choice):not([data-folder-tab]):hover:not(:disabled),
+html[data-theme='light'] .cyberfiles-command-bar .header-action[aria-pressed='true']:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-cyan-500) 22%, transparent) !important;
+  border-color: transparent !important;
+  color: var(--color-cyan-900) !important;
+}
+
+html[data-theme='light'] .cyberfiles-command-bar button[aria-pressed='true']:not(.view-choice):not([data-folder-tab]):hover:not(:disabled) svg,
+html[data-theme='light'] .cyberfiles-command-bar .header-action[aria-pressed='true']:hover:not(:disabled) svg {
+  color: var(--color-cyan-900) !important;
 }
 
 html[data-theme='light'] .view-choice-group {
