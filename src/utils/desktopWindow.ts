@@ -20,3 +20,14 @@ export async function revealDesktopWindow() {
     console.error('CyberFiles could not reveal its desktop window.', error);
   }
 }
+
+/** Unminimizes, shows, and focuses the main desktop window from anywhere in the app. */
+export async function bringDesktopWindowToFront() {
+  if (!isTauriDesktop()) return;
+
+  try {
+    await invoke('bring_main_window_to_front');
+  } catch (error) {
+    console.error('CyberFiles could not bring its desktop window to the front.', error);
+  }
+}

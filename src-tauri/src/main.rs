@@ -6540,11 +6540,64 @@ fn show_tray_menu_at(app: tauri::AppHandle, anchor_x: i32, anchor_y: i32) {
 }
 
 fn reveal_main_window(app: &tauri::AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
+    let _ = ensure_tray_icon_registered(app);
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let was_hidden = !window.is_visible().unwrap_or(true);
+    let was_minimized = window.is_minimized().unwrap_or(false);
+    if was_minimized {
         let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
     }
+    if was_hidden {
+        ensure_main_window_styles(&window);
+        let state_path = window_state_path(app).ok();
+        let restore_maximized = state_path
+            .as_ref()
+            .and_then(|path| fs::read(path).ok())
+            .and_then(|encoded| serde_json::from_slice::<StoredWindowState>(&encoded).ok())
+            .is_some_and(|state| state.maximized);
+        let _ = window.show();
+        if let Some(path) = state_path.as_ref() {
+            let _ = restore_window_state(&window, path);
+        }
+        if restore_maximized {
+            let _ = window.maximize();
+        }
+    } else {
+        let _ = window.show();
+    }
+    let _ = window.set_focus();
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            BringWindowToTop, IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE,
+        };
+        if let Ok(hwnd) = window.hwnd() {
+            let raw = hwnd.0 as _;
+            let focused = unsafe {
+                if IsIconic(raw) != 0 {
+                    ShowWindow(raw, SW_RESTORE);
+                }
+                BringWindowToTop(raw);
+                SetForegroundWindow(raw) != 0
+            };
+            if !focused {
+                let _ = window.set_always_on_top(true);
+                let _ = window.set_focus();
+                unsafe {
+                    let _ = SetForegroundWindow(raw);
+                }
+                let _ = window.set_always_on_top(false);
+            }
+        }
+    }
+}
+
+#[tauri::command]
+fn bring_main_window_to_front(app: tauri::AppHandle) -> Result<(), String> {
+    reveal_main_window(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -10083,6 +10136,7 @@ fn main() {
             update_download::cancel_update_download,
             update_download::apply_update_package,
             show_main_window,
+            bring_main_window_to_front,
             hide_main_window,
             minimize_main_window,
             toggle_maximize_main_window,

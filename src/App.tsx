@@ -145,6 +145,7 @@ import {
   type WindowsFolderHandlerStatus,
 } from './utils/systemIntegration';
 import { isDedicatedLayoutPath } from './utils/locations';
+import { bringDesktopWindowToFront } from './utils/desktopWindow';
 import { bootRecoveryResult, clearRecoverySnapshot, compareSnapshots, writeRecoverySnapshot, type RecoverySnapshot } from './utils/recoverySnapshot';
 import { recentFileActions, recordRecentEntry, removeRecentEntry, renameRecentEntries, toRecentFileItem, type RecentEntry } from './utils/recentFiles';
 import { AUTO_CHECK_INTERVAL_MS, checkForUpdate, getAutoCheckUpdates, getNotifiedVersion, isSkippedVersion, setAutoCheckUpdates, setNotifiedVersion, setSkippedVersion, type AvailableUpdate } from './utils/updates';
@@ -1805,6 +1806,7 @@ export default function App() {
 
   const runCloseAction = useCallback(async (choice: 'hide' | 'quit', remember = rememberCloseChoice) => {
     if (choice === 'quit' && transferOperationsRef.current.some(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status))) {
+      void bringDesktopWindowToFront();
       showToast(language === 'es' ? 'Espera a que terminen las transferencias antes de salir.' : 'Wait for transfers to finish before quitting.');
       return;
     }
@@ -1839,6 +1841,7 @@ export default function App() {
       }
       setRememberCloseChoice(false);
       setIsCloseDialogOpen(true);
+      void bringDesktopWindowToFront();
       showToast(t.closeWindow.closeFailed);
     }
   }, [language, rememberCloseChoice, showToast, t.closeWindow.closeFailed]);
@@ -2173,6 +2176,7 @@ export default function App() {
       setPendingWorkspaceAction(null);
       setIsUnsavedWorkspaceChangesOpen(false);
       setIsCloseDialogOpen(true);
+      void bringDesktopWindowToFront();
       return;
     }
 
@@ -2208,7 +2212,10 @@ export default function App() {
     if ((checkLayout && layoutDirty) || (checkSession && sessionDirty)) {
       setPendingWorkspaceAction(action);
       setIsUnsavedWorkspaceChangesOpen(true);
-      if (action.type === 'quit' || action.type === 'close') setIsCloseDialogOpen(false);
+      if (action.type === 'quit' || action.type === 'close') {
+        setIsCloseDialogOpen(false);
+        void bringDesktopWindowToFront();
+      }
       return;
     }
     executeWorkspaceAction(action);
@@ -4756,23 +4763,17 @@ export default function App() {
         try {
           const hasPendingTransfers = transferOperationsRef.current.some(operation => ['queued', 'awaiting-password', 'running', 'paused', 'cancelling'].includes(operation.status));
           if (hasPendingTransfers) {
-            const window = getCurrentWindow();
-            await window.show();
-            await window.setFocus();
+            await bringDesktopWindowToFront();
             showToast(language === 'es'
               ? 'Hay transferencias pendientes. Minimiza CyberFiles para dejarlas terminar.'
               : 'Transfers are still pending. Minimize CyberFiles to let them finish.');
             return;
           }
-          /* The tray Quit is a quit like any other: it goes through the unsaved-changes gate.
-             When the window is hidden in the tray, it is shown first so the prompt is visible
-             instead of the app silently dropping pending work. */
-          const window = getCurrentWindow();
-          if (!(await window.isVisible())) {
-            await window.show();
-          }
+          /* The tray Quit goes through the unsaved-changes gate; if a dialog opens,
+             requestWorkspaceAction / runCloseAction brings the window to the foreground. */
           requestQuitWithUnsavedChangesRef.current(false);
         } catch (error) {
+          void bringDesktopWindowToFront();
           showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
         }
       })();
