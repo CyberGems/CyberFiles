@@ -555,6 +555,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     select: t.contextMenu.select,
     sort: t.contextMenu.sortBy,
     group: t.contextMenu.groupBy,
+    'shell-menu': t.contextMenu.showMoreOptions,
   };
   const flyoutLabel = openFlyout ? flyoutLabels[openFlyout.id] : undefined;
 
@@ -1198,7 +1199,18 @@ function ShellMenuFlyout({ items, onVerb }: { items: NativeShellMenuEntry[]; onV
         className={`flex w-full items-center gap-2.5 rounded px-3 py-2 text-left text-xs text-neutral-200 outline-none transition-colors hover:bg-cyan-950/50 hover:text-cyan-100 focus-visible:bg-cyan-950/50 focus-visible:text-cyan-100 disabled:cursor-not-allowed disabled:text-neutral-600 disabled:hover:bg-transparent ${isOpen ? 'bg-cyan-950/50 text-cyan-100' : ''}`}
       >
         <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${entry.disabled ? 'text-neutral-600' : 'text-cyan-400'}`}>
-          {entry.checked ? <Check className="h-3.5 w-3.5" /> : <span />}
+          {entry.icon ? (
+            <img
+              src={entry.icon}
+              alt=""
+              draggable={false}
+              className={`h-4 w-4 object-contain${entry.disabled ? ' opacity-45 grayscale' : ''}`}
+            />
+          ) : entry.checked ? (
+            <Check className="h-3.5 w-3.5" />
+          ) : (
+            <span />
+          )}
         </span>
         <span className="flex-1 truncate">{entry.label}</span>
         {isSubmenu && <ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}

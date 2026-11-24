@@ -492,6 +492,8 @@ export async function showNativeShellContextMenu(paths: string[], x: number, y: 
 export interface NativeShellMenuEntry {
   kind: 'entry' | 'submenu' | 'separator';
   label?: string;
+  /** Base64 PNG data URL captured from the Shell menu item's bitmap or owner-draw callback. */
+  icon?: string;
   verbId?: number;
   disabled: boolean;
   checked: boolean;
