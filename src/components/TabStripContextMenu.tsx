@@ -80,9 +80,9 @@ export function TabStripContextMenu({ x, y, canReopen, position, showNewTabButto
         aria-checked={role === 'menuitem' ? undefined : options.checked}
         disabled={options.disabled}
         onClick={() => { onAction(action); onClose(); }}
-        className="flex w-full items-center gap-2.5 rounded px-3 py-2 text-left text-xs text-neutral-200 outline-none transition-colors hover:bg-cyan-950/50 hover:text-cyan-100 focus-visible:bg-cyan-950/50 focus-visible:text-cyan-100 disabled:cursor-not-allowed disabled:text-neutral-600 disabled:hover:bg-transparent"
+        className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-xs text-neutral-100 outline-none transition-colors hover:bg-neutral-800/90 focus-visible:bg-neutral-800/90 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
       >
-        <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${options.disabled ? 'text-neutral-600' : 'text-cyan-400'}`}>{icon}</span>
+        <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${options.disabled ? 'text-neutral-500' : 'text-cyan-300'}`}>{icon}</span>
         <span className="flex-1">{label}</span>
         {options.checked && <Check className="h-3.5 w-3.5 shrink-0 text-cyan-300" />}
       </button>
@@ -119,21 +119,21 @@ export function TabStripContextMenu({ x, y, canReopen, position, showNewTabButto
         enabled[next].focus();
       }}
       style={screenPosition}
-      className="fixed z-[100] w-[284px] max-h-[calc(100vh-16px)] overflow-y-auto rounded-xl border border-neutral-700 bg-neutral-900/98 p-1.5 font-sans shadow-2xl shadow-black/60 backdrop-blur-xl select-none"
+      className="fixed z-[100] w-[284px] max-h-[calc(100vh-16px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-1 font-sans text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
     >
-      <div className="border-b border-neutral-700/60 px-3 py-2 text-xs font-medium text-cyan-200">{t.tabMenu.stripLabel}</div>
+      <div className="border-b border-neutral-800/90 px-2.5 py-1.5 text-xs font-medium text-cyan-200">{t.tabMenu.stripLabel}</div>
       {menuItem('new', t.tabMenu.newTab, <Plus className="h-4 w-4" />)}
       {menuItem('reopen', t.tabMenu.reopen, <RotateCcw className="h-4 w-4" />, { disabled: !canReopen })}
-      <div className="my-1 border-t border-neutral-700/60" />
+      <div className="my-1 h-px bg-neutral-800/90" />
       {menuItem('toggleNewButton', t.tabMenu.showNewButton, <Plus className="h-4 w-4" />, { role: 'menuitemcheckbox', checked: showNewTabButton })}
       {menuItem('toggleDoubleClick', t.tabMenu.doubleClickToOpen, <MousePointerClick className="h-4 w-4" />, { role: 'menuitemcheckbox', checked: doubleClickTabBar })}
-      <div className="my-1 border-t border-neutral-700/60" />
-      <div className="px-3 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.tabMenu.position}</div>
+      <div className="my-1 h-px bg-neutral-800/90" />
+      <div className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{t.tabMenu.position}</div>
       {menuItem('top', t.tabMenu.top, <ArrowUp className="h-4 w-4" />, { role: 'menuitemradio', checked: position === 'top' })}
       {menuItem('bottom', t.tabMenu.bottom, <ArrowDown className="h-4 w-4" />, { role: 'menuitemradio', checked: position === 'bottom' })}
       {menuItem('left', t.tabMenu.left, <ArrowLeft className="h-4 w-4" />, { role: 'menuitemradio', checked: position === 'left' })}
       {menuItem('right', t.tabMenu.right, <ArrowRight className="h-4 w-4" />, { role: 'menuitemradio', checked: position === 'right' })}
-      <div className="my-1 border-t border-neutral-700/60" />
+      <div className="my-1 h-px bg-neutral-800/90" />
       {menuItem('settings', t.tabMenu.settings, <Settings2 className="h-4 w-4" />)}
     </div>,
     document.body,

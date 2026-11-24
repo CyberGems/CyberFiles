@@ -95,14 +95,14 @@ export function TabContextMenu({ x, y, tab, canOpenParent, canReopen, closableLe
       role="menuitem"
       disabled={disabled}
       onClick={() => run(action)}
-      className="flex w-full items-center gap-2.5 rounded px-3 py-2 text-left text-xs text-neutral-200 outline-none transition-colors hover:bg-cyan-950/50 hover:text-cyan-100 focus-visible:bg-cyan-950/50 focus-visible:text-cyan-100 disabled:cursor-not-allowed disabled:text-neutral-600 disabled:hover:bg-transparent"
+      className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-xs text-neutral-100 outline-none transition-colors hover:bg-neutral-800/90 focus-visible:bg-neutral-800/90 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
     >
-      <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${disabled ? 'text-neutral-600' : 'text-cyan-400'}`}>{icon}</span>
+      <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${disabled ? 'text-neutral-500' : 'text-cyan-300'}`}>{icon}</span>
       <span className="flex-1">{label}</span>
       {selected && <Check className="h-3.5 w-3.5 text-cyan-300" />}
     </button>
   );
-  const separator = <div className="my-1 border-t border-neutral-700/60" />;
+  const separator = <div className="my-1 h-px bg-neutral-800/90" />;
 
   return createPortal(
     <div
@@ -134,9 +134,9 @@ export function TabContextMenu({ x, y, tab, canOpenParent, canReopen, closableLe
         enabled[next].focus();
       }}
       style={screenPosition}
-      className="fixed z-[100] w-[284px] max-h-[calc(100vh-16px)] overflow-y-auto rounded-xl border border-neutral-700 bg-neutral-900/98 p-1.5 font-sans shadow-2xl shadow-black/60 backdrop-blur-xl select-none"
+      className="fixed z-[100] w-[284px] max-h-[calc(100vh-16px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-1 font-sans text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
     >
-      <div className="truncate border-b border-neutral-700/60 px-3 py-2 text-xs font-medium text-cyan-200">{tab.customTitle || tab.title || t.pane.noFolderOpen}</div>
+      <div className="truncate border-b border-neutral-800/90 px-2.5 py-1.5 text-xs font-medium text-cyan-200">{tab.customTitle || tab.title || t.pane.noFolderOpen}</div>
       {section === 'rename' ? (
         <form className="p-2" onSubmit={event => { event.preventDefault(); run('rename', name.trim()); }}>
           <label htmlFor="tab-context-name" className="mb-2 block text-xs font-medium text-neutral-200">{t.tabMenu.rename}</label>
@@ -176,8 +176,8 @@ export function TabContextMenu({ x, y, tab, canOpenParent, canReopen, closableLe
           {item('parent', t.tabMenu.openParent, <FolderUp className="h-4 w-4" />, !canOpenParent)}
           {item('reopen', t.tabMenu.reopen, <RotateCcw className="h-4 w-4" />, !canReopen)}
           {separator}
-          <button type="button" role="menuitem" onClick={() => setSection('rename')} className="flex w-full items-center gap-2.5 rounded px-3 py-2 text-left text-xs text-neutral-200 hover:bg-cyan-950/50 focus-visible:bg-cyan-950/50"><span className="flex h-4 w-4 items-center justify-center text-cyan-400"><Pencil className="h-4 w-4" /></span>{t.tabMenu.rename}</button>
-          <button type="button" role="menuitem" onClick={() => setSection('color')} className="flex w-full items-center gap-2.5 rounded px-3 py-2 text-left text-xs text-neutral-200 hover:bg-cyan-950/50 focus-visible:bg-cyan-950/50"><span className="flex h-4 w-4 items-center justify-center text-cyan-400"><Palette className="h-4 w-4" /></span>{t.tabMenu.color}</button>
+          <button type="button" role="menuitem" onClick={() => setSection('rename')} className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-xs text-neutral-100 outline-none transition-colors hover:bg-neutral-800/90 focus-visible:bg-neutral-800/90"><span className="flex h-4 w-4 shrink-0 items-center justify-center text-cyan-300"><Pencil className="h-4 w-4" /></span>{t.tabMenu.rename}</button>
+          <button type="button" role="menuitem" onClick={() => setSection('color')} className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-xs text-neutral-100 outline-none transition-colors hover:bg-neutral-800/90 focus-visible:bg-neutral-800/90"><span className="flex h-4 w-4 shrink-0 items-center justify-center text-cyan-300"><Palette className="h-4 w-4" /></span>{t.tabMenu.color}</button>
           {item('lock', tab.lockClose ? t.tabMenu.unlock : t.tabMenu.lock, tab.lockClose ? <UnlockKeyhole className="h-4 w-4" /> : <LockKeyhole className="h-4 w-4" />, false, Boolean(tab.lockClose))}
           {separator}
           {item('closeLeft', vertical ? t.tabMenu.closeAbove : t.tabMenu.closeLeft, vertical ? <ArrowUp className="h-4 w-4" /> : <ArrowLeft className="h-4 w-4" />, closableLeft === 0)}

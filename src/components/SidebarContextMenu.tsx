@@ -20,6 +20,7 @@ export interface SidebarContextMenuState {
   x: number;
   y: number;
   title: string;
+  targetKey?: string;
   items: SidebarContextMenuItem[];
 }
 
@@ -248,12 +249,12 @@ export function SidebarContextMenu({ menu, shellMenuItems, onShellVerb, onClose 
         focusItem(event.key === 'ArrowDown' ? 'next' : event.key === 'ArrowUp' ? 'previous' : event.key === 'Home' ? 'first' : 'last');
       }}
       style={screenPosition}
-      className="fixed z-[100] w-56 max-h-[calc(100vh-16px)] overflow-y-auto rounded-xl border border-neutral-700 bg-neutral-900/98 p-1.5 font-sans shadow-2xl shadow-black/60 backdrop-blur-xl select-none"
+      className="fixed z-[100] min-w-[232px] w-max max-w-[320px] max-h-[calc(100vh-16px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-1 font-sans text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
     >
-      <div className="truncate border-b border-neutral-700/60 px-3 py-2 text-xs font-medium text-cyan-200">{menu.title}</div>
+      <div className="truncate border-b border-neutral-800/90 px-2.5 py-1.5 text-xs font-medium text-cyan-200">{menu.title}</div>
       {menu.items.map(item => {
         if (item.separator) {
-          return <div key={item.id} className="my-1 border-t border-neutral-700/60" />;
+          return <div key={item.id} className="my-1 h-px bg-neutral-800/90" />;
         }
         const isShellTrigger = Boolean(item.shellTargets?.length);
         const hasShellMenu = isShellTrigger && Boolean(shellMenuItems?.length);
@@ -292,10 +293,10 @@ export function SidebarContextMenu({ menu, shellMenuItems, onShellVerb, onClose 
               if (shellMenuItems?.length) scheduleFlyoutClose();
             } : undefined}
             className={(item.danger
-              ? 'flex w-full items-center gap-2.5 rounded px-3 py-2 text-left text-xs text-neutral-200 outline-none transition-colors hover:bg-rose-950/50 hover:text-rose-200 focus-visible:bg-rose-950/50 focus-visible:text-rose-200 disabled:cursor-not-allowed disabled:text-neutral-600 disabled:hover:bg-transparent'
-              : `flex w-full items-center gap-2.5 rounded px-3 py-2 text-left text-xs text-neutral-200 outline-none transition-colors hover:bg-cyan-950/50 hover:text-cyan-100 focus-visible:bg-cyan-950/50 focus-visible:text-cyan-100 disabled:cursor-not-allowed disabled:text-neutral-600 disabled:hover:bg-transparent${isFlyoutOpen ? ' bg-cyan-950/50 text-cyan-100' : ''}`)}
+              ? 'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-xs text-rose-300 outline-none transition-colors hover:bg-rose-950/45 focus-visible:bg-rose-950/45 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent'
+              : `flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-xs text-neutral-100 outline-none transition-colors hover:bg-neutral-800/90 focus-visible:bg-neutral-800/90 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent${isFlyoutOpen ? ' bg-neutral-800/90 text-cyan-100' : ''}`)}
           >
-            <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${item.disabled ? 'text-neutral-600' : item.danger ? 'text-rose-400' : 'text-cyan-400'}`}>{item.icon}</span>
+            <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${item.disabled ? 'text-neutral-500' : item.danger ? 'text-rose-400' : 'text-cyan-300'}`}>{item.icon}</span>
             <span className="flex-1">{item.label}</span>
             {hasShellMenu && <ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
           </button>

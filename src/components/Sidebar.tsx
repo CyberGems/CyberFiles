@@ -36,7 +36,7 @@ import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconP
 import { FolderIconRenderer } from './folderIconsData';
 import { SidebarContextMenu, type SidebarContextMenuItem, type SidebarContextMenuState } from './SidebarContextMenu';
 import { useLanguage } from '../locales/LanguageContext';
-import { dismissAllTooltips, Tooltip } from './Tooltip';
+import { dismissAllTooltips, Tooltip, TooltipPreferenceContext } from './Tooltip';
 
 interface FolderTreeState {
   folders: FileItem[];
@@ -109,6 +109,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onShellMenuVerbError,
 }) => {
   const { t, language } = useLanguage();
+  const tooltipsEnabled = React.useContext(TooltipPreferenceContext);
   const windowsSpecialFolderLabels: Record<WindowsSpecialFolder['id'], string> = {
     programFilesX86: t.toolbar.programFilesX86,
     programFiles: t.toolbar.programFiles,
@@ -287,8 +288,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       data-file-drop-path={isValidDropDestinationPath(folder.path) ? folder.path : undefined}
                       data-file-drop-raw-path={folder.path || undefined}
                       onClick={() => onNavigate(folder.path)}
-                      onContextMenu={event => openSidebarContextMenu(event, folder.name, buildTreeChildMenuItems(folder, { x: event.clientX, y: event.clientY }))}
-                      className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-1 text-left text-[10px] text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100"
+                      onContextMenu={event => openSidebarContextMenu(event, folder.name, buildTreeChildMenuItems(folder, { x: event.clientX, y: event.clientY }), `tree:${folder.path}`)}
+                      className={`flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 py-1 text-left text-[10px] transition-colors ${activeMenuTargetKey === `tree:${folder.path}` ? 'bg-neutral-900 text-neutral-100' : 'text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100'}`}
                     >
                     <FolderIconRenderer
                       config={getCustomFolderIcon(folder.path, customFolderIcons ?? {})}
@@ -469,11 +470,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
      inline affordances each row already offers. */
   const [sidebarContextMenu, setSidebarContextMenu] = useState<SidebarContextMenuState | null>(null);
   const [sidebarShellMenu, setSidebarShellMenu] = useState<BuiltNativeShellMenu | null>(null);
-  const openSidebarContextMenu = (event: React.MouseEvent, title: string, items: SidebarContextMenuItem[]) => {
+  const activeMenuTargetKey = sidebarContextMenu?.targetKey ?? null;
+  const openSidebarContextMenu = (event: React.MouseEvent, title: string, items: SidebarContextMenuItem[], targetKey?: string) => {
     event.preventDefault();
     event.stopPropagation();
     dismissAllTooltips();
-    setSidebarContextMenu({ x: event.clientX, y: event.clientY, title, items });
+    setSidebarContextMenu({ x: event.clientX, y: event.clientY, title, targetKey, items });
   };
 
   const closeSidebarContextMenu = React.useCallback(() => {
@@ -579,14 +581,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (!isVirtualLocation) {
       items.push({ id: 'copy-path', label: t.sidebar.contextCopyPath, icon: <Copy className="h-4 w-4" />, onSelect: () => onCopyPath(item.path) });
     }
-    if (shellMenuSupportedPath(item.path)) {
-      items.push({ id: 'quick-access-separator', separator: true }, buildMoreOptionsItem([item.path], origin));
-    }
     if (item.isCustom) {
       items.push(
+        { id: 'quick-access-custom-separator', separator: true },
         { id: 'rename', label: t.sidebar.renameQuickAccess, icon: <Pencil className="h-4 w-4" />, onSelect: () => startQuickAccessRename(item) },
         { id: 'remove', label: t.sidebar.removeQuickAccess, icon: <Trash2 className="h-4 w-4" />, danger: true, onSelect: () => onRemoveQuickAccess(item.id) },
       );
+    }
+    if (shellMenuSupportedPath(item.path)) {
+      items.push({ id: 'quick-access-separator', separator: true }, buildMoreOptionsItem([item.path], origin));
     }
     return items;
   };
@@ -616,9 +619,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: 'open-new-tab', label: t.sidebar.contextOpenInNewTab, icon: <ExternalLink className="h-4 w-4" />, onSelect: () => onOpenDrive ? onOpenDrive(rootPath, true) : onOpenInNewTab(rootPath) },
       { id: 'copy-path', label: t.sidebar.contextCopyPath, icon: <Copy className="h-4 w-4" />, onSelect: () => onCopyPath(rootPath) },
     ];
-    if (shellMenuSupportedPath(rootPath)) {
-      items.push({ id: 'drive-more-options-separator', separator: true }, buildMoreOptionsItem([rootPath], origin));
-    }
     if (drive.type === 'portable' && drive.rootPath && onEjectPortableDrive) {
       items.push(
         { id: 'eject-separator', separator: true },
@@ -630,6 +630,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'drive-separator', separator: true },
         { id: 'disconnect', label: t.sidebar.contextDisconnectDrive, icon: <Unplug className="h-4 w-4" />, danger: true, onSelect: () => onDisconnectNetworkDrive(drive.letter) },
       );
+    }
+    if (shellMenuSupportedPath(rootPath)) {
+      items.push({ id: 'drive-more-options-separator', separator: true }, buildMoreOptionsItem([rootPath], origin));
     }
     return items;
   };
@@ -729,6 +732,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       className="cyberfiles-sidebar h-full w-full min-w-0 overflow-hidden bg-neutral-950 border-r border-neutral-800/80 flex flex-col justify-between select-none flex-shrink-0 text-xs"
       onContextMenu={event => event.preventDefault()}
     >
+      <TooltipPreferenceContext.Provider value={tooltipsEnabled && !sidebarContextMenu}>
       <div className="p-3 space-y-5 overflow-y-auto flex-1">
         {(quickAccess.length > 0 || onAddQuickAccess) && (
           <div className="space-y-1">
@@ -812,7 +816,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <React.Fragment key={item.id}>
                   <div
                     data-quick-access-drop-id={isVirtualLocation ? undefined : item.id}
-                    onContextMenu={event => openSidebarContextMenu(event, item.name, buildQuickAccessMenuItems(item, { x: event.clientX, y: event.clientY }))}
+                    onContextMenu={event => openSidebarContextMenu(event, item.name, buildQuickAccessMenuItems(item, { x: event.clientX, y: event.clientY }), `quick:${item.id}`)}
                     className={"group flex min-w-0 items-center gap-0.5 rounded " + (dragTargetQuickAccessId === item.id ? "ring-1 ring-cyan-500/60 bg-cyan-950/20 " : "") + (draggingQuickAccessId === item.id ? "opacity-50" : "")}
                   >
                     {quickAccessSortMode === 'manual' && !isVirtualLocation && (
@@ -876,10 +880,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         onClick={() => isVirtualLocation || item.isCustom ? onOpenCustomQuickAccess(item) : onNavigate(item.path)}
                         className={`flex min-w-0 flex-1 items-center justify-between rounded-md px-2.5 py-1.5 text-left transition-colors ${
                           isOffline
-                            ? 'cursor-not-allowed text-neutral-500 opacity-65 hover:bg-neutral-900/40'
+                            ? `cursor-not-allowed text-neutral-500 opacity-65 ${activeMenuTargetKey === `quick:${item.id}` ? 'bg-neutral-900/40' : 'hover:bg-neutral-900/40'}`
                             : isSelected
                               ? 'bg-neutral-800/90 text-cyan-300 font-medium'
-                              : 'text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100'
+                              : activeMenuTargetKey === `quick:${item.id}`
+                                ? 'bg-neutral-900 text-neutral-100'
+                                : 'text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100'
                         }`}
                       >
                         <span className="flex min-w-0 items-center gap-2">
@@ -951,10 +957,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   type="button"
                   onClick={onOpenRecents}
-                  onContextMenu={event => openSidebarContextMenu(event, t.sidebar.recentsTitle, buildRecentsMenuItems())}
+                  onContextMenu={event => openSidebarContextMenu(event, t.sidebar.recentsTitle, buildRecentsMenuItems(), 'recents')}
                   aria-label={t.sidebar.recentsTitle}
                   aria-current={currentPath === RECENT_PATH ? 'page' : undefined}
-                  className={"flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors " + (currentPath === RECENT_PATH ? "bg-neutral-800/90 text-cyan-300 font-medium" : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100")}
+                  className={"flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors " + (currentPath === RECENT_PATH ? "bg-neutral-800/90 text-cyan-300 font-medium" : activeMenuTargetKey === 'recents' ? "bg-neutral-900 text-neutral-100" : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100")}
                 >
                   <Clock className={"h-3.5 w-3.5 flex-shrink-0 " + (currentPath === RECENT_PATH ? "text-cyan-400" : "text-neutral-400")} />
                   <span className="min-w-0 truncate text-[11px]">{t.sidebar.recentsTitle}</span>
@@ -963,7 +969,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div
                 className="group flex min-w-0 items-center gap-1"
                 data-file-drop-recycle-bin={recycleBinSupported ? 'true' : undefined}
-                onContextMenu={event => openSidebarContextMenu(event, t.sidebar.recycleBinTitle, buildRecycleBinMenuItems({ x: event.clientX, y: event.clientY }))}
+                onContextMenu={event => openSidebarContextMenu(event, t.sidebar.recycleBinTitle, buildRecycleBinMenuItems({ x: event.clientX, y: event.clientY }), 'recycle-bin')}
               >
                 <Tooltip label={!recycleBinSupported ? t.sidebar.recycleBinDesktopOnly : recycleBinStateLabel} placement="right">
                   <button
@@ -972,7 +978,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onClick={onOpenRecycleBin}
                     aria-label={t.sidebar.recycleBinTitle}
                     aria-current={currentPath === RECYCLE_BIN_PATH ? 'page' : undefined}
-                    className={"flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 " + (currentPath === RECYCLE_BIN_PATH ? "bg-neutral-800/90 text-cyan-300 font-medium" : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100")}
+                    className={"flex min-w-0 flex-1 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 " + (currentPath === RECYCLE_BIN_PATH ? "bg-neutral-800/90 text-cyan-300 font-medium" : activeMenuTargetKey === 'recycle-bin' ? "bg-neutral-900 text-neutral-100" : "text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100")}
                   >
                     <Trash2 className={"h-3.5 w-3.5 flex-shrink-0 " + (currentPath === RECYCLE_BIN_PATH ? "text-cyan-400" : "text-neutral-400")} />
                     <span className="min-w-0 truncate text-[11px]">{t.sidebar.recycleBinTitle}</span>
@@ -1028,7 +1034,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   key={drive.id}
                   role="button"
                   tabIndex={0}
-                  onContextMenu={event => openSidebarContextMenu(event, drive.label, buildDriveMenuItems(drive, { x: event.clientX, y: event.clientY }))}
+                  onContextMenu={event => openSidebarContextMenu(event, drive.label, buildDriveMenuItems(drive, { x: event.clientX, y: event.clientY }), `drive:${drive.id}`)}
                   data-file-drop-path={!isPortable && isValidDropDestinationPath(driveRootPath) ? driveRootPath : undefined}
                   data-file-drop-raw-path={driveRootPath || undefined}
                   onClick={() => onOpenDrive ? onOpenDrive(driveRootPath) : onNavigate(driveRootPath)}
@@ -1042,7 +1048,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className={`group w-full text-left p-2 rounded-lg border transition-all cursor-pointer ${
                     isSelected
                       ? 'bg-neutral-900 border-cyan-500/40 text-neutral-100 shadow-sm'
-                      : 'bg-neutral-950/60 border-neutral-800/60 text-neutral-300 hover:bg-neutral-900/70 hover:border-neutral-700'
+                      : activeMenuTargetKey === `drive:${drive.id}`
+                        ? 'bg-neutral-900/70 border-neutral-700 text-neutral-100'
+                        : 'bg-neutral-950/60 border-neutral-800/60 text-neutral-300 hover:bg-neutral-900/70 hover:border-neutral-700'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1.5 gap-1">
@@ -1129,10 +1137,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <button
                       type="button"
                       onClick={() => onOpenWindowsSpecialFolder(folder)}
-                      onContextMenu={event => openSidebarContextMenu(event, label, buildSpecialFolderMenuItems(folder, { x: event.clientX, y: event.clientY }))}
+                      onContextMenu={event => openSidebarContextMenu(event, label, buildSpecialFolderMenuItems(folder, { x: event.clientX, y: event.clientY }), `special:${folder.id}`)}
                       aria-label={`${label}: ${folder.path}`}
                       aria-current={isSelected ? 'location' : undefined}
-                      className={`flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors ${isSelected ? 'bg-neutral-800/90 font-medium text-cyan-300' : 'text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100'}`}
+                      className={`flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors ${isSelected ? 'bg-neutral-800/90 font-medium text-cyan-300' : activeMenuTargetKey === `special:${folder.id}` ? 'bg-neutral-900 text-neutral-100' : 'text-neutral-300 hover:bg-neutral-900 hover:text-neutral-100'}`}
                     >
                       {folder.isFile ? <FileText className={`h-4 w-4 flex-shrink-0 ${isSelected ? 'text-cyan-300' : 'text-neutral-500'}`} /> : <FolderOpen className={`h-4 w-4 flex-shrink-0 ${isSelected ? 'text-cyan-300' : 'text-neutral-500'}`} />}
                       <span className="min-w-0 truncate text-[11px]">{label}</span>
@@ -1144,6 +1152,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </section>
         )}
       </div>
+      </TooltipPreferenceContext.Provider>
       {sidebarContextMenu && (
         <SidebarContextMenu
           menu={sidebarContextMenu}
