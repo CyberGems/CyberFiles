@@ -1673,6 +1673,8 @@ export default function App() {
     setUpdateNotifications(enabled);
   };
   const [pendingUpdate, setPendingUpdate] = useState<AvailableUpdate | null>(null);
+  const pendingUpdateRef = useRef<AvailableUpdate | null>(null);
+  const updateActiveRef = useRef(false);
   const [isUpdateOpen, setIsUpdateOpen] = useState(false);
   const [isCloseDialogOpen, setIsCloseDialogOpen] = useState(false);
   const [rememberCloseChoice, setRememberCloseChoice] = useState(false);
@@ -4800,57 +4802,59 @@ export default function App() {
     };
   }, []);
 
-  /* Background half of the "automatic update checks" preference the About window owns: on start
-     and every six hours, as the hint there promises. The start-up check opens the update window
-     once, so the user sees what changed before deciding; the six-hour ones only raise a toast,
-     because a window that takes the pointer while a transfer runs is worse than a quiet line.
-     A version the user skipped is never offered again. Failures stay silent on purpose: the
-     About window reports the reason when the user asks for a check. */
+  const offerUpdate = useCallback((update: AvailableUpdate, open: boolean) => {
+    const previous = pendingUpdateRef.current;
+    if (previous && (previous.version === update.version || updateActiveRef.current)) {
+      void update.close().catch(console.warn);
+    } else {
+      pendingUpdateRef.current = update;
+      setPendingUpdate(update);
+      void previous?.close().catch(console.warn);
+    }
+    if (open) setIsUpdateOpen(true);
+  }, []);
+
+  // Startup checks may open the notice. Periodic checks only announce new offers.
   const updateToastRef = useRef({ message: t.updates.availableToast, detail: t.updates.availableToastDetail });
   updateToastRef.current = { message: t.updates.availableToast, detail: t.updates.availableToastDetail };
   useEffect(() => {
-    let cancelled = false;
+    let disposed = false;
     const runCheck = async (announce: 'window' | 'toast') => {
-      if (!getAutoCheckUpdates()) return;
+      if (disposed || updateActiveRef.current || !getAutoCheckUpdates()) return;
       try {
         const update = await checkForUpdate();
-        if (cancelled || !update || !getAutoCheckUpdates()) return;
-        if (isSkippedVersion(update.version)) return;
-        setPendingUpdate(update);
-        if (announce === 'window') {
-          setIsUpdateOpen(true);
+        if (!update) return;
+        if (disposed || updateActiveRef.current || !getAutoCheckUpdates() || isSkippedVersion(update.version)) {
+          void update.close().catch(console.warn);
           return;
         }
-        if (getNotifiedVersion() === update.version) return;
+        offerUpdate(update, announce === 'window');
+        if (announce === 'window' || getNotifiedVersion() === update.version) return;
         setNotifiedVersion(update.version);
         const copy = updateToastRef.current;
         showToast(copy.message.replace('{version}', update.version), copy.detail);
       } catch {
-        // Offline, rate limited or no manifest yet: nothing to announce.
+        // Automatic checks leave connection errors to the manual check in About.
       }
     };
-    // A beat after the window is up, so the first paint and the folder listing win the race.
     const startTimer = window.setTimeout(() => { void runCheck('window'); }, 2500);
     const timer = window.setInterval(() => { void runCheck('toast'); }, AUTO_CHECK_INTERVAL_MS);
     return () => {
-      cancelled = true;
+      disposed = true;
       window.clearTimeout(startTimer);
       window.clearInterval(timer);
     };
-  }, [showToast]);
+  }, [offerUpdate, showToast]);
 
-  /* Shared by the start-up check and the About window, so both open the same release. The
-     About window steps aside: two stacked dialogs would both answer Escape. */
-  const handleInstallUpdate = useCallback((update: AvailableUpdate) => {
-    setPendingUpdate(update);
-    setIsAboutOpen(false);
-    setIsUpdateOpen(true);
-  }, []);
+  const handleUpdateAvailable = useCallback((update: AvailableUpdate) => offerUpdate(update, true), [offerUpdate]);
 
   const handleSkipUpdateVersion = useCallback((version: string) => {
     setSkippedVersion(version);
+    const previous = pendingUpdateRef.current;
+    pendingUpdateRef.current = null;
     setIsUpdateOpen(false);
     setPendingUpdate(null);
+    void previous?.close().catch(console.warn);
   }, []);
 
   // The tray menu runs in its own window and asks the main window to open these.
@@ -8679,11 +8683,10 @@ export default function App() {
         <Suspense fallback={null}>
           <AboutModal
             isOpen={isAboutOpen}
-            autoUpdate={updateNotifications}
-            onAutoUpdateChange={changeUpdateNotifications}
+            updateNoticeOpen={isUpdateOpen}
             onClose={() => setIsAboutOpen(false)}
             onNotify={message => showToast(message)}
-            onInstallUpdate={handleInstallUpdate}
+            onUpdateAvailable={handleUpdateAvailable}
           />
         </Suspense>
       )}
@@ -8691,12 +8694,15 @@ export default function App() {
       {shouldMountUpdateModal && (
         <Suspense fallback={null}>
           <UpdateModal
+            key={pendingUpdate?.rid}
+            aboveAbout={isAboutOpen}
             isOpen={isUpdateOpen}
             update={pendingUpdate}
             currentVersion={__APP_VERSION__}
             onClose={() => setIsUpdateOpen(false)}
+            onShow={() => setIsUpdateOpen(true)}
             onSkipVersion={handleSkipUpdateVersion}
-            onNotify={message => showToast(message)}
+            onActivityChange={active => { updateActiveRef.current = active; }}
           />
         </Suspense>
       )}

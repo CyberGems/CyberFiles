@@ -10,12 +10,28 @@
  * user. The About window reports the reason when the user asks for one.
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import { Channel, invoke, Resource } from '@tauri-apps/api/core';
 import { check } from '@tauri-apps/plugin-updater';
 import { isTauriDesktop } from './nativeFileSystem';
 
 /** The release the updater just found. The plugin owns it; this module only passes it on. */
-export type AvailableUpdate = NonNullable<Awaited<ReturnType<typeof check>>>;
+export type AvailableUpdate = NonNullable<Awaited<ReturnType<typeof check>>> & { portable: boolean };
+
+export type UpdateProgress = { downloaded: number; total: number | null };
+
+export async function downloadUpdate(update: AvailableUpdate, onProgress: (progress: UpdateProgress) => void) {
+  const progress = new Channel<UpdateProgress>(onProgress);
+  const rid = await invoke<number | null>('download_update_package', { updateRid: update.rid, progress });
+  return rid === null ? null : new Resource(rid);
+}
+
+export function cancelUpdateDownload() {
+  return invoke<void>('cancel_update_download');
+}
+
+export function applyUpdate(packageResource: Resource) {
+  return invoke<void>('apply_update_package', { packageRid: packageResource.rid });
+}
 
 export const RELEASES_PAGE_URL = 'https://github.com/CyberGems/CyberFiles/releases';
 
@@ -24,7 +40,7 @@ const NOTIFIED_VERSION_KEY = 'cyberfiles_update_notified_v1';
 const SKIPPED_VERSION_KEY = 'cyberfiles_skipped_update_version_v1';
 const CHECK_TIMEOUT_MS = 15_000;
 
-/** The About window promises "on start and every six hours"; this is that six hours. */
+/** The update notification preference checks at launch and every six hours. */
 export const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 /** What this copy of the app can do about updates at all. */
@@ -108,13 +124,14 @@ export async function getUpdateSupport(): Promise<UpdateSupport> {
 /**
  * Asks the manifest for a release newer than this one.
  *
- * Returns null when there is nothing to install, including the cases where this copy cannot
- * install anything (browser preview, portable edition). Transport failures throw, so the
- * caller decides whether to stay quiet or show the reason.
+ * Portable builds use the same version and release notes but download the ZIP separately.
+ * Transport failures throw so the caller can report the reason for a manual check.
  */
 export async function checkForUpdate(): Promise<AvailableUpdate | null> {
-  if ((await getUpdateSupport()) !== 'supported') return null;
-  return check({ timeout: CHECK_TIMEOUT_MS });
+  const support = await getUpdateSupport();
+  if (support === 'browser') return null;
+  const update = await check({ timeout: CHECK_TIMEOUT_MS });
+  return update ? Object.assign(update, { portable: support === 'portable' }) : null;
 }
 
 /** The tag page for a version, for the "view release" links. */
@@ -207,7 +224,7 @@ export function sanitizeReleaseNotes(body: string | null | undefined): string {
     .replace(/<!--[\s\S]*?-->/g, '')
     .replace(/<p\s+align=["']center["'][\s\S]*?<\/p>/gi, '')
     .replace(/^#{1,2}\s*.*Release Notes\s*$/gim, '')
-    .replace(/^#{2,4}\s*📦\s*Downloads[\s\S]*/i, '')
+    .replace(/^#{2,4}[^\S\r\n]*📦[^\S\r\n]*(?:Downloads|Descargas)\b[\s\S]*/im, '')
     .replace(/^>.*(?:New to CyberFiles|Nuevo en CyberFiles|Windows-first file manager).*(?:\r?\n|$)/gim, '')
     // Strip the Before you install block (release-page furniture)
     .replace(/^#{2,4}\s*⚠️\s*(?:Before you install|Antes de instalar)[\s\S]*?\n---/gim, '')

@@ -23,6 +23,7 @@ use zip::{
     CompressionMethod,
 };
 
+mod update_download;
 mod windows_file_icons;
 #[cfg(target_os = "windows")]
 mod windows_folder_handler;
@@ -9891,6 +9892,7 @@ fn main() {
             shortcut_hint: Mutex::new(None),
             tray: Mutex::new(None),
         })
+        .manage(update_download::UpdateDownload::default())
         .manage(TrayMenuAnchor(Mutex::new(None)))
         .manage(TrayMenuSizes(Mutex::new(HashMap::new())))
         .plugin(tauri_plugin_dialog::init())
@@ -10077,6 +10079,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             runtime_info,
             is_portable_build,
+            update_download::download_update_package,
+            update_download::cancel_update_download,
+            update_download::apply_update_package,
             show_main_window,
             hide_main_window,
             minimize_main_window,

@@ -1387,7 +1387,44 @@ html[data-theme='light'] [data-system-home-icon='portable'] {
 .cyberfiles-transfer-panel { animation: cyberfiles-transfer-panel-in 150ms cubic-bezier(0.2, 0.8, 0.2, 1); }
 /* Same entrance as the workspace manager dialog, so every modal in the window behaves alike. */
 .cyberfiles-about-panel { animation: cyberfiles-about-panel-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1); }
-.cyberfiles-update-panel { animation: cyberfiles-about-panel-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+.cyberfiles-update-panel {
+  color: var(--color-neutral-100);
+  background: var(--cyberfiles-dialog-background);
+  border-color: var(--color-neutral-700);
+}
+
+.cyberfiles-update-panel :is(.cf-update-notes, .cf-update-footer) {
+  border-color: var(--color-neutral-800);
+}
+
+.cf-update-notes {
+  background: var(--cyberfiles-workspace-card-background);
+}
+
+html[data-theme='gray'] .cyberfiles-update-panel {
+  background: var(--color-neutral-900);
+}
+
+html[data-theme='gray'] .cf-update-notes {
+  background: var(--color-neutral-950);
+}
+
+.cf-update-muted,
+.cf-update-dismiss {
+  color: var(--color-neutral-400);
+}
+
+.cf-update-dismiss:hover {
+  background: var(--color-neutral-800);
+}
+
+.cf-update-progress {
+  accent-color: var(--color-cyan-500);
+}
+
+.cf-update-error {
+  color: var(--cyberfiles-hidden-item-color);
+}
 
 /* About: the automatic update check switch. Suite pattern (CyberNotes / CyberClock): grey track,
    dark thumb, accent track with glow and a white check when on. The accent comes from the
