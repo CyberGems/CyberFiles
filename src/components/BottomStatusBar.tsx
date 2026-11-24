@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle2, Clock, Eye, EyeOff, File, Folder, HardDrive, Keyboard, Link2, List, ListChecks, Network, PanelLeft, PanelRight } from 'lucide-react';
-import { DriveInfo, FileItem, TabState, ViewLayout, SYSTEM_HOME_PATH } from '../types';
+import { CheckCircle2, Clock, Eye, EyeOff, File, Folder, HardDrive, Keyboard, Link2, List, ListChecks, Network } from 'lucide-react';
+import { DriveInfo, FileItem, TabState, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, isPortablePath, isSameOrDescendantPath } from '../utils/fileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 import { TransferOperationView, operationActionLabel } from './FileOperationModal';
 
 interface BottomStatusBarProps {
-  layout: ViewLayout;
-  activePane: 'left' | 'right';
   currentTab: TabState;
   activeFiles: FileItem[];
   hasMoreItems: boolean;
@@ -57,7 +55,7 @@ const tooltipToneClasses: Record<NonNullable<StatusTooltipRow['tone']>, string> 
   rose: 'text-rose-300',
 };
 
-const StatusTooltipCard: React.FC<StatusTooltipCardProps> = ({
+export const StatusTooltipCard: React.FC<StatusTooltipCardProps> = ({
   icon,
   title,
   badge,
@@ -120,8 +118,6 @@ function formatStorageSize(bytes: number, language: 'es' | 'en') {
 }
 
 export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
-  layout,
-  activePane,
   currentTab,
   activeFiles,
   hasMoreItems,
@@ -414,32 +410,6 @@ export const BottomStatusBar: React.FC<BottomStatusBarProps> = ({
     >
       {/* Left section: selection and capacity summary */}
       <div className="flex items-center gap-1 min-w-0">
-        {/* Active Pane Indicator */}
-        {layout !== 'single' && (
-          <Tooltip
-            label={(
-              <StatusTooltipCard
-                icon={activePane === 'left' ? <PanelLeft className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
-                title={t.statusBar.activePaneTitle}
-                primary={activePane === 'left' ? t.statusBar.leftPane : t.statusBar.rightPane}
-                description={t.statusBar.activePaneDescription}
-                rows={[{ label: t.statusBar.currentLocation, value: displayPath }]}
-              />
-            )}
-            placement="top"
-          >
-            <div
-              role="img"
-              aria-label={activePane === 'left' ? t.statusBar.leftPane : t.statusBar.rightPane}
-              tabIndex={0}
-              className="flex items-center gap-1 rounded border border-neutral-800 bg-neutral-900 px-1.5 py-0.5 text-[10px] text-neutral-200 mr-1 flex-shrink-0 outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
-            >
-              <span className={`w-2 h-2 rounded-full ${activePane === 'left' ? 'bg-cyan-400' : 'bg-amber-400'}`} />
-              <span className="font-bold">{activePane === 'left' ? (language === 'es' ? 'I' : 'L') : (language === 'es' ? 'D' : 'R')}</span>
-            </div>
-          </Tooltip>
-        )}
-
         {isSystemHome ? (
           <>
             <Tooltip

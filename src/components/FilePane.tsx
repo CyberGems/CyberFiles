@@ -48,6 +48,8 @@ import {
   Server,
   Unplug,
   ExternalLink,
+  PanelLeft,
+  PanelRight,
 } from 'lucide-react';
 import { DriveInfo, FileItem, FileType, HiddenItemStyle, ICON_ZOOM_PRESETS, NETWORK_PATH, NetworkResource, SavedNetworkHost, SortField, TabState, TILE_ZOOM_PRESETS, ViewMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH, RecentItemStyle, TabCloseButtonMode, type IconZoomLevel, type QuickAccessItem, type DraggedFileItem, type FileDropOperation, type NewTabTrigger, type TabSizePreferences } from '../types';
 import { isDedicatedLayoutPath } from '../utils/locations';
@@ -64,6 +66,7 @@ import { PaneActionBar, type PaneSelectionActions } from './PaneActionBar';
 import { listen } from '@tauri-apps/api/event';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip, TooltipPreferenceContext, TooltipShortcut } from './Tooltip';
+import { StatusTooltipCard } from './BottomStatusBar';
 import {
   DEFAULT_FILE_COLUMN_LAYOUT,
   DEFAULT_FILE_COLUMN_WIDTHS,
@@ -5896,14 +5899,28 @@ export const FilePane: React.FC<FilePaneProps> = ({
         </div>
 
         {isActive ? (
-          <div
-            role="status"
-            aria-label={paneId === 'left' ? t.statusBar.leftPane : t.statusBar.rightPane}
-            className="cyberfiles-active-pane-badge flex items-center gap-1.5 justify-self-center whitespace-nowrap rounded border border-cyan-400/60 bg-cyan-500/20 px-2 py-0.5 font-semibold text-cyan-100 shadow-[0_0_12px_rgba(34,211,238,0.18),inset_0_1px_0_rgba(255,255,255,0.08)]"
+          <Tooltip
+            placement="top"
+            label={(
+              <StatusTooltipCard
+                icon={paneId === 'left' ? <PanelLeft className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
+                title={t.statusBar.activePaneTitle}
+                primary={paneId === 'left' ? t.statusBar.leftPane : t.statusBar.rightPane}
+                description={t.statusBar.activePaneDescription}
+                rows={(isSystemHome ? t.sidebar.thisPc : tab.currentPath) ? [{ label: t.statusBar.currentLocation, value: isSystemHome ? t.sidebar.thisPc : tab.currentPath }] : []}
+              />
+            )}
           >
-            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_6px_rgba(103,232,249,0.9)]" />
-            <span>{t.statusBar.activePaneTitle}</span>
-          </div>
+            <span
+              role="status"
+              tabIndex={0}
+              aria-label={paneId === 'left' ? t.statusBar.leftPane : t.statusBar.rightPane}
+              onMouseDown={event => event.preventDefault()}
+              className="cyberfiles-active-pane-badge inline-flex h-5 w-5 cursor-help items-center justify-center justify-self-center rounded-full outline-none focus-visible:ring-1 focus-visible:ring-cyan-400/70"
+            >
+              <span className="h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_6px_rgba(103,232,249,0.9)]" />
+            </span>
+          </Tooltip>
         ) : <span />}
 
         <Tooltip

@@ -8123,8 +8123,6 @@ export default function App() {
 
       {/* 3. Global Bottom Status Bar */}
       <BottomStatusBar
-        layout={effectiveLayout}
-        activePane={activePane}
         currentTab={currentTab}
         activeFiles={activeDisplayFiles}
         isLoadingDirectory={Boolean(currentTab.flatView && !currentTab.currentPath.startsWith('::') && (!(activePane === 'left' ? leftDirectoryState : rightDirectoryState) || (activePane === 'left' ? leftDirectoryState : rightDirectoryState)?.loading || flatDirectories[getPathKey(currentTab.currentPath)]?.error))}
