@@ -7096,7 +7096,11 @@ export default function App() {
     let cancelled = false;
     void buildNativeShellMenu(targets, contextMenuPos.x, contextMenuPos.y)
       .then(model => {
-        if (!cancelled) setShellMenuModel(model);
+        if (cancelled) {
+          void dropNativeShellMenu(model.token);
+          return;
+        }
+        setShellMenuModel(model);
       })
       .catch(error => {
         console.error('[shell-menu] build failed', error);
@@ -7594,6 +7598,8 @@ export default function App() {
           onRequestEmptyRecycleBin={handleRequestEmptyRecycleBin}
           onOpenRecents={() => { void handleNavigate(RECENT_PATH, activePane); if (isCompactWindow) setSidebarDrawerOpen(false); }}
           customFolderIcons={customFolderIcons}
+          onShellMenuVerbComplete={() => { void handleNavigate(currentTab.currentPath, activePane, true); }}
+          onShellMenuVerbError={error => showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)))}
         />
         </div>
         )}

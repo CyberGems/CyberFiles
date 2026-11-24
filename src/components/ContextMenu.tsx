@@ -50,6 +50,7 @@ import type { NativeShellMenuEntry } from '../utils/nativeFileSystem';
 import { useLanguage } from '../locales/LanguageContext';
 import { isPortableDeviceRoot, isPortablePath, isPortableStorageRoot, isUncPath, isUncServerRoot } from '../utils/fileSystem';
 import type { NewItemKind } from './CreateItemModal';
+import { ShellMenuFlyout } from './ShellMenuFlyout';
 import { Tooltip } from './Tooltip';
 
 interface ContextMenuProps {
@@ -217,6 +218,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const headerReturnRef = useRef<number | null>(null);
   const openFlyoutRef = useRef<{ id: string; rect: DOMRect } | null>(null);
   openFlyoutRef.current = openFlyout;
+  const shellTriggerHoveredRef = useRef<HTMLButtonElement | null>(null);
   const flyoutTimersRef = useRef<{ open: number | null; close: number | null }>({ open: null, close: null });
   const cancelFlyoutTimers = () => {
     if (flyoutTimersRef.current.open !== null) window.clearTimeout(flyoutTimersRef.current.open);
@@ -252,7 +254,10 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   };
   const scheduleFlyoutClose = () => {
     cancelFlyoutTimers();
-    flyoutTimersRef.current.close = window.setTimeout(() => setOpenFlyout(null), 250);
+    flyoutTimersRef.current.close = window.setTimeout(() => {
+      if (flyoutRef.current?.matches(':hover') || document.querySelector('[data-shell-flyout]:hover')) return;
+      setOpenFlyout(null);
+    }, 250);
   };
   const focusFirstFlyoutItem = () => {
     flyoutRef.current?.querySelector<HTMLButtonElement>('button[role^="menuitem"]:not(:disabled)')?.focus();
@@ -300,7 +305,19 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
     setOpenFlyout(null);
     cancelFlyoutTimers();
     headerReturnRef.current = null;
+    shellTriggerHoveredRef.current = null;
   }, [position]);
+
+  /* If the user hovered "Show more options" while the Shell menu was still
+     building, open the flyout as soon as the items arrive. */
+  useEffect(() => {
+    if (!shellMenuItems?.length) return;
+    const trigger = shellTriggerHoveredRef.current;
+    if (!trigger?.matches(':hover') || openFlyoutRef.current?.id === 'shell-menu') return;
+    flyoutTriggerRef.current = trigger;
+    focusFlyoutOnOpenRef.current = false;
+    openFlyoutFor('shell-menu', trigger.getBoundingClientRect());
+  }, [shellMenuItems]);
 
   /* Keyboard-opened menus start on their first row, like native Windows menus.
      The row is focused once the portal has painted; a hidden element cannot
@@ -610,7 +627,14 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         );
       case 'shell-menu':
         return shellMenuItems
-          ? <ShellMenuFlyout items={shellMenuItems} onVerb={verbId => { onShellVerb?.(verbId); onClose(); }} />
+          ? (
+            <ShellMenuFlyout
+              items={shellMenuItems}
+              onVerb={verbId => { onShellVerb?.(verbId); onClose(); }}
+              onPortalMouseEnter={cancelFlyoutTimers}
+              onPortalMouseLeave={scheduleFlyoutClose}
+            />
+          )
           : null;
       default:
         return null;
@@ -901,9 +925,19 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                   label={t.contextMenu.showMoreOptions}
                   trailing={shellMenuItems?.length ? <ChevronRight className="h-3.5 w-3.5 text-neutral-400" /> : undefined}
                   expanded={shellMenuItems?.length ? openFlyout?.id === 'shell-menu' : undefined}
+                  flyoutId={shellMenuItems?.length ? 'shell-menu' : undefined}
                   onClick={shellMenuItems?.length
                     ? event => toggleFlyout('shell-menu', event)
                     : () => { onShowMoreOptions?.(); onClose(); }}
+                  onMouseEnter={event => {
+                    shellTriggerHoveredRef.current = event.currentTarget;
+                    if (shellMenuItems?.length) scheduleFlyoutOpen('shell-menu', event);
+                  }}
+                  onMouseLeave={() => {
+                    shellTriggerHoveredRef.current = null;
+                    if (shellMenuItems?.length) scheduleFlyoutClose();
+                  }}
+                  onKeyDown={event => handleSubmenuTriggerKeyDown('shell-menu', Boolean(shellMenuItems?.length), event)}
                 />
               </>
             ) : null}
@@ -1086,9 +1120,19 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                 label={t.contextMenu.showMoreOptions}
                 trailing={shellMenuItems?.length ? <ChevronRight className="h-3.5 w-3.5 text-neutral-400" /> : undefined}
                 expanded={shellMenuItems?.length ? openFlyout?.id === 'shell-menu' : undefined}
+                flyoutId={shellMenuItems?.length ? 'shell-menu' : undefined}
                 onClick={shellMenuItems?.length
                   ? event => toggleFlyout('shell-menu', event)
                   : () => { onShowMoreOptions?.(); onClose(); }}
+                onMouseEnter={event => {
+                  shellTriggerHoveredRef.current = event.currentTarget;
+                  if (shellMenuItems?.length) scheduleFlyoutOpen('shell-menu', event);
+                }}
+                onMouseLeave={() => {
+                  shellTriggerHoveredRef.current = null;
+                  if (shellMenuItems?.length) scheduleFlyoutClose();
+                }}
+                onKeyDown={event => handleSubmenuTriggerKeyDown('shell-menu', Boolean(shellMenuItems?.length), event)}
               />
             </>
           ) : null}
@@ -1108,7 +1152,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
         onMouseEnter={cancelFlyoutTimers}
         onMouseLeave={scheduleFlyoutClose}
         onContextMenu={event => event.preventDefault()}
-        className="fixed z-[110] min-w-[232px] w-max max-w-[340px] max-h-[calc(100vh-20px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
+        className="fixed z-[110] min-w-[232px] w-max max-w-[340px] max-h-[calc(100vh-20px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-1 text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
       >
         {flyoutContent()}
       </div>
@@ -1119,139 +1163,6 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
 };
 
 const MenuDivider = () => <div className="my-1 h-px bg-neutral-800/90" />;
-
-/* Renders one level of the enumerated Shell menu as a styled panel. Submenu
-   entries chain further panels, so the whole Shell menu lives inside the app's
-   own flyout styling instead of a native OS popup. */
-function ShellMenuFlyout({ items, onVerb }: { items: NativeShellMenuEntry[]; onVerb: (verbId: number) => void }) {
-  const [openSubmenu, setOpenSubmenu] = useState<{ entry: NativeShellMenuEntry; anchor: DOMRect } | null>(null);
-  const submenuRef = useRef<HTMLDivElement>(null);
-  const timersRef = useRef<{ open: number | null; close: number | null }>({ open: null, close: null });
-  const panelRef = useRef<HTMLDivElement>(null);
-  const cancelTimers = () => {
-    if (timersRef.current.open !== null) window.clearTimeout(timersRef.current.open);
-    if (timersRef.current.close !== null) window.clearTimeout(timersRef.current.close);
-    timersRef.current = { open: null, close: null };
-  };
-  useEffect(() => () => cancelTimers(), []);
-
-  useLayoutEffect(() => {
-    if (!openSubmenu || !submenuRef.current) return;
-    const panel = submenuRef.current.getBoundingClientRect();
-    const anchor = openSubmenu.anchor;
-    const margin = 8;
-    let left = anchor.right + 2;
-    if (left + panel.width + margin > window.innerWidth) left = anchor.left - panel.width - 2;
-    left = Math.max(margin, Math.min(left, window.innerWidth - panel.width - margin));
-    const top = Math.max(margin, Math.min(anchor.top - 4, window.innerHeight - panel.height - margin));
-    submenuRef.current.style.left = `${left}px`;
-    submenuRef.current.style.top = `${top}px`;
-  }, [openSubmenu]);
-
-  const openSubmenuFor = (entry: NativeShellMenuEntry, rect: DOMRect) => {
-    cancelTimers();
-    setOpenSubmenu({ entry, anchor: rect });
-  };
-
-  const row = (entry: NativeShellMenuEntry, index: number) => {
-    if (entry.kind === 'separator') {
-      return <div key={`sep-${index}`} className="my-1 h-px bg-neutral-800/90" />;
-    }
-    const isSubmenu = entry.kind === 'submenu' && (entry.items?.length ?? 0) > 0;
-    const isOpen = openSubmenu?.entry === entry;
-    return (
-      <button
-        key={`${index}-${entry.label ?? ''}-${entry.verbId ?? 'sub'}`}
-        type="button"
-        role="menuitem"
-        disabled={entry.disabled}
-        onClick={event => {
-          if (isSubmenu) {
-            toggleOrOpenSubmenu(entry, event);
-            return;
-          }
-          if (entry.verbId !== undefined) {
-            onVerb(entry.verbId);
-          }
-        }}
-        onMouseEnter={event => {
-          if (isSubmenu) {
-            const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-            timersRef.current.open = window.setTimeout(() => {
-              timersRef.current.open = null;
-              setOpenSubmenu({ entry, anchor: rect });
-            }, 150);
-          } else {
-            cancelTimers();
-            setOpenSubmenu(null);
-          }
-        }}
-        onMouseLeave={() => {
-          /* Closing is deferred so crossing into the chained panel keeps it. */
-          if (isOpen) {
-            timersRef.current.close = window.setTimeout(() => {
-              timersRef.current.close = null;
-              if (submenuRef.current?.matches(':hover')) return;
-              setOpenSubmenu(null);
-            }, 400);
-          }
-        }}
-        className={`flex w-full items-center gap-2.5 rounded px-3 py-2 text-left text-xs text-neutral-200 outline-none transition-colors hover:bg-cyan-950/50 hover:text-cyan-100 focus-visible:bg-cyan-950/50 focus-visible:text-cyan-100 disabled:cursor-not-allowed disabled:text-neutral-600 disabled:hover:bg-transparent ${isOpen ? 'bg-cyan-950/50 text-cyan-100' : ''}`}
-      >
-        <span className={`flex h-4 w-4 shrink-0 items-center justify-center ${entry.disabled ? 'text-neutral-600' : 'text-cyan-400'}`}>
-          {entry.icon ? (
-            <img
-              src={entry.icon}
-              alt=""
-              draggable={false}
-              className={`h-4 w-4 object-contain${entry.disabled ? ' opacity-45 grayscale' : ''}`}
-            />
-          ) : entry.checked ? (
-            <Check className="h-3.5 w-3.5" />
-          ) : (
-            <span />
-          )}
-        </span>
-        <span className="flex-1 truncate">{entry.label}</span>
-        {isSubmenu && <ChevronRight className="h-3.5 w-3.5 text-neutral-400" />}
-      </button>
-    );
-  };
-
-  const toggleOrOpenSubmenu = (entry: NativeShellMenuEntry, event: React.MouseEvent) => {
-    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
-    if (openSubmenu?.entry === entry) {
-      cancelTimers();
-      setOpenSubmenu(null);
-    } else {
-      openSubmenuFor(entry, rect);
-    }
-  };
-
-  return (
-    <div
-      ref={panelRef}
-      data-shell-flyout="true"
-      className="min-w-[220px]"
-    >
-      {items.map((entry, index) => row(entry, index))}
-      {openSubmenu && openSubmenu.entry.items && createPortal(
-        <div
-          ref={submenuRef}
-          data-shell-flyout="true"
-          role="menu"
-          onContextMenu={event => event.preventDefault()}
-          onMouseLeave={() => setOpenSubmenu(null)}
-          style={{ left: -10000, top: -10000 }}
-          className="fixed z-[110] min-w-[220px] w-max max-w-[340px] max-h-[calc(100vh-20px)] overflow-y-auto rounded-xl border border-neutral-700/80 bg-neutral-900/95 p-1 text-xs shadow-2xl shadow-black/70 backdrop-blur-xl select-none"
-        >
-          <ShellMenuFlyout items={openSubmenu.entry.items} onVerb={onVerb} />
-        </div>,
-        document.body,
-      )}
-    </div>
-  );
-}
 
 const HeaderActionButton: React.FC<{
   icon: React.ReactNode;

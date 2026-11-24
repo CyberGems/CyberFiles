@@ -31,7 +31,7 @@ import {
 import { DriveInfo, FileItem, NETWORK_PATH, QuickAccessItem, QuickAccessSortMode, RECENT_PATH, RECYCLE_BIN_PATH, SYSTEM_HOME_PATH } from '../types';
 import { formatFileSize, isPathOnUnavailableDrive, isPathOnUnavailablePortableDevice, isPortableDeviceRoot, isSameOrDescendantPath, isUncPath, normalizeDriveLetter } from '../utils/fileSystem';
 import { isValidDropDestinationPath } from '../utils/externalDrop';
-import { isTauriDesktop, listNativeDirectory, showNativeShellContextMenu, type RecycleBinStatus, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
+import { buildNativeShellMenu, dropNativeShellMenu, invokeNativeShellMenuVerb, isTauriDesktop, listNativeDirectory, showNativeShellContextMenu, type BuiltNativeShellMenu, type RecycleBinStatus, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
 import { FolderIconRenderer } from './folderIconsData';
 import { SidebarContextMenu, type SidebarContextMenuItem, type SidebarContextMenuState } from './SidebarContextMenu';
@@ -74,6 +74,8 @@ interface SidebarProps {
   onRequestEmptyRecycleBin: () => void;
   onOpenRecents: () => void;
   customFolderIcons?: SavedFolderIcons;
+  onShellMenuVerbComplete?: () => void;
+  onShellMenuVerbError?: (error: unknown) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -103,6 +105,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onRequestEmptyRecycleBin,
   onOpenRecents,
   customFolderIcons,
+  onShellMenuVerbComplete,
+  onShellMenuVerbError,
 }) => {
   const { t, language } = useLanguage();
   const windowsSpecialFolderLabels: Record<WindowsSpecialFolder['id'], string> = {
@@ -464,12 +468,76 @@ export const Sidebar: React.FC<SidebarProps> = ({
   /* Right-click menus: every sidebar element builds its own action list, mirroring the
      inline affordances each row already offers. */
   const [sidebarContextMenu, setSidebarContextMenu] = useState<SidebarContextMenuState | null>(null);
+  const [sidebarShellMenu, setSidebarShellMenu] = useState<BuiltNativeShellMenu | null>(null);
   const openSidebarContextMenu = (event: React.MouseEvent, title: string, items: SidebarContextMenuItem[]) => {
     event.preventDefault();
     event.stopPropagation();
     dismissAllTooltips();
     setSidebarContextMenu({ x: event.clientX, y: event.clientY, title, items });
   };
+
+  const closeSidebarContextMenu = React.useCallback(() => {
+    setSidebarContextMenu(null);
+    setSidebarShellMenu(previous => {
+      if (previous) void dropNativeShellMenu(previous.token);
+      return null;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!sidebarContextMenu || !isTauriDesktop()) {
+      setSidebarShellMenu(previous => {
+        if (previous) void dropNativeShellMenu(previous.token);
+        return null;
+      });
+      return;
+    }
+    const shellTargets = sidebarContextMenu.items.find(item => item.shellTargets?.length)?.shellTargets;
+    if (!shellTargets?.length) {
+      setSidebarShellMenu(previous => {
+        if (previous) void dropNativeShellMenu(previous.token);
+        return null;
+      });
+      return;
+    }
+    let cancelled = false;
+    void buildNativeShellMenu(shellTargets, sidebarContextMenu.x, sidebarContextMenu.y)
+      .then(model => {
+        if (cancelled) {
+          void dropNativeShellMenu(model.token);
+          return;
+        }
+        setSidebarShellMenu(previous => {
+          if (previous) void dropNativeShellMenu(previous.token);
+          return model;
+        });
+      })
+      .catch(error => {
+        console.error('[shell-menu] sidebar build failed', error);
+        if (!cancelled) {
+          setSidebarShellMenu(previous => {
+            if (previous) void dropNativeShellMenu(previous.token);
+            return null;
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sidebarContextMenu]);
+
+  const handleSidebarShellVerb = React.useCallback((verbId: number) => {
+    if (!sidebarShellMenu) return;
+    void invokeNativeShellMenuVerb(sidebarShellMenu.token, verbId)
+      .then(() => {
+        onShellMenuVerbComplete?.();
+        closeSidebarContextMenu();
+      })
+      .catch(error => {
+        console.error('[shell-menu] sidebar verb failed', verbId, error);
+        onShellMenuVerbError?.(error);
+      });
+  }, [closeSidebarContextMenu, onShellMenuVerbComplete, onShellMenuVerbError, sidebarShellMenu]);
 
   /* Plain filesystem paths and the Shell-backed virtual locations can be handed to
      Explorer's own Shell context menu (Recents has no Shell equivalent). */
@@ -478,16 +546,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
     || path === SYSTEM_HOME_PATH
     || path === NETWORK_PATH
     || path === RECYCLE_BIN_PATH;
-  const buildMoreOptionsItem = (paths: string[], origin: { x: number; y: number }): SidebarContextMenuItem => ({
-    id: 'more-options',
-    label: t.contextMenu.showMoreOptions,
-    icon: <MoreHorizontal className="h-4 w-4" />,
-    onSelect: () => {
-      const supported = paths.filter(shellMenuSupportedPath);
-      if (supported.length === 0) return;
-      void showNativeShellContextMenu(supported, origin.x, origin.y);
-    },
-  });
+  const buildMoreOptionsItem = (paths: string[], origin: { x: number; y: number }): SidebarContextMenuItem => {
+    const supported = paths.filter(shellMenuSupportedPath);
+    return {
+      id: 'more-options',
+      label: t.contextMenu.showMoreOptions,
+      icon: <MoreHorizontal className="h-4 w-4" />,
+      shellTargets: supported.length > 0 ? supported : undefined,
+      onSelect: () => {
+        if (supported.length === 0) return;
+        void showNativeShellContextMenu(supported, origin.x, origin.y);
+      },
+    };
+  };
 
   const buildQuickAccessMenuItems = (item: QuickAccessItem, origin: { x: number; y: number }): SidebarContextMenuItem[] => {
     const isVirtualLocation = item.path === SYSTEM_HOME_PATH || item.path === NETWORK_PATH;
@@ -1074,7 +1145,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
       {sidebarContextMenu && (
-        <SidebarContextMenu menu={sidebarContextMenu} onClose={() => setSidebarContextMenu(null)} />
+        <SidebarContextMenu
+          menu={sidebarContextMenu}
+          shellMenuItems={sidebarShellMenu?.items}
+          onShellVerb={handleSidebarShellVerb}
+          onClose={closeSidebarContextMenu}
+        />
       )}
     </aside>
   );

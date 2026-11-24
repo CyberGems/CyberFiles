@@ -42,7 +42,7 @@ mod windows_impl {
   use std::collections::VecDeque;
   use std::sync::atomic::{AtomicU32, Ordering};
   use std::sync::mpsc;
-  use windows::core::{Interface, PCSTR, PCWSTR, PWSTR};
+  use windows::core::{Interface, PCSTR, PCWSTR, PSTR, PWSTR};
   use windows::Win32::Foundation::{HANDLE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
   use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
   use windows::Win32::Graphics::Gdi::{
@@ -57,9 +57,9 @@ mod windows_impl {
   };
   use windows::Win32::UI::Shell::Common::ITEMIDLIST;
   use windows::Win32::UI::Shell::{
-    BHID_SFUIObject, CMF_NORMAL, CMINVOKECOMMANDINFOEX, CMIC_MASK_PTINVOKE,
-    IContextMenu, IContextMenu2, IContextMenu3, ILFree, SHCreateItemFromIDList,
-    SHCreateShellItemArrayFromIDLists, SHParseDisplayName,
+    BHID_SFUIObject, CMF_NORMAL, CMINVOKECOMMANDINFOEX, CMIC_MASK_PTINVOKE, GCS_HELPTEXTW,
+    GCS_VERBA, GCS_VERBW, IContextMenu, IContextMenu2, IContextMenu3, ILFree,
+    SHCreateItemFromIDList, SHCreateShellItemArrayFromIDLists, SHParseDisplayName,
   };
 
   /* Not exported by the windows crate; the documented CMIC_MASK_UNICODE value. */
@@ -200,7 +200,7 @@ mod windows_impl {
 
   /* Removes accelerator markers ("E&xit" -> "Exit") while keeping escaped
      ampersands ("Cu&&t" -> "Cu&t") and the characters after them ("&Abrir" -> "Abrir"). */
-  fn clean_menu_label(raw: &str) -> String {
+  pub(super) fn clean_menu_label(raw: &str) -> String {
     let mut output = String::with_capacity(raw.len());
     let mut chars = raw.chars().peekable();
     while let Some(character) = chars.next() {
@@ -218,6 +218,20 @@ mod windows_impl {
       }
     }
     output.trim().to_string()
+  }
+
+  pub(super) fn normalize_fallback_label(raw: &str, max_chars: usize) -> Option<String> {
+    let mut cleaned = clean_menu_label(raw);
+    if cleaned.contains('\n') || cleaned.contains('\r') {
+      return None;
+    }
+    if cleaned.ends_with('.') && !cleaned.ends_with("..") {
+      cleaned = cleaned.trim_end_matches('.').trim().to_string();
+    }
+    if cleaned.is_empty() || cleaned.chars().count() > max_chars {
+      return None;
+    }
+    Some(cleaned)
   }
 
   fn is_real_bitmap(handle: HBITMAP) -> bool {
@@ -406,6 +420,7 @@ mod windows_impl {
   }
 
   struct IconCaptureContext {
+    cm: IContextMenu,
     cm2: Option<IContextMenu2>,
     cm3: Option<IContextMenu3>,
     dc: HDC,
@@ -445,6 +460,7 @@ mod windows_impl {
   }
 
   unsafe fn create_icon_capture(
+    cm: IContextMenu,
     cm2: Option<IContextMenu2>,
     cm3: Option<IContextMenu3>,
   ) -> Result<IconCaptureContext, String> {
@@ -470,6 +486,7 @@ mod windows_impl {
       })?;
     let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
     Ok(IconCaptureContext {
+      cm,
       cm2,
       cm3,
       dc,
@@ -597,6 +614,90 @@ mod windows_impl {
     None
   }
 
+  unsafe fn read_menu_item_string(hmenu: HMENU, index: u32) -> Option<String> {
+    let mut text_info = MENUITEMINFOW {
+      cbSize: std::mem::size_of::<MENUITEMINFOW>() as u32,
+      fMask: MENU_ITEM_MASK(MIIM_STRING.0),
+      dwTypeData: PWSTR::null(),
+      cch: 0,
+      ..Default::default()
+    };
+    if GetMenuItemInfoW(hmenu, index, true, &mut text_info).is_err() {
+      return None;
+    }
+    let length = text_info.cch as usize;
+    if length == 0 {
+      return None;
+    }
+    let mut buffer = vec![0u16; length + 1];
+    text_info.dwTypeData = PWSTR(buffer.as_mut_ptr());
+    text_info.cch = buffer.len() as u32;
+    if GetMenuItemInfoW(hmenu, index, true, &mut text_info).is_err() {
+      return None;
+    }
+    let label = clean_menu_label(&String::from_utf16_lossy(
+      &buffer[..(text_info.cch as usize).min(buffer.len())],
+    ));
+    (!label.is_empty()).then_some(label)
+  }
+
+  unsafe fn command_string_label(cm: &IContextMenu, verb_offset: u32) -> Option<String> {
+    let mut wide_buf = [0u16; 256];
+    if cm
+      .GetCommandString(
+        verb_offset as usize,
+        GCS_VERBW,
+        None,
+        PSTR(wide_buf.as_mut_ptr().cast()),
+        wide_buf.len() as u32,
+      )
+      .is_ok()
+    {
+      let len = wide_buf.iter().position(|&c| c == 0).unwrap_or(wide_buf.len());
+      let label = clean_menu_label(&String::from_utf16_lossy(&wide_buf[..len]));
+      if !label.is_empty() {
+        return Some(label);
+      }
+    }
+
+    let mut ansi_buf = [0u8; 256];
+    if cm
+      .GetCommandString(
+        verb_offset as usize,
+        GCS_VERBA,
+        None,
+        PSTR(ansi_buf.as_mut_ptr()),
+        ansi_buf.len() as u32,
+      )
+      .is_ok()
+    {
+      let len = ansi_buf.iter().position(|&b| b == 0).unwrap_or(ansi_buf.len());
+      let label = clean_menu_label(&String::from_utf8_lossy(&ansi_buf[..len]));
+      if !label.is_empty() {
+        return Some(label);
+      }
+    }
+
+    let mut help_buf = [0u16; 256];
+    if cm
+      .GetCommandString(
+        verb_offset as usize,
+        GCS_HELPTEXTW,
+        None,
+        PSTR(help_buf.as_mut_ptr().cast()),
+        help_buf.len() as u32,
+      )
+      .is_ok()
+    {
+      let len = help_buf.iter().position(|&c| c == 0).unwrap_or(help_buf.len());
+      if let Some(label) = normalize_fallback_label(&String::from_utf16_lossy(&help_buf[..len]), 64) {
+        return Some(label);
+      }
+    }
+
+    None
+  }
+
   unsafe fn walk_shell_menu(hmenu: HMENU, capture: &IconCaptureContext, depth: u8) -> Vec<ShellMenuEntry> {
     if depth >= 8 {
       return Vec::new();
@@ -624,32 +725,20 @@ mod windows_impl {
         entries.push(ShellMenuEntry { kind: "separator".to_string(), icon: None, label: None, verb_id: None, disabled: false, checked: false, items: None });
         continue;
       }
-      /* Bitmap and fully owner-drawn entries cannot be represented as text in this
-         phase, so they are omitted (the native popup stays as their fallback). */
-      if (info.fType.0 & (MFT_BITMAP.0 | MFT_OWNERDRAW.0)) != 0 {
+      if (info.fType.0 & MFT_BITMAP.0) != 0 {
         continue;
       }
-      let mut text_info = MENUITEMINFOW {
-        cbSize: std::mem::size_of::<MENUITEMINFOW>() as u32,
-        fMask: MENU_ITEM_MASK(MIIM_STRING.0),
-        dwTypeData: PWSTR::null(),
-        cch: 0,
-        ..Default::default()
+      let is_owner_draw = (info.fType.0 & MFT_OWNERDRAW.0) != 0;
+      let label = match read_menu_item_string(hmenu, index) {
+        Some(label) => label,
+        None if is_owner_draw && info.wID >= MENU_ID_FIRST && info.wID <= MENU_ID_LAST => {
+          match command_string_label(&capture.cm, info.wID - MENU_ID_FIRST) {
+            Some(label) => label,
+            None => continue,
+          }
+        }
+        None => continue,
       };
-      if GetMenuItemInfoW(hmenu, index, true, &mut text_info).is_err() {
-        continue;
-      }
-      let length = text_info.cch as usize;
-      if length == 0 {
-        continue;
-      }
-      let mut buffer = vec![0u16; length + 1];
-      text_info.dwTypeData = PWSTR(buffer.as_mut_ptr());
-      text_info.cch = buffer.len() as u32;
-      if GetMenuItemInfoW(hmenu, index, true, &mut text_info).is_err() {
-        continue;
-      }
-      let label = clean_menu_label(&String::from_utf16_lossy(&buffer[..(text_info.cch as usize).min(buffer.len())]));
       let disabled = (info.fState.0 & MFS_DISABLED.0) != 0;
       let checked = (info.fState.0 & MFS_CHECKED.0) != 0;
       let icon = extract_entry_icon(capture, &info, checked, hmenu);
@@ -805,7 +894,7 @@ mod windows_impl {
     }
     let cm2: Option<IContextMenu2> = context_menu.cast().ok();
     let cm3: Option<IContextMenu3> = context_menu.cast().ok();
-    let capture = match create_icon_capture(cm2, cm3) {
+    let capture = match create_icon_capture(context_menu.clone(), cm2, cm3) {
       Ok(capture) => capture,
       Err(error) => {
         let _ = DestroyMenu(hmenu);
@@ -979,9 +1068,23 @@ pub fn drop_shell_context_menu(_token: u32) {}
 
 #[cfg(all(test, target_os = "windows"))]
 mod tests {
-  use super::windows_impl::{bgra_to_icon_rgba, matte_black_and_white_bgra};
+  use super::windows_impl::{
+    bgra_to_icon_rgba, clean_menu_label, matte_black_and_white_bgra, normalize_fallback_label,
+  };
   use super::{build_shell_context_menu, drop_shell_context_menu, ShellMenuEntry};
   use base64::Engine as _;
+
+  #[test]
+  fn clean_and_normalize_labels_handle_accelerators_and_fallback_limits() {
+    assert_eq!(clean_menu_label("E&xit"), "Exit");
+    assert_eq!(clean_menu_label("Cu&&t"), "Cu&t");
+    assert_eq!(clean_menu_label("  &Abrir  "), "Abrir");
+    assert_eq!(normalize_fallback_label("Open with Notepad.", 64).as_deref(), Some("Open with Notepad"));
+    assert_eq!(normalize_fallback_label("&Open...", 64).as_deref(), Some("Open..."));
+    assert_eq!(normalize_fallback_label("Line 1\nLine 2", 64), None);
+    assert_eq!(normalize_fallback_label("   ", 64), None);
+    assert_eq!(normalize_fallback_label("Too long string", 5), None);
+  }
 
   #[test]
   fn bgra_to_icon_rgba_unpremultiplies_premultiplied_alpha() {
