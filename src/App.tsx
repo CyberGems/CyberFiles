@@ -175,6 +175,7 @@ const EMPTY_AREA_DOUBLE_CLICK_KEY = 'cyberfiles_empty_area_double_click_navigate
 const TYPING_ACTIVATES_FILTER_KEY = 'cyberfiles_typing_activates_filter_v1';
 const MOUSE_GESTURES_ENABLED_KEY = 'cyberfiles_mouse_gestures_enabled_v1';
 const FOLDER_STYLE_LOCKED_KEY = 'cyberfiles_folder_style_locked';
+const AUTO_SAVE_WORKSPACE_KEY = 'cyberfiles_auto_save_workspace_v1';
 const SIDEBAR_LOCATIONS_NEW_TAB_KEY = 'cyberfiles_sidebar_locations_open_in_new_tab_v1';
 const TOOLBAR_LABEL_POSITION_KEY = 'cyberfiles_toolbar_label_position_v1';
 const NEW_TABS_NEXT_TO_CURRENT_KEY = 'cyberfiles_new_tabs_next_to_current_v1';
@@ -937,6 +938,7 @@ export default function App() {
   const [columnPreferencesRevision, setColumnPreferencesRevision] = useState(0);
   const [sessionReloadToken, setSessionReloadToken] = useState(initialSessionProfile ? 1 : 0);
   const [folderStyleLocked, setFolderStyleLocked] = useState(readFolderStyleLockPreference);
+  const [autoSaveWorkspace, setAutoSaveWorkspace] = useState(() => readBooleanPreference(AUTO_SAVE_WORKSPACE_KEY, false));
   const [savedFolderStyles, setSavedFolderStyles] = useState<SavedFolderStyles>(readSavedFolderStyles);
   const [customFolderIcons, setCustomFolderIcons] = useState<SavedFolderIcons>(readCustomFolderIcons);
   const [folderIconTarget, setFolderIconTarget] = useState<{ path: string; name: string } | null>(null);
@@ -2206,10 +2208,65 @@ export default function App() {
     setIsUnsavedWorkspaceChangesOpen(false);
   }, [workspaceStore, applyLayoutSnapshot, applySessionSnapshot, startsAtSystemHome, t.sidebar.thisPc, runCloseAction]);
 
+  const commitWorkspaceChangesAuto = useCallback((options?: { saveLayout?: boolean; saveSession?: boolean }): WorkspaceProfileStore | null => {
+    const saveLayout = (options?.saveLayout ?? true) && layoutDirty;
+    const saveSession = (options?.saveSession ?? true) && sessionDirty;
+    if (!saveLayout && !saveSession) return null;
+
+    let nextStore = workspaceStore;
+    let nextLayoutId = activeLayoutId;
+    let nextSessionId = activeSessionId;
+
+    if (saveLayout) {
+      if (activeLayoutId === DEFAULT_LAYOUT_PROFILE_ID) {
+        const name = suggestUnusedProfileName(t.workspaceProfiles.suggestedLayoutName, nextStore.layouts.map(profile => profile.name));
+        const profile: LayoutProfile = { id: createProfileId('layout'), name, snapshot: currentLayoutSnapshot, updatedAt: Date.now() };
+        nextStore = { ...nextStore, layouts: [...nextStore.layouts, profile] };
+        nextLayoutId = profile.id;
+        setActiveLayoutId(profile.id);
+      } else {
+        nextStore = { ...nextStore, layouts: nextStore.layouts.map(profile => profile.id === activeLayoutId ? { ...profile, snapshot: currentLayoutSnapshot, updatedAt: Date.now() } : profile) };
+      }
+    }
+
+    if (saveSession) {
+      if (activeSessionId === DEFAULT_SESSION_PROFILE_ID) {
+        const name = suggestUnusedProfileName(t.workspaceProfiles.suggestedSessionName, nextStore.sessions.map(profile => profile.name));
+        const profile: TabSessionProfile = { id: createProfileId('session'), name, snapshot: currentSessionSnapshot, updatedAt: Date.now() };
+        nextStore = { ...nextStore, sessions: [...nextStore.sessions, profile] };
+        nextSessionId = profile.id;
+        setActiveSessionId(profile.id);
+      } else {
+        nextStore = { ...nextStore, sessions: nextStore.sessions.map(profile => profile.id === activeSessionId ? { ...profile, snapshot: currentSessionSnapshot, updatedAt: Date.now() } : profile) };
+      }
+    }
+
+    const activeWorkspace = nextStore.workspaces.find(profile => profile.id === activeWorkspaceId);
+    if (activeWorkspace) {
+      const updatedWorkspace = {
+        ...activeWorkspace,
+        layoutId: activeWorkspace.layoutId === activeLayoutId && saveLayout ? nextLayoutId : activeWorkspace.layoutId,
+        sessionId: activeWorkspace.sessionId === activeSessionId && saveSession ? nextSessionId : activeWorkspace.sessionId,
+        updatedAt: Date.now(),
+      };
+      if (updatedWorkspace.layoutId !== activeWorkspace.layoutId || updatedWorkspace.sessionId !== activeWorkspace.sessionId) {
+        nextStore = { ...nextStore, workspaces: nextStore.workspaces.map(profile => profile.id === activeWorkspaceId ? updatedWorkspace : profile) };
+      }
+    }
+
+    persistProfileStoreForActive(nextStore, nextLayoutId, nextSessionId, activeWorkspaceId);
+    return nextStore;
+  }, [workspaceStore, activeLayoutId, activeSessionId, activeWorkspaceId, layoutDirty, sessionDirty, currentLayoutSnapshot, currentSessionSnapshot, t.workspaceProfiles.suggestedLayoutName, t.workspaceProfiles.suggestedSessionName, persistProfileStoreForActive]);
+
   const requestWorkspaceAction = useCallback((action: PendingWorkspaceAction) => {
     const checkLayout = action.type === 'quit' || action.type === 'close' || action.type === 'workspace' || action.type === 'layout';
     const checkSession = action.type === 'quit' || action.type === 'close' || action.type === 'workspace' || action.type === 'session';
     if ((checkLayout && layoutDirty) || (checkSession && sessionDirty)) {
+      if (autoSaveWorkspace) {
+        const updatedStore = commitWorkspaceChangesAuto({ saveLayout: checkLayout, saveSession: checkSession });
+        executeWorkspaceAction(action, updatedStore ?? workspaceStore);
+        return;
+      }
       setPendingWorkspaceAction(action);
       setIsUnsavedWorkspaceChangesOpen(true);
       if (action.type === 'quit' || action.type === 'close') {
@@ -2219,7 +2276,7 @@ export default function App() {
       return;
     }
     executeWorkspaceAction(action);
-  }, [layoutDirty, sessionDirty, executeWorkspaceAction]);
+  }, [layoutDirty, sessionDirty, autoSaveWorkspace, commitWorkspaceChangesAuto, executeWorkspaceAction, workspaceStore]);
 
   const savePendingWorkspaceChanges = useCallback((names: WorkspaceChangesSaveNames) => {
     const action = pendingWorkspaceAction;
@@ -2445,6 +2502,22 @@ export default function App() {
       // Keep the selected behavior for the current session when storage is unavailable.
     }
   }, [folderStyleLocked]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(AUTO_SAVE_WORKSPACE_KEY, String(autoSaveWorkspace));
+    } catch {
+      // Keep the selected behavior for the current session when storage is unavailable.
+    }
+  }, [autoSaveWorkspace]);
+
+  useEffect(() => {
+    if (!autoSaveWorkspace || (!layoutDirty && !sessionDirty)) return;
+    const timer = window.setTimeout(() => {
+      commitWorkspaceChangesAuto();
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [autoSaveWorkspace, layoutDirty, sessionDirty, commitWorkspaceChangesAuto]);
 
   useEffect(() => {
     try {
@@ -7529,7 +7602,11 @@ export default function App() {
         onToggleLocationsPanel={() => setSidebarOpen(value => !value)}
         toolbarLabelPosition={toolbarLabelPosition}
         onOpenWorkspaceManager={() => setIsWorkspaceManagerOpen(true)}
-        workspaceChangesPending={layoutDirty || sessionDirty}
+        workspaceChangesPending={!autoSaveWorkspace && (layoutDirty || sessionDirty)}
+        autoSaveWorkspace={autoSaveWorkspace}
+        onToggleAutoSaveWorkspace={() => setAutoSaveWorkspace(enabled => !enabled)}
+        styleLocked={folderStyleLocked}
+        onToggleStyleLock={toggleFolderStyleLock}
         viewMode={currentTab.viewMode}
         onViewModeChange={handleViewModeChange}
         iconZoom={currentTab.folderStyle?.iconZoom}
@@ -7640,7 +7717,6 @@ export default function App() {
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   typingActivatesFilter={typingActivatesFilter}
                   mouseGesturesEnabled={mouseGesturesEnabled}
-                  onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('left')}
                   tab={leftTabs[activeLeftTabIndex]}
                   tabs={leftTabs}
@@ -7738,7 +7814,6 @@ export default function App() {
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   typingActivatesFilter={typingActivatesFilter}
                   mouseGesturesEnabled={mouseGesturesEnabled}
-                  onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('right')}
                   tab={rightTabs[activeRightTabIndex]}
                   tabs={rightTabs}
@@ -7837,7 +7912,6 @@ export default function App() {
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   typingActivatesFilter={typingActivatesFilter}
                   mouseGesturesEnabled={mouseGesturesEnabled}
-                  onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('left')}
                   tab={leftTabs[activeLeftTabIndex]}
                   tabs={leftTabs}
@@ -7931,7 +8005,6 @@ export default function App() {
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   typingActivatesFilter={typingActivatesFilter}
                   mouseGesturesEnabled={mouseGesturesEnabled}
-                  onStyleLockToggle={toggleFolderStyleLock}
                   onActivate={() => setActivePane('right')}
                   tab={rightTabs[activeRightTabIndex]}
                   tabs={rightTabs}
@@ -8030,7 +8103,6 @@ export default function App() {
                   emptyAreaDoubleClickNavigatesUp={emptyAreaDoubleClickNavigatesUp}
                   typingActivatesFilter={typingActivatesFilter}
                   mouseGesturesEnabled={mouseGesturesEnabled}
-                onStyleLockToggle={toggleFolderStyleLock}
                 onActivate={() => {}}
                 tab={currentTab}
                 tabs={activeTabs}

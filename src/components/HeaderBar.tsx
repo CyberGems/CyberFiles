@@ -25,6 +25,9 @@ import {
   PanelRight,
   Pencil,
   ClipboardCopy,
+  Save,
+  LockKeyhole,
+  UnlockKeyhole,
 } from 'lucide-react';
 import { ViewLayout, ViewMode, type IconZoomLevel } from '../types';
 import { isPortableDeviceRoot, isPortablePath } from '../utils/fileSystem';
@@ -90,6 +93,10 @@ interface HeaderBarProps {
   onToggleFlatView: () => void;
   onOpenWorkspaceManager: () => void;
   workspaceChangesPending: boolean;
+  autoSaveWorkspace: boolean;
+  onToggleAutoSaveWorkspace: () => void;
+  styleLocked: boolean;
+  onToggleStyleLock: () => void;
 }
 
 export const HeaderBar: React.FC<HeaderBarProps> = ({
@@ -137,6 +144,10 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onToggleFlatView,
   onOpenWorkspaceManager,
   workspaceChangesPending,
+  autoSaveWorkspace,
+  onToggleAutoSaveWorkspace,
+  styleLocked,
+  onToggleStyleLock,
 }) => {
   const { t } = useLanguage();
   const disabled = selectedCount === 0;
@@ -163,6 +174,10 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
     'powershell-admin': t.toolbar.powerShellAdminHere,
   };
   const workspaceTooltip = `${t.workspaceProfiles.open}${workspaceChangesPending ? ` · ${t.workspaceProfiles.modified}` : ''}`;
+  const autoSaveTooltip = autoSaveWorkspace ? t.workspaceProfiles.autoSaveOnTooltip : t.workspaceProfiles.autoSaveOffTooltip;
+  const styleLockTooltip = flatView
+    ? t.pane.folderStyleLockUnavailableFlatView
+    : styleLocked ? t.pane.folderStyleLocked : t.pane.folderStyleUnlocked;
 
   /* Groups fold into the overflow menu only when the bar actually runs out of
      room. Each pass derives the desired collapsed set from the live layout
@@ -273,13 +288,30 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
     {
       id: 'workspace-manager',
       label: t.workspaceProfiles.title,
-      entries: [{
-        id: 'workspace-manager',
-        label: t.workspaceProfiles.title,
-        shortcut: 'Alt+W',
-        icon: <PanelsTopLeft className="h-4 w-4" />,
-        onSelect: onOpenWorkspaceManager,
-      }],
+      entries: [
+        {
+          id: 'workspace-manager',
+          label: t.workspaceProfiles.title,
+          shortcut: 'Alt+W',
+          icon: <PanelsTopLeft className="h-4 w-4" />,
+          onSelect: onOpenWorkspaceManager,
+        },
+        {
+          id: 'auto-save-workspace',
+          label: labels.autoSave,
+          icon: <Save className="h-4 w-4" />,
+          pressed: autoSaveWorkspace,
+          onSelect: onToggleAutoSaveWorkspace,
+        },
+        {
+          id: 'style-lock',
+          label: labels.styleLock,
+          icon: styleLocked ? <LockKeyhole className="h-4 w-4" /> : <UnlockKeyhole className="h-4 w-4" />,
+          pressed: styleLocked,
+          disabled: flatView,
+          onSelect: onToggleStyleLock,
+        },
+      ],
     },
     {
       id: 'locations-panel',
@@ -592,6 +624,25 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
             tooltipShortcut="Alt+W"
             ariaLabel={workspaceTooltip}
             badge={workspaceChangesPending}
+          />
+          <CommandBarButton
+            label={labels.autoSave}
+            labelPosition={toolbarLabelPosition}
+            icon={<Save />}
+            pressed={autoSaveWorkspace}
+            onClick={onToggleAutoSaveWorkspace}
+            tooltip={autoSaveTooltip}
+            ariaLabel={autoSaveTooltip}
+          />
+          <CommandBarButton
+            label={labels.styleLock}
+            labelPosition={toolbarLabelPosition}
+            icon={styleLocked ? <LockKeyhole /> : <UnlockKeyhole />}
+            pressed={styleLocked}
+            disabled={flatView}
+            onClick={onToggleStyleLock}
+            tooltip={styleLockTooltip}
+            ariaLabel={styleLockTooltip}
           />
         </div>
 
