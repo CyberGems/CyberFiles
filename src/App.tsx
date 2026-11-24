@@ -8446,6 +8446,7 @@ export default function App() {
 
       <UnsavedWorkspaceChangesModal
         isOpen={isUnsavedWorkspaceChangesOpen}
+        isExiting={pendingWorkspaceAction?.type === 'quit'}
         layoutChanged={pendingLayoutChanged}
         sessionChanged={pendingSessionChanged}
         layoutNeedsName={pendingLayoutChanged && activeLayoutId === DEFAULT_LAYOUT_PROFILE_ID}

@@ -11,6 +11,7 @@ export interface WorkspaceChangesSaveNames {
 
 interface UnsavedWorkspaceChangesModalProps {
   isOpen: boolean;
+  isExiting?: boolean;
   layoutChanged: boolean;
   sessionChanged: boolean;
   layoutNeedsName: boolean;
@@ -25,6 +26,7 @@ interface UnsavedWorkspaceChangesModalProps {
 
 export function UnsavedWorkspaceChangesModal({
   isOpen,
+  isExiting = false,
   layoutChanged,
   sessionChanged,
   layoutNeedsName,
@@ -127,7 +129,7 @@ export function UnsavedWorkspaceChangesModal({
                 {copy.saveChangesTitle}
               </h2>
               <p id="unsaved-workspace-description" className="mt-1 text-xs leading-5 text-neutral-400 sm:text-sm">
-                {copy.saveChangesDescription}
+                {isExiting ? copy.saveChangesExitDescription : copy.saveChangesDescription}
               </p>
             </div>
           </div>
@@ -210,7 +212,7 @@ export function UnsavedWorkspaceChangesModal({
 
         <footer className="flex flex-col-reverse gap-2 border-t border-neutral-800/90 bg-neutral-950/35 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
           <DialogButton size="compact" disabled={busy} onClick={onDiscardAndContinue} className="w-full sm:w-auto">
-            <span className="inline-flex items-center gap-2"><Trash2 className="h-3.5 w-3.5" />{copy.discardAndContinue}</span>
+            <span className="inline-flex items-center gap-2"><Trash2 className="h-3.5 w-3.5" />{isExiting ? copy.discardAndExit : copy.discardAndContinue}</span>
           </DialogButton>
           <DialogButton
             size="compact"
@@ -222,7 +224,7 @@ export function UnsavedWorkspaceChangesModal({
             onClick={submitSave}
             className="w-full sm:w-auto"
           >
-            <span className="inline-flex items-center gap-2"><Save className="h-3.5 w-3.5" />{copy.saveAndContinue}</span>
+            <span className="inline-flex items-center gap-2"><Save className="h-3.5 w-3.5" />{isExiting ? copy.saveAndExit : copy.saveAndContinue}</span>
           </DialogButton>
         </footer>
       </section>
