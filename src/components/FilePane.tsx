@@ -4687,25 +4687,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </div>,
           document.body,
         )}
-
-        <Tooltip label={styleLockLabel} placement="bottom">
-          <span
-            className={`inline-flex rounded ${styleLockInactive ? 'cursor-not-allowed' : ''}`}
-            tabIndex={styleLockInactive ? 0 : undefined}
-            aria-label={styleLockInactive ? styleLockLabel : undefined}
-          >
-            <button
-              type="button"
-              aria-label={styleLockLabel}
-              aria-pressed={styleLocked}
-              disabled={styleLockInactive}
-              onClick={onStyleLockToggle}
-              className={`rounded border p-1 transition-colors disabled:pointer-events-none ${styleLockInactive ? 'border-transparent text-neutral-600 opacity-40' : styleLocked ? 'border-cyan-700/60 bg-cyan-950/60 text-cyan-300' : 'border-transparent text-neutral-500 hover:border-neutral-700 hover:bg-neutral-800 hover:text-neutral-200'}`}
-            >
-              {styleLocked ? <LockKeyhole className="h-3.5 w-3.5" /> : <UnlockKeyhole className="h-3.5 w-3.5" />}
-            </button>
-          </span>
-        </Tooltip>
       </div>
 
       {/* 3. Filter / selection bar: one row, two states, constant height */}
@@ -5923,34 +5904,62 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </Tooltip>
         ) : <span />}
 
-        <Tooltip
-          placement="top"
-          label={(
-            <div className="min-w-56 p-0.5 text-left">
-              <div className="mb-2 flex items-center gap-2 font-semibold text-neutral-100">
-                <Keyboard className="h-3.5 w-3.5 text-cyan-300" aria-hidden="true" />
-                <span>{t.pane.listerShortcutsTitle}</span>
+        <div className="flex items-center gap-1.5 justify-self-end">
+          <Tooltip label={styleLockLabel} placement="top">
+            <span
+              className={`inline-flex rounded ${styleLockInactive ? 'cursor-not-allowed' : ''}`}
+              tabIndex={styleLockInactive ? 0 : undefined}
+              aria-label={styleLockInactive ? styleLockLabel : undefined}
+            >
+              <button
+                type="button"
+                aria-label={styleLockLabel}
+                aria-pressed={styleLocked}
+                disabled={styleLockInactive}
+                onMouseDown={event => event.preventDefault()}
+                onClick={onStyleLockToggle}
+                className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border transition-colors outline-none disabled:pointer-events-none ${
+                  styleLockInactive
+                    ? 'border-transparent text-neutral-600 opacity-40'
+                    : styleLocked
+                      ? 'border-cyan-700/60 bg-cyan-950/60 text-cyan-300'
+                      : 'border-neutral-800 bg-neutral-900/70 text-neutral-400 hover:border-cyan-900/70 hover:text-cyan-300 focus-visible:border-cyan-700 focus-visible:text-cyan-200'
+                }`}
+              >
+                {styleLocked ? <LockKeyhole className="h-3.5 w-3.5" /> : <UnlockKeyhole className="h-3.5 w-3.5" />}
+              </button>
+            </span>
+          </Tooltip>
+
+          <Tooltip
+            placement="top"
+            label={(
+              <div className="min-w-56 p-0.5 text-left">
+                <div className="mb-2 flex items-center gap-2 font-semibold text-neutral-100">
+                  <Keyboard className="h-3.5 w-3.5 text-cyan-300" aria-hidden="true" />
+                  <span>{t.pane.listerShortcutsTitle}</span>
+                </div>
+                <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5">
+                  {listerShortcuts.map(shortcut => (
+                    <React.Fragment key={shortcut.key}>
+                      <TooltipShortcut>{shortcut.key}</TooltipShortcut>
+                      <span className="text-neutral-300">{shortcut.label}</span>
+                    </React.Fragment>
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5">
-                {listerShortcuts.map(shortcut => (
-                  <React.Fragment key={shortcut.key}>
-                    <TooltipShortcut>{shortcut.key}</TooltipShortcut>
-                    <span className="text-neutral-300">{shortcut.label}</span>
-                  </React.Fragment>
-                ))}
-              </div>
-            </div>
-          )}
-        >
-          <span
-            role="img"
-            tabIndex={0}
-            aria-label={t.pane.listerShortcutsTitle}
-            className="inline-flex h-6 w-6 shrink-0 cursor-help items-center justify-center justify-self-end rounded border border-neutral-800 bg-neutral-900/70 text-neutral-400 outline-none transition-colors hover:border-cyan-900/70 hover:text-cyan-300 focus-visible:border-cyan-700 focus-visible:text-cyan-200"
+            )}
           >
-            <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />
-          </span>
-        </Tooltip>
+            <span
+              role="img"
+              tabIndex={0}
+              aria-label={t.pane.listerShortcutsTitle}
+              className="inline-flex h-6 w-6 shrink-0 cursor-help items-center justify-center rounded border border-neutral-800 bg-neutral-900/70 text-neutral-400 outline-none transition-colors hover:border-cyan-900/70 hover:text-cyan-300 focus-visible:border-cyan-700 focus-visible:text-cyan-200"
+            >
+              <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />
+            </span>
+          </Tooltip>
+        </div>
       </div>
     </div>
   );
