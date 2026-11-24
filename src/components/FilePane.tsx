@@ -5918,7 +5918,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 disabled={styleLockInactive}
                 onMouseDown={event => event.preventDefault()}
                 onClick={onStyleLockToggle}
-                className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border transition-colors outline-none disabled:pointer-events-none ${
+                className={`cyberfiles-pane-footer-toggle inline-flex h-6 w-6 shrink-0 items-center justify-center rounded border transition-colors outline-none disabled:pointer-events-none ${
                   styleLockInactive
                     ? 'border-transparent text-neutral-600 opacity-40'
                     : styleLocked
