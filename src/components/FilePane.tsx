@@ -192,23 +192,30 @@ function getDisplayItemName(item: FileItem, showFileExtensions: boolean): string
   return extensionSeparator > 0 ? item.name.slice(0, extensionSeparator) : item.name;
 }
 /* Titles that do not fit their tab sweep through the overflow once the pointer or
-   the keyboard focus arrives. The overflow is measured here, once per arrival, and
-   handed to the CSS animation through a custom property; titles that fit never get
-   the flag, so they never animate. With the setting off, a lingering flag is
-   removed so a hover that started before the change cannot keep sweeping. */
+   the keyboard focus arrives. Overflow is measured once against the inner text span
+   and animated via CSS transform so layout and pointer hit-testing stay fixed. With
+   the setting off, lingering flags and variables are cleared. */
 function setTabTitleMarquee(tabElement: Element, enabled: boolean) {
-  const title = tabElement.querySelector('.cyberfiles-tab-title');
-  if (!(title instanceof HTMLElement)) return;
+  const outer = tabElement.querySelector<HTMLElement>('.cyberfiles-tab-title');
+  const inner = outer?.querySelector<HTMLElement>('.cyberfiles-tab-title-text');
+  if (!outer || !inner) return;
   if (!enabled) {
-    title.removeAttribute('data-title-marquee');
+    outer.removeAttribute('data-title-marquee');
+    outer.style.removeProperty('--cyberfiles-tab-title-shift');
+    outer.style.removeProperty('--cyberfiles-tab-title-duration');
     return;
   }
-  const shift = title.clientWidth - title.scrollWidth;
-  if (shift < 0) {
-    title.setAttribute('data-title-marquee', 'true');
-    title.style.setProperty('--cyberfiles-tab-title-shift', `${shift}px`);
+  const overflow = Math.ceil(inner.getBoundingClientRect().width - outer.clientWidth);
+  if (overflow > 1) {
+    const shift = -(overflow + 4);
+    const durationSec = Math.max(4, Math.min(12, 2.4 + overflow / 35));
+    outer.setAttribute('data-title-marquee', 'true');
+    outer.style.setProperty('--cyberfiles-tab-title-shift', `${shift}px`);
+    outer.style.setProperty('--cyberfiles-tab-title-duration', `${durationSec.toFixed(2)}s`);
   } else {
-    title.removeAttribute('data-title-marquee');
+    outer.removeAttribute('data-title-marquee');
+    outer.style.removeProperty('--cyberfiles-tab-title-shift');
+    outer.style.removeProperty('--cyberfiles-tab-title-duration');
   }
 }
 
@@ -4117,7 +4124,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
           : `cyberfiles-folder-tab group flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium cursor-pointer border-x transition-colors ${tabStripPosition === 'bottom' ? 'rounded-b-md border-b' : 'rounded-t-md border-t'} ${isTabActive ? 'bg-neutral-900 border-neutral-700 text-neutral-100 relative z-10' : 'bg-neutral-950/40 border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/40'}`}
       >
         <Folder className={`h-3.5 w-3.5 shrink-0 ${isTabActive ? 'text-cyan-400' : 'text-neutral-500'}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined} />
-        <span className={`cyberfiles-tab-title truncate text-[11px] ${vertical ? 'min-w-0 flex-1' : ''}`} style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined}>{tabName}</span>
+        <span
+          className={`cyberfiles-tab-title truncate text-[11px] ${vertical ? 'min-w-0 flex-1' : 'min-w-0'}`}
+          style={tabItem.tabColor ? { color: tabItem.tabColor } : undefined}
+        >
+          <span className="cyberfiles-tab-title-text">{tabName}</span>
+        </span>
         {tabItem.lockClose && <LockKeyhole aria-label={t.tabMenu.lock} className="ml-auto h-3 w-3 shrink-0 text-amber-300/80" />}
         {tabs.length > 1 && !tabItem.lockClose && (
           <Tooltip label={t.pane.closeTab} placement={tooltipPlacement}>

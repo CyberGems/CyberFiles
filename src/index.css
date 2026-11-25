@@ -1463,29 +1463,39 @@ html[data-theme='light'] [data-system-home-icon='portable'] {
    and keyboard focus. The tab measures the overflow once when the pointer or the
    focus arrives (setTabTitleMarquee in FilePane) and stores it in
    --cyberfiles-tab-title-shift, so titles that fit never carry the
-   data-title-marquee flag and never animate. The resting state keeps the plain
-   ellipsis; the sweep swaps it for a hard clip while the text travels, and
-   reduced-motion users always keep the ellipsis. */
+   data-title-marquee flag and never animate. Animating transform on the inner
+   text span keeps tab width stable and avoids main-thread layout stalls. */
 @keyframes cyberfiles-tab-title-marquee {
-  0% { text-indent: 0px; animation-timing-function: linear; }
-  4% { text-indent: 0px; animation-timing-function: ease-in-out; }
-  28% { text-indent: var(--cyberfiles-tab-title-shift, 0px); animation-timing-function: linear; }
-  62% { text-indent: var(--cyberfiles-tab-title-shift, 0px); animation-timing-function: ease-in-out; }
-  82% { text-indent: 0px; animation-timing-function: linear; }
-  100% { text-indent: 0px; }
+  0% { transform: translateX(0px); animation-timing-function: linear; }
+  6% { transform: translateX(0px); animation-timing-function: ease-in-out; }
+  38% { transform: translateX(var(--cyberfiles-tab-title-shift, 0px)); animation-timing-function: linear; }
+  62% { transform: translateX(var(--cyberfiles-tab-title-shift, 0px)); animation-timing-function: ease-in-out; }
+  90% { transform: translateX(0px); animation-timing-function: linear; }
+  100% { transform: translateX(0px); }
 }
 
 .cyberfiles-folder-tab:hover .cyberfiles-tab-title[data-title-marquee='true'],
 .cyberfiles-folder-tab:focus-visible .cyberfiles-tab-title[data-title-marquee='true'] {
   text-overflow: clip;
-  animation: cyberfiles-tab-title-marquee 8s linear 150ms infinite;
+}
+
+.cyberfiles-folder-tab:hover .cyberfiles-tab-title[data-title-marquee='true'] .cyberfiles-tab-title-text,
+.cyberfiles-folder-tab:focus-visible .cyberfiles-tab-title[data-title-marquee='true'] .cyberfiles-tab-title-text {
+  display: inline-block;
+  will-change: transform;
+  animation: cyberfiles-tab-title-marquee var(--cyberfiles-tab-title-duration, 6s) linear 150ms infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .cyberfiles-folder-tab:hover .cyberfiles-tab-title[data-title-marquee='true'],
   .cyberfiles-folder-tab:focus-visible .cyberfiles-tab-title[data-title-marquee='true'] {
-    animation: none;
     text-overflow: ellipsis;
+  }
+
+  .cyberfiles-folder-tab:hover .cyberfiles-tab-title[data-title-marquee='true'] .cyberfiles-tab-title-text,
+  .cyberfiles-folder-tab:focus-visible .cyberfiles-tab-title[data-title-marquee='true'] .cyberfiles-tab-title-text {
+    display: inline;
+    animation: none;
   }
 }
 
