@@ -208,9 +208,9 @@ export async function loadNativeTextPreview(path: string): Promise<string> {
   return invoke<string>('read_text_preview', { path });
 }
 
-export async function loadNativeArchivePreview(path: string, password?: string): Promise<NativeArchivePreview> {
+export async function loadNativeArchivePreview(path: string, password?: string, jobId?: string): Promise<NativeArchivePreview> {
   if (!isTauriDesktop()) throw new Error('Archive previews are only available in the desktop app.');
-  return invoke<NativeArchivePreview>('read_archive_preview', { path, password: password ?? null });
+  return invoke<NativeArchivePreview>('read_archive_preview', { path, password: password ?? null, jobId: jobId ?? null });
 }
 export async function loadNativePdfPreviewUrl(path: string): Promise<string> {
   if (!isTauriDesktop()) throw new Error('Native PDF previews are unavailable.');

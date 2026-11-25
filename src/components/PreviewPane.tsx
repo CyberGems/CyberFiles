@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, FileText, Folder, Image as ImageIcon, Code2, Copy, Check, Info, Music, Video, ChevronDown, ChevronUp, ExternalLink, Archive, TriangleAlert } from 'lucide-react';
 import { FileItem } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
@@ -162,6 +162,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
   const [archivePreviewState, setArchivePreviewState] = useState<'idle' | 'loading' | 'ready' | 'unavailable' | 'password-required' | 'desktop-only' | 'too-many-entries'>('idle');
   const [archivePassword, setArchivePassword] = useState('');
   const [archivePasswordError, setArchivePasswordError] = useState(false);
+  const archivePreviewJobIdRef = useRef<string | null>(null);
   const [folderContent, setFolderContent] = useState<{ itemId: string; status: 'loading' | 'done' | 'error'; summary?: FolderContentSummary } | null>(null);
   const [folderSize, setFolderSize] = useState<{ itemId: string; status: 'loading' | 'done' | 'error'; size?: number; complete?: boolean } | null>(null);
   const { t, language } = useLanguage();
@@ -339,21 +340,34 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
       return;
     }
     let cancelled = false;
+    if (archivePreviewJobIdRef.current) {
+      void cancelNativeFolderSizeCalculation(archivePreviewJobIdRef.current);
+    }
+    const jobId = createPreviewScanJobId();
+    archivePreviewJobIdRef.current = jobId;
     setArchivePreview(null);
     setArchivePassword('');
     setArchivePasswordError(false);
     setArchivePreviewState('loading');
-    void loadNativeArchivePreview(item.path).then(data => {
-      if (cancelled) return;
+    void loadNativeArchivePreview(item.path, undefined, jobId).then(data => {
+      if (cancelled || archivePreviewJobIdRef.current !== jobId) return;
+      archivePreviewJobIdRef.current = null;
       setArchivePreview({ itemId: item.id, data });
       setArchivePreviewState('ready');
     }).catch(error => {
-      if (!cancelled) {
+      if (!cancelled && archivePreviewJobIdRef.current === jobId) {
+        archivePreviewJobIdRef.current = null;
         const reason = String(error);
         setArchivePreviewState(reason.includes('ARCHIVE_TOO_MANY_ENTRIES') ? 'too-many-entries' : reason.includes('ARCHIVE_PASSWORD_REQUIRED') ? 'password-required' : 'unavailable');
       }
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (archivePreviewJobIdRef.current === jobId) {
+        archivePreviewJobIdRef.current = null;
+      }
+      void cancelNativeFolderSizeCalculation(jobId);
+    };
   }, [item?.id, item?.path, item?.extension, item?.type, item?.isFolder]);
 
   useEffect(() => {
@@ -414,7 +428,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
       if (archivePreviewState === 'desktop-only') return <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400"><Archive className="h-10 w-10 text-violet-400" /><span className="text-[11px]">{t.preview.archivePreviewDesktopOnly}</span></div>;
       if (archivePreviewState === 'loading') return <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400"><Archive className="h-10 w-10 text-violet-400" /><span className="text-[11px]">{t.preview.archiveLoading}</span></div>;
       if (archivePreviewState === 'too-many-entries') return <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400"><TriangleAlert className="h-10 w-10 text-amber-400" /><span className="text-[11px]">{t.core.archiveTooManyEntries}</span></div>;
-      if (archivePreviewState === 'password-required') return <div className="flex flex-col items-center justify-center gap-3 p-5 text-center text-neutral-300"><Archive className="h-9 w-9 text-violet-400" /><div className="text-xs font-medium">{t.preview.archivePasswordRequired}</div><form className="flex w-full max-w-xs flex-col gap-2" onSubmit={event => { event.preventDefault(); const password = archivePassword; if (!password) return; setArchivePassword(''); setArchivePasswordError(false); setArchivePreviewState('loading'); void loadNativeArchivePreview(item.path, password).then(data => { setArchivePreview({ itemId: item.id, data }); setArchivePreviewState('ready'); }).catch(error => { const reason = String(error); if (reason.includes('ARCHIVE_INVALID_PASSWORD') || reason.includes('ARCHIVE_PASSWORD_REQUIRED')) { setArchivePasswordError(true); setArchivePreviewState('password-required'); } else { setArchivePreviewState('unavailable'); } }); }}><input type="password" autoComplete="new-password" value={archivePassword} onChange={event => setArchivePassword(event.target.value)} placeholder={t.preview.archivePasswordPlaceholder} aria-label={t.preview.archivePasswordRequired} className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-left text-xs text-neutral-100 outline-none focus:border-cyan-500" />{archivePasswordError && <span className="text-left text-[10px] text-amber-300">{t.preview.archivePasswordIncorrect}</span>}<button type="submit" disabled={!archivePassword} className="rounded-md bg-cyan-800 px-3 py-2 text-xs font-semibold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50">{t.preview.archivePasswordContinue}</button></form></div>;
+      if (archivePreviewState === 'password-required') return <div className="flex flex-col items-center justify-center gap-3 p-5 text-center text-neutral-300"><Archive className="h-9 w-9 text-violet-400" /><div className="text-xs font-medium">{t.preview.archivePasswordRequired}</div><form className="flex w-full max-w-xs flex-col gap-2" onSubmit={event => { event.preventDefault(); const password = archivePassword; if (!password) return; if (archivePreviewJobIdRef.current) { void cancelNativeFolderSizeCalculation(archivePreviewJobIdRef.current); } const jobId = createPreviewScanJobId(); archivePreviewJobIdRef.current = jobId; setArchivePassword(''); setArchivePasswordError(false); setArchivePreviewState('loading'); void loadNativeArchivePreview(item.path, password, jobId).then(data => { if (archivePreviewJobIdRef.current !== jobId) return; archivePreviewJobIdRef.current = null; setArchivePreview({ itemId: item.id, data }); setArchivePreviewState('ready'); }).catch(error => { if (archivePreviewJobIdRef.current !== jobId) return; archivePreviewJobIdRef.current = null; const reason = String(error); if (reason.includes('ARCHIVE_INVALID_PASSWORD') || reason.includes('ARCHIVE_PASSWORD_REQUIRED')) { setArchivePasswordError(true); setArchivePreviewState('password-required'); } else { setArchivePreviewState('unavailable'); } }); }}><input type="password" autoComplete="new-password" value={archivePassword} onChange={event => setArchivePassword(event.target.value)} placeholder={t.preview.archivePasswordPlaceholder} aria-label={t.preview.archivePasswordRequired} className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-left text-xs text-neutral-100 outline-none focus:border-cyan-500" />{archivePasswordError && <span className="text-left text-[10px] text-amber-300">{t.preview.archivePasswordIncorrect}</span>}<button type="submit" disabled={!archivePassword} className="rounded-md bg-cyan-800 px-3 py-2 text-xs font-semibold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:opacity-50">{t.preview.archivePasswordContinue}</button></form></div>;
       const preview = archivePreview?.itemId === item.id ? archivePreview.data : null;
       if (!preview || archivePreviewState === 'unavailable') return <div className="flex flex-col items-center justify-center gap-3 p-6 text-center text-neutral-400"><Archive className="h-10 w-10 text-violet-400" /><span className="text-[11px]">{t.preview.archivePreviewUnavailable}</span></div>;
       return (

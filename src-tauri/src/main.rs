@@ -4883,7 +4883,15 @@ fn safe_archive_relative_path(raw_name: &str, is_rar: bool) -> Option<PathBuf> {
     Some(relative)
 }
 
-fn collect_archive_members(path: &Path, password: Option<&str>) -> Result<Vec<ArchiveMember>, String> {
+fn collect_archive_members(
+    path: &Path,
+    password: Option<&str>,
+    cancelled: Option<&AtomicBool>,
+) -> Result<Vec<ArchiveMember>, String> {
+    let is_cancelled = || cancelled.is_some_and(|flag| flag.load(Ordering::Relaxed));
+    if is_cancelled() {
+        return Err("Archive preview cancelled.".to_string());
+    }
     let extension = archive_extension(path)?;
     let metadata =
         fs::symlink_metadata(path).map_err(|error| format!("Cannot inspect archive: {error}"))?;
@@ -4893,6 +4901,9 @@ fn collect_archive_members(path: &Path, password: Option<&str>) -> Result<Vec<Ar
     let resolved = path
         .canonicalize()
         .map_err(|error| format!("Cannot resolve archive: {error}"))?;
+    if is_cancelled() {
+        return Err("Archive preview cancelled.".to_string());
+    }
     if extension == "zip" {
         let file =
             fs::File::open(&resolved).map_err(|error| format!("Cannot open archive: {error}"))?;
@@ -4903,6 +4914,9 @@ fn collect_archive_members(path: &Path, password: Option<&str>) -> Result<Vec<Ar
         }
         let mut members = Vec::with_capacity(archive.len());
         for index in 0..archive.len() {
+            if is_cancelled() {
+                return Err("Archive preview cancelled.".to_string());
+            }
             let entry = archive
                 .by_index_raw(index)
                 .map_err(|error| format!("Cannot read ZIP entry: {error}"))?;
@@ -4939,35 +4953,44 @@ fn collect_archive_members(path: &Path, password: Option<&str>) -> Result<Vec<Ar
                 other => format!("Cannot read RAR archive: {other}"),
             })?,
         };
+        if is_cancelled() {
+            return Err("Archive preview cancelled.".to_string());
+        }
         let has_complete_volume_set = !archive.more_volumes();
         let indexed_members = archive.indexed_member_infos();
         if indexed_members.len() > MAX_ARCHIVE_MEMBERS {
             return Err("ARCHIVE_TOO_MANY_ENTRIES".to_string());
         }
-        Ok(indexed_members
-            .into_iter()
-            .map(|entry| {
-                let info = entry.info;
-                let raw_name = info.raw_name;
-                ArchiveMember {
-                    index: entry.index,
-                    relative_path: safe_archive_relative_path(&raw_name, true),
-                    name: info.name,
-                    is_directory: info.is_directory,
-                    size: info.unpacked_size.unwrap_or(0),
-                    compressed_size: info.compressed_size,
-                    is_link: info.is_symlink || info.is_hardlink || info.is_file_copy,
-                    extractable: entry.extractable && has_complete_volume_set,
-                    encrypted: info.is_encrypted,
-                }
-            })
-            .collect())
+        let mut members = Vec::with_capacity(indexed_members.len());
+        for entry in indexed_members {
+            if is_cancelled() {
+                return Err("Archive preview cancelled.".to_string());
+            }
+            let info = entry.info;
+            let raw_name = info.raw_name;
+            members.push(ArchiveMember {
+                index: entry.index,
+                relative_path: safe_archive_relative_path(&raw_name, true),
+                name: info.name,
+                is_directory: info.is_directory,
+                size: info.unpacked_size.unwrap_or(0),
+                compressed_size: info.compressed_size,
+                is_link: info.is_symlink || info.is_hardlink || info.is_file_copy,
+                extractable: entry.extractable && has_complete_volume_set,
+                encrypted: info.is_encrypted,
+            });
+        }
+        Ok(members)
     }
 }
 
-fn read_archive_preview_blocking(path: &str, password: Option<&str>) -> Result<ArchivePreview, String> {
+fn read_archive_preview_blocking(
+    path: &str,
+    password: Option<&str>,
+    cancelled: Option<&AtomicBool>,
+) -> Result<ArchivePreview, String> {
     let source = Path::new(path);
-    let members = collect_archive_members(source, password)?;
+    let members = collect_archive_members(source, password, cancelled)?;
     let total_entries = members.len();
     let total_bytes = members
         .iter()
@@ -4994,10 +5017,32 @@ fn read_archive_preview_blocking(path: &str, password: Option<&str>) -> Result<A
 }
 
 #[tauri::command]
-async fn read_archive_preview(path: String, password: Option<String>) -> Result<ArchivePreview, String> {
-    tauri::async_runtime::spawn_blocking(move || read_archive_preview_blocking(&path, password.as_deref()))
-        .await
-        .map_err(|error| format!("Archive preview worker failed: {error}"))?
+async fn read_archive_preview(
+    path: String,
+    password: Option<String>,
+    job_id: Option<String>,
+) -> Result<ArchivePreview, String> {
+    let cancel_token = match job_id.as_deref() {
+        Some(id) => match register_folder_scan_job(id)? {
+            Some(token) => Some(token),
+            None => return Err("Archive preview cancelled.".to_string()),
+        },
+        None => None,
+    };
+
+    let job_id_for_cleanup = job_id.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = job_id_for_cleanup.map(FolderScanJobGuard);
+        if cancel_token
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Relaxed))
+        {
+            return Err("Archive preview cancelled.".to_string());
+        }
+        read_archive_preview_blocking(&path, password.as_deref(), cancel_token.as_deref())
+    })
+    .await
+    .map_err(|error| format!("Archive preview worker failed: {error}"))?
 }
 
 struct ArchiveProgressWriter<'a> {
@@ -5165,7 +5210,7 @@ fn extract_archive_with_progress(
         Ok(target) => target,
         Err(error) => return archive_failure(archive_path, error),
     };
-    let members = match collect_archive_members(&source, password.as_deref()) {
+    let members = match collect_archive_members(&source, password.as_deref(), None) {
         Ok(members) => members,
         Err(error) => return archive_failure(archive_path, error),
     };
@@ -10785,6 +10830,35 @@ mod folder_scan_cancellation_tests {
             .expect("bounded scan should complete when not cancelled");
         assert_eq!(result.size, 48);
         assert!(result.complete);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn archive_preview_member_collection_stops_when_cancelled() {
+        let temp_dir = std::env::temp_dir().join(format!("cyberfiles-archive-cancel-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).expect("create temp dir");
+        let zip_path = temp_dir.join("sample.zip");
+        {
+            let file = fs::File::create(&zip_path).expect("create zip file");
+            let mut writer = ZipWriter::new(file);
+            writer
+                .start_file("hello.txt", SimpleFileOptions::default())
+                .expect("start zip entry");
+            writer.write_all(b"hello").expect("write zip entry");
+            writer.finish().expect("finish zip file");
+        }
+
+        let cancelled = AtomicBool::new(true);
+        let result = collect_archive_members(&zip_path, None, Some(&cancelled));
+        assert!(result.is_err());
+
+        let not_cancelled = AtomicBool::new(false);
+        let members = collect_archive_members(&zip_path, None, Some(&not_cancelled))
+            .expect("archive listing should succeed when not cancelled");
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].name, "hello.txt");
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
