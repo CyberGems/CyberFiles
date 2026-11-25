@@ -3020,6 +3020,51 @@ export default function App() {
     setRightTabs(tabs => redirectTabs(tabs, 'right'));
   }, [invalidateFlatDirectories]);
 
+  const driveCapacityRefreshInFlightRef = useRef(false);
+  const driveCapacityRefreshQueuedRef = useRef(false);
+
+  const refreshDriveCapacities = useCallback(async () => {
+    if (!isTauriDesktop()) return;
+    if (driveCapacityRefreshInFlightRef.current) {
+      driveCapacityRefreshQueuedRef.current = true;
+      return;
+    }
+
+    driveCapacityRefreshInFlightRef.current = true;
+    try {
+      do {
+        driveCapacityRefreshQueuedRef.current = false;
+        try {
+          const nextDrives = await listNativeDrives();
+          const current = drivesRef.current;
+          const changed =
+            current.length !== nextDrives.length ||
+            nextDrives.some((drive, index) => {
+              const previous = current[index];
+              return (
+                !previous ||
+                previous.id !== drive.id ||
+                previous.letter !== drive.letter ||
+                previous.label !== drive.label ||
+                previous.totalBytes !== drive.totalBytes ||
+                previous.usedBytes !== drive.usedBytes ||
+                previous.type !== drive.type ||
+                previous.rootPath !== drive.rootPath
+              );
+            });
+          if (changed) {
+            drivesRef.current = nextDrives;
+            setDrives(nextDrives);
+          }
+        } catch {
+          // Capacity refreshes are best-effort and must not surface noise or clear existing state.
+        }
+      } while (driveCapacityRefreshQueuedRef.current);
+    } finally {
+      driveCapacityRefreshInFlightRef.current = false;
+    }
+  }, []);
+
   const refreshSystemHome = useCallback(async (notifyDriveChanges = false): Promise<DriveInfo[]> => {
     if (!isTauriDesktop()) {
       setSystemHomeLoading(false);
@@ -3512,6 +3557,7 @@ export default function App() {
       return;
     }
     if (!workspaceRoot || (!systemWorkspace && !isSameOrDescendantPath(targetPath, workspaceRoot))) return;
+    if (forceRefresh) void refreshDriveCapacities();
     if (!forceRefresh && nativeLoadedDirectories.current.has(pathKey)) {
       if (isUncPath(targetPath)) rememberNetworkHost(targetPath);
       rememberRecentFolder(targetPath);
@@ -3656,7 +3702,7 @@ export default function App() {
     } finally {
       if (nativeInFlightDirectories.current.get(pathKey) === generation) nativeInFlightDirectories.current.delete(pathKey);
     }
-  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, systemHomeItems, leftTabs, rightTabs, updatePaneTab, language, refreshSystemHome, refreshRecycleBinContents, refreshNetworkResources, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, t.sidebar.network, folderStyleLocked, savedFolderStyles, newTabsNextToCurrent, rememberNetworkHost, rememberRecentFolder, showHiddenFiles, invalidateFlatDirectories, evictUnavailableDriveState]);
+  }, [activePane, activeLeftTabIndex, activeRightTabIndex, allFiles, systemHomeItems, leftTabs, rightTabs, updatePaneTab, language, refreshDriveCapacities, refreshSystemHome, refreshRecycleBinContents, refreshNetworkResources, showToast, t.sidebar.thisPc, t.sidebar.recycleBinTitle, t.sidebar.recentsTitle, t.sidebar.network, folderStyleLocked, savedFolderStyles, newTabsNextToCurrent, rememberNetworkHost, rememberRecentFolder, showHiddenFiles, invalidateFlatDirectories, evictUnavailableDriveState]);
 
   const handleConnectNetworkHost = useCallback((rawInput: string, targetPane: 'left' | 'right' = activePane) => {
     const normalized = normalizeNetworkHostInput(rawInput);
@@ -3891,7 +3937,8 @@ export default function App() {
       const path = visible.find(entry => entry.pane + ':' + getPathKey(entry.path || '') === key)?.path;
       return path ? handleNavigate(path, pane, true) : Promise.resolve();
     }));
-  }, [activeLeftTabIndex, activeRightTabIndex, handleNavigate, invalidateFlatDirectories, leftTabs, rightTabs]);
+    void refreshDriveCapacities();
+  }, [activeLeftTabIndex, activeRightTabIndex, handleNavigate, invalidateFlatDirectories, leftTabs, refreshDriveCapacities, rightTabs]);
 
   const focusRefreshSnapshot = useRef({
     layout: effectiveLayout,
@@ -6301,6 +6348,7 @@ export default function App() {
         }));
         setLeftTabs(clearRemovedSelections);
         setRightTabs(clearRemovedSelections);
+        void refreshDriveCapacities();
       }
 
       if (removedPaths.length > 0) {
@@ -6369,7 +6417,7 @@ export default function App() {
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [allFiles, invalidateFlatDirectories, isFileOperationBusy, leftTabs, pushUndoAction, recordTransferOperation, refreshRecycleBinContents, refreshRecycleBinStatus, removeRecentPaths, rightTabs, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecycleUnavailable, t.toolbar.undoUnavailable, updateTransferOperation]);
+  }, [allFiles, invalidateFlatDirectories, isFileOperationBusy, leftTabs, pushUndoAction, recordTransferOperation, refreshDriveCapacities, refreshRecycleBinContents, refreshRecycleBinStatus, removeRecentPaths, rightTabs, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecycleUnavailable, t.toolbar.undoUnavailable, updateTransferOperation]);
   performDeleteRef.current = performDelete;
 
   const handleDeleteSelected = useCallback((itemsToDelete?: FileItem[], options: { permanently?: boolean } = {}) => {
@@ -6461,6 +6509,7 @@ export default function App() {
       }
       setIsEmptyRecycleBinConfirmOpen(false);
       showToast(t.core.recycleBinEmptied);
+      void refreshDriveCapacities();
       void refreshRecycleBinStatus();
       void refreshRecycleBinContents();
     } catch (error) {
@@ -6471,12 +6520,13 @@ export default function App() {
         error: String(error),
       }));
       showToast(t.core.recycleBinEmptyFailed);
+      void refreshDriveCapacities();
       void refreshRecycleBinStatus();
       void refreshRecycleBinContents();
     } finally {
       setIsRecycleBinBusy(false);
     }
-  }, [isRecycleBinBusy, pushUndoAction, recordTransferOperation, recycleBinStatus?.itemCount, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.recycleBinEmptied, t.core.recycleBinEmptyFailed, t.toolbar.undoUnavailable, updateTransferOperation]);
+  }, [isRecycleBinBusy, pushUndoAction, recordTransferOperation, recycleBinStatus?.itemCount, refreshDriveCapacities, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.recycleBinEmptied, t.core.recycleBinEmptyFailed, t.toolbar.undoUnavailable, updateTransferOperation]);
 
   const handleRestoreRecycleBinItems = useCallback(async (items: FileItem[]) => {
     if (recycleBinRestoreInFlight.current || recycleBinListingInFlight.current) return;
@@ -6550,6 +6600,7 @@ export default function App() {
         }
       }
 
+      if (result.restoredIds.length > 0) void refreshDriveCapacities();
       void refreshRecycleBinStatus();
       void refreshRecycleBinContents();
       const failedCount = result.failures.length + unavailableCount;
@@ -6578,7 +6629,7 @@ export default function App() {
     } finally {
       recycleBinRestoreInFlight.current = false;
     }
-  }, [activeLeftTabIndex, activePane, activeRightTabIndex, effectiveLayout, handleNavigate, leftTabs, pushUndoAction, recordTransferOperation, refreshRecycleBinContents, refreshRecycleBinStatus, rightTabs, showToast, t.core.recycleBinRestoreFailed, t.core.recycleBinRestorePartial, t.core.recycleBinRestored, updateTransferOperation]);
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, effectiveLayout, handleNavigate, leftTabs, pushUndoAction, recordTransferOperation, refreshDriveCapacities, refreshRecycleBinContents, refreshRecycleBinStatus, rightTabs, showToast, t.core.recycleBinRestoreFailed, t.core.recycleBinRestorePartial, t.core.recycleBinRestored, updateTransferOperation]);
 
   const handleOpenRecycleBin = useCallback(async () => {
     await handleNavigate(RECYCLE_BIN_PATH, activePane);
@@ -7240,13 +7291,14 @@ export default function App() {
         /* Shell verbs can modify the folders they ran on; refresh the context pane
            the same way F5 does so listings never go stale after an operation. */
         if (contextMenuPos) void handleNavigate(contextPaneTab.currentPath, contextPane, true);
+        void refreshDriveCapacities();
         closePaneContextMenu();
       })
       .catch(error => {
         console.error('[shell-menu] verb failed', verbId, error);
         showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
       });
-  }, [closePaneContextMenu, contextPane, contextPaneTab.currentPath, contextMenuPos, handleNavigate, shellMenuModel, showToast, t.core.operationFailedWithReason]);
+  }, [closePaneContextMenu, contextPane, contextPaneTab.currentPath, contextMenuPos, handleNavigate, refreshDriveCapacities, shellMenuModel, showToast, t.core.operationFailedWithReason]);
 
   const saveFolderStyleForPath = (path: string, style: FolderStyle, options?: { silent?: boolean }) => {
     const key = folderStylePathKey(path);

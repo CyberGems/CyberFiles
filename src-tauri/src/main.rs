@@ -7096,8 +7096,10 @@ fn system_drives() -> Vec<NativeDrive> {
 }
 
 #[tauri::command]
-fn list_drives() -> Vec<NativeDrive> {
-    system_drives()
+async fn list_drives() -> Result<Vec<NativeDrive>, String> {
+    tauri::async_runtime::spawn_blocking(system_drives)
+        .await
+        .map_err(|error| format!("Drive listing worker failed: {error}"))
 }
 
 /// Computes a bitmask of logical drives that currently have a mounted, ready
