@@ -7175,6 +7175,211 @@ async fn get_drive_capacities(letters: Vec<String>) -> Result<Vec<NativeDriveCap
         .map_err(|error| format!("Drive capacity worker failed: {error}"))
 }
 
+fn canonicalize_watch_targets(paths: Vec<String>) -> Vec<String> {
+    use std::collections::HashSet;
+
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
+    for raw in paths {
+        let trimmed = raw.trim();
+        if trimmed.is_empty()
+            || trimmed.starts_with("::")
+            || windows_portable_devices::is_portable_path(trimmed)
+            || is_unc_server_root(trimmed).is_some()
+        {
+            continue;
+        }
+        let normalized = if let Some((_letter, root)) = normalize_drive_letter_root(trimmed) {
+            root
+        } else {
+            let stripped = trimmed.trim_end_matches(['\\', '/']);
+            if stripped.is_empty() {
+                continue;
+            }
+            stripped.to_string()
+        };
+        let key = normalized.to_ascii_lowercase();
+        if !seen.insert(key) {
+            continue;
+        }
+        result.push(normalized);
+        if result.len() >= 4 {
+            break;
+        }
+    }
+    result
+}
+
+#[cfg(target_os = "windows")]
+static DIRECTORY_WATCHER: OnceLock<Mutex<HashMap<String, usize>>> = OnceLock::new();
+
+#[cfg(target_os = "windows")]
+fn update_watched_directories(app: tauri::AppHandle, paths: Vec<String>) {
+    use std::collections::HashSet;
+    use std::time::{Duration, Instant};
+    use windows_sys::Win32::Foundation::{
+        CloseHandle, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    };
+    use windows_sys::Win32::Storage::FileSystem::{
+        FindCloseChangeNotification, FindFirstChangeNotificationW, FindNextChangeNotification,
+        FILE_NOTIFY_CHANGE_ATTRIBUTES, FILE_NOTIFY_CHANGE_DIR_NAME, FILE_NOTIFY_CHANGE_FILE_NAME,
+        FILE_NOTIFY_CHANGE_LAST_WRITE, FILE_NOTIFY_CHANGE_SIZE,
+    };
+    use windows_sys::Win32::System::Threading::{
+        CreateEventW, SetEvent, WaitForMultipleObjects, INFINITE,
+    };
+
+    let targets = canonicalize_watch_targets(paths);
+    let target_map: HashMap<String, String> = targets
+        .into_iter()
+        .map(|path| (path.to_ascii_lowercase(), path))
+        .collect();
+    let target_keys: HashSet<String> = target_map.keys().cloned().collect();
+
+    let registry = DIRECTORY_WATCHER.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut new_entries: Vec<(String, String, usize)> = Vec::new();
+    let mut handles_to_stop: Vec<usize> = Vec::new();
+
+    {
+        let Ok(mut map) = registry.lock() else {
+            return;
+        };
+        let keys_to_remove: Vec<String> = map
+            .keys()
+            .filter(|key| !target_keys.contains(*key))
+            .cloned()
+            .collect();
+        for key in keys_to_remove {
+            if let Some(stop_val) = map.remove(&key) {
+                handles_to_stop.push(stop_val);
+            }
+        }
+        for (key, watch_path) in target_map {
+            if map.contains_key(&key) {
+                continue;
+            }
+            let stop_handle = unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) };
+            if stop_handle.is_null() {
+                continue;
+            }
+            let stop_val = stop_handle as usize;
+            map.insert(key.clone(), stop_val);
+            new_entries.push((key, watch_path, stop_val));
+        }
+    }
+
+    for stop_val in handles_to_stop {
+        unsafe {
+            SetEvent(stop_val as HANDLE);
+        }
+    }
+
+    let notify_filter = FILE_NOTIFY_CHANGE_FILE_NAME
+        | FILE_NOTIFY_CHANGE_DIR_NAME
+        | FILE_NOTIFY_CHANGE_ATTRIBUTES
+        | FILE_NOTIFY_CHANGE_SIZE
+        | FILE_NOTIFY_CHANGE_LAST_WRITE;
+
+    for (key, watch_path, stop_val) in new_entries {
+        let app_handle = app.clone();
+        let thread_key = key.clone();
+        let spawn_result = std::thread::Builder::new()
+            .name("dir-watch".to_string())
+            .spawn(move || {
+                let stop_handle = stop_val as HANDLE;
+                let wide: Vec<u16> = watch_path.encode_utf16().chain(Some(0)).collect();
+                let change_handle =
+                    unsafe { FindFirstChangeNotificationW(wide.as_ptr(), 0, notify_filter) };
+                if change_handle.is_null() || change_handle == INVALID_HANDLE_VALUE {
+                    if let Ok(mut map) = DIRECTORY_WATCHER
+                        .get_or_init(|| Mutex::new(HashMap::new()))
+                        .lock()
+                    {
+                        if map.get(&thread_key).copied() == Some(stop_val) {
+                            map.remove(&thread_key);
+                        }
+                    }
+                    unsafe {
+                        CloseHandle(stop_handle);
+                    }
+                    return;
+                }
+
+                let handles = [stop_handle, change_handle];
+                loop {
+                    let wait = unsafe {
+                        WaitForMultipleObjects(handles.len() as u32, handles.as_ptr(), 0, INFINITE)
+                    };
+                    if wait == WAIT_OBJECT_0 + 1 {
+                        if unsafe { FindNextChangeNotification(change_handle) } == 0 {
+                            break;
+                        }
+                        let mut stopped = false;
+                        let burst_start = Instant::now();
+                        while burst_start.elapsed() < Duration::from_millis(750) {
+                            let burst_wait = unsafe {
+                                WaitForMultipleObjects(handles.len() as u32, handles.as_ptr(), 0, 250)
+                            };
+                            if burst_wait == WAIT_OBJECT_0 {
+                                stopped = true;
+                                break;
+                            } else if burst_wait == WAIT_OBJECT_0 + 1 {
+                                if unsafe { FindNextChangeNotification(change_handle) } == 0 {
+                                    stopped = true;
+                                    break;
+                                }
+                            } else if burst_wait == WAIT_TIMEOUT {
+                                break;
+                            } else {
+                                stopped = true;
+                                break;
+                            }
+                        }
+                        if stopped {
+                            break;
+                        }
+                        let _ = app_handle.emit("watched-directories-changed", vec![watch_path.clone()]);
+                    } else {
+                        break;
+                    }
+                }
+
+                unsafe {
+                    FindCloseChangeNotification(change_handle);
+                }
+                if let Ok(mut map) = DIRECTORY_WATCHER
+                    .get_or_init(|| Mutex::new(HashMap::new()))
+                    .lock()
+                {
+                    if map.get(&thread_key).copied() == Some(stop_val) {
+                        map.remove(&thread_key);
+                    }
+                }
+                unsafe {
+                    CloseHandle(stop_handle);
+                }
+            });
+        if spawn_result.is_err() {
+            if let Ok(mut map) = registry.lock() {
+                if map.get(&key).copied() == Some(stop_val) {
+                    map.remove(&key);
+                }
+            }
+            unsafe {
+                CloseHandle(stop_val as HANDLE);
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn update_watched_directories(_app: tauri::AppHandle, _paths: Vec<String>) {}
+
+#[tauri::command]
+fn set_watched_directories(app: tauri::AppHandle, paths: Vec<String>) {
+    update_watched_directories(app, paths);
+}
+
 /// Computes a bitmask of logical drives that currently have a mounted, ready
 /// volume. Checking readiness in addition to `GetLogicalDrives` catches drives
 /// that are ejected or dismounted while keeping their assigned drive letter.
@@ -10527,6 +10732,7 @@ fn main() {
             image_thumbnail,
             list_drives,
             get_drive_capacities,
+            set_watched_directories,
             list_system_locations,
             list_network_resources,
             authenticate_network_resource,
@@ -10962,5 +11168,32 @@ mod folder_scan_cancellation_tests {
         assert_eq!(normalize_drive_letter_root("portable:abc"), None);
         assert_eq!(normalize_drive_letter_root("CD:"), None);
         assert_eq!(normalize_drive_letter_root("1:"), None);
+    }
+
+    #[test]
+    fn canonicalize_watch_targets_filters_dedups_and_caps() {
+        let inputs = vec![
+            "".to_string(),
+            "   ".to_string(),
+            "::system-home::".to_string(),
+            "mtp:\\device-1\\Storage".to_string(),
+            "\\\\server".to_string(),
+            "c:".to_string(),
+            "C:\\".to_string(),
+            "D:\\Projects\\CyberFiles\\".to_string(),
+            "d:\\projects\\cyberfiles".to_string(),
+            "E:\\Media/".to_string(),
+            "F:\\Backups\\".to_string(),
+            "G:\\Overflow".to_string(),
+        ];
+        assert_eq!(
+            canonicalize_watch_targets(inputs),
+            vec![
+                "C:\\".to_string(),
+                "D:\\Projects\\CyberFiles".to_string(),
+                "E:\\Media".to_string(),
+                "F:\\Backups".to_string(),
+            ]
+        );
     }
 }

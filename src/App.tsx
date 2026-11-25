@@ -131,7 +131,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, ejectNativePortableDevice, emptyNativeRecycleBin, getNativeDriveCapacities, getNativeFileClipboard, invokeNativeShellMenuVerb, getWindowsSpecialFolders, mapNativeNetworkDrive, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, parseNetworkMapFailedError, pasteNativeClipboardImage, probeNativeNetworkHosts, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, buildNativeShellMenu, dropNativeShellMenu, showNativeFileProperties, showNativeShellContextMenu, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, startNativeOutboundFileDrag, pauseNativeTransferOperation, resumeNativeTransferOperation, type BuiltNativeShellMenu, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, ejectNativePortableDevice, emptyNativeRecycleBin, getNativeDriveCapacities, getNativeFileClipboard, invokeNativeShellMenuVerb, getWindowsSpecialFolders, mapNativeNetworkDrive, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, parseNetworkMapFailedError, pasteNativeClipboardImage, probeNativeNetworkHosts, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, setNativeWatchedDirectories, buildNativeShellMenu, dropNativeShellMenu, showNativeFileProperties, showNativeShellContextMenu, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, startNativeOutboundFileDrag, pauseNativeTransferOperation, resumeNativeTransferOperation, type BuiltNativeShellMenu, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { normalizeListerTextScale, type ListerTextScale } from './utils/listerTextScale';
 import {
@@ -4009,7 +4009,19 @@ export default function App() {
     restoreActiveFolder('right', rightTabs[activeRightTabIndex]);
   }, [sessionReloadToken, activeLeftTabIndex, activeRightTabIndex, leftTabs, rightTabs, handleNavigate, refreshSystemHome, refreshRecycleBinContents, refreshNetworkResources]);
 
+  const isFileOperationBusyRef = useRef(isFileOperationBusy);
+  isFileOperationBusyRef.current = isFileOperationBusy;
+  const watchSuppressUntilRef = useRef<Map<string, number>>(new Map());
+  const suppressWatchedDirectoryPaths = useCallback((paths: string[], durationMs = 600) => {
+    const until = Date.now() + durationMs;
+    for (const path of paths) {
+      if (!path || path.startsWith('::')) continue;
+      watchSuppressUntilRef.current.set(getPathKey(path), until);
+    }
+  }, []);
+
   const refreshChangedDirectories = useCallback(async (paths: string[]) => {
+    suppressWatchedDirectoryPaths(paths);
     invalidateFlatDirectories(paths);
     const affectedKeys = new Set(paths.filter(Boolean).map(getPathKey));
     for (const key of affectedKeys) nativeLoadedDirectories.current.delete(key);
@@ -4028,7 +4040,7 @@ export default function App() {
       return path ? handleNavigate(path, pane, true) : Promise.resolve();
     }));
     void refreshDriveCapacities({ includePortable: paths.some(isPortablePath) });
-  }, [activeLeftTabIndex, activeRightTabIndex, handleNavigate, invalidateFlatDirectories, leftTabs, refreshDriveCapacities, rightTabs]);
+  }, [activeLeftTabIndex, activeRightTabIndex, handleNavigate, invalidateFlatDirectories, leftTabs, refreshDriveCapacities, rightTabs, suppressWatchedDirectoryPaths]);
 
   const focusRefreshSnapshot = useRef({
     layout: effectiveLayout,
@@ -4232,6 +4244,88 @@ export default function App() {
       }
     };
   }, []);
+
+  const leftWatchPath = leftTabs[activeLeftTabIndex]?.currentPath || '';
+  const rightWatchPath = rightTabs[activeRightTabIndex]?.currentPath || '';
+  const watchedDirectoryPathsKey = (
+    effectiveLayout === 'single'
+      ? [activePane === 'left' ? leftWatchPath : rightWatchPath]
+      : [leftWatchPath, rightWatchPath]
+  )
+    .filter(path => path && !path.startsWith('::') && !isPortablePath(path) && !isUncServerRoot(path))
+    .join('\0');
+
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    const paths = watchedDirectoryPathsKey ? watchedDirectoryPathsKey.split('\0') : [];
+    void setNativeWatchedDirectories(paths).catch(() => {});
+  }, [watchedDirectoryPathsKey]);
+
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    return () => {
+      void setNativeWatchedDirectories([]).catch(() => {});
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void listen<string[]>('watched-directories-changed', event => {
+      const rawPaths = event.payload;
+      if (!rawPaths?.length || isFileOperationBusyRef.current) return;
+      const now = Date.now();
+      for (const [key, until] of watchSuppressUntilRef.current) {
+        if (until <= now) watchSuppressUntilRef.current.delete(key);
+      }
+      const changedPaths: string[] = [];
+      const changedKeys = new Set<string>();
+      for (const path of rawPaths) {
+        if (!path) continue;
+        const key = getPathKey(path);
+        const suppressedUntil = watchSuppressUntilRef.current.get(key) ?? 0;
+        if (suppressedUntil > now) continue;
+        changedKeys.add(key);
+        changedPaths.push(path);
+      }
+      if (changedKeys.size === 0) return;
+      if (document.visibilityState !== 'visible') {
+        for (const key of changedKeys) nativeLoadedDirectories.current.delete(key);
+        invalidateFlatDirectories(changedPaths);
+        return;
+      }
+      const snapshot = focusRefreshSnapshot.current;
+      const visiblePanes: Array<'left' | 'right'> = snapshot.layout === 'single'
+        ? [snapshot.activePane]
+        : ['left', 'right'];
+      const refreshedPaths = new Set<string>();
+      for (const pane of visiblePanes) {
+        const tab = pane === 'left'
+          ? snapshot.leftTabs[snapshot.activeLeftTabIndex]
+          : snapshot.rightTabs[snapshot.activeRightTabIndex];
+        if (!tab?.currentPath || tab.currentPath.startsWith('::')) continue;
+        const pathKey = getPathKey(tab.currentPath);
+        if (!changedKeys.has(pathKey) || refreshedPaths.has(pathKey)) continue;
+        refreshedPaths.add(pathKey);
+        if (tab.flatView) {
+          invalidateFlatDirectories([tab.currentPath]);
+        } else {
+          void handleNavigateRef.current(tab.currentPath, pane, true);
+        }
+      }
+      void refreshDriveCapacities();
+    }).then(stop => {
+      if (cancelled) stop();
+      else unlisten = stop;
+    }).catch(() => {
+      // Event listener unavailable outside Tauri
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [invalidateFlatDirectories, refreshDriveCapacities]);
 
   const openWorkspaceRoot = useCallback((rootPath: string, rootName: string) => {
     const resetTabs = (tabs: TabState[]) => tabs.map(tab => {
@@ -6449,6 +6543,7 @@ export default function App() {
           }
         }
         invalidateFlatDirectories(removedPaths.map(getParentPath));
+        suppressWatchedDirectoryPaths(removedPaths.map(getParentPath));
         removeRecentPaths(removedPaths);
         setAllFiles(previous => previous.filter(item => !removedPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath))));
         setNativeDirectories(previous => {
@@ -6552,7 +6647,7 @@ export default function App() {
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [allFiles, invalidateFlatDirectories, isFileOperationBusy, leftTabs, pushUndoAction, recordTransferOperation, refreshChangedDirectories, refreshDriveCapacities, refreshRecycleBinContents, refreshRecycleBinStatus, removeRecentPaths, rightTabs, showToast, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecycleUnavailable, t.toolbar.undoUnavailable, updateTransferOperation]);
+  }, [allFiles, invalidateFlatDirectories, isFileOperationBusy, leftTabs, pushUndoAction, recordTransferOperation, refreshChangedDirectories, refreshDriveCapacities, refreshRecycleBinContents, refreshRecycleBinStatus, removeRecentPaths, rightTabs, showToast, suppressWatchedDirectoryPaths, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecycleUnavailable, t.toolbar.undoUnavailable, updateTransferOperation]);
   performDeleteRef.current = performDelete;
 
   const handleDeleteSelected = useCallback((itemsToDelete?: FileItem[], options: { permanently?: boolean } = {}) => {

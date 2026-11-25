@@ -418,6 +418,11 @@ export async function getNativeDriveCapacities(letters: string[]): Promise<Nativ
   return invoke<NativeDriveCapacity[]>('get_drive_capacities', { letters });
 }
 
+export async function setNativeWatchedDirectories(paths: string[]): Promise<void> {
+  if (!isTauriDesktop()) return;
+  await invoke('set_watched_directories', { paths });
+}
+
 export async function listNativeSystemLocations(): Promise<NativeLocation[]> {
   if (!isTauriDesktop()) return [];
   return invoke<NativeLocation[]>('list_system_locations');
