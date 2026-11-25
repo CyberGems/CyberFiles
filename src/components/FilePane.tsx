@@ -3621,7 +3621,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const folderBytes = React.useMemo(() => files.reduce((total, file) => total + (file.isFolder ? 0 : file.size), 0), [files]);
 
   /* The counters in the status bar are the permanent home of the selection shortcuts. */
-  const openStatusCountMenu = () => {
+  const toggleStatusCountMenu = () => {
+    if (statusCountMenuPosition) {
+      setStatusCountMenuPosition(null);
+      return;
+    }
     const rect = statusCountButtonRef.current?.getBoundingClientRect();
     if (!rect) return;
     const menuHeight = 132;
@@ -5901,11 +5905,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
               /* Never takes the focus: the status bar sits outside the pane body that owns the
                  keyboard, so a focused button here would leave typing dead. */
               onMouseDown={event => event.preventDefault()}
-              onClick={openStatusCountMenu}
+              onClick={toggleStatusCountMenu}
               className="flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded px-1 py-0.5 -mx-1 text-neutral-400 outline-none transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 focus-visible:text-cyan-200"
             >
               {itemCountLabel}
-              <ChevronUp className="h-3 w-3 opacity-60" />
+              <ChevronUp className={`h-3 w-3 opacity-60 transition-transform duration-150 ${statusCountMenuPosition ? 'rotate-180' : ''}`} />
             </button>
           </Tooltip>
           {selectedFiles.length > 0 ? (
