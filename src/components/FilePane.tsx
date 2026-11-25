@@ -56,7 +56,7 @@ import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime
 import { listerTextScaleFactor, LISTER_TEXT_SCALE_CSS_VAR, type ListerTextScale } from '../utils/listerTextScale';
 import { formatFileSize, getFileExtension, getParentPath, getPortablePathSegments, isPathOnUnavailableDrive, isPathOnUnavailablePortableDevice, isPortableDeviceRoot, isPortablePath, isPortableStorageRoot, isSameOrDescendantPath, isUncPath, isUncServerRoot, normalizeDriveLetter, normalizeWindowsPath, PORTABLE_PATH_PREFIX } from '../utils/fileSystem';
 import { isValidDropDestinationPath, filterOutboundDraggablePaths } from '../utils/externalDrop';
-import { calculateNativeFolderSize, cancelNativeFolderSizeCalculation, getNativeFileIcons, getNativeFileThumbnails, isTauriDesktop, loadNativeImageThumbnail, loadNativeMediaPreviewUrl, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
+import { cancelNativeFolderSizeCalculation, getNativeFileIcons, getNativeFileThumbnails, isTauriDesktop, loadNativeImageThumbnail, loadNativeMediaPreviewUrl, startNativeFolderSizeCalculation, type NativeFileIconRequest, type WindowsSpecialFolder } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { advanceMouseGesturePath, MOUSE_GESTURE_MIN_DISTANCE, type MouseGesturePath } from '../utils/mouseGesture';
 import { getCustomFolderIcon, type SavedFolderIcons } from '../utils/folderIconPreferences';
@@ -890,8 +890,8 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
                 folderSizeState?.status === 'done' ? (
                   <span data-file-column-content={column} className="inline-flex h-5 min-w-0 max-w-full items-center justify-end truncate leading-none tabular-nums font-mono">{formatFileSize(folderSizeState.size ?? 0)}</span>
                 ) : (
-                  <Tooltip label={folderSizeState?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip} placement="top" boundary=".cyberfiles-file-viewport">
-                    <button type="button" disabled={folderSizeState?.status === 'loading'} onClick={event => handlers.onCalculateFolderSize(event, item)} className="ml-auto inline-flex h-5 w-[44px] shrink-0 items-center justify-end gap-1 rounded px-1 py-0 text-right leading-none text-neutral-400 transition-colors hover:bg-neutral-800/70 hover:text-cyan-200 disabled:cursor-wait disabled:opacity-70" aria-label={folderSizeState?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
+                  <Tooltip label={folderSizeState?.status === 'loading' ? t.pane.folderSizeCancelTooltip : folderSizeState?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip} placement="top" boundary=".cyberfiles-file-viewport">
+                    <button type="button" onClick={event => handlers.onCalculateFolderSize(event, item)} className={`ml-auto inline-flex h-5 w-[44px] shrink-0 items-center justify-end gap-1 rounded px-1 py-0 text-right leading-none text-neutral-400 transition-colors hover:bg-neutral-800/70 ${folderSizeState?.status === 'loading' ? 'hover:text-rose-300' : 'hover:text-cyan-200'}`} aria-label={folderSizeState?.status === 'loading' ? t.pane.folderSizeCancelTooltip : folderSizeState?.status === 'error' ? t.pane.folderSizeFailed : t.pane.folderSizeTooltip}>
                       <span data-file-column-content={column} className="inline-flex items-center gap-1 whitespace-nowrap font-mono text-[calc(10px*var(--lister-text-scale,1))]">
                         <span className={folderSizeState?.status === 'loading' ? 'invisible' : ''}>{folderSizeState?.status === 'error' ? '!' : t.pane.folderSizeCalculate}</span>
                         <span className="grid h-3 w-3 flex-shrink-0 place-items-center">
@@ -1065,6 +1065,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   folderChildCountsRef.current = folderChildCounts;
   const hoveredFolderItemsRef = useRef(new Map<string, FileItem>());
   const folderSizeJobsRef = useRef(new Map<string, string>());
+  const manualFolderSizeJobsRef = useRef(new Set<string>());
   const folderChildCountJobsRef = useRef(new Map<string, string>());
   const folderItemPathsRef = useRef(new Map<string, string>());
   const availableDriveLetters = React.useMemo(
@@ -1866,7 +1867,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const cancelFolderHoverScan = (itemId: string) => {
     hoveredFolderItemsRef.current.delete(itemId);
     const sizeJobId = folderSizeJobsRef.current.get(itemId);
-    if (sizeJobId) {
+    if (sizeJobId && !manualFolderSizeJobsRef.current.has(sizeJobId)) {
       folderSizeJobsRef.current.delete(itemId);
       void cancelNativeFolderSizeCalculation(sizeJobId);
       setFolderSizeStates(previous => {
@@ -1897,6 +1898,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     for (const jobId of folderSizeJobsRef.current.values()) void cancelNativeFolderSizeCalculation(jobId);
     for (const jobId of folderChildCountJobsRef.current.values()) void cancelNativeFolderSizeCalculation(jobId);
     folderSizeJobsRef.current.clear();
+    manualFolderSizeJobsRef.current.clear();
     folderChildCountJobsRef.current.clear();
     hoveredFolderItemsRef.current.clear();
     for (const [id, state] of Object.entries(folderChildCountsRef.current)) {
@@ -1914,18 +1916,31 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const calculateFolderSize = async (item: FileItem, event: React.MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
-    if (!isTauriDesktop()) return;
+    if (!item.isFolder || !isTauriDesktop() || item.recycleBinId) return;
     folderItemPathsRef.current.set(item.id, item.path);
     const activeJobId = folderSizeJobsRef.current.get(item.id);
     if (activeJobId) {
       folderSizeJobsRef.current.delete(item.id);
+      manualFolderSizeJobsRef.current.delete(activeJobId);
       void cancelNativeFolderSizeCalculation(activeJobId);
+      setFolderSizeStates(previous => {
+        if (!previous[item.id] || previous[item.id].status !== 'loading') return previous;
+        const next = { ...previous };
+        delete next[item.id];
+        return next;
+      });
+      return;
     }
+    const jobId = createScanJobId();
+    folderSizeJobsRef.current.set(item.id, jobId);
+    manualFolderSizeJobsRef.current.add(jobId);
     setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'loading', size: 0, entriesScanned: 0 } }));
     try {
-      const size = await calculateNativeFolderSize(item.path);
-      setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'done', size } }));
+      await startNativeFolderSizeCalculation(item.path, jobId);
     } catch {
+      if (folderSizeJobsRef.current.get(item.id) !== jobId) return;
+      folderSizeJobsRef.current.delete(item.id);
+      manualFolderSizeJobsRef.current.delete(jobId);
       setFolderSizeStates(previous => ({ ...previous, [item.id]: { status: 'error' } }));
     }
   };
@@ -1995,6 +2010,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     for (const jobId of folderChildCountJobsRef.current.values()) void cancelNativeFolderSizeCalculation(jobId);
     hoveredFolderItemsRef.current.clear();
     folderSizeJobsRef.current.clear();
+    manualFolderSizeJobsRef.current.clear();
     folderChildCountJobsRef.current.clear();
     folderItemPathsRef.current.clear();
   }, []);
@@ -2008,6 +2024,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       const sizeJobId = folderSizeJobsRef.current.get(itemId);
       if (sizeJobId) {
         folderSizeJobsRef.current.delete(itemId);
+        manualFolderSizeJobsRef.current.delete(sizeJobId);
         void cancelNativeFolderSizeCalculation(sizeJobId);
       }
       const countJobId = folderChildCountJobsRef.current.get(itemId);
@@ -2031,15 +2048,22 @@ export const FilePane: React.FC<FilePaneProps> = ({
   }, [availableDriveLetters]);
   useEffect(() => {
     if (autoFolderSizeEnabled && tooltipsEnabled) return;
-    for (const jobId of folderSizeJobsRef.current.values()) void cancelNativeFolderSizeCalculation(jobId);
-    folderSizeJobsRef.current.clear();
+    const cancelledManualItemIds = new Set<string>();
+    for (const [itemId, jobId] of folderSizeJobsRef.current.entries()) {
+      if (manualFolderSizeJobsRef.current.has(jobId)) {
+        cancelledManualItemIds.add(itemId);
+        continue;
+      }
+      folderSizeJobsRef.current.delete(itemId);
+      void cancelNativeFolderSizeCalculation(jobId);
+    }
     if (!tooltipsEnabled) {
       for (const jobId of folderChildCountJobsRef.current.values()) void cancelNativeFolderSizeCalculation(jobId);
       folderChildCountJobsRef.current.clear();
     }
     hoveredFolderItemsRef.current.clear();
     setFolderSizeStates(previous => Object.fromEntries(
-      Object.entries(previous).filter(([, state]) => state.status === 'done'),
+      Object.entries(previous).filter(([id, state]) => state.status === 'done' || cancelledManualItemIds.has(id)),
     ));
   }, [autoFolderSizeEnabled, tooltipsEnabled]);
   useEffect(() => {
@@ -2068,6 +2092,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     let unlisten: (() => void) | undefined;
     void listen<{ jobId: string; size?: number; error?: string }>('folder-size-calculation-finished', event => {
       const { jobId, size, error } = event.payload;
+      manualFolderSizeJobsRef.current.delete(jobId);
       const itemId = [...folderSizeJobsRef.current.entries()].find(([, activeJobId]) => activeJobId === jobId)?.[0];
       if (!itemId) return;
       folderSizeJobsRef.current.delete(itemId);
