@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { isTauriDesktop } from '../utils/nativeFileSystem';
 
 export type AppTheme = 'cyberfiles' | 'gray' | 'light';
 
@@ -38,6 +40,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       window.localStorage.setItem(STORAGE_KEY, theme);
     } catch {
       // Persisting a preference is optional and must not prevent theme changes.
+    }
+    if (isTauriDesktop()) {
+      void invoke('set_window_theme', { theme }).catch(() => {
+        // Native window theme sync is best-effort.
+      });
     }
   }, [theme]);
 

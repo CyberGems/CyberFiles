@@ -318,6 +318,23 @@ fn hide_main_window(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Resu
 }
 
 #[tauri::command]
+fn set_window_theme(app: tauri::AppHandle, theme: String) -> Result<(), String> {
+    let native_theme = match theme.as_str() {
+        "light" => tauri::Theme::Light,
+        _ => tauri::Theme::Dark,
+    };
+    if let Some(main_window) = app.get_webview_window("main") {
+        main_window
+            .set_theme(Some(native_theme))
+            .map_err(|error| error.to_string())?;
+    }
+    if let Some(tray_window) = app.get_webview_window("tray_menu") {
+        let _ = tray_window.set_theme(Some(native_theme));
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn quit_app(window: tauri::WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
     if has_active_transfer_jobs() {
         return Err("File transfers are still running.".to_string());
@@ -10165,6 +10182,7 @@ fn main() {
             show_main_window,
             bring_main_window_to_front,
             hide_main_window,
+            set_window_theme,
             minimize_main_window,
             toggle_maximize_main_window,
             quit_app,
