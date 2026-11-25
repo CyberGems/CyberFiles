@@ -5855,7 +5855,9 @@ export default function App() {
           failures: result.failures,
         });
         if (completedKeys.size > 0) {
-          await refreshChangedDirectories(result.recycledPaths.map(getParentPath));
+          removePathsFromFlatDirectories(result.recycledPaths);
+          setAllFiles(previous => previous.filter(item => !result.recycledPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath))));
+          await refreshChangedDirectories(result.recycledPaths.map(getParentPath), { skipFlatInvalidation: true });
           void refreshRecycleBinStatus();
           void refreshRecycleBinContents();
         }
@@ -5875,7 +5877,7 @@ export default function App() {
         setUndoBusy(undoPendingIdsRef.current.size > 0);
       }
     }
-  }, [isFileOperationBusy, queueNativeTransfer, recordTransferOperation, refreshChangedDirectories, refreshRecycleBinContents, refreshRecycleBinStatus, removeUndoAction, renameRecentPairs, setAllFiles, showToast, t.toolbar.undoCompleted, t.toolbar.undoFailed, t.toolbar.undoMoveUnavailable, t.toolbar.undoPartial, updateFlatDirectoriesForRenamedItems, updateFlatDirectoriesForRestoredPaths, updateUndoAction]);
+  }, [isFileOperationBusy, queueNativeTransfer, recordTransferOperation, refreshChangedDirectories, refreshRecycleBinContents, refreshRecycleBinStatus, removePathsFromFlatDirectories, removeUndoAction, renameRecentPairs, setAllFiles, showToast, t.toolbar.undoCompleted, t.toolbar.undoFailed, t.toolbar.undoMoveUnavailable, t.toolbar.undoPartial, updateFlatDirectoriesForRenamedItems, updateFlatDirectoriesForRestoredPaths, updateUndoAction]);
 
   const startCopyWithProgress = useCallback((paths: string[], targetPath: string, selectionPane?: 'left' | 'right') => {
     queueNativeTransfer('copy', paths, targetPath, { selectionPane });
