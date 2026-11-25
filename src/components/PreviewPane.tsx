@@ -3,10 +3,16 @@ import { X, FileText, Folder, Image as ImageIcon, Code2, Copy, Check, Info, Musi
 import { FileItem } from '../types';
 import { formatDateTimeForDisplay, type DateFormatMode } from '../utils/dateTime';
 import { formatFileSize, isPortablePath, isTextPreviewableFile } from '../utils/fileSystem';
-import { isTauriDesktop, loadNativeImageThumbnail, loadNativePdfPreviewUrl, loadNativeMediaPreviewUrl, loadNativeArchivePreview, calculateNativeFolderSizeBounded, MAX_PDF_PREVIEW_BYTES, type NativeArchivePreview } from '../utils/nativeFileSystem';
+import { isTauriDesktop, loadNativeImageThumbnail, loadNativePdfPreviewUrl, loadNativeMediaPreviewUrl, loadNativeArchivePreview, calculateNativeFolderSizeBounded, cancelNativeFolderSizeCalculation, MAX_PDF_PREVIEW_BYTES, type NativeArchivePreview } from '../utils/nativeFileSystem';
 import { formatFolderContentLabel, loadFolderContentSummary, type FolderContentSummary } from '../utils/folderContent';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
+
+function createPreviewScanJobId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `preview-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 function renderMarkdownInline(source: string): React.ReactNode[] {
   const pattern = /(\[([^\]]+)\]\((https?:\/\/[^)\s]+|mailto:[^)\s]+|#[^)\s]*)\)|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*|_([^_]+)_|`([^`]+)`)/g;
@@ -168,8 +174,9 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
       return;
     }
     let cancelled = false;
+    const jobId = createPreviewScanJobId();
     setFolderSize({ itemId: item.id, status: 'loading' });
-    calculateNativeFolderSizeBounded(item.path, FOLDER_SIZE_PREVIEW_MAX_ENTRIES).then(
+    calculateNativeFolderSizeBounded(item.path, FOLDER_SIZE_PREVIEW_MAX_ENTRIES, jobId).then(
       result => {
         if (!cancelled) setFolderSize({ itemId: item.id, status: 'done', size: result.size, complete: result.complete });
       },
@@ -177,7 +184,10 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
         if (!cancelled) setFolderSize({ itemId: item.id, status: 'error' });
       },
     );
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      void cancelNativeFolderSizeCalculation(jobId);
+    };
   }, [item?.id, item?.path, item?.isFolder]);
 
   useEffect(() => {
@@ -352,8 +362,9 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
       return;
     }
     let cancelled = false;
+    const jobId = createPreviewScanJobId();
     setFolderContent({ itemId: item.id, status: 'loading' });
-    void loadFolderContentSummary(item).then(
+    void loadFolderContentSummary(item, { jobId }).then(
       summary => {
         if (!cancelled) setFolderContent({ itemId: item.id, status: 'done', summary });
       },
@@ -361,7 +372,10 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
         if (!cancelled) setFolderContent({ itemId: item.id, status: 'error' });
       },
     );
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (isTauriDesktop()) void cancelNativeFolderSizeCalculation(jobId);
+    };
   }, [item?.id, item?.path, item?.handle, item?.isFolder]);
 
   if (!item) {

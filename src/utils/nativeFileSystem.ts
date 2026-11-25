@@ -309,11 +309,6 @@ export async function editWindowsHostsFile(): Promise<void> {
   await invoke('edit_hosts_file');
 }
 
-export async function calculateNativeFolderSize(path: string): Promise<number> {
-  if (!isTauriDesktop()) throw new Error('Folder size calculation is only available in the desktop app.');
-  return invoke<number>('calculate_folder_size', { path });
-}
-
 export async function startNativeFolderSizeCalculation(path: string, jobId: string): Promise<void> {
   if (!isTauriDesktop()) throw new Error('Folder size calculation is only available in the desktop app.');
   await invoke('start_folder_size_calculation', { path, jobId });
@@ -330,9 +325,9 @@ export interface NativeFolderSizeCalculation {
   complete: boolean;
 }
 
-export async function calculateNativeFolderSizeBounded(path: string, maxEntries: number): Promise<NativeFolderSizeCalculation> {
+export async function calculateNativeFolderSizeBounded(path: string, maxEntries: number, jobId?: string): Promise<NativeFolderSizeCalculation> {
   if (!isTauriDesktop()) throw new Error('Folder size calculation is only available in the desktop app.');
-  return invoke<NativeFolderSizeCalculation>('calculate_folder_size_bounded', { path, maxEntries });
+  return invoke<NativeFolderSizeCalculation>('calculate_folder_size_bounded', { path, maxEntries, jobId: jobId ?? null });
 }
 
 export async function createNativeDirectory(parentPath: string, name: string): Promise<{ path: string; name: string }> {

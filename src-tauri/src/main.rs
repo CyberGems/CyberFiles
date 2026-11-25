@@ -4574,14 +4574,22 @@ fn cancel_folder_size_calculation(job_id: String) -> Result<(), String> {
 fn calculate_directory_size(
     root: &Path,
     max_entries: Option<usize>,
+    cancelled: Option<&AtomicBool>,
 ) -> Result<FolderSizeCalculation, String> {
     let mut pending = vec![root.to_path_buf()];
     let mut total = 0u64;
     let mut entries_scanned = 0usize;
+    let is_cancelled = || cancelled.is_some_and(|flag| flag.load(Ordering::Relaxed));
     while let Some(directory) = pending.pop() {
+        if is_cancelled() {
+            return Err("Folder size calculation cancelled.".to_string());
+        }
         let entries = fs::read_dir(&directory)
             .map_err(|error| format!("Cannot read {}: {error}", display_path(&directory)))?;
         for entry in entries {
+            if is_cancelled() {
+                return Err("Folder size calculation cancelled.".to_string());
+            }
             if max_entries.is_some_and(|limit| entries_scanned >= limit) {
                 return Ok(FolderSizeCalculation {
                     size: total,
@@ -4597,17 +4605,39 @@ fn calculate_directory_size(
             })?;
             entries_scanned += 1;
             let path = entry.path();
-            let metadata = fs::symlink_metadata(&path)
-                .map_err(|error| format!("Cannot inspect {}: {error}", display_path(&path)))?;
-            if metadata.file_type().is_symlink() {
-                continue;
+            #[cfg(target_os = "windows")]
+            {
+                let file_type = entry
+                    .file_type()
+                    .map_err(|error| format!("Cannot inspect {}: {error}", display_path(&path)))?;
+                if file_type.is_symlink() {
+                    continue;
+                }
+                if file_type.is_dir() {
+                    pending.push(path);
+                } else if file_type.is_file() {
+                    let metadata = entry
+                        .metadata()
+                        .map_err(|error| format!("Cannot inspect {}: {error}", display_path(&path)))?;
+                    total = total
+                        .checked_add(metadata.len())
+                        .ok_or_else(|| "The folder size exceeds the supported range.".to_string())?;
+                }
             }
-            if metadata.is_dir() {
-                pending.push(path);
-            } else if metadata.is_file() {
-                total = total
-                    .checked_add(metadata.len())
-                    .ok_or_else(|| "The folder size exceeds the supported range.".to_string())?;
+            #[cfg(not(target_os = "windows"))]
+            {
+                let metadata = fs::symlink_metadata(&path)
+                    .map_err(|error| format!("Cannot inspect {}: {error}", display_path(&path)))?;
+                if metadata.file_type().is_symlink() {
+                    continue;
+                }
+                if metadata.is_dir() {
+                    pending.push(path);
+                } else if metadata.is_file() {
+                    total = total
+                        .checked_add(metadata.len())
+                        .ok_or_else(|| "The folder size exceeds the supported range.".to_string())?;
+                }
             }
         }
     }
@@ -4619,39 +4649,49 @@ fn calculate_directory_size(
 }
 
 #[tauri::command]
-async fn calculate_folder_size(path: String) -> Result<u64, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let expanded = expand_windows_environment_path(&path);
-        if windows_portable_devices::is_portable_path(&expanded) {
-            return Err("Folder size calculation is not supported on portable devices.".to_string());
-        }
-        let root =
-            fs::canonicalize(&expanded).map_err(|error| format!("Cannot access folder: {error}"))?;
-        if !root.is_dir() {
-            return Err("The selected location is not a folder.".to_string());
-        }
-        calculate_directory_size(&root, None).map(|result| result.size)
-    })
-    .await
-    .map_err(|error| format!("Folder size worker failed: {error}"))?
-}
-
-#[tauri::command]
 async fn calculate_folder_size_bounded(
     path: String,
     max_entries: usize,
+    job_id: Option<String>,
 ) -> Result<FolderSizeCalculation, String> {
+    let cancel_token = match job_id.as_deref() {
+        Some(id) => match register_folder_scan_job(id)? {
+            Some(token) => Some(token),
+            None => return Err("Folder size calculation cancelled.".to_string()),
+        },
+        None => None,
+    };
+
+    let job_id_for_cleanup = job_id.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let _guard = job_id_for_cleanup.map(FolderScanJobGuard);
+        if cancel_token
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Relaxed))
+        {
+            return Err("Folder size calculation cancelled.".to_string());
+        }
+
         let expanded = expand_windows_environment_path(&path);
         if windows_portable_devices::is_portable_path(&expanded) {
             return Err("Folder size calculation is not supported on portable devices.".to_string());
         }
         let root =
             fs::canonicalize(&expanded).map_err(|error| format!("Cannot access folder: {error}"))?;
+        if cancel_token
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Relaxed))
+        {
+            return Err("Folder size calculation cancelled.".to_string());
+        }
         if !root.is_dir() {
             return Err("The selected location is not a folder.".to_string());
         }
-        calculate_directory_size(&root, Some(max_entries.clamp(1, 50_000)))
+        calculate_directory_size(
+            &root,
+            Some(max_entries.clamp(1, 50_000)),
+            cancel_token.as_deref(),
+        )
     })
     .await
     .map_err(|error| format!("Folder size worker failed: {error}"))?
@@ -10335,7 +10375,6 @@ fn main() {
             count_folder_children,
             get_file_icons,
             get_thumbnails,
-            calculate_folder_size,
             calculate_folder_size_bounded,
             start_folder_size_calculation,
             cancel_folder_size_calculation,
@@ -10726,6 +10765,26 @@ mod folder_scan_cancellation_tests {
         let outcome = walk_directory_size_cancellable(&temp_dir, &not_cancelled, |_, _| {})
             .expect("walk should complete when not cancelled");
         assert_eq!(outcome, CancellableSizeOutcome::Completed(96));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn bounded_size_calculation_stops_immediately_when_cancelled() {
+        let temp_dir = std::env::temp_dir().join(format!("cyberfiles-bounded-scan-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&temp_dir).expect("create temp dir");
+        fs::write(temp_dir.join("sample.bin"), vec![7u8; 48]).expect("write file");
+
+        let cancelled = AtomicBool::new(true);
+        let result = calculate_directory_size(&temp_dir, Some(100), Some(&cancelled));
+        assert!(result.is_err());
+
+        let not_cancelled = AtomicBool::new(false);
+        let result = calculate_directory_size(&temp_dir, Some(100), Some(&not_cancelled))
+            .expect("bounded scan should complete when not cancelled");
+        assert_eq!(result.size, 48);
+        assert!(result.complete);
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
