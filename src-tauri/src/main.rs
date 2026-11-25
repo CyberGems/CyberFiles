@@ -179,6 +179,28 @@ fn is_portable_build() -> bool {
 }
 
 #[cfg(target_os = "windows")]
+fn suppress_window_border(window: &tauri::WebviewWindow) {
+    use windows_sys::Win32::Graphics::Dwm::DwmSetWindowAttribute;
+
+    if let Ok(hwnd) = window.hwnd() {
+        // DWMWA_BORDER_COLOR (34, Windows 11 Build 22000+): DWMWA_COLOR_NONE
+        // disables the system-drawn active/inactive border around frameless windows.
+        let color_none: u32 = 0xFFFFFFFE;
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                hwnd.0 as _,
+                34,
+                &color_none as *const _ as *const _,
+                std::mem::size_of::<u32>() as u32,
+            );
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn suppress_window_border(_window: &tauri::WebviewWindow) {}
+
+#[cfg(target_os = "windows")]
 fn ensure_main_window_styles(window: &tauri::WebviewWindow) {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos,
@@ -213,10 +235,14 @@ fn ensure_main_window_styles(window: &tauri::WebviewWindow) {
             );
         }
     }
+
+    suppress_window_border(window);
 }
 
 #[cfg(not(target_os = "windows"))]
-fn ensure_main_window_styles(_window: &tauri::WebviewWindow) {}
+fn ensure_main_window_styles(window: &tauri::WebviewWindow) {
+    suppress_window_border(window);
+}
 
 #[tauri::command]
 fn minimize_main_window(window: tauri::WebviewWindow) -> Result<(), String> {
@@ -10118,6 +10144,7 @@ fn main() {
             // The custom tray menu closes as soon as it loses focus, the same
             // way a native popup menu does.
             if let Some(tray_window) = app.get_webview_window("tray_menu") {
+                suppress_window_border(&tray_window);
                 let tray_window_for_blur = tray_window.clone();
                 let app_for_blur = app.handle().clone();
                 tray_window.on_window_event(move |event| {

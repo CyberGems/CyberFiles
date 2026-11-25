@@ -16,6 +16,7 @@
         "label": "main",
         "title": "CyberFiles",
         "decorations": false,
+        "shadow": false,
         "width": 1200,
         "height": 760,
         "minWidth": 500,

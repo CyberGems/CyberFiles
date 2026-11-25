@@ -1732,6 +1732,8 @@ export default function App() {
   const activeTransferIdRef = useRef<string | null>(null);
   const performDeleteRef = useRef<((paths: string[], permanentlyDelete: boolean) => Promise<void>) | null>(null);
   const [transferEventsReady, setTransferEventsReady] = useState(!isTauriDesktop());
+  const [isWindowMaximized, setIsWindowMaximized] = useState(false);
+  const [isWindowFocused, setIsWindowFocused] = useState(true);
   const [renameRequest, setRenameRequest] = useState<{ requestId: number; itemId: string; paneId: 'left' | 'right' } | null>(null);
   const renameRequestSequence = useRef(0);
   const [isEmptyRecycleBinConfirmOpen, setIsEmptyRecycleBinConfirmOpen] = useState(false);
@@ -1861,6 +1863,44 @@ export default function App() {
   const handleHideToTrayFromCloseDialog = useCallback(() => {
     void runCloseAction('hide');
   }, [runCloseAction]);
+
+  useEffect(() => {
+    if (!isTauriDesktop()) return;
+
+    let disposed = false;
+    let unlistenResized: (() => void) | undefined;
+    let unlistenFocus: (() => void) | undefined;
+    const currentWindow = getCurrentWindow();
+
+    const syncMaximized = () => {
+      void currentWindow.isMaximized().then(maximized => {
+        if (!disposed) setIsWindowMaximized(maximized);
+      }).catch(() => undefined);
+    };
+
+    syncMaximized();
+    void currentWindow.isFocused().then(focused => {
+      if (!disposed) setIsWindowFocused(focused);
+    }).catch(() => undefined);
+
+    void currentWindow.onResized(syncMaximized).then(stopListening => {
+      if (disposed) stopListening();
+      else unlistenResized = stopListening;
+    }).catch(() => undefined);
+
+    void currentWindow.onFocusChanged(({ payload }) => {
+      if (!disposed) setIsWindowFocused(payload);
+    }).then(stopListening => {
+      if (disposed) stopListening();
+      else unlistenFocus = stopListening;
+    }).catch(() => undefined);
+
+    return () => {
+      disposed = true;
+      unlistenResized?.();
+      unlistenFocus?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isTauriDesktop()) return;
@@ -7576,6 +7616,13 @@ export default function App() {
         className="cyberfiles-app-shell h-screen w-screen flex flex-col bg-neutral-950 text-neutral-100 font-sans select-none overflow-hidden"
         onContextMenuCapture={handleApplicationContextMenuCapture}
       >
+      {isTauriDesktop() && !isWindowMaximized && (
+        <div
+          aria-hidden="true"
+          data-window-focused={isWindowFocused ? 'true' : 'false'}
+          className="cyberfiles-window-border pointer-events-none fixed inset-0 z-[200]"
+        />
+      )}
       <WindowTitleBar
         showWindowControls={isTauriDesktop()}
         onOpenSettings={() => setIsSettingsOpen(true)}
