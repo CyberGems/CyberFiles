@@ -134,6 +134,7 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
   const scanGenerationRef = useRef(0);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const preserveKeepBtnRef = useRef<HTMLButtonElement>(null);
 
   const isRealFolder = Boolean(
     currentPath &&
@@ -343,7 +344,15 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
     if (showPreservePrompt) {
       if (e.key === 'Escape') {
         e.preventDefault();
+        e.stopPropagation();
         setShowPreservePrompt(false);
+        return;
+      }
+      if (e.key === 'Enter' && !e.repeat && !e.nativeEvent.isComposing) {
+        if (e.target instanceof HTMLButtonElement && e.target !== preserveKeepBtnRef.current) return;
+        e.preventDefault();
+        e.stopPropagation();
+        handlePreserveDecision('keep');
       }
       return;
     }
@@ -938,6 +947,8 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
                 <DialogButton
                   size="compact"
                   variant="secondary"
+                  shortcut="Esc"
+                  aria-keyshortcuts="Escape"
                   onClick={() => setShowPreservePrompt(false)}
                 >
                   {t.core.cancel}
@@ -950,8 +961,12 @@ export const FindFilesModal: React.FC<FindFilesModalProps> = ({
                   {t.findFiles.preserveSearchDiscard}
                 </DialogButton>
                 <DialogButton
+                  ref={preserveKeepBtnRef}
+                  autoFocus
                   size="compact"
                   variant="primary"
+                  shortcut="Enter"
+                  aria-keyshortcuts="Enter"
                   onClick={() => handlePreserveDecision('keep')}
                 >
                   {t.findFiles.preserveSearchKeep}

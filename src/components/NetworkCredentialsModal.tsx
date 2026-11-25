@@ -33,10 +33,14 @@ export function NetworkCredentialsModal({
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !isBusy) onClose();
+      if (event.key === 'Escape' && !isBusy) {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }
     };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
+    window.addEventListener('keydown', closeOnEscape, true);
+    return () => window.removeEventListener('keydown', closeOnEscape, true);
   }, [isBusy, onClose]);
 
   return (
@@ -66,7 +70,7 @@ export function NetworkCredentialsModal({
               {t.networkAuthModal.title}
             </h2>
           </div>
-          <Tooltip label={t.core.cancel} placement="bottom">
+          <Tooltip label={t.core.cancel} shortcut="Esc" placement="bottom">
             <button
               type="button"
               disabled={isBusy}
@@ -88,7 +92,7 @@ export function NetworkCredentialsModal({
               <div className="text-[10px] font-semibold uppercase tracking-wide text-cyan-300/80">
                 {t.networkAuthModal.targetLabel}
               </div>
-              <div className="truncate-start mt-0.5 font-mono text-xs text-neutral-100">{targetPath}</div>
+              <div className="truncate-start mt-0.5 font-mono text-xs text-neutral-100"><bdi dir="ltr">{targetPath}</bdi></div>
             </div>
           </div>
 
@@ -158,10 +162,10 @@ export function NetworkCredentialsModal({
         </div>
 
         <footer className="flex justify-end gap-2 border-t border-neutral-800 bg-neutral-950/40 px-4 py-3">
-          <DialogButton size="compact" disabled={isBusy} onClick={onClose}>
+          <DialogButton size="compact" shortcut="Esc" aria-keyshortcuts="Escape" disabled={isBusy} onClick={onClose}>
             {t.core.cancel}
           </DialogButton>
-          <DialogButton size="compact" variant="primary" type="submit" disabled={isBusy || !username.trim()}>
+          <DialogButton size="compact" variant="primary" type="submit" shortcut="Enter" aria-keyshortcuts="Enter" disabled={isBusy || !username.trim()}>
             {isBusy ? t.networkAuthModal.connecting : t.networkAuthModal.connect}
           </DialogButton>
         </footer>

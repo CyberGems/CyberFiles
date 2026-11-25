@@ -37,10 +37,14 @@ export function CreateItemModal({ kind, defaultName, parentPath, isBusy, onClose
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !isBusy) onClose();
+      if (event.key === 'Escape' && !isBusy) {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }
     };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
+    window.addEventListener('keydown', closeOnEscape, true);
+    return () => window.removeEventListener('keydown', closeOnEscape, true);
   }, [isBusy, onClose]);
 
   return (
@@ -61,7 +65,7 @@ export function CreateItemModal({ kind, defaultName, parentPath, isBusy, onClose
             <Icon className="h-4 w-4 text-cyan-300" />
             <h2 id="create-item-title" className="text-sm font-semibold text-neutral-100">{heading}</h2>
           </div>
-          <Tooltip label={t.core.cancel} placement="bottom">
+          <Tooltip label={t.core.cancel} shortcut="Esc" placement="bottom">
             <button type="button" disabled={isBusy} onClick={onClose} className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-40">
               <X className="h-4 w-4" />
             </button>
@@ -112,14 +116,14 @@ export function CreateItemModal({ kind, defaultName, parentPath, isBusy, onClose
             <FolderOpen aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-neutral-500" />
             <div className="min-w-0 flex-1">
               <div className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{t.contextMenu.createInFolder}</div>
-              <div className="truncate-start mt-0.5 font-mono text-[11px] text-neutral-300">{parentPath}</div>
+              <div className="truncate-start mt-0.5 font-mono text-[11px] text-neutral-300"><bdi dir="ltr">{parentPath}</bdi></div>
             </div>
           </div>
         )}
 
         <footer className="flex justify-end gap-2 border-t border-neutral-800 bg-neutral-950/40 px-4 py-3">
-          <DialogButton size="compact" disabled={isBusy} onClick={onClose}>{t.core.cancel}</DialogButton>
-          <DialogButton size="compact" variant="primary" type="submit" disabled={isBusy || !(typeof name === 'string' && name.trim())}>{isBusy ? t.core.operationInProgress : t.contextMenu.create}</DialogButton>
+          <DialogButton size="compact" shortcut="Esc" aria-keyshortcuts="Escape" disabled={isBusy} onClick={onClose}>{t.core.cancel}</DialogButton>
+          <DialogButton size="compact" variant="primary" type="submit" shortcut="Enter" aria-keyshortcuts="Enter" disabled={isBusy || !(typeof name === 'string' && name.trim())}>{isBusy ? t.core.operationInProgress : t.contextMenu.create}</DialogButton>
         </footer>
       </form>
     </div>

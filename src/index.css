@@ -108,6 +108,12 @@ html[data-theme='light'] select option {
   color: var(--color-neutral-950);
 }
 
+.keyboard-hint-danger {
+  border-color: rgba(255, 255, 255, 0.34);
+  background: rgba(0, 0, 0, 0.22);
+  color: #ffffff;
+}
+
 .keyboard-hint-lg {
   display: inline-flex;
   align-items: center;
@@ -126,6 +132,12 @@ html[data-theme='light'] select option {
   letter-spacing: 0;
   white-space: nowrap;
   box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+html[data-theme='light'] .keyboard-hint:not(.keyboard-hint-primary):not(.keyboard-hint-danger) {
+  border-color: rgba(15, 23, 42, 0.22);
+  background: rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.08);
 }
 
 html[data-theme='light'] .keyboard-hint-lg {

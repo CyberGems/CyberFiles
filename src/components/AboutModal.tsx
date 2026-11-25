@@ -168,7 +168,7 @@ export function AboutModal({ isOpen, updateNoticeOpen, onClose, onNotify, onUpda
 
         <header className="flex shrink-0 items-center px-4 pt-4">
           <span className="flex-1" />
-          <Tooltip label={t.about.close} placement="left">
+          <Tooltip label={t.about.close} shortcut="Esc" placement="left">
             <button
               type="button"
               aria-label={t.about.close}

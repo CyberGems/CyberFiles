@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, File, Folder, X } from 'lucide-react';
 import { FileItem } from '../types';
 import { useLanguage } from '../locales/LanguageContext';
@@ -44,17 +44,44 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
   errorMessage,
 }) => {
   const { t, language } = useLanguage();
+  const dialogRef = useRef<HTMLElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const [permanentlyDelete, setPermanentlyDelete] = useState(initialPermanentlyDelete || forcePermanentDelete);
   const [rememberChoice, setRememberChoice] = useState(false);
+  const isVisible = items.length > 0 || Boolean(title);
+  const isPermanent = forcePermanentDelete || permanentlyDelete;
 
   useEffect(() => {
     setPermanentlyDelete(initialPermanentlyDelete || forcePermanentDelete);
     setRememberChoice(false);
   }, [items, initialPermanentlyDelete, forcePermanentDelete]);
 
-  if (items.length === 0 && !title) return null;
+  useEffect(() => {
+    if (!isVisible) return;
+    dialogRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (isBusy) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onCancel();
+        return;
+      }
+      if (event.key === 'Enter' && !event.repeat && !event.isComposing) {
+        const activeElement = document.activeElement;
+        if (activeElement === cancelButtonRef.current) return;
+        if (event.target instanceof HTMLTextAreaElement) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onConfirm(isPermanent, rememberChoice);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isVisible, isBusy, isPermanent, rememberChoice, onCancel, onConfirm]);
 
-  const isPermanent = forcePermanentDelete || permanentlyDelete;
+  if (!isVisible) return null;
+
   const resolvedTitle = title ?? (allowPermanentDelete ? t.core.deleteItemsTitle : isPermanent ? t.core.deletePermanentlyTitle : t.core.deleteTitle);
   const resolvedDescription = description ?? (isPermanent ? t.core.deletePermanentlyMessage : t.core.deleteMessage);
   const resolvedConfirmLabel = confirmLabel ?? (isPermanent ? t.core.deleteNow : t.core.delete);
@@ -62,10 +89,12 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
   return (
     <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onMouseDown={event => { if (!isBusy && event.target === event.currentTarget) onCancel(); }}>
       <section
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-delete-title"
-        className="w-full max-w-md bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl overflow-hidden"
+        className="w-full max-w-md bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl overflow-hidden outline-none"
         onMouseDown={event => event.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
@@ -73,7 +102,7 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
             <AlertTriangle className="w-4 h-4 text-amber-400" />
             <h2 id="confirm-delete-title" className="font-semibold text-neutral-100 text-sm">{resolvedTitle}</h2>
           </div>
-          <Tooltip label={t.core.cancel} placement="bottom"><button type="button" disabled={isBusy} onClick={onCancel} aria-label={t.core.cancel} className="p-1 text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800 rounded disabled:opacity-40"><X className="w-4 h-4" /></button></Tooltip>
+          <Tooltip label={t.core.cancel} shortcut="Esc" placement="bottom"><button type="button" disabled={isBusy} onClick={onCancel} aria-label={t.core.cancel} className="p-1 text-neutral-400 hover:text-neutral-100 hover:bg-neutral-800 rounded disabled:opacity-40"><X className="w-4 h-4" /></button></Tooltip>
         </div>
 
         <div className="p-4 space-y-3 text-sm">
@@ -144,11 +173,11 @@ export const ConfirmActionModal: React.FC<ConfirmActionModalProps> = ({
         </div>
 
         <div className="flex justify-end gap-2 px-4 py-3 border-t border-neutral-800 bg-neutral-950/50">
-          <span><DialogButton size="compact" disabled={isBusy} onClick={onCancel}>{t.core.cancel}</DialogButton></span>
+          <span><DialogButton ref={cancelButtonRef} size="compact" shortcut="Esc" aria-keyshortcuts="Escape" disabled={isBusy} onClick={onCancel}>{t.core.cancel}</DialogButton></span>
           {/* The tooltip only fills in when it states something the body does not show
               already: otherwise it would repeat resolvedDescription, visible above. */}
           <Tooltip label={isPermanent ? t.core.permanentDeleteConfirmTooltip : allowPermanentDelete ? t.core.recycleBinDeleteConfirmTooltip : ''} placement="top">
-            <span><DialogButton size="compact" variant={isPermanent ? 'danger' : confirmVariant} disabled={isBusy} onClick={() => onConfirm(isPermanent, rememberChoice)}>{isBusy ? busyLabel ?? t.core.operationInProgress : resolvedConfirmLabel}</DialogButton></span>
+            <span><DialogButton size="compact" variant={isPermanent ? 'danger' : confirmVariant} shortcut="Enter" aria-keyshortcuts="Enter" disabled={isBusy} onClick={() => onConfirm(isPermanent, rememberChoice)}>{isBusy ? busyLabel ?? t.core.operationInProgress : resolvedConfirmLabel}</DialogButton></span>
           </Tooltip>
         </div>
       </section>

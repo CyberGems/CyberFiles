@@ -41,7 +41,16 @@ export const DialogButton = forwardRef<HTMLButtonElement, DialogButtonProps>(fun
     >
       <span>{children}</span>
       {shortcut && (
-        <kbd aria-hidden="true" className={`keyboard-hint ${variant === 'primary' ? 'keyboard-hint-primary' : ''}`}>
+        <kbd
+          aria-hidden="true"
+          className={`keyboard-hint ${
+            variant === 'primary'
+              ? 'keyboard-hint-primary'
+              : variant === 'danger'
+                ? 'keyboard-hint-danger'
+                : ''
+          }`}
+        >
           {/* Suite-wide convention: the Enter hint shows as the return glyph, matching
               the close-dialog and CyberNotes action buttons; other keys stay textual. */}
           <KeyboardShortcutContent shortcut={shortcut} />

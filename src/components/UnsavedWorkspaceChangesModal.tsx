@@ -51,6 +51,8 @@ export function UnsavedWorkspaceChangesModal({
     if (busy || !canSave) return;
     onSaveAndContinue({ layoutName: layoutName.trim(), sessionName: sessionName.trim() });
   };
+  const handlersRef = useRef({ submitSave, onCancel, busy, canSave });
+  handlersRef.current = { submitSave, onCancel, busy, canSave };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -66,8 +68,25 @@ export function UnsavedWorkspaceChangesModal({
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        onCancel();
+        handlersRef.current.onCancel();
         return;
+      }
+
+      if (event.key === 'Enter' && !event.repeat && !event.isComposing) {
+        const current = handlersRef.current;
+        if (!current.busy && current.canSave) {
+          const target = event.target as HTMLElement | null;
+          if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) {
+            return;
+          }
+          if (target instanceof HTMLButtonElement && !target.hasAttribute('data-save-default')) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          current.submitSave();
+          return;
+        }
       }
 
       if (event.key === 'Tab') {

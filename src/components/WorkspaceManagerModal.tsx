@@ -46,6 +46,7 @@ export function WorkspaceManagerModal(props: WorkspaceManagerModalProps) {
   const { t } = useLanguage();
   const copy = t.workspaceProfiles;
   const dialogRef = useRef<HTMLElement>(null);
+  const deleteConfirmBtnRef = useRef<HTMLButtonElement>(null);
   const [creating, setCreating] = useState<ProfileKind | null>(null);
   const [name, setName] = useState('');
   const [editing, setEditing] = useState<{ kind: ProfileKind; id: string; name: string } | null>(null);
@@ -147,6 +148,15 @@ export function WorkspaceManagerModal(props: WorkspaceManagerModalProps) {
       setError('');
       return;
     }
+    if (deleting && event.key === 'Enter' && !event.repeat && !event.nativeEvent.isComposing) {
+      const target = event.target as HTMLElement | null;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+      if (target instanceof HTMLButtonElement && target !== deleteConfirmBtnRef.current) return;
+      event.preventDefault();
+      event.stopPropagation();
+      confirmDelete();
+      return;
+    }
     if (event.key !== 'Tab') return;
     const focusable = dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled)');
     if (!focusable?.length) return;
@@ -185,7 +195,7 @@ export function WorkspaceManagerModal(props: WorkspaceManagerModalProps) {
             placeholder={copy.namePlaceholder}
             className="min-w-0 flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/15"
           />
-          <DialogButton type="submit" variant="primary" size="compact"><span className="inline-flex items-center gap-1.5"><Save className="h-3.5 w-3.5" />{copy.save}</span></DialogButton>
+          <DialogButton type="submit" variant="primary" size="compact" shortcut="Enter" aria-keyshortcuts="Enter"><span className="inline-flex items-center gap-1.5"><Save className="h-3.5 w-3.5" />{copy.save}</span></DialogButton>
           {iconAction(copy.cancel, () => { setCreating(null); setError(''); }, <X className="h-4 w-4" />)}
         </div>
         {error && <p role="alert" className="mt-2 text-xs text-rose-300">{error}</p>}
@@ -242,8 +252,8 @@ export function WorkspaceManagerModal(props: WorkspaceManagerModalProps) {
           <p className="text-xs text-rose-200">{copy.deleteConfirm}</p>
           {hasLinkedWorkspaces && <p className="mt-1 text-xs text-neutral-400">{copy.deleteLinkedWorkspaces}</p>}
           <div className="mt-3 flex justify-end gap-2">
-            <DialogButton size="compact" onClick={() => setDeleting(null)}>{copy.cancel}</DialogButton>
-            <DialogButton size="compact" variant="danger" onClick={confirmDelete}>{copy.delete}</DialogButton>
+            <DialogButton size="compact" shortcut="Esc" aria-keyshortcuts="Escape" onClick={() => setDeleting(null)}>{copy.cancel}</DialogButton>
+            <DialogButton ref={deleteConfirmBtnRef} size="compact" variant="danger" shortcut="Enter" aria-keyshortcuts="Enter" onClick={confirmDelete}>{copy.delete}</DialogButton>
           </div>
         </div>}
       </div>
@@ -385,7 +395,7 @@ export function WorkspaceManagerModal(props: WorkspaceManagerModalProps) {
         </div>
 
         <footer className="flex shrink-0 justify-end border-t border-neutral-800 bg-neutral-950/30 px-4 py-3 sm:px-6">
-          <DialogButton size="compact" onClick={props.onClose}>{copy.close}</DialogButton>
+          <DialogButton size="compact" shortcut="Esc" aria-keyshortcuts="Escape" onClick={props.onClose}>{copy.close}</DialogButton>
         </footer>
       </section>
     </div>

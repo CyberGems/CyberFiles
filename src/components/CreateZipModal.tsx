@@ -27,10 +27,14 @@ export function CreateZipModal({ defaultName, itemCount, targetPath, onClose, on
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }
     };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => window.removeEventListener('keydown', closeOnEscape);
+    window.addEventListener('keydown', closeOnEscape, true);
+    return () => window.removeEventListener('keydown', closeOnEscape, true);
   }, [onClose]);
 
   return (
@@ -51,7 +55,7 @@ export function CreateZipModal({ defaultName, itemCount, targetPath, onClose, on
             <Archive className="h-4 w-4 text-violet-300" />
             <h2 id="create-zip-title" className="text-sm font-semibold text-neutral-100">{isSpanish ? 'Crear archivo ZIP' : 'Create ZIP archive'}</h2>
           </div>
-          <Tooltip label={t.core.cancel} placement="bottom">
+          <Tooltip label={t.core.cancel} shortcut="Esc" placement="bottom">
             <button type="button" onClick={onClose} className="rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100">
               <X className="h-4 w-4" />
             </button>
@@ -86,9 +90,9 @@ export function CreateZipModal({ defaultName, itemCount, targetPath, onClose, on
         </div>
 
         <footer className="flex justify-end gap-2 border-t border-neutral-800 bg-neutral-950/40 px-4 py-3">
-          <DialogButton size="compact" onClick={onClose}>{t.core.cancel}</DialogButton>
+          <DialogButton size="compact" shortcut="Esc" aria-keyshortcuts="Escape" onClick={onClose}>{t.core.cancel}</DialogButton>
           <Tooltip label={isSpanish ? 'Crear y añadir a Operaciones de archivos' : 'Create and add to File operations'} placement="top">
-            <DialogButton size="compact" variant="primary" type="submit" disabled={!name.trim() || !destination}>{isSpanish ? 'Crear ZIP' : 'Create ZIP'}</DialogButton>
+            <DialogButton size="compact" variant="primary" type="submit" shortcut="Enter" aria-keyshortcuts="Enter" disabled={!name.trim() || !destination}>{isSpanish ? 'Crear ZIP' : 'Create ZIP'}</DialogButton>
           </Tooltip>
         </footer>
       </form>

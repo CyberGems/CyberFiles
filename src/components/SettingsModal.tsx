@@ -876,7 +876,7 @@ export function SettingsModal({
               <p className="mt-0.5 text-xs text-neutral-400">{t.settings.subtitle}</p>
             </div>
           </div>
-          <Tooltip label={t.settings.close} placement="bottom">
+          <Tooltip label={t.settings.close} shortcut="Esc" placement="bottom">
             <button onClick={onClose} className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-100" aria-label={t.settings.close}>
               <X className="h-4 w-4" />
             </button>
@@ -2346,7 +2346,7 @@ export function SettingsModal({
             {t.settings.showOnboarding}
             </button>
           </div>
-          <DialogButton size="compact" onClick={onClose}>
+          <DialogButton size="compact" shortcut="Esc" aria-keyshortcuts="Escape" onClick={onClose}>
             {t.settings.close}
           </DialogButton>
         </div>

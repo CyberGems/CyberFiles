@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   X,
   ArrowRight,
@@ -12,6 +12,7 @@ import {
 import { BatchRenameRule, FileItem } from '../types';
 import { applyBatchRenamePreview, isValidFileName } from '../utils/fileSystem';
 import { useLanguage } from '../locales/LanguageContext';
+import { DialogButton } from './DialogButton';
 import { Tooltip } from './Tooltip';
 
 interface BatchRenameModalProps {
@@ -30,6 +31,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
   onApplyRename,
 }) => {
   const { t } = useLanguage();
+  const applyButtonRef = useRef<HTMLButtonElement>(null);
   const [applyError, setApplyError] = useState('');
   const [rule, setRule] = useState<BatchRenameRule>({
     mode: 'replace',
@@ -71,25 +73,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
 
   const canApply = validation.valid && changedCount > 0;
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen, onClose]);
-
-  useEffect(() => {
-    setApplyError('');
-  }, [rule]);
-
-  if (!isOpen) return null;
-
-  const handleApply = async () => {
+  const handleApply = useCallback(async () => {
     if (!canApply) return;
     setApplyError('');
     try {
@@ -102,7 +86,34 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
     } catch {
       setApplyError(t.batchRename.applyFailed);
     }
-  };
+  }, [canApply, onApplyRename, onClose, previewItems, t.batchRename.applyFailed]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      if (event.key === 'Enter' && !event.repeat && !event.isComposing && canApply) {
+        if (event.target instanceof HTMLTextAreaElement) return;
+        if (event.target instanceof HTMLButtonElement && event.target !== applyButtonRef.current) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void handleApply();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [isOpen, canApply, handleApply, onClose]);
+
+  useEffect(() => {
+    setApplyError('');
+  }, [rule]);
+
+  if (!isOpen) return null;
 
   return (
     <div
@@ -131,7 +142,7 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
               </p>
             </div>
           </div>
-          <Tooltip label={t.batchRename.cancel} placement="bottom">
+          <Tooltip label={t.batchRename.cancel} shortcut="Esc" placement="bottom">
             <button
               type="button"
               onClick={onClose}
@@ -382,22 +393,28 @@ export const BatchRenameModal: React.FC<BatchRenameModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
+            <DialogButton
+              size="compact"
+              shortcut="Esc"
+              aria-keyshortcuts="Escape"
               onClick={onClose}
-              className="px-4 py-1.5 rounded-md text-neutral-300 hover:bg-neutral-800 transition-colors"
             >
               {t.batchRename.cancel}
-            </button>
-            <button
-              type="button"
-              onClick={handleApply}
+            </DialogButton>
+            <DialogButton
+              ref={applyButtonRef}
+              size="compact"
+              variant="primary"
+              shortcut="Enter"
+              aria-keyshortcuts="Enter"
+              onClick={() => void handleApply()}
               disabled={!canApply}
-              className="px-4 py-1.5 rounded-md bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-semibold disabled:opacity-40 disabled:hover:bg-cyan-500 transition-colors flex items-center gap-1.5 shadow-lg shadow-cyan-500/20"
             >
-              <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>{t.batchRename.apply}</span>
-            </button>
+              <span className="inline-flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>{t.batchRename.apply}</span>
+              </span>
+            </DialogButton>
           </div>
         </div>
       </div>

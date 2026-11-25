@@ -40,6 +40,8 @@ export function UpdateModal({
   const actionInProgress = useRef(false);
   const verifiedPackage = useRef<Resource>(null);
   const panel = useRef<HTMLElement>(null);
+  const primaryActionRef = useRef<HTMLButtonElement>(null);
+  const updateActionRef = useRef<{ beginDownload: () => Promise<void>; apply: () => Promise<void> } | null>(null);
   const notes = useMemo(() => extractLocalizedReleaseNotes(update?.body, language), [update?.body, language]);
 
   useEffect(() => {
@@ -48,15 +50,31 @@ export function UpdateModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || (!aboveAbout && !panel.current?.contains(event.target as Node))) return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      if (!applying) onClose();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (!aboveAbout && !panel.current?.contains(event.target as Node)) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (!applying) onClose();
+        return;
+      }
+      if (event.key === 'Enter' && !event.repeat && !event.isComposing && !applying) {
+        if (!aboveAbout && !panel.current?.contains(event.target as Node)) return;
+        if (event.target instanceof HTMLButtonElement && event.target !== primaryActionRef.current) return;
+        if (phase === 'available') {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          void updateActionRef.current?.beginDownload();
+        } else if (phase === 'ready') {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          void updateActionRef.current?.apply();
+        }
+      }
     };
-    window.addEventListener('keydown', handleEscape, true);
-    return () => window.removeEventListener('keydown', handleEscape, true);
-  }, [isOpen, aboveAbout, applying, onClose]);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isOpen, aboveAbout, applying, phase, onClose]);
 
   if (!isOpen || !update) return null;
 
@@ -116,6 +134,7 @@ export function UpdateModal({
       setApplying(false);
     }
   }
+  updateActionRef.current = { beginDownload, apply };
 
   const dismiss = phase === 'downloading' ? t.updates.background : t.about.close;
   const hasTotal = progress.total !== null && progress.total > 0;
@@ -187,20 +206,20 @@ export function UpdateModal({
               {t.updates.viewOnGithub}
             </DialogButton>
             <DialogButton size="compact" onClick={() => onSkipVersion(update.version)}>{t.updates.skipVersion}</DialogButton>
-            <DialogButton size="compact" onClick={onClose}>{t.updates.later}</DialogButton>
-            <DialogButton size="compact" variant="primary" onClick={() => void beginDownload()}>{t.updates.updateNow}</DialogButton>
+            <DialogButton size="compact" shortcut="Esc" aria-keyshortcuts="Escape" onClick={onClose}>{t.updates.later}</DialogButton>
+            <DialogButton ref={primaryActionRef} size="compact" variant="primary" shortcut="Enter" aria-keyshortcuts="Enter" onClick={() => void beginDownload()}>{t.updates.updateNow}</DialogButton>
           </>
         )}
         {phase === 'downloading' && (
           <>
-            <DialogButton size="compact" onClick={onClose}>{t.updates.background}</DialogButton>
+            <DialogButton size="compact" shortcut="Esc" aria-keyshortcuts="Escape" onClick={onClose}>{t.updates.background}</DialogButton>
             <DialogButton size="compact" disabled={!canCancel || cancelling} onClick={() => void cancel()}>{t.updates.cancelDownload}</DialogButton>
           </>
         )}
         {phase === 'ready' && (
           <>
-            <DialogButton size="compact" disabled={applying} onClick={onClose}>{t.updates.later}</DialogButton>
-            <DialogButton size="compact" variant="primary" disabled={applying} onClick={() => void apply()}>
+            <DialogButton size="compact" shortcut="Esc" aria-keyshortcuts="Escape" disabled={applying} onClick={onClose}>{t.updates.later}</DialogButton>
+            <DialogButton ref={primaryActionRef} size="compact" variant="primary" shortcut="Enter" aria-keyshortcuts="Enter" disabled={applying} onClick={() => void apply()}>
               {applying ? t.updates.applying : update.portable ? t.updates.openFolder : t.updates.restart}
             </DialogButton>
           </>

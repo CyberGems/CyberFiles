@@ -41,6 +41,15 @@ export function RecoveryModal({ isOpen, recovered, baseline, onRecover, onDiscar
         return;
       }
 
+      if (event.key === 'Enter' && !event.repeat && !event.isComposing) {
+        const target = event.target as HTMLElement | null;
+        if (target instanceof HTMLButtonElement && !target.hasAttribute('data-recover-default')) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onRecover();
+        return;
+      }
+
       if (event.key === 'Tab') {
         const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
           'button:not(:disabled)',
@@ -63,7 +72,7 @@ export function RecoveryModal({ isOpen, recovered, baseline, onRecover, onDiscar
       document.removeEventListener('keydown', handleKeyDown, true);
       previouslyFocused?.focus();
     };
-  }, [isOpen, onDiscard]);
+  }, [isOpen, onDiscard, onRecover]);
 
   if (!isOpen) return null;
 
@@ -180,12 +189,13 @@ export function RecoveryModal({ isOpen, recovered, baseline, onRecover, onDiscar
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-neutral-800/90 bg-neutral-950/35 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-          <DialogButton size="compact" onClick={onDiscard} className="w-full sm:w-auto">
+          <DialogButton size="compact" shortcut="Esc" aria-keyshortcuts="Escape" onClick={onDiscard} className="w-full sm:w-auto">
             <span className="inline-flex items-center gap-2"><Trash2 className="h-3.5 w-3.5" />{copy.discard}</span>
           </DialogButton>
           <DialogButton
             size="compact"
             variant="primary"
+            shortcut="Enter"
             data-recover-default
             aria-keyshortcuts="Enter"
             onClick={onRecover}

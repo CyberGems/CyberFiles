@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   X,
   Palette,
@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
+import { DialogButton } from './DialogButton';
 import { Tooltip } from './Tooltip';
 import {
   FOLDER_ICONS_CATALOG,
@@ -116,17 +117,17 @@ export const FolderIconModal: React.FC<FolderIconModalProps> = ({
     }
   }, [isOpen, folderPath, currentConfig]);
 
-  // Handle ESC key
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  // Handle ESC and Enter keys (moved below handleSave)
+  const filteredIcons = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return FOLDER_ICONS_CATALOG;
+    return FOLDER_ICONS_CATALOG.filter(icon => {
+      const matchEn = icon.nameEn.toLowerCase().includes(query);
+      const matchEs = icon.nameEs.toLowerCase().includes(query);
+      const matchTags = icon.tags.some(tag => tag.toLowerCase().includes(query));
+      return matchEn || matchEs || matchTags;
+    });
+  }, [searchQuery]);
 
   const draftConfig: CustomFolderIconConfig = useMemo(() => {
     const config: CustomFolderIconConfig = {
@@ -158,23 +159,34 @@ export const FolderIconModal: React.FC<FolderIconModalProps> = ({
     badgeCustomLabel,
   ]);
 
-  const filteredIcons = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return FOLDER_ICONS_CATALOG;
-    return FOLDER_ICONS_CATALOG.filter(icon => {
-      const matchEn = icon.nameEn.toLowerCase().includes(query);
-      const matchEs = icon.nameEs.toLowerCase().includes(query);
-      const matchTags = icon.tags.some(tag => tag.toLowerCase().includes(query));
-      return matchEn || matchEs || matchTags;
-    });
-  }, [searchQuery]);
-
-  if (!isOpen) return null;
-
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     onApply(draftConfig, { name: baseFolderName, apply: applyNameRule });
     onClose();
-  };
+  }, [applyNameRule, baseFolderName, draftConfig, onApply, onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      if (event.key === 'Enter' && !event.repeat && !event.isComposing) {
+        const target = event.target as HTMLElement | null;
+        if (target instanceof HTMLTextAreaElement || target instanceof HTMLButtonElement) return;
+        if (target?.dataset.searchInput === 'true') return;
+        event.preventDefault();
+        event.stopPropagation();
+        handleSave();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [isOpen, onClose, handleSave]);
+
+  if (!isOpen) return null;
 
   const handleReset = () => {
     onApply(null, { name: baseFolderName, apply: false });
@@ -244,7 +256,7 @@ export const FolderIconModal: React.FC<FolderIconModalProps> = ({
               </p>
             </div>
           </div>
-          <Tooltip label={t.folderIconModal.cancel} placement="bottom">
+          <Tooltip label={t.folderIconModal.cancel} shortcut="Esc" placement="bottom">
             <button
               type="button"
               onClick={onClose}
@@ -474,6 +486,7 @@ export const FolderIconModal: React.FC<FolderIconModalProps> = ({
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-500" />
               <input
                 type="text"
+                data-search-input="true"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder={t.folderIconModal.searchPlaceholder}
@@ -664,21 +677,26 @@ export const FolderIconModal: React.FC<FolderIconModalProps> = ({
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                type="button"
+              <DialogButton
+                size="compact"
+                shortcut="Esc"
+                aria-keyshortcuts="Escape"
                 onClick={onClose}
-                className="rounded-lg border border-neutral-700 bg-neutral-800/70 px-4 py-1.5 text-xs font-medium text-neutral-300 transition-colors hover:bg-neutral-700 hover:text-neutral-100"
               >
                 {t.folderIconModal.cancel}
-              </button>
-              <button
-                type="button"
+              </DialogButton>
+              <DialogButton
+                size="compact"
+                variant="primary"
+                shortcut="Enter"
+                aria-keyshortcuts="Enter"
                 onClick={handleSave}
-                className="flex items-center gap-1.5 rounded-lg border border-cyan-500 bg-cyan-500 px-4 py-1.5 text-xs font-semibold text-neutral-950 transition-all hover:bg-cyan-400 hover:shadow-[0_0_15px_rgba(34,211,238,0.4)]"
               >
-                <Check className="h-3.5 w-3.5" />
-                <span>{t.folderIconModal.save}</span>
-              </button>
+                <span className="inline-flex items-center gap-1.5">
+                  <Check className="h-3.5 w-3.5" />
+                  <span>{t.folderIconModal.save}</span>
+                </span>
+              </DialogButton>
             </div>
           </div>
         </div>

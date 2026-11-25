@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { X, Keyboard } from 'lucide-react';
+import { DialogButton } from './DialogButton';
 import { KeyboardShortcutContent } from './KeyboardShortcut';
 import { useLanguage } from '../locales/LanguageContext';
 
@@ -102,12 +103,9 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
         </div>
 
         <div className="p-3 border-t border-neutral-800 bg-neutral-950 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-1.5 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-medium"
-          >
+          <DialogButton size="compact" shortcut="Esc" aria-keyshortcuts="Escape" onClick={onClose}>
             {isSpanish ? 'Cerrar' : 'Close'}
-          </button>
+          </DialogButton>
         </div>
       </div>
     </div>

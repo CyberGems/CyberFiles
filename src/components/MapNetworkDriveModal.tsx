@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, Eye, EyeOff, HardDrive, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { isUncPath, isUncServerRoot, normalizeDriveLetter, normalizeWindowsPath } from '../utils/fileSystem';
+import { DialogButton } from './DialogButton';
 import { Tooltip } from './Tooltip';
 
 interface MapNetworkDriveModalProps {
@@ -293,22 +294,28 @@ export const MapNetworkDriveModal: React.FC<MapNetworkDriveModalProps> = ({
           )}
 
           <div className="flex items-center justify-end gap-2 border-t border-neutral-800 pt-3">
-            <button
-              type="button"
+            <DialogButton
+              size="compact"
+              shortcut="Esc"
+              aria-keyshortcuts="Escape"
               disabled={isBusy}
               onClick={onClose}
-              className="rounded-lg border border-neutral-700 bg-neutral-800/80 px-3.5 py-1.5 text-xs font-medium text-neutral-200 transition-colors hover:border-neutral-600 hover:bg-neutral-800 disabled:opacity-40"
             >
               {t.core.cancel}
-            </button>
-            <button
+            </DialogButton>
+            <DialogButton
+              size="compact"
+              variant="primary"
               type="submit"
+              shortcut="Enter"
+              aria-keyshortcuts="Enter"
               disabled={!canSubmit}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-500/60 bg-cyan-950/75 px-3.5 py-1.5 text-xs font-medium text-cyan-100 transition-colors hover:border-cyan-400 hover:bg-cyan-900/75 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              <HardDrive className="h-3.5 w-3.5" />
-              <span>{isBusy ? t.mapNetworkDriveModal.submitting : t.mapNetworkDriveModal.submit}</span>
-            </button>
+              <span className="inline-flex items-center gap-1.5">
+                <HardDrive className="h-3.5 w-3.5" />
+                <span>{isBusy ? t.mapNetworkDriveModal.submitting : t.mapNetworkDriveModal.submit}</span>
+              </span>
+            </DialogButton>
           </div>
         </form>
       </div>
