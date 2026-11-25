@@ -4415,11 +4415,29 @@ export const FilePane: React.FC<FilePaneProps> = ({
         >
 
       {/* 2. Navigation & Breadcrumb Bar */}
-      <div className="cyberfiles-pane-navigation flex items-center gap-1.5 px-2 py-1.5 bg-neutral-900 border-b border-neutral-800 text-xs select-none">
-        <Tooltip label={t.toolbar.back} shortcut={language === 'es' ? 'Alt+Izquierda' : 'Alt+Left'} disabled={tab.historyIndex <= 0}><button onClick={onNavigateBack} disabled={tab.historyIndex <= 0} className="p-1 rounded text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 transition-colors"><ArrowLeft className="w-3.5 h-3.5" /></button></Tooltip>
-        <Tooltip label={t.toolbar.forward} shortcut={language === 'es' ? 'Alt+Derecha' : 'Alt+Right'} disabled={tab.historyIndex >= tab.history.length - 1}><button onClick={onNavigateForward} disabled={tab.historyIndex >= tab.history.length - 1} className="p-1 rounded text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 transition-colors"><ArrowRight className="w-3.5 h-3.5" /></button></Tooltip>
-        <Tooltip label={t.toolbar.up} shortcut="Backspace" disabled={isSystemHome}><button onClick={onNavigateUp} disabled={isSystemHome} className="p-1 rounded text-neutral-300 hover:bg-neutral-800 disabled:opacity-30 transition-colors"><ArrowUp className="w-3.5 h-3.5" /></button></Tooltip>
-        <Tooltip label={t.toolbar.refresh} shortcut="F5" disabled={!tab.currentPath}><button onClick={() => onRefresh ? onRefresh() : onNavigate(tab.currentPath)} disabled={!tab.currentPath} className="p-1 rounded text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-200 disabled:cursor-not-allowed disabled:opacity-30"><RotateCw className="w-3.5 h-3.5" /></button></Tooltip>
+      <div className="cyberfiles-pane-navigation flex items-center gap-1.5 px-1.5 py-1.5 bg-neutral-900 border-b border-neutral-800 text-xs select-none">
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Tooltip label={t.toolbar.back} shortcut={language === 'es' ? 'Alt+Izquierda' : 'Alt+Left'} disabled={tab.historyIndex <= 0}>
+            <button type="button" aria-label={t.toolbar.back} onClick={onNavigateBack} disabled={tab.historyIndex <= 0} className="cyberfiles-pane-nav-btn inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-neutral-300 transition-colors disabled:cursor-not-allowed disabled:opacity-30">
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+          </Tooltip>
+          <Tooltip label={t.toolbar.forward} shortcut={language === 'es' ? 'Alt+Derecha' : 'Alt+Right'} disabled={tab.historyIndex >= tab.history.length - 1}>
+            <button type="button" aria-label={t.toolbar.forward} onClick={onNavigateForward} disabled={tab.historyIndex >= tab.history.length - 1} className="cyberfiles-pane-nav-btn inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-neutral-300 transition-colors disabled:cursor-not-allowed disabled:opacity-30">
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </Tooltip>
+          <Tooltip label={t.toolbar.up} shortcut="Backspace" disabled={isSystemHome}>
+            <button type="button" aria-label={t.toolbar.up} onClick={onNavigateUp} disabled={isSystemHome} className="cyberfiles-pane-nav-btn inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-neutral-300 transition-colors disabled:cursor-not-allowed disabled:opacity-30">
+              <ArrowUp className="h-4 w-4" />
+            </button>
+          </Tooltip>
+          <Tooltip label={t.toolbar.refresh} shortcut="F5" disabled={!tab.currentPath}>
+            <button type="button" aria-label={t.toolbar.refresh} onClick={() => onRefresh ? onRefresh() : onNavigate(tab.currentPath)} disabled={!tab.currentPath} className="cyberfiles-pane-nav-btn inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-neutral-300 transition-colors disabled:cursor-not-allowed disabled:opacity-30">
+              <RotateCw className="h-4 w-4" />
+            </button>
+          </Tooltip>
+        </div>
 
         {/* Breadcrumb Path Box */}
         <div 

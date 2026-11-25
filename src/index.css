@@ -593,6 +593,20 @@ html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-pane-navigat
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), inset 0 -1px 0 rgba(0, 0, 0, 0.55);
 }
 
+.cyberfiles-pane-nav-btn:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.7);
+}
+
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-pane-nav-btn:hover:not(:disabled) {
+  background: rgba(148, 210, 240, 0.14);
+  color: #f0f9ff;
+}
+
+html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-pane-nav-btn:active:not(:disabled) {
+  background: rgba(148, 210, 240, 0.22);
+}
+
 html:not([data-theme='light']):not([data-theme='gray']) .cyberfiles-address-bar {
   border-color: #28526a;
   border-radius: 4px;
@@ -1061,6 +1075,19 @@ html[data-theme='gray'] .cyberfiles-command-bar .header-action[aria-pressed='tru
   color: #ffffff !important;
 }
 
+html[data-theme='gray'] .cyberfiles-pane-nav-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+html[data-theme='gray'] .cyberfiles-pane-nav-btn:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+html[data-theme='gray'] .cyberfiles-pane-nav-btn:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+
 /* View choice and layout mode toggles in HeaderBar */
 html[data-theme='gray'] .view-choice[aria-pressed='true'] {
   border-color: #737373 !important;
@@ -1281,6 +1308,19 @@ html[data-theme='light'] .cyberfiles-command-bar .header-action[aria-pressed='tr
 html[data-theme='light'] .cyberfiles-command-bar button[aria-pressed='true']:not(.view-choice):not([data-folder-tab]):hover:not(:disabled) svg,
 html[data-theme='light'] .cyberfiles-command-bar .header-action[aria-pressed='true']:hover:not(:disabled) svg {
   color: var(--color-cyan-900) !important;
+}
+
+html[data-theme='light'] .cyberfiles-pane-nav-btn:hover:not(:disabled) {
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--color-neutral-100);
+}
+
+html[data-theme='light'] .cyberfiles-pane-nav-btn:active:not(:disabled) {
+  background: rgba(15, 23, 42, 0.14);
+}
+
+html[data-theme='light'] .cyberfiles-pane-nav-btn:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(14, 116, 144, 0.55);
 }
 
 html[data-theme='light'] .view-choice-group {
