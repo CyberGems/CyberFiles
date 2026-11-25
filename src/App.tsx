@@ -797,6 +797,7 @@ interface NativeDirectoryState {
 interface FlatDirectoryState extends NativeDirectoryState {
   entries?: FileItem[];
   skippedCount?: number;
+  truncated?: boolean;
   error?: string;
 }
 
@@ -3282,7 +3283,7 @@ export default function App() {
       });
       setFlatDirectories(previous => ({
         ...previous,
-        [key]: { entries: listing.entries, counts: listing.counts, skippedCount: listing.skippedCount, nextOffset: listing.entries.length, hasMore: false, loading: false },
+        [key]: { entries: listing.entries, counts: listing.counts, skippedCount: listing.skippedCount, truncated: listing.truncated, nextOffset: listing.entries.length, hasMore: false, loading: false },
       }));
       const pending = [...flatSelectAllAfterLoad.current].filter(value => value.endsWith(`\u0000${key}`));
       const pendingSet = new Set(pending);
@@ -6542,7 +6543,55 @@ export default function App() {
             nativeLoadedDirectories.current.delete(loadedKey);
           }
         }
-        invalidateFlatDirectories(removedPaths.map(getParentPath));
+        const flatKeysToInvalidate: string[] = [];
+        const flatUpdates = new Map<string, FlatDirectoryState>();
+        for (const [rootKey, entry] of Object.entries(flatDirectoriesRef.current)) {
+          const touchesFlatRoot = removedPaths.some(
+            rootPath => isSameOrDescendantPath(rootPath, rootKey) || isSameOrDescendantPath(rootKey, rootPath),
+          );
+          if (!touchesFlatRoot) continue;
+          const deletedFlatRootItself = removedPaths.some(rootPath => isSameOrDescendantPath(rootKey, rootPath));
+          if (deletedFlatRootItself || entry.loading || entry.truncated || !entry.entries) {
+            flatKeysToInvalidate.push(rootKey);
+            continue;
+          }
+          const keptEntries: FileItem[] = [];
+          const removedFlatItems: FileItem[] = [];
+          for (const item of entry.entries) {
+            if (removedPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath))) {
+              removedFlatItems.push(item);
+            } else {
+              keptEntries.push(item);
+            }
+          }
+          if (removedFlatItems.length === 0) {
+            flatKeysToInvalidate.push(rootKey);
+            continue;
+          }
+          flatUpdates.set(rootKey, {
+            ...entry,
+            entries: keptEntries,
+            nextOffset: keptEntries.length,
+            counts: entry.counts
+              ? adjustDirectoryCountsForRemovedItems(entry.counts, removedFlatItems)
+              : entry.counts,
+          });
+        }
+        if (flatUpdates.size > 0) {
+          setFlatDirectories(previous => {
+            let next: Record<string, FlatDirectoryState> | null = null;
+            for (const [rootKey, updated] of flatUpdates) {
+              const current = previous[rootKey];
+              if (!current || current.loading || current.truncated) continue;
+              next ??= { ...previous };
+              next[rootKey] = updated;
+            }
+            return next ?? previous;
+          });
+        }
+        if (flatKeysToInvalidate.length > 0) {
+          invalidateFlatDirectories(flatKeysToInvalidate);
+        }
         suppressWatchedDirectoryPaths(removedPaths.map(getParentPath));
         removeRecentPaths(removedPaths);
         setAllFiles(previous => previous.filter(item => !removedPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath))));
