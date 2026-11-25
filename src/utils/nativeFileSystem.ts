@@ -270,9 +270,9 @@ export async function countNativeHiddenItems(path: string): Promise<number> {
   return invoke<number>('count_hidden_items', { path });
 }
 
-export async function countNativeFolderChildren(path: string): Promise<NativeFolderChildCounts> {
+export async function countNativeFolderChildren(path: string, jobId?: string): Promise<NativeFolderChildCounts> {
   if (!isTauriDesktop()) throw new Error('Native folder counts are unavailable.');
-  return invoke<NativeFolderChildCounts>('count_folder_children', { path });
+  return invoke<NativeFolderChildCounts>('count_folder_children', { path, jobId: jobId ?? null });
 }
 
 export type NativeFileIconSize = 'small' | 'large' | 'jumbo';
@@ -317,16 +317,6 @@ export async function calculateNativeFolderSize(path: string): Promise<number> {
 export async function startNativeFolderSizeCalculation(path: string, jobId: string): Promise<void> {
   if (!isTauriDesktop()) throw new Error('Folder size calculation is only available in the desktop app.');
   await invoke('start_folder_size_calculation', { path, jobId });
-}
-
-export async function pauseNativeFolderSizeCalculation(jobId: string): Promise<void> {
-  if (!isTauriDesktop()) return;
-  await invoke('pause_folder_size_calculation', { jobId });
-}
-
-export async function resumeNativeFolderSizeCalculation(jobId: string): Promise<void> {
-  if (!isTauriDesktop()) return;
-  await invoke('resume_folder_size_calculation', { jobId });
 }
 
 export async function cancelNativeFolderSizeCalculation(jobId: string): Promise<void> {

@@ -36,8 +36,8 @@ function summarize(counts: NativeFolderChildCounts): FolderContentSummary {
   return { ...snapshot, kind: onlyType ?? 'unknown' };
 }
 
-async function readFolderContents(item: Pick<FileItem, 'path' | 'handle'>): Promise<FolderContentSummary> {
-  if (isTauriDesktop()) return summarize(await countNativeFolderChildren(item.path));
+async function readFolderContents(item: Pick<FileItem, 'path' | 'handle'>, jobId?: string): Promise<FolderContentSummary> {
+  if (isTauriDesktop()) return summarize(await countNativeFolderChildren(item.path, jobId));
   const handle = item.handle as FileSystemDirectoryHandle | undefined;
   if (!handle || handle.kind !== 'directory') throw new Error('Folder handle unavailable.');
   const counts: NativeFolderChildCounts = { fileCount: 0, folderCount: 0, extensionCounts: {} };
@@ -53,10 +53,35 @@ async function readFolderContents(item: Pick<FileItem, 'path' | 'handle'>): Prom
   return summarize(counts);
 }
 
-export function loadFolderContentSummary(item: Pick<FileItem, 'path' | 'handle'>): Promise<FolderContentSummary> {
+export function loadFolderContentSummary(
+  item: Pick<FileItem, 'path' | 'handle'>,
+  options?: { jobId?: string },
+): Promise<FolderContentSummary> {
   const key = isTauriDesktop() ? item.path.toLowerCase() : item.handle ?? item.path;
   const cached = cache.get(key);
-  if (cached && (cached.checkedAt === 0 || Date.now() - cached.checkedAt < CACHE_LIFETIME_MS)) return cached.promise;
+  if (cached && cached.checkedAt > 0 && Date.now() - cached.checkedAt < CACHE_LIFETIME_MS) {
+    return cached.promise;
+  }
+
+  // Hover scans pass a cancellable jobId and must not share an in-flight promise with
+  // PreviewPane so leaving a row never rejects an independent panel read.
+  if (options?.jobId) {
+    const promise = readFolderContents(item, options.jobId);
+    void promise.then(
+      () => {
+        cache.set(key, { promise, checkedAt: Date.now() });
+        while (cache.size > MAX_CACHE_ENTRIES) {
+          const oldest = cache.keys().next().value;
+          if (oldest === undefined) break;
+          cache.delete(oldest);
+        }
+      },
+      () => undefined,
+    );
+    return promise;
+  }
+
+  if (cached && cached.checkedAt === 0) return cached.promise;
 
   const promise = readFolderContents(item);
   cache.set(key, { promise, checkedAt: 0 });

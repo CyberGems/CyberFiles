@@ -3,11 +3,11 @@
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     fs,
     io::{self, Cursor, Read, Write},
     path::{Path, PathBuf},
-    sync::{atomic::{AtomicU64, Ordering}, Arc, Condvar, Mutex, OnceLock},
+    sync::{atomic::{AtomicBool, AtomicU64, Ordering}, Arc, Condvar, Mutex, OnceLock},
 };
 use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
@@ -4129,8 +4129,27 @@ struct FolderChildCounts {
 }
 
 #[tauri::command]
-async fn count_folder_children(path: String) -> Result<FolderChildCounts, String> {
+async fn count_folder_children(path: String, job_id: Option<String>) -> Result<FolderChildCounts, String> {
+    let cancel_token = match job_id.as_deref() {
+        Some(id) => match register_folder_scan_job(id)? {
+            Some(token) => Some(token),
+            None => return Err("Folder child count cancelled.".to_string()),
+        },
+        None => None,
+    };
+
+    let job_id_for_cleanup = job_id.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let _guard = job_id_for_cleanup.map(FolderScanJobGuard);
+        let is_cancelled = || {
+            cancel_token
+                .as_ref()
+                .is_some_and(|flag| flag.load(Ordering::Relaxed))
+        };
+        if is_cancelled() {
+            return Err("Folder child count cancelled.".to_string());
+        }
+
         let expanded = expand_windows_environment_path(&path);
         if windows_portable_devices::is_portable_path(&expanded) {
             if windows_portable_devices::is_portable_device_root(&expanded) {
@@ -4147,6 +4166,9 @@ async fn count_folder_children(path: String) -> Result<FolderChildCounts, String
                 extension_counts: HashMap::new(),
             };
             for entry in entries {
+                if is_cancelled() {
+                    return Err("Folder child count cancelled.".to_string());
+                }
                 if entry.is_folder {
                     counts.folder_count += 1;
                 } else {
@@ -4170,6 +4192,9 @@ async fn count_folder_children(path: String) -> Result<FolderChildCounts, String
             });
         }
         let root = resolve_accessible_directory(&expanded)?;
+        if is_cancelled() {
+            return Err("Folder child count cancelled.".to_string());
+        }
 
         let entries = fs::read_dir(&root)
             .map_err(|error| format!("Cannot read folder: {error}"))?;
@@ -4179,15 +4204,30 @@ async fn count_folder_children(path: String) -> Result<FolderChildCounts, String
             extension_counts: HashMap::new(),
         };
         for entry in entries {
+            if is_cancelled() {
+                return Err("Folder child count cancelled.".to_string());
+            }
             let entry = entry.map_err(|error| format!("Cannot read folder entry: {error}"))?;
             let entry_path = entry.path();
-            let metadata = fs::symlink_metadata(&entry_path)
-                .map_err(|error| format!("Cannot read folder entry metadata: {error}"))?;
+            #[cfg(target_os = "windows")]
+            let (is_symlink, is_dir) = {
+                // DirEntry::file_type reads WIN32_FIND_DATAW directly with zero extra syscalls.
+                let file_type = entry
+                    .file_type()
+                    .map_err(|error| format!("Cannot read folder entry metadata: {error}"))?;
+                (file_type.is_symlink(), file_type.is_dir())
+            };
+            #[cfg(not(target_os = "windows"))]
+            let (is_symlink, is_dir) = {
+                let metadata = fs::symlink_metadata(&entry_path)
+                    .map_err(|error| format!("Cannot read folder entry metadata: {error}"))?;
+                (metadata.file_type().is_symlink(), metadata.is_dir())
+            };
             // Match the lister: links are omitted rather than followed.
-            if metadata.file_type().is_symlink() {
+            if is_symlink {
                 continue;
             }
-            if metadata.is_dir() {
+            if is_dir {
                 counts.folder_count += 1;
             } else {
                 counts.file_count += 1;
@@ -4248,15 +4288,20 @@ struct FolderSizeCalculation {
     complete: bool,
 }
 
+const MAX_PRE_CANCELLED_SCAN_JOBS: usize = 64;
+
 #[derive(Default)]
-struct FolderSizeJobState {
-    paused: bool,
-    cancelled: bool,
+struct FolderScanJobRegistry {
+    active: HashMap<String, Arc<AtomicBool>>,
+    cancelled_before_start: VecDeque<String>,
 }
 
-struct FolderSizeJobControl {
-    state: Mutex<FolderSizeJobState>,
-    changed: Condvar,
+struct FolderScanJobGuard(String);
+
+impl Drop for FolderScanJobGuard {
+    fn drop(&mut self) {
+        unregister_folder_scan_job(&self.0);
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -4275,47 +4320,88 @@ struct FolderSizeJobResult {
     error: Option<String>,
 }
 
-static FOLDER_SIZE_JOBS: OnceLock<Mutex<HashMap<String, Arc<FolderSizeJobControl>>>> = OnceLock::new();
+static FOLDER_SCAN_JOBS: OnceLock<Mutex<FolderScanJobRegistry>> = OnceLock::new();
 
-fn folder_size_jobs() -> &'static Mutex<HashMap<String, Arc<FolderSizeJobControl>>> {
-    FOLDER_SIZE_JOBS.get_or_init(|| Mutex::new(HashMap::new()))
+fn folder_scan_jobs() -> &'static Mutex<FolderScanJobRegistry> {
+    FOLDER_SCAN_JOBS.get_or_init(|| Mutex::new(FolderScanJobRegistry::default()))
 }
 
-fn find_folder_size_job(job_id: &str) -> Result<Option<Arc<FolderSizeJobControl>>, String> {
-    let jobs = folder_size_jobs()
+fn register_folder_scan_job(job_id: &str) -> Result<Option<Arc<AtomicBool>>, String> {
+    let mut registry = folder_scan_jobs()
         .lock()
-        .map_err(|_| "Folder size job registry is unavailable.".to_string())?;
-    Ok(jobs.get(job_id).cloned())
+        .map_err(|_| "Folder scan job registry is unavailable.".to_string())?;
+    if let Some(index) = registry
+        .cancelled_before_start
+        .iter()
+        .position(|queued| queued == job_id)
+    {
+        registry.cancelled_before_start.remove(index);
+        return Ok(None);
+    }
+    if registry.active.contains_key(job_id) {
+        return Err("A folder scan with this identifier already exists.".to_string());
+    }
+    let cancelled = Arc::new(AtomicBool::new(false));
+    registry.active.insert(job_id.to_string(), Arc::clone(&cancelled));
+    Ok(Some(cancelled))
 }
 
-fn calculate_directory_size_controlled(
+fn unregister_folder_scan_job(job_id: &str) {
+    if let Ok(mut registry) = folder_scan_jobs().lock() {
+        registry.active.remove(job_id);
+    }
+}
+
+fn cancel_folder_scan_job(job_id: &str) -> Result<(), String> {
+    let mut registry = folder_scan_jobs()
+        .lock()
+        .map_err(|_| "Folder scan job registry is unavailable.".to_string())?;
+    if let Some(cancelled) = registry.active.get(job_id) {
+        cancelled.store(true, Ordering::Relaxed);
+        return Ok(());
+    }
+    if !registry
+        .cancelled_before_start
+        .iter()
+        .any(|queued| queued == job_id)
+    {
+        if registry.cancelled_before_start.len() >= MAX_PRE_CANCELLED_SCAN_JOBS {
+            registry.cancelled_before_start.pop_front();
+        }
+        registry.cancelled_before_start.push_back(job_id.to_string());
+    }
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum CancellableSizeOutcome {
+    Completed(u64),
+    Cancelled,
+}
+
+fn walk_directory_size_cancellable<F>(
     root: &Path,
-    control: &FolderSizeJobControl,
-    app: &tauri::AppHandle,
-    job_id: &str,
-) -> Result<u64, String> {
+    cancelled: &AtomicBool,
+    mut on_progress: F,
+) -> Result<CancellableSizeOutcome, String>
+where
+    F: FnMut(u64, usize),
+{
     let mut pending = vec![root.to_path_buf()];
     let mut total = 0u64;
     let mut entries_scanned = 0usize;
     let mut last_emit = std::time::Instant::now() - std::time::Duration::from_secs(1);
+
     while let Some(directory) = pending.pop() {
+        if cancelled.load(Ordering::Relaxed) {
+            return Ok(CancellableSizeOutcome::Cancelled);
+        }
         let entries = fs::read_dir(&directory)
             .map_err(|error| format!("Cannot read {}: {error}", display_path(&directory)))?;
         for entry in entries {
-            let mut state = control
-                .state
-                .lock()
-                .map_err(|_| "Folder size calculation state is unavailable.".to_string())?;
-            while state.paused && !state.cancelled {
-                state = control
-                    .changed
-                    .wait(state)
-                    .map_err(|_| "Folder size calculation state is unavailable.".to_string())?;
+            if cancelled.load(Ordering::Relaxed) {
+                return Ok(CancellableSizeOutcome::Cancelled);
             }
-            if state.cancelled {
-                return Err("Folder size calculation cancelled.".to_string());
-            }
-            drop(state);
 
             let entry = entry.map_err(|error| {
                 format!(
@@ -4325,108 +4411,164 @@ fn calculate_directory_size_controlled(
             })?;
             let path = entry.path();
             entries_scanned += 1;
-            let metadata = fs::symlink_metadata(&path)
-                .map_err(|error| format!("Cannot inspect {}: {error}", display_path(&path)))?;
-            if !metadata.file_type().is_symlink() {
-                if metadata.is_dir() {
+
+            #[cfg(target_os = "windows")]
+            {
+                // Use DirEntry::file_type/metadata on Windows to avoid extra per-entry opens
+                // unless an entry is a symlink.
+                let file_type = entry
+                    .file_type()
+                    .map_err(|error| format!("Cannot inspect {}: {error}", display_path(&path)))?;
+                if file_type.is_symlink() {
+                    continue;
+                }
+                if file_type.is_dir() {
                     pending.push(path);
-                } else if metadata.is_file() {
+                } else if file_type.is_file() {
+                    let metadata = entry
+                        .metadata()
+                        .map_err(|error| format!("Cannot inspect {}: {error}", display_path(&path)))?;
                     total = total
                         .checked_add(metadata.len())
                         .ok_or_else(|| "The folder size exceeds the supported range.".to_string())?;
                 }
             }
+            #[cfg(not(target_os = "windows"))]
+            {
+                let metadata = fs::symlink_metadata(&path)
+                    .map_err(|error| format!("Cannot inspect {}: {error}", display_path(&path)))?;
+                if !metadata.file_type().is_symlink() {
+                    if metadata.is_dir() {
+                        pending.push(path);
+                    } else if metadata.is_file() {
+                        total = total
+                            .checked_add(metadata.len())
+                            .ok_or_else(|| "The folder size exceeds the supported range.".to_string())?;
+                    }
+                }
+            }
+
             if last_emit.elapsed() >= std::time::Duration::from_millis(220) {
-                let _ = app.emit("folder-size-calculation-progress", FolderSizeJobProgress {
-                    job_id: job_id.to_string(), size: total, entries_scanned,
-                });
+                on_progress(total, entries_scanned);
                 last_emit = std::time::Instant::now();
             }
         }
     }
-    let _ = app.emit("folder-size-calculation-progress", FolderSizeJobProgress {
-        job_id: job_id.to_string(), size: total, entries_scanned,
-    });
-    Ok(total)
+
+    if cancelled.load(Ordering::Relaxed) {
+        return Ok(CancellableSizeOutcome::Cancelled);
+    }
+
+    on_progress(total, entries_scanned);
+    Ok(CancellableSizeOutcome::Completed(total))
+}
+
+fn calculate_directory_size_controlled(
+    root: &Path,
+    cancelled: &AtomicBool,
+    app: &tauri::AppHandle,
+    job_id: &str,
+) -> Result<CancellableSizeOutcome, String> {
+    walk_directory_size_cancellable(root, cancelled, |size, entries_scanned| {
+        let _ = app.emit(
+            "folder-size-calculation-progress",
+            FolderSizeJobProgress {
+                job_id: job_id.to_string(),
+                size,
+                entries_scanned,
+            },
+        );
+    })
 }
 
 #[tauri::command]
 fn start_folder_size_calculation(app: tauri::AppHandle, path: String, job_id: String) -> Result<(), String> {
-    let expanded = expand_windows_environment_path(&path);
-    if windows_portable_devices::is_portable_path(&expanded) {
-        return Err("Folder size calculation is not supported on portable devices.".to_string());
-    }
-    let root = fs::canonicalize(&expanded).map_err(|error| format!("Cannot access folder: {error}"))?;
-    if !root.is_dir() {
-        return Err("The selected location is not a folder.".to_string());
-    }
-
-    let control = Arc::new(FolderSizeJobControl {
-        state: Mutex::new(FolderSizeJobState::default()),
-        changed: Condvar::new(),
-    });
-    {
-        let mut jobs = folder_size_jobs()
-            .lock()
-            .map_err(|_| "Folder size job registry is unavailable.".to_string())?;
-        if jobs.contains_key(&job_id) {
-            return Err("A folder size calculation with this identifier already exists.".to_string());
-        }
-        jobs.insert(job_id.clone(), Arc::clone(&control));
-    }
+    let Some(cancelled) = register_folder_scan_job(&job_id)? else {
+        return Ok(());
+    };
 
     tauri::async_runtime::spawn_blocking(move || {
-        let result = calculate_directory_size_controlled(&root, &control, &app, &job_id);
-        if let Ok(mut jobs) = folder_size_jobs().lock() {
-            jobs.remove(&job_id);
+        let _guard = FolderScanJobGuard(job_id.clone());
+        if cancelled.load(Ordering::Relaxed) {
+            return;
         }
-        let payload = match result {
-            Ok(size) => FolderSizeJobResult { job_id, size: Some(size), error: None },
-            Err(error) => FolderSizeJobResult { job_id, size: None, error: Some(error) },
+
+        let expanded = expand_windows_environment_path(&path);
+        if windows_portable_devices::is_portable_path(&expanded) {
+            let _ = app.emit(
+                "folder-size-calculation-finished",
+                FolderSizeJobResult {
+                    job_id,
+                    size: None,
+                    error: Some("Folder size calculation is not supported on portable devices.".to_string()),
+                },
+            );
+            return;
+        }
+
+        let root = match fs::canonicalize(&expanded) {
+            Ok(root) => root,
+            Err(error) => {
+                if !cancelled.load(Ordering::Relaxed) {
+                    let _ = app.emit(
+                        "folder-size-calculation-finished",
+                        FolderSizeJobResult {
+                            job_id,
+                            size: None,
+                            error: Some(format!("Cannot access folder: {error}")),
+                        },
+                    );
+                }
+                return;
+            }
         };
-        let _ = app.emit("folder-size-calculation-finished", payload);
+
+        if cancelled.load(Ordering::Relaxed) {
+            return;
+        }
+
+        if !root.is_dir() {
+            let _ = app.emit(
+                "folder-size-calculation-finished",
+                FolderSizeJobResult {
+                    job_id,
+                    size: None,
+                    error: Some("The selected location is not a folder.".to_string()),
+                },
+            );
+            return;
+        }
+
+        let payload = match calculate_directory_size_controlled(&root, &cancelled, &app, &job_id) {
+            Ok(CancellableSizeOutcome::Completed(size)) => Some(FolderSizeJobResult {
+                job_id,
+                size: Some(size),
+                error: None,
+            }),
+            Ok(CancellableSizeOutcome::Cancelled) => None,
+            Err(error) => {
+                if cancelled.load(Ordering::Relaxed) {
+                    None
+                } else {
+                    Some(FolderSizeJobResult {
+                        job_id,
+                        size: None,
+                        error: Some(error),
+                    })
+                }
+            }
+        };
+
+        if let Some(payload) = payload {
+            let _ = app.emit("folder-size-calculation-finished", payload);
+        }
     });
-    Ok(())
-}
-
-#[tauri::command]
-fn pause_folder_size_calculation(job_id: String) -> Result<(), String> {
-    let Some(control) = find_folder_size_job(&job_id)? else { return Ok(()); };
-    let mut state = control
-        .state
-        .lock()
-        .map_err(|_| "Folder size calculation state is unavailable.".to_string())?;
-    if !state.cancelled {
-        state.paused = true;
-    }
-    Ok(())
-}
-
-#[tauri::command]
-fn resume_folder_size_calculation(job_id: String) -> Result<(), String> {
-    let Some(control) = find_folder_size_job(&job_id)? else { return Ok(()); };
-    let mut state = control
-        .state
-        .lock()
-        .map_err(|_| "Folder size calculation state is unavailable.".to_string())?;
-    if !state.cancelled {
-        state.paused = false;
-        control.changed.notify_all();
-    }
     Ok(())
 }
 
 #[tauri::command]
 fn cancel_folder_size_calculation(job_id: String) -> Result<(), String> {
-    let Some(control) = find_folder_size_job(&job_id)? else { return Ok(()); };
-    let mut state = control
-        .state
-        .lock()
-        .map_err(|_| "Folder size calculation state is unavailable.".to_string())?;
-    state.cancelled = true;
-    state.paused = false;
-    control.changed.notify_all();
-    Ok(())
+    cancel_folder_scan_job(&job_id)
 }
 
 fn calculate_directory_size(
@@ -10196,8 +10338,6 @@ fn main() {
             calculate_folder_size,
             calculate_folder_size_bounded,
             start_folder_size_calculation,
-            pause_folder_size_calculation,
-            resume_folder_size_calculation,
             cancel_folder_size_calculation,
             read_text_preview,
             read_archive_preview,
@@ -10553,5 +10693,40 @@ mod tray_tooltip_tests {
         assert_eq!(tooltip.chars().count(), 63);
         assert!(tooltip.ends_with('…'));
         assert!(tooltip.starts_with("CyberFiles · "));
+    }
+}
+
+#[cfg(test)]
+mod folder_scan_cancellation_tests {
+    use super::*;
+
+    #[test]
+    fn cancelling_before_registration_prevents_job_from_starting() {
+        let job_id = format!("pre-cancel-test-{}", std::process::id());
+        cancel_folder_scan_job(&job_id).expect("pre-cancel should succeed");
+        let token = register_folder_scan_job(&job_id).expect("register check should succeed");
+        assert!(token.is_none());
+    }
+
+    #[test]
+    fn walk_stops_immediately_when_cancelled_flag_is_set() {
+        let temp_dir = std::env::temp_dir().join(format!("cyberfiles-scan-test-{}", std::process::id()));
+        let nested_dir = temp_dir.join("nested");
+        let _ = fs::remove_dir_all(&temp_dir);
+        fs::create_dir_all(&nested_dir).expect("create temp dir");
+        fs::write(temp_dir.join("a.bin"), vec![1u8; 32]).expect("write file");
+        fs::write(nested_dir.join("b.bin"), vec![2u8; 64]).expect("write nested file");
+
+        let cancelled = AtomicBool::new(true);
+        let outcome = walk_directory_size_cancellable(&temp_dir, &cancelled, |_, _| {})
+            .expect("walk should not error when cancelled");
+        assert_eq!(outcome, CancellableSizeOutcome::Cancelled);
+
+        let not_cancelled = AtomicBool::new(false);
+        let outcome = walk_directory_size_cancellable(&temp_dir, &not_cancelled, |_, _| {})
+            .expect("walk should complete when not cancelled");
+        assert_eq!(outcome, CancellableSizeOutcome::Completed(96));
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

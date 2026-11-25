@@ -108,6 +108,8 @@ interface TooltipProps {
      Without it the window is the only limit, and a row near the top of a pane covers the
      pane's own bars: breadcrumb, filter field, column headers. */
   boundary?: string;
+  onOpen?: () => void;
+  onClose?: () => void;
 }
 
 interface VerticalBounds {
@@ -276,7 +278,7 @@ function getArrowStyle(position: TooltipPosition): CSSProperties {
 }
 
 /** A viewport-aware tooltip that does not alter the layout of its trigger. */
-export function Tooltip({ label, shortcut, placement = 'bottom', children, disabled = false, followPointer = false, pointerOnly = false, boundary }: TooltipProps) {
+export function Tooltip({ label, shortcut, placement = 'bottom', children, disabled = false, followPointer = false, pointerOnly = false, boundary, onOpen, onClose }: TooltipProps) {
   const preferenceEnabled = useContext(TooltipPreferenceContext);
   const isDisabled = disabled || !preferenceEnabled;
   const [anchorElement, setAnchorElement] = useState<HTMLElement | null>(null);
@@ -286,6 +288,11 @@ export function Tooltip({ label, shortcut, placement = 'bottom', children, disab
   const delayRef = useRef<number | null>(null);
   const tooltipId = useId();
   const tooltipOwnerRef = useRef(Symbol('cyberfiles-tooltip'));
+  const isOpenRef = useRef(false);
+  const onOpenRef = useRef(onOpen);
+  const onCloseRef = useRef(onClose);
+  onOpenRef.current = onOpen;
+  onCloseRef.current = onClose;
 
   const clearDelay = () => {
     if (delayRef.current !== null) {
@@ -300,6 +307,10 @@ export function Tooltip({ label, shortcut, placement = 'bottom', children, disab
 
   const hide = () => {
     clearDelay();
+    if (isOpenRef.current) {
+      isOpenRef.current = false;
+      onCloseRef.current?.();
+    }
     setAnchorElement(null);
     setPointerPoint(null);
     if (activeTooltipOwner === tooltipOwnerRef.current) {
@@ -339,6 +350,10 @@ export function Tooltip({ label, shortcut, placement = 'bottom', children, disab
       setAnchorElement(element);
       setPointerPoint(point);
       delayRef.current = null;
+      if (!isOpenRef.current) {
+        isOpenRef.current = true;
+        onOpenRef.current?.();
+      }
     }, SHOW_DELAY_MS);
     pendingTooltipOwner = owner;
     cancelPendingTooltip = clearDelay;
@@ -355,6 +370,10 @@ export function Tooltip({ label, shortcut, placement = 'bottom', children, disab
     return () => {
       mountedTooltipInstances -= 1;
       clearDelay();
+      if (isOpenRef.current) {
+        isOpenRef.current = false;
+        onCloseRef.current?.();
+      }
       if (activeTooltipOwner === tooltipOwnerRef.current) {
         activeTooltipOwner = null;
         dismissActiveTooltip = null;

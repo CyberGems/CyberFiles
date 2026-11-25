@@ -1511,7 +1511,6 @@ html[data-theme='light'] [data-system-home-icon='portable'] {
 }
 
 .cyberfiles-toast-progress { animation-name: cyberfiles-toast-countdown; animation-timing-function: linear; animation-fill-mode: forwards; }
-.cyberfiles-folder-hover-progress { animation-name: cyberfiles-folder-hover-fill; animation-timing-function: linear; animation-fill-mode: forwards; }
 /* Deliberately no fill mode: the panel must end up with no transform, or it would stay a
    containing block for anything fixed inside it. */
 .cyberfiles-transfer-panel { animation: cyberfiles-transfer-panel-in 150ms cubic-bezier(0.2, 0.8, 0.2, 1); }
@@ -1634,11 +1633,6 @@ html[data-theme='gray'] .cf-update-notes {
 @keyframes cyberfiles-toast-countdown {
   from { transform: scaleX(1); }
   to { transform: scaleX(0); }
-}
-
-@keyframes cyberfiles-folder-hover-fill {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
 }
 
 @keyframes cyberfiles-transfer-panel-in {
