@@ -11,8 +11,8 @@ const sourceRepository = 'CyberGems/CyberFiles';
 const manifestNames = [
   `${packageId}.installer.yaml`, `${packageId}.locale.en-US.yaml`, `${packageId}.yaml`,
 ];
-const startMarker = '<!-- cybersnap-winget:start -->';
-const endMarker = '<!-- cybersnap-winget:end -->';
+const startMarker = '<!-- cyberfiles-winget:start -->';
+const endMarker = '<!-- cyberfiles-winget:end -->';
 const packageMention = /(?:^|[^A-Za-z0-9_.])CyberGems\.CyberFiles(?=$|[^A-Za-z0-9_.])/;
 
 export function compareVersions(left, right) {
