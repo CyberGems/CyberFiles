@@ -831,6 +831,28 @@ function adjustDirectoryCountsForRemovedItems(counts: NativeDirectoryCounts, rem
   };
 }
 
+function adjustDirectoryCountsForAddedItems(counts: NativeDirectoryCounts, addedItems: FileItem[]): NativeDirectoryCounts {
+  let { fileCount, folderCount, visibleFileCount, visibleFolderCount, hiddenCount } = counts;
+  for (const item of addedItems) {
+    const isHidden = Boolean(item.attributes?.includes('H'));
+    if (item.isFolder) {
+      folderCount += 1;
+      if (!isHidden) visibleFolderCount += 1;
+    } else {
+      fileCount += 1;
+      if (!isHidden) visibleFileCount += 1;
+    }
+    if (isHidden) hiddenCount += 1;
+  }
+  return {
+    fileCount,
+    folderCount,
+    visibleFileCount,
+    visibleFolderCount,
+    hiddenCount,
+  };
+}
+
 const MAX_TAB_HISTORY_ENTRIES = 200;
 
 const getPathKey = (path: string) => normalizeWindowsPath(path).replace(/[\\/]+$/, '').toLowerCase();
@@ -2907,6 +2929,205 @@ export default function App() {
     });
   }, []);
 
+  const updateFlatDirectoriesForAddedItems = useCallback((addedItems: FileItem[]) => {
+    if (addedItems.length === 0) return;
+    const flatKeysToInvalidate: string[] = [];
+    const flatUpdates = new Map<string, FlatDirectoryState>();
+
+    for (const [rootKey, entry] of Object.entries(flatDirectoriesRef.current)) {
+      const matching = addedItems.filter(
+        item => isSameOrDescendantPath(item.path, rootKey) && getPathKey(item.path) !== rootKey,
+      );
+      if (matching.length === 0) continue;
+      if (entry.loading || entry.truncated || !entry.entries) {
+        flatKeysToInvalidate.push(rootKey);
+        continue;
+      }
+      const byPathKey = new Map(entry.entries.map(item => [getPathKey(item.path), item]));
+      const toInsert: FileItem[] = [];
+      let needsInvalidation = false;
+
+      for (const item of matching) {
+        const itemKey = getPathKey(item.path);
+        if (byPathKey.has(itemKey) || toInsert.some(candidate => getPathKey(candidate.path) === itemKey)) {
+          continue;
+        }
+        const parentKey = getPathKey(getParentPath(item.path));
+        let normalizedItem = item;
+        if (parentKey !== rootKey) {
+          const parentEntry = byPathKey.get(parentKey);
+          if (!parentEntry) {
+            needsInvalidation = true;
+            break;
+          }
+          if (parentEntry.attributes?.includes('H') && !item.attributes?.includes('H')) {
+            normalizedItem = { ...item, attributes: 'H' };
+          }
+        }
+        toInsert.push(normalizedItem);
+      }
+
+      if (needsInvalidation) {
+        flatKeysToInvalidate.push(rootKey);
+      } else if (toInsert.length > 0) {
+        const nextEntries = [...entry.entries, ...toInsert];
+        flatUpdates.set(rootKey, {
+          ...entry,
+          entries: nextEntries,
+          nextOffset: nextEntries.length,
+          counts: entry.counts
+            ? adjustDirectoryCountsForAddedItems(entry.counts, toInsert)
+            : entry.counts,
+        });
+      }
+    }
+
+    if (flatUpdates.size > 0) {
+      setFlatDirectories(previous => {
+        let next: Record<string, FlatDirectoryState> | null = null;
+        for (const [rootKey, updated] of flatUpdates) {
+          const current = previous[rootKey];
+          if (!current || current.loading || current.truncated) continue;
+          next ??= { ...previous };
+          next[rootKey] = updated;
+        }
+        return next ?? previous;
+      });
+    }
+    if (flatKeysToInvalidate.length > 0) {
+      invalidateFlatDirectories(flatKeysToInvalidate);
+    }
+  }, [invalidateFlatDirectories]);
+
+  const updateFlatDirectoriesForRenamedItems = useCallback((pairs: Array<{ before: string; after: string }>) => {
+    const effectivePairs = pairs.filter(pair => getPathKey(pair.before) !== getPathKey(pair.after) || pair.before !== pair.after);
+    if (effectivePairs.length === 0) return;
+
+    const leafName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+    const flatKeysToInvalidate: string[] = [];
+    const flatUpdates = new Map<string, FlatDirectoryState>();
+
+    for (const [rootKey, entry] of Object.entries(flatDirectoriesRef.current)) {
+      const relevantPairs = effectivePairs.filter(
+        pair =>
+          isSameOrDescendantPath(pair.before, rootKey) ||
+          isSameOrDescendantPath(pair.after, rootKey) ||
+          isSameOrDescendantPath(rootKey, pair.before),
+      );
+      if (relevantPairs.length === 0) continue;
+
+      const invalidatesRoot = relevantPairs.some(
+        pair =>
+          isSameOrDescendantPath(rootKey, pair.before) ||
+          isSameOrDescendantPath(pair.before, rootKey) !== isSameOrDescendantPath(pair.after, rootKey) ||
+          leafName(pair.before).startsWith('.') !== leafName(pair.after).startsWith('.'),
+      );
+      if (invalidatesRoot || entry.loading || entry.truncated || !entry.entries) {
+        flatKeysToInvalidate.push(rootKey);
+        continue;
+      }
+
+      let changedAny = false;
+      const nextEntries = entry.entries.map(candidate => {
+        let updated = candidate;
+        for (const pair of relevantPairs) {
+          if (!isSameOrDescendantPath(updated.path, pair.before)) continue;
+          changedAny = true;
+          const isRoot = getPathKey(updated.path) === getPathKey(pair.before);
+          const nextPath = rewritePathPrefix(updated.path, pair.before, pair.after);
+          const nextName = isRoot ? leafName(pair.after) : updated.name;
+          updated = {
+            ...updated,
+            id: `native-${encodeURIComponent(nextPath.toLowerCase())}`,
+            name: nextName,
+            path: nextPath,
+            extension: isRoot && !updated.isFolder ? getFileExtension(nextName) : updated.extension,
+            type: isRoot ? detectFileType(nextName, updated.isFolder) : updated.type,
+          };
+        }
+        return updated;
+      });
+
+      if (changedAny) {
+        flatUpdates.set(rootKey, {
+          ...entry,
+          entries: nextEntries,
+        });
+      } else {
+        flatKeysToInvalidate.push(rootKey);
+      }
+    }
+
+    if (flatUpdates.size > 0) {
+      setFlatDirectories(previous => {
+        let next: Record<string, FlatDirectoryState> | null = null;
+        for (const [rootKey, updated] of flatUpdates) {
+          const current = previous[rootKey];
+          if (!current || current.loading || current.truncated) continue;
+          next ??= { ...previous };
+          next[rootKey] = updated;
+        }
+        return next ?? previous;
+      });
+    }
+    if (flatKeysToInvalidate.length > 0) {
+      invalidateFlatDirectories(flatKeysToInvalidate);
+    }
+  }, [invalidateFlatDirectories]);
+
+  const updateFlatDirectoriesForRestoredPaths = useCallback(async (restoredPaths: string[]) => {
+    if (!isTauriDesktop() || restoredPaths.length === 0) return;
+    const affectedFlatRoots = Object.keys(flatDirectoriesRef.current).filter(rootKey =>
+      restoredPaths.some(path => isSameOrDescendantPath(path, rootKey) && getPathKey(path) !== rootKey),
+    );
+    if (affectedFlatRoots.length === 0) return;
+
+    const byParent = new Map<string, { parentPath: string; pathKeys: Set<string> }>();
+    for (const restoredPath of restoredPaths) {
+      const parentPath = getParentPath(restoredPath);
+      if (!parentPath) continue;
+      const parentKey = getPathKey(parentPath);
+      const existing = byParent.get(parentKey);
+      if (existing) {
+        existing.pathKeys.add(getPathKey(restoredPath));
+      } else {
+        byParent.set(parentKey, { parentPath, pathKeys: new Set([getPathKey(restoredPath)]) });
+      }
+    }
+
+    try {
+      const listings = await Promise.all(
+        Array.from(byParent.values(), async ({ parentPath, pathKeys }) => {
+          const listing = await listNativeDirectory(parentPath);
+          const matched: FileItem[] = [];
+          for (const entry of listing.entries) {
+            if (pathKeys.has(getPathKey(entry.path))) {
+              matched.push(entry);
+            }
+          }
+          return { expectedCount: pathKeys.size, matched };
+        }),
+      );
+
+      const allEntries = listings.flatMap(result => result.matched);
+      const incomplete = listings.some(result => result.matched.length < result.expectedCount);
+      const includesFolder = allEntries.some(entry => entry.isFolder);
+      if (incomplete || includesFolder || allEntries.length === 0) {
+        invalidateFlatDirectories(affectedFlatRoots);
+        return;
+      }
+
+      const entryByKey = new Map(allEntries.map(entry => [getPathKey(entry.path), entry]));
+      setAllFiles(previous => [
+        ...previous.filter(item => !entryByKey.has(getPathKey(item.path))),
+        ...allEntries,
+      ]);
+      updateFlatDirectoriesForAddedItems(allEntries);
+    } catch {
+      invalidateFlatDirectories(affectedFlatRoots);
+    }
+  }, [invalidateFlatDirectories, updateFlatDirectoriesForAddedItems]);
+
   /* Latest-value refs for drive-change handling, which runs outside the render
      cycle and must always see the current drives, language, styles and tabs. */
   const drivesRef = useRef(drives);
@@ -3460,7 +3681,7 @@ export default function App() {
   }, [previewItem?.id, previewItem?.path, previewItem?.handle, previewItem?.extension, previewItem?.type, previewItem?.isFolder, previewItem?.contentPreview]);
 
   // Navigation handlers
-  const handleNavigate = useCallback(async (newPath: string, targetPane: 'left' | 'right' = activePane, forceRefresh = false, openInNewTab = false, historyIndexOverride?: number, literalPath = false) => {
+  const handleNavigate = useCallback(async (newPath: string, targetPane: 'left' | 'right' = activePane, forceRefresh = false, openInNewTab = false, historyIndexOverride?: number, literalPath = false, preserveFlatCache = false) => {
     // %VAR% paths must be resolved before any state is stored: children are
     // indexed by the canonical parent path, history and recents persist the
     // resolved location, and guards compare plain Windows paths.
@@ -3494,7 +3715,7 @@ export default function App() {
         return;
       }
     }
-    if (forceRefresh && targetPath !== SYSTEM_HOME_PATH && targetPath !== RECYCLE_BIN_PATH && targetPath !== RECENT_PATH && targetPath !== NETWORK_PATH) invalidateFlatDirectories([targetPath]);
+    if (forceRefresh && !preserveFlatCache && targetPath !== SYSTEM_HOME_PATH && targetPath !== RECYCLE_BIN_PATH && targetPath !== RECENT_PATH && targetPath !== NETWORK_PATH) invalidateFlatDirectories([targetPath]);
     if (targetPath === SYSTEM_HOME_PATH || targetPath === NETWORK_PATH || isUncPath(targetPath) || isPortablePath(targetPath)) {
       systemHomeWorkspace.current = true;
       nativeRootPath.current = SYSTEM_HOME_PATH;
@@ -4021,9 +4242,11 @@ export default function App() {
     }
   }, []);
 
-  const refreshChangedDirectories = useCallback(async (paths: string[]) => {
+  const refreshChangedDirectories = useCallback(async (paths: string[], options?: { skipFlatInvalidation?: boolean }) => {
     suppressWatchedDirectoryPaths(paths);
-    invalidateFlatDirectories(paths);
+    if (!options?.skipFlatInvalidation) {
+      invalidateFlatDirectories(paths);
+    }
     const affectedKeys = new Set(paths.filter(Boolean).map(getPathKey));
     for (const key of affectedKeys) nativeLoadedDirectories.current.delete(key);
     const visible = [
@@ -4036,9 +4259,10 @@ export default function App() {
         refreshes.set(entry.pane + ':' + getPathKey(entry.path), entry.pane);
       }
     }
+    const preserveFlatCache = Boolean(options?.skipFlatInvalidation);
     await Promise.all(Array.from(refreshes, ([key, pane]) => {
       const path = visible.find(entry => entry.pane + ':' + getPathKey(entry.path || '') === key)?.path;
-      return path ? handleNavigate(path, pane, true) : Promise.resolve();
+      return path ? handleNavigate(path, pane, true, false, undefined, false, preserveFlatCache) : Promise.resolve();
     }));
     void refreshDriveCapacities({ includePortable: paths.some(isPortablePath) });
   }, [activeLeftTabIndex, activeRightTabIndex, handleNavigate, invalidateFlatDirectories, leftTabs, refreshDriveCapacities, rightTabs, suppressWatchedDirectoryPaths]);
@@ -5398,6 +5622,7 @@ export default function App() {
       if (descriptor.type === 'rename') {
         const startedAt = Date.now();
         const remaining: typeof descriptor.pairs = [];
+        const completedPairs: Array<{ before: string; after: string }> = [];
         let completed = 0;
         if (isTauriDesktop()) {
           for (const pair of [...descriptor.pairs].reverse()) {
@@ -5406,13 +5631,35 @@ export default function App() {
               if (!originalName) throw new Error(t.toolbar.undoFailed);
               await renameNativeItem(pair.after, originalName);
               renameRecentPairs([{ before: pair.after, after: pair.before, name: originalName }]);
+              completedPairs.push({ before: pair.after, after: pair.before });
               completed += 1;
             } catch {
               remaining.unshift(pair);
             }
           }
           const changedParents = descriptor.pairs.flatMap(pair => [getParentPath(pair.before), getParentPath(pair.after)]);
-          if (completed > 0) await refreshChangedDirectories(changedParents);
+          if (completed > 0) {
+            updateFlatDirectoriesForRenamedItems(completedPairs);
+            setAllFiles(previous => previous.map(item => {
+              let next = item;
+              for (const pair of completedPairs) {
+                if (!isSameOrDescendantPath(next.path, pair.before)) continue;
+                const isRoot = getPathKey(next.path) === getPathKey(pair.before);
+                const nextPath = rewritePathPrefix(next.path, pair.before, pair.after);
+                const nextName = isRoot ? (pair.after.split(/[\\/]/).filter(Boolean).pop() ?? next.name) : next.name;
+                next = {
+                  ...next,
+                  id: `native-${encodeURIComponent(nextPath.toLowerCase())}`,
+                  name: nextName,
+                  path: nextPath,
+                  extension: isRoot && !next.isFolder ? getFileExtension(nextName) : next.extension,
+                  type: isRoot ? detectFileType(nextName, next.isFolder) : next.type,
+                };
+              }
+              return next;
+            }));
+            await refreshChangedDirectories(changedParents, { skipFlatInvalidation: true });
+          }
         } else {
           const pairs = [...descriptor.pairs].reverse();
           setAllFiles(previous => previous.map(item => {
@@ -5472,7 +5719,8 @@ export default function App() {
           failures: result.failures,
         });
         if (restoredIds.size > 0) {
-          await refreshChangedDirectories(restoredPaths.map(getParentPath));
+          await updateFlatDirectoriesForRestoredPaths(restoredPaths);
+          await refreshChangedDirectories(restoredPaths.map(getParentPath), { skipFlatInvalidation: true });
           void refreshRecycleBinStatus();
           void refreshRecycleBinContents();
         }
@@ -5539,7 +5787,7 @@ export default function App() {
         setUndoBusy(undoPendingIdsRef.current.size > 0);
       }
     }
-  }, [isFileOperationBusy, queueNativeTransfer, recordTransferOperation, refreshChangedDirectories, refreshRecycleBinContents, refreshRecycleBinStatus, removeUndoAction, renameRecentPairs, setAllFiles, showToast, t.toolbar.undoCompleted, t.toolbar.undoFailed, t.toolbar.undoMoveUnavailable, t.toolbar.undoPartial, updateUndoAction]);
+  }, [isFileOperationBusy, queueNativeTransfer, recordTransferOperation, refreshChangedDirectories, refreshRecycleBinContents, refreshRecycleBinStatus, removeUndoAction, renameRecentPairs, setAllFiles, showToast, t.toolbar.undoCompleted, t.toolbar.undoFailed, t.toolbar.undoMoveUnavailable, t.toolbar.undoPartial, updateFlatDirectoriesForRenamedItems, updateFlatDirectoriesForRestoredPaths, updateUndoAction]);
 
   const startCopyWithProgress = useCallback((paths: string[], targetPath: string, selectionPane?: 'left' | 'right') => {
     queueNativeTransfer('copy', paths, targetPath, { selectionPane });
@@ -5748,7 +5996,7 @@ export default function App() {
           blockedReason: isPortableTarget ? t.toolbar.undoRecycleUnavailable : undefined,
           undo: isPortableTarget ? null : { type: 'remove', paths: [pastedImage.path] },
         });
-        await refreshChangedDirectories([targetPath]);
+        await refreshChangedDirectories([targetPath], { skipFlatInvalidation: true });
         const createdAtMs = pastedImage.createdMs ?? pastedImage.modifiedMs ?? Date.now();
         const modifiedAtMs = pastedImage.modifiedMs ?? createdAtMs;
         const imageId = `native-${encodeURIComponent(pastedImage.path.toLowerCase())}`;
@@ -5769,6 +6017,7 @@ export default function App() {
           ...previous.filter(item => getPathKey(item.path) !== getPathKey(pastedImage.path)),
           imageItem,
         ]);
+        updateFlatDirectoriesForAddedItems([imageItem]);
         updatePaneTab(pane, tab => ({ ...tab, selectedIds: [imageId], focusedId: imageId }));
         showToast(t.core.pastedImage.replace('{name}', pastedImage.name));
       } finally {
@@ -5777,7 +6026,7 @@ export default function App() {
     } catch (error) {
       showToast(t.core.operationFailedWithReason.replace('{reason}', String(error)));
     }
-  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, pushUndoAction, queueNativeTransfer, recordTransferOperation, refreshChangedDirectories, rightTabs, showToast, t.core.clipboardImageFileBaseName, t.core.desktopFileOperationsOnly, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.pastedImage, t.pane.chooseRealFolderFirst, t.pane.portableChooseStorageFirst, t.toolbar.undoRecycleUnavailable, updatePaneTab]);
+  }, [activeLeftTabIndex, activePane, activeRightTabIndex, isFileOperationBusy, leftTabs, pushUndoAction, queueNativeTransfer, recordTransferOperation, refreshChangedDirectories, rightTabs, showToast, t.core.clipboardImageFileBaseName, t.core.desktopFileOperationsOnly, t.core.fileClipboardEmpty, t.core.operationFailedWithReason, t.core.pastedImage, t.pane.chooseRealFolderFirst, t.pane.portableChooseStorageFirst, t.toolbar.undoRecycleUnavailable, updateFlatDirectoriesForAddedItems, updatePaneTab]);
   const handleDropFiles = useCallback((droppedItems: DraggedFileItem[], targetFolderPath: string, sourcePane: 'left' | 'right', operation: FileDropOperation) => {
     if (targetFolderPath === RECYCLE_BIN_PATH) {
       const recycleRoots = droppedItems.filter(item =>
@@ -5948,7 +6197,10 @@ export default function App() {
             undo: { type: 'rename', pairs: [{ before: item.path, after: renamedPath }] },
           });
         }
-        await refreshChangedDirectories([getParentPath(item.path)]);
+        await refreshChangedDirectories([getParentPath(item.path)], { skipFlatInvalidation: true });
+        if (renamedPath !== item.path) {
+          updateFlatDirectoriesForRenamedItems([{ before: item.path, after: renamedPath }]);
+        }
         const renamedId = `native-${encodeURIComponent(renamedPath.toLowerCase())}`;
         const renamedEntry: FileItem = {
           ...item,
@@ -6019,7 +6271,7 @@ export default function App() {
       });
     }
     showToast(t.core.renamed.replace('{name}', newName));
-  }, [activePane, allFiles, isFileOperationBusy, pushUndoAction, recordTransferOperation, refreshChangedDirectories, renameRecentPairs, showToast, t.core.conflict, t.core.invalidName, t.core.operationFailedWithReason, t.core.renamed, updatePaneTab]);
+  }, [activePane, allFiles, isFileOperationBusy, pushUndoAction, recordTransferOperation, refreshChangedDirectories, renameRecentPairs, showToast, t.core.conflict, t.core.invalidName, t.core.operationFailedWithReason, t.core.renamed, updateFlatDirectoriesForRenamedItems, updatePaneTab]);
 
   const beginInlineRename = useCallback((item: FileItem, paneId: 'left' | 'right') => {
     if (isPortableDeviceRoot(item.path) || isPortableStorageRoot(item.path)) {
@@ -6184,7 +6436,10 @@ export default function App() {
             undo: { type: 'rename', pairs: undoPairs },
           });
         }
-        await refreshChangedDirectories(changedRoots.map(root => getParentPath(root.path)));
+        await refreshChangedDirectories(changedRoots.map(root => getParentPath(root.path)), { skipFlatInvalidation: true });
+        if (undoPairs.length > 0) {
+          updateFlatDirectoriesForRenamedItems(undoPairs);
+        }
         setAllFiles(previous => {
           /* Same guard as the inline rename: the refresh already lists the renamed items under
              their new paths, so only the ones it did not return are added here. */
@@ -6247,7 +6502,7 @@ export default function App() {
     }
     showToast(`${renames.length} ${language === 'es' ? 'elementos renombrados.' : 'items renamed.'}`);
     return true;
-  }, [allFiles, isFileOperationBusy, language, pushUndoAction, recordTransferOperation, refreshChangedDirectories, renameRecentPairs, showToast, t.core.conflict, t.core.invalidName, t.core.operationPartial, updateActiveTab]);
+  }, [allFiles, isFileOperationBusy, language, pushUndoAction, recordTransferOperation, refreshChangedDirectories, renameRecentPairs, showToast, t.core.conflict, t.core.invalidName, t.core.operationPartial, updateActiveTab, updateFlatDirectoriesForRenamedItems]);
 
   const openCreateItem = useCallback((kind: NewItemKind, pane: 'left' | 'right' = activePane, suggestedName?: string) => {
     const paneTab = pane === 'left' ? leftTabs[activeLeftTabIndex] : rightTabs[activeRightTabIndex];
@@ -6393,7 +6648,7 @@ export default function App() {
           blockedReason: isPortableTarget ? t.toolbar.undoRecycleUnavailable : undefined,
           undo: isPortableTarget ? null : { type: 'remove', paths: [created.path] },
         });
-        await refreshChangedDirectories([request.parentPath]);
+        await refreshChangedDirectories([request.parentPath], { skipFlatInvalidation: true });
         const refreshedListing = await listNativeDirectory(request.parentPath);
         refreshedEntry = refreshedListing.entries.find(item => getPathKey(item.path) === getPathKey(created.path));
       } else {
@@ -6457,6 +6712,7 @@ export default function App() {
         ...previous.filter(item => getPathKey(item.path) !== getPathKey(created.path)),
         createdEntry,
       ]);
+      updateFlatDirectoriesForAddedItems([createdEntry]);
       updatePaneTab(request.pane, tab => ({ ...tab, selectedIds: [createdId], focusedId: createdId }));
       setPendingCreateItem(null);
       const successMessage = request.kind === 'folder'
@@ -6479,7 +6735,7 @@ export default function App() {
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [allFiles, isFileOperationBusy, pendingCreateItem, pushUndoAction, recordTransferOperation, refreshChangedDirectories, showToast, t.core.createdFile, t.core.createdFolder, t.core.createdShortcut, t.core.desktopFileOperationsOnly, t.core.invalidName, t.core.operationFailedWithReason, t.core.shortcutTargetRequired, t.toolbar.undoRecycleUnavailable, updatePaneTab]);
+  }, [allFiles, isFileOperationBusy, pendingCreateItem, pushUndoAction, recordTransferOperation, refreshChangedDirectories, showToast, t.core.createdFile, t.core.createdFolder, t.core.createdShortcut, t.core.desktopFileOperationsOnly, t.core.invalidName, t.core.operationFailedWithReason, t.core.shortcutTargetRequired, t.toolbar.undoRecycleUnavailable, updateFlatDirectoriesForAddedItems, updatePaneTab]);
 
   /* Deletes the given paths. Shared by the dialog, the remembered answer and the drop-to-recycle
      flows, so all of them update the list, the toast and the undo stack in exactly the same way. */
@@ -6856,9 +7112,10 @@ export default function App() {
       const restoredFrontendIds = new Set(items
         .filter(item => item.recycleBinId && restoredIds.has(item.recycleBinId))
         .map(item => item.id));
-      const restoredOriginalParents = items
+      const restoredOriginalPaths = items
         .filter(item => item.recycleBinId && restoredIds.has(item.recycleBinId) && item.originalPath)
-        .map(item => getParentPath(item.originalPath!));
+        .map(item => item.originalPath!);
+      const restoredOriginalParents = restoredOriginalPaths.map(getParentPath);
       if (restoredFrontendIds.size > 0) {
         const clearRestoredSelections = (tabs: TabState[]) => tabs.map(tab => ({
           ...tab,
@@ -6870,7 +7127,8 @@ export default function App() {
       }
 
       if (restoredOriginalParents.length > 0) {
-        void refreshChangedDirectories(restoredOriginalParents);
+        void updateFlatDirectoriesForRestoredPaths(restoredOriginalPaths);
+        void refreshChangedDirectories(restoredOriginalParents, { skipFlatInvalidation: true });
       } else if (result.restoredIds.length > 0) {
         void refreshDriveCapacities();
       }
@@ -6902,7 +7160,7 @@ export default function App() {
     } finally {
       recycleBinRestoreInFlight.current = false;
     }
-  }, [pushUndoAction, recordTransferOperation, refreshChangedDirectories, refreshDriveCapacities, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.recycleBinRestoreFailed, t.core.recycleBinRestoreFailedWithReason, t.core.recycleBinRestorePartial, t.core.recycleBinRestored, updateTransferOperation]);
+  }, [pushUndoAction, recordTransferOperation, refreshChangedDirectories, refreshDriveCapacities, refreshRecycleBinContents, refreshRecycleBinStatus, showToast, t.core.recycleBinRestoreFailed, t.core.recycleBinRestoreFailedWithReason, t.core.recycleBinRestorePartial, t.core.recycleBinRestored, updateFlatDirectoriesForRestoredPaths, updateTransferOperation]);
 
   const handleOpenRecycleBin = useCallback(async () => {
     await handleNavigate(RECYCLE_BIN_PATH, activePane);
