@@ -655,3 +655,81 @@ export async function startNativeOutboundFileDrag(paths: string[]): Promise<Outb
   }
   return invoke<OutboundFileDragResult>('start_outbound_file_drag', { paths });
 }
+
+export type AttributeChangeAction = 'unchanged' | 'on' | 'off' | 'toggle';
+
+export interface NativeFileMetadataSnapshot {
+  path: string;
+  isFolder: boolean;
+  createdMs: number | null;
+  modifiedMs: number | null;
+  accessedMs: number | null;
+  readOnly: boolean;
+  hidden: boolean;
+  system: boolean;
+  rawAttributes: number;
+}
+
+export interface FileMetadataCopyTimeSpec {
+  from: 'created' | 'modified' | 'accessed';
+  toCreated: boolean;
+  toModified: boolean;
+  toAccessed: boolean;
+}
+
+export interface FileMetadataUpdateRequest {
+  paths: string[];
+  subfolderDepth: number | null;
+  includeFiles: boolean;
+  includeFolders: boolean;
+  createdMs: number | null;
+  modifiedMs: number | null;
+  accessedMs: number | null;
+  copyTime: FileMetadataCopyTimeSpec | null;
+  readOnly: AttributeChangeAction;
+  hidden: AttributeChangeAction;
+  system: AttributeChangeAction;
+}
+
+export interface NativeFileMetadataRestoreEntry {
+  path: string;
+  createdMs: number | null;
+  modifiedMs: number | null;
+  accessedMs: number | null;
+  rawAttributes: number;
+}
+
+export interface FileMetadataUpdateResult {
+  updatedPaths: string[];
+  failures: Array<{ path: string; error: string }>;
+  previousSnapshots: NativeFileMetadataRestoreEntry[];
+}
+
+export async function inspectNativeFileMetadataBatch(paths: string[]): Promise<NativeFileMetadataSnapshot[]> {
+  if (!isTauriDesktop() || paths.length === 0) {
+    return [];
+  }
+  return invoke<NativeFileMetadataSnapshot[]>('inspect_file_metadata_batch', { paths });
+}
+
+export async function updateNativeFileMetadataBatch(request: FileMetadataUpdateRequest): Promise<FileMetadataUpdateResult> {
+  if (!isTauriDesktop() || request.paths.length === 0) {
+    return {
+      updatedPaths: [],
+      failures: [],
+      previousSnapshots: [],
+    };
+  }
+  return invoke<FileMetadataUpdateResult>('update_file_metadata_batch', { request });
+}
+
+export async function restoreNativeFileMetadataBatch(entries: NativeFileMetadataRestoreEntry[]): Promise<FileMetadataUpdateResult> {
+  if (!isTauriDesktop() || entries.length === 0) {
+    return {
+      updatedPaths: [],
+      failures: [],
+      previousSnapshots: [],
+    };
+  }
+  return invoke<FileMetadataUpdateResult>('restore_file_metadata_batch', { entries });
+}

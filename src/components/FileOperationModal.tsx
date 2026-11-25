@@ -19,6 +19,7 @@ import {
   Pin,
   Play,
   RotateCcw,
+  SlidersHorizontal,
   Trash2,
   X,
   XCircle,
@@ -28,7 +29,7 @@ import { Tooltip } from './Tooltip';
 import type { NativeTransferProgress } from '../utils/nativeFileSystem';
 import type { ArchiveExtractionMode } from '../types';
 
-export type TransferKind = 'copy' | 'move' | 'extract' | 'compress' | 'delete' | 'recycle' | 'restore' | 'create' | 'rename';
+export type TransferKind = 'copy' | 'move' | 'extract' | 'compress' | 'delete' | 'recycle' | 'restore' | 'create' | 'rename' | 'attributes';
 export type TransferStatus = 'queued' | 'awaiting-password' | 'running' | 'paused' | 'cancelling' | 'completed' | 'failed' | 'cancelled';
 
 export interface TransferOperationView extends NativeTransferProgress {
@@ -139,6 +140,11 @@ export function operationActionLabel(operation: TransferOperationView, language:
     return spanish
       ? `Renombrando ${count} ${count === 1 ? 'elemento' : 'elementos'}`
       : `Renaming ${count} ${count === 1 ? 'item' : 'items'}`;
+  }
+  if (operation.kind === 'attributes') {
+    return spanish
+      ? `Actualizando fechas y atributos (${count})`
+      : `Updating timestamps & attributes (${count})`;
   }
   if (operation.kind === 'copy') return spanish
     ? `Copiando ${count} ${count === 1 ? 'elemento' : 'elementos'}`
@@ -465,6 +471,8 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                     activeOperation.archiveName === 'folder' ? <FolderPlus className="h-4 w-4" /> : <FilePlus2 className="h-4 w-4" />
                   ) : activeOperation.kind === 'rename' ? (
                     <Pencil className="h-4 w-4" />
+                  ) : activeOperation.kind === 'attributes' ? (
+                    <SlidersHorizontal className="h-4 w-4" />
                   ) : activeOperation.kind === 'copy' ? (
                     <Copy className="h-4 w-4" />
                   ) : (
@@ -725,6 +733,8 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                         operation.archiveName === 'folder' ? <FolderPlus className="h-4 w-4" /> : <FilePlus2 className="h-4 w-4" />
                       ) : operation.kind === 'rename' ? (
                         <Pencil className="h-4 w-4" />
+                      ) : operation.kind === 'attributes' ? (
+                        <SlidersHorizontal className="h-4 w-4" />
                       ) : operation.kind === 'copy' ? (
                         <Copy className="h-4 w-4" />
                       ) : (
@@ -786,7 +796,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                   const isCancelled = operation.status === 'cancelled';
                   const targetToNavigate = operation.kind === 'recycle'
                     ? '::recycle-bin::'
-                    : operation.kind === 'compress' || operation.kind === 'create' || operation.kind === 'rename'
+                    : operation.kind === 'compress' || operation.kind === 'create' || operation.kind === 'rename' || operation.kind === 'attributes'
                       ? (operation.resultPath || operation.targetPath)
                       : operation.kind === 'restore'
                         ? (operation.completedPaths?.[0] || operation.targetPath)
@@ -822,7 +832,7 @@ export const FileOperationModal: React.FC<FileOperationModalProps> = ({
                                 ? operation.resultPath ?? sourceLabel(operation, language)
                                 : operation.kind === 'rename' && operation.sourcePaths.length === 1 && operation.resultPath
                                   ? `${isSpanish ? 'Renombrado' : 'Renamed'}: ${operation.sourcePaths[0].split(/[\\/]/).pop() ?? operation.sourcePaths[0]} → ${operation.resultPath.split(/[\\/]/).pop() ?? operation.resultPath}`
-                                  : operation.kind === 'delete' || operation.kind === 'recycle' || operation.kind === 'restore' || operation.kind === 'create' || operation.kind === 'rename'
+                                  : operation.kind === 'delete' || operation.kind === 'recycle' || operation.kind === 'restore' || operation.kind === 'create' || operation.kind === 'rename' || operation.kind === 'attributes'
                                     ? `${operationActionLabel(operation, language)}${operation.sourcePaths.length === 1 && operation.sourcePaths[0] && operation.sourcePaths[0] !== '::recycle-bin::' ? `: ${displayPath(operation.sourcePaths[0], language)}` : ''}`
                                     : operation.sourcePaths.length > 1
                                       ? `${operationActionLabel(operation, language)} (${operation.sourcePaths.length})`

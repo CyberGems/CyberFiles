@@ -4,7 +4,7 @@ import { Clock3, Undo2 } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { CommandBarSplit, type ToolbarLabelPosition } from './CommandBarControl';
 
-export type UndoHistoryKind = 'rename' | 'create' | 'copy' | 'move' | 'extract' | 'compress' | 'recycle' | 'restore' | 'permanent-delete';
+export type UndoHistoryKind = 'rename' | 'create' | 'copy' | 'move' | 'extract' | 'compress' | 'recycle' | 'restore' | 'permanent-delete' | 'attributes';
 
 export interface UndoHistoryItem {
   id: string;
@@ -40,6 +40,7 @@ function actionLabel(item: UndoHistoryItem, language: 'en' | 'es', translations:
     case 'recycle': return (count === 1 ? labels.recycleOne : labels.recycle).replace('{count}', String(count));
     case 'restore': return (count === 1 ? labels.restoreOne : labels.restore).replace('{count}', String(count));
     case 'permanent-delete': return (count === 1 ? labels.permanentDeleteOne : labels.permanentDelete).replace('{count}', String(count));
+    case 'attributes': return (count === 1 ? labels.attributesOne : labels.attributesMany).replace('{count}', String(count));
   }
 }
 

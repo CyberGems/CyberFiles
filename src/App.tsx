@@ -131,7 +131,7 @@ import {
   type WorkspaceProfile,
   type WorkspaceProfileStore,
 } from './utils/workspaceProfiles';
-import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, ejectNativePortableDevice, emptyNativeRecycleBin, getNativeDriveCapacities, getNativeFileClipboard, invokeNativeShellMenuVerb, getWindowsSpecialFolders, mapNativeNetworkDrive, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, parseNetworkMapFailedError, pasteNativeClipboardImage, probeNativeNetworkHosts, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, setNativeWatchedDirectories, buildNativeShellMenu, dropNativeShellMenu, showNativeFileProperties, showNativeShellContextMenu, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, startNativeOutboundFileDrag, pauseNativeTransferOperation, resumeNativeTransferOperation, type BuiltNativeShellMenu, type NativeDirectoryCounts, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
+import { authenticateNativeNetworkResource, disconnectNativeNetworkDrive, expandNativeEnvironmentPath, chooseNativeFile, chooseNativeFolder, clearNativeFileClipboard, cancelNativeTransferOperation, createNativeDirectory, createNativeTextFile, createNativeShortcut, editWindowsHostsFile, ejectNativePortableDevice, emptyNativeRecycleBin, getNativeDriveCapacities, getNativeFileClipboard, invokeNativeShellMenuVerb, getWindowsSpecialFolders, mapNativeNetworkDrive, openFolderInWindowsExplorer, openWindowsTerminalHere, parseNetworkAuthFailedError, parseNetworkAuthRequiredError, parseNetworkMapFailedError, pasteNativeClipboardImage, probeNativeNetworkHosts, getNativeRecycleBinStatus, isTauriDesktop, listNativeDirectory, listNativeFlatDirectory, listNativeDrives, listNativeNetworkResources, listNativeRecycleBin, listNativeSystemLocations, loadNativeTextPreview, moveNativeItemsToRecycleBin, permanentlyDeleteNativeItems, openNativeFileWithDefaultApp, renameNativeItem, restoreNativeFileMetadataBatch, restoreNativeRecycleBinItems, setNativeFileClipboard, setNativeTrayLanguage, setNativeWatchedDirectories, buildNativeShellMenu, dropNativeShellMenu, showNativeFileProperties, showNativeShellContextMenu, startNativeTransferOperation, startNativeArchiveExtractionOperation, startNativeZipCompressionOperation, startNativeOutboundFileDrag, pauseNativeTransferOperation, resumeNativeTransferOperation, updateNativeFileMetadataBatch, type BuiltNativeShellMenu, type FileMetadataUpdateRequest, type NativeDirectoryCounts, type NativeFileMetadataRestoreEntry, type NativeTransferProgress, type NativeTransferFinished, type NativeLocation, type RecycleBinStatus, type WindowsSpecialFolder, type WindowsTerminalOption } from './utils/nativeFileSystem';
 import { formatLocalDateTime, type DateFormatMode } from './utils/dateTime';
 import { normalizeListerTextScale, type ListerTextScale } from './utils/listerTextScale';
 import {
@@ -154,6 +154,7 @@ const AboutModal = lazyWithRetry(() => import('./components/AboutModal').then(mo
 const UpdateModal = lazyWithRetry(() => import('./components/UpdateModal').then(module => ({ default: module.UpdateModal })));
 const FindFilesModal = lazyWithRetry(() => import('./components/FindFilesModal').then(module => ({ default: module.FindFilesModal })));
 const BatchRenameModal = lazyWithRetry(() => import('./components/BatchRenameModal').then(module => ({ default: module.BatchRenameModal })));
+const FileAttributesModal = lazyWithRetry(() => import('./components/FileAttributesModal').then(module => ({ default: module.FileAttributesModal })));
 const KeyboardShortcutsModal = lazyWithRetry(() => import('./components/KeyboardShortcutsModal').then(module => ({ default: module.KeyboardShortcutsModal })));
 const CommandPalette = lazyWithRetry(() => import('./components/CommandPalette').then(module => ({ default: module.CommandPalette })));
 const ConfirmActionModal = lazyWithRetry(() => import('./components/ConfirmActionModal').then(module => ({ default: module.ConfirmActionModal })));
@@ -292,7 +293,8 @@ type UndoDescriptor =
   | { type: 'remove'; paths: string[] }
   | { type: 'restore'; items: Array<{ id: string; originalPath: string }> }
   | { type: 'move'; pairs: Array<{ from: string; to: string }> }
-  | { type: 'remove-virtual'; paths: string[] };
+  | { type: 'remove-virtual'; paths: string[] }
+  | { type: 'attributes'; entries: NativeFileMetadataRestoreEntry[] };
 
 interface UndoRecord extends UndoHistoryItem {
   undo: UndoDescriptor | null;
@@ -1698,6 +1700,7 @@ export default function App() {
 
   // Modals state
   const [isBatchRenameOpen, setIsBatchRenameOpen] = useState(false);
+  const [attributesModalItems, setAttributesModalItems] = useState<FileItem[] | null>(null);
   const [pendingCreateItem, setPendingCreateItem] = useState<{ kind: NewItemKind; pane: 'left' | 'right'; parentPath: string; suggestedName?: string } | null>(null);
   const [pendingZipCreation, setPendingZipCreation] = useState<{ sourcePaths: string[]; targetPath: string; pane: 'left' | 'right'; defaultName: string } | null>(null);
   const [pendingNetworkAuth, setPendingNetworkAuth] = useState<{ path: string; pane: 'left' | 'right'; errorMessage?: string | null } | null>(null);
@@ -1787,6 +1790,7 @@ export default function App() {
   // without depending on directory counts that load after it is registered.
   const flatViewFolderCountRef = useRef(0);
   const shouldMountBatchRenameModal = useKeepModalMountedAfterFirstOpen(isBatchRenameOpen);
+  const shouldMountAttributesModal = useKeepModalMountedAfterFirstOpen(attributesModalItems !== null);
   const shouldMountShortcutsModal = useKeepModalMountedAfterFirstOpen(isShortcutsOpen);
   const shouldMountSearchModal = useKeepModalMountedAfterFirstOpen(isSearchOpen);
   const shouldMountSettingsModal = useKeepModalMountedAfterFirstOpen(isSettingsOpen);
@@ -5868,6 +5872,39 @@ export default function App() {
           removeUndoAction(id);
           showToast(t.toolbar.undoCompleted);
         }
+        return;
+      }
+
+      if (descriptor.type === 'attributes') {
+        if (!isTauriDesktop()) throw new Error(t.toolbar.undoFailed);
+        const startedAt = Date.now();
+        const result = await restoreNativeFileMetadataBatch(descriptor.entries);
+        const updatedCount = result.updatedPaths.length;
+        const failedCount = result.failures.length;
+        const updatedKeys = new Set(result.updatedPaths.map(getPathKey));
+        const remainingEntries = descriptor.entries.filter(entry => !updatedKeys.has(getPathKey(entry.path)));
+        recordTransferOperation({
+          kind: 'attributes',
+          sourcePaths: descriptor.entries.map(entry => entry.path),
+          targetPath: getParentPath(descriptor.entries[0]?.path ?? ''),
+          status: updatedCount === 0 && failedCount > 0 ? 'failed' : 'completed',
+          startedAt,
+          itemsCompleted: updatedCount,
+          totalItems: descriptor.entries.length,
+          completedPaths: result.updatedPaths,
+          failures: result.failures,
+        });
+        if (result.updatedPaths.length > 0) {
+          const affectedParents = Array.from(new Set(result.updatedPaths.map(getParentPath).filter(Boolean)));
+          await refreshChangedDirectories(affectedParents);
+        }
+        if (remainingEntries.length > 0) {
+          updateUndoAction(id, current => ({ ...current, count: remainingEntries.length, undo: { type: 'attributes', entries: remainingEntries } }));
+          showToast(t.toolbar.undoPartial.replace('{completed}', String(updatedCount)).replace('{failed}', String(remainingEntries.length)));
+        } else {
+          removeUndoAction(id);
+          showToast(t.toolbar.undoCompleted);
+        }
       }
     } catch {
       showToast(t.toolbar.undoFailed);
@@ -6451,6 +6488,101 @@ export default function App() {
       showToast(t.preview.windowsPropertiesFailed);
     }
   }, [showToast, t.preview.windowsPropertiesFailed]);
+
+  const openAttributesModal = useCallback((itemsOverride?: FileItem[]) => {
+    if (!isTauriDesktop()) return;
+    const focusedItem = currentTab.focusedId ? filesById.get(currentTab.focusedId) : undefined;
+    const candidates =
+      itemsOverride && itemsOverride.length > 0
+        ? itemsOverride
+        : selectedItemsForDelete.length > 0
+          ? selectedItemsForDelete
+          : focusedItem
+            ? [focusedItem]
+            : [];
+    const eligible = candidates.filter(
+      item =>
+        item.path &&
+        !item.recycleBinId &&
+        !item.path.startsWith('::') &&
+        !isPortablePath(item.path) &&
+        !isUncServerRoot(item.path),
+    );
+    if (eligible.length === 0) return;
+    setAttributesModalItems(eligible);
+  }, [currentTab.focusedId, filesById, selectedItemsForDelete]);
+
+  const handleApplyFileAttributes = useCallback(async (request: FileMetadataUpdateRequest) => {
+    if (!isTauriDesktop()) {
+      return { applied: false, errorMessage: t.core.desktopFileOperationsOnly };
+    }
+    if (isFileOperationBusy) {
+      return { applied: false, errorMessage: t.fileAttributes.applyFailed };
+    }
+    setIsFileOperationBusy(true);
+    const startedAt = Date.now();
+    try {
+      const result = await updateNativeFileMetadataBatch(request);
+      const updatedCount = result.updatedPaths.length;
+      const failedCount = result.failures.length;
+      recordTransferOperation({
+        kind: 'attributes',
+        sourcePaths: request.paths,
+        targetPath: getParentPath(request.paths[0] ?? ''),
+        status: updatedCount === 0 && failedCount > 0 ? 'failed' : 'completed',
+        startedAt,
+        itemsCompleted: updatedCount,
+        totalItems: Math.max(request.paths.length, updatedCount + failedCount),
+        resultPath: result.updatedPaths.length === 1 ? result.updatedPaths[0] : undefined,
+        completedPaths: result.updatedPaths,
+        failures: result.failures,
+      });
+
+      if (result.previousSnapshots.length > 0) {
+        const firstPath = result.previousSnapshots[0].path;
+        pushUndoAction({
+          kind: 'attributes',
+          name: result.previousSnapshots.length === 1 ? (firstPath.split(/[\\/]/).filter(Boolean).pop() ?? '') : '',
+          count: result.previousSnapshots.length,
+          canUndo: true,
+          undo: { type: 'attributes', entries: result.previousSnapshots },
+        });
+      }
+
+      if (result.updatedPaths.length > 0) {
+        const affectedParents = Array.from(new Set(result.updatedPaths.map(getParentPath).filter(Boolean)));
+        await refreshChangedDirectories(affectedParents, {
+          skipFlatInvalidation: request.subfolderDepth === null && request.hidden === 'unchanged',
+        });
+      }
+
+      if (updatedCount === 0 && failedCount === 0) {
+        return { applied: false, errorMessage: t.fileAttributes.nothingMatched };
+      }
+      if (updatedCount === 0 && failedCount > 0) {
+        return { applied: false, errorMessage: t.fileAttributes.applyFailed };
+      }
+
+      if (failedCount > 0) {
+        showToast(
+          t.fileAttributes.partialFailure
+            .replace('{updated}', String(updatedCount))
+            .replace('{failed}', String(failedCount)),
+        );
+      } else {
+        showToast(
+          updatedCount === 1
+            ? t.fileAttributes.successOne
+            : t.fileAttributes.successMany.replace('{count}', String(updatedCount)),
+        );
+      }
+      return { applied: true };
+    } catch {
+      return { applied: false, errorMessage: t.fileAttributes.applyFailed };
+    } finally {
+      setIsFileOperationBusy(false);
+    }
+  }, [isFileOperationBusy, pushUndoAction, recordTransferOperation, refreshChangedDirectories, showToast, t.core.desktopFileOperationsOnly, t.fileAttributes.applyFailed, t.fileAttributes.nothingMatched, t.fileAttributes.partialFailure, t.fileAttributes.successMany, t.fileAttributes.successOne]);
 
   const handleApplyBatchRename = useCallback(async (renames: { id: string; original: string; renamed: string }[]): Promise<boolean> => {
     const lookup = new Map(renames.map(rename => [rename.id, rename.renamed]));
@@ -7407,7 +7539,7 @@ export default function App() {
         if (isEditingText) return;
         if (
           isCloseDialogOpen || isSettingsOpen || isAboutOpen || isSearchOpen || isShortcutsOpen ||
-          isCommandPaletteOpen || isBatchRenameOpen || isWorkspaceManagerOpen ||
+          isCommandPaletteOpen || isBatchRenameOpen || attributesModalItems !== null || isWorkspaceManagerOpen ||
           isUnsavedWorkspaceChangesOpen || isOnboardingOpen || isEmptyRecycleBinConfirmOpen ||
           pendingDeleteItems.length > 0 || pendingCreateItem || pendingZipCreation || pendingNetworkAuth || pendingMapNetworkDrive || renameRequest || contextMenuPos
         ) return;
@@ -7416,7 +7548,7 @@ export default function App() {
       }
 
       if (isCommandPaletteOpen) return;
-      if (isCloseDialogOpen || isSettingsOpen || isAboutOpen || isSearchOpen || isShortcutsOpen || isBatchRenameOpen || pendingDeleteItems.length > 0 || pendingNetworkAuth || pendingMapNetworkDrive || isFileOperationBusy) return;
+      if (isCloseDialogOpen || isSettingsOpen || isAboutOpen || isSearchOpen || isShortcutsOpen || isBatchRenameOpen || attributesModalItems !== null || pendingDeleteItems.length > 0 || pendingNetworkAuth || pendingMapNetworkDrive || isFileOperationBusy) return;
 
       // If typing inside an input/textarea, don't hijack keys
       if (
@@ -7509,6 +7641,13 @@ export default function App() {
         ) {
           void showNativeFileProperties(currentTab.currentPath).catch(() => showToast(t.preview.windowsPropertiesFailed));
         }
+        return;
+      }
+
+      // Ctrl + Enter: Edit timestamps & attributes for the selected items
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key === 'Enter') {
+        e.preventDefault();
+        openAttributesModal();
         return;
       }
 
@@ -7705,6 +7844,7 @@ export default function App() {
     handleNewFolder,
     handleRenameSelected,
     handleOpenWindowsProperties,
+    openAttributesModal,
     handleCopyPath,
     handleNavigateUp,
     filesById,
@@ -7724,6 +7864,7 @@ export default function App() {
     isCommandPaletteOpen,
     isOperationsCenterOpen,
     isBatchRenameOpen,
+    attributesModalItems,
     isWorkspaceManagerOpen,
     isUnsavedWorkspaceChangesOpen,
     isOnboardingOpen,
@@ -8049,6 +8190,7 @@ export default function App() {
     { id: 'rename-selection', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.rename, shortcut: 'F2', disabled: Boolean(selectionDisabledReason), disabledReason: selectionDisabledReason, keywords: 'change name', onSelect: handleRenameSelected },
     { id: 'copy-path', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.copyPath, shortcut: 'Ctrl+Shift+C', disabled: !copyPathEnabled, disabledReason: copyPathEnabled ? undefined : t.commandPalette.disabled.realFolderRequired, keywords: 'clipboard path location', onSelect: handleCopyPath },
     { id: 'batch-rename', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.batchRename, shortcut: 'Ctrl+R', disabled: Boolean(selectionDisabledReason), disabledReason: selectionDisabledReason, keywords: 'multiple names', onSelect: () => setIsBatchRenameOpen(true) },
+    { id: 'edit-attributes', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.editAttributes, shortcut: 'Ctrl+Enter', disabled: Boolean(selectionDisabledReason) || !isTauriDesktop() || isPortablePath(currentTab.currentPath), disabledReason: !isTauriDesktop() ? t.core.desktopFileOperationsOnly : selectionDisabledReason, keywords: 'timestamps dates created modified accessed attributes readonly hidden system fechas atributos', onSelect: () => openAttributesModal() },
     { id: 'delete-selection', group: t.commandPalette.groups.actions, label: t.commandPalette.commands.delete, shortcut: 'Delete', disabled: Boolean(selectionDisabledReason) || !isTauriDesktop(), disabledReason: !isTauriDesktop() ? t.core.desktopFileOperationsOnly : selectionDisabledReason, keywords: 'remove recycle bin', onSelect: () => handleDeleteSelected(selectedItemsForDelete) },
     { id: 'show-preview', group: t.commandPalette.groups.actions, label: previewOpen ? t.commandPalette.commands.hidePreview : t.commandPalette.commands.showPreview, shortcut: 'F3 / Space', keywords: 'properties preview pane', onSelect: () => setPreviewOpen(value => !value) },
     { id: 'show-locations', group: t.commandPalette.groups.actions, label: sidebarOpen ? t.commandPalette.commands.hideLocations : t.commandPalette.commands.showLocations, shortcut: 'Ctrl+L', keywords: 'sidebar locations quick access drives', onSelect: () => setSidebarOpen(value => !value) },
@@ -8250,6 +8392,7 @@ export default function App() {
       propertiesOpen: previewOpen,
       onDelete: items => handleDeleteSelected(items),
       onRename: item => beginInlineRename(item, pane),
+      onEditAttributes: isTauriDesktop() && !isPortableFolder ? items => openAttributesModal(items) : undefined,
       onPreview: item => { touchFileAccessed(item.id); recordRecentFile(item); setPreviewOpen(true); },
       onCompress: items => { if (items.length > 0) openZipCreation(items, getParentPath(items[0].path), pane); },
       onExtract: (item, mode) => queueNativeTransfer('extract', [item.path], getParentPath(item.path), { selectionPane: pane, extractionMode: mode }),
@@ -9066,6 +9209,22 @@ export default function App() {
         onCreateItem={kind => openCreateItem(kind, contextPane)}
         onRename={item => beginInlineRename(item, contextPane)}
         onBatchRename={() => setIsBatchRenameOpen(true)}
+        onEditAttributes={
+          contextMenuPos?.targetItem &&
+          isTauriDesktop() &&
+          !contextMenuPos.targetItem.recycleBinId &&
+          !isPortablePath(contextMenuPos.targetItem.path) &&
+          !isUncServerRoot(contextMenuPos.targetItem.path) &&
+          !contextMenuPos.targetItem.path.startsWith('::')
+            ? () => {
+                const target = contextMenuPos.targetItem!;
+                const targets = selectedItemsForDelete.some(item => item.id === target.id)
+                  ? selectedItemsForDelete
+                  : [target];
+                openAttributesModal(targets);
+              }
+            : undefined
+        }
         onDelete={(item) => handleDeleteSelected([item])}
         onRestore={(item) => { void handleRestoreRecycleBinItems([item]); }}
         isRecentLocation={contextPaneTab.currentPath === RECENT_PATH}
@@ -9259,6 +9418,18 @@ export default function App() {
             onClose={() => setIsBatchRenameOpen(false)}
             selectedItems={selectedItemsForRename.length > 0 ? selectedItemsForRename : activeDisplayFiles}
             onApplyRename={handleApplyBatchRename}
+          />
+        </Suspense>
+      )}
+
+      {/* File Timestamps & Attributes Modal */}
+      {shouldMountAttributesModal && (
+        <Suspense fallback={null}>
+          <FileAttributesModal
+            isOpen={attributesModalItems !== null}
+            items={attributesModalItems ?? []}
+            onClose={() => setAttributesModalItems(null)}
+            onApply={handleApplyFileAttributes}
           />
         </Suspense>
       )}

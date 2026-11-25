@@ -28,6 +28,7 @@ import {
   Rows3,
   Scaling,
   Search,
+  SlidersHorizontal,
   Square,
   Trash2,
   X,
@@ -63,6 +64,7 @@ export interface PaneSelectionActions {
   propertiesOpen: boolean;
   onDelete: (items: FileItem[]) => void;
   onRename: (item: FileItem) => void;
+  onEditAttributes?: (items: FileItem[]) => void;
   onPreview: (item: FileItem) => void;
   onCompress: (items: FileItem[]) => void;
   onExtract: (item: FileItem, mode: ArchiveExtractionMode) => void;
@@ -529,6 +531,15 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
         label: t.sidebar.customizeFolderIcon,
         icon: <Palette className="h-3.5 w-3.5 text-pink-400" />,
         onSelect: () => actions.onCustomizeFolderIcon(singleFolder),
+      });
+    }
+    if (!allFromRecycleBin && actions.onEditAttributes) {
+      contextGroup.push({
+        key: 'edit-attributes',
+        label: t.sidebar.editAttributes,
+        icon: <SlidersHorizontal className="h-3.5 w-3.5 text-cyan-300" />,
+        shortcut: 'Ctrl+Enter',
+        onSelect: () => actions.onEditAttributes?.(selectedItems),
       });
     }
     /* Last in the group in both states: the folder menu closes with its own copy-path entry. */

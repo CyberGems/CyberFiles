@@ -26,6 +26,7 @@ import {
   Layers,
   RotateCcw,
   Scissors,
+  SlidersHorizontal,
   ArrowDown,
   ArrowUp,
   ArrowLeftRight,
@@ -107,6 +108,7 @@ interface ContextMenuProps {
   fileClipboardSupported: boolean;
   onRename: (item: FileItem) => void;
   onBatchRename: () => void;
+  onEditAttributes?: () => void;
   onDelete: (item: FileItem) => void;
   onRestore: (item: FileItem) => void;
   isRecentLocation?: boolean;
@@ -184,6 +186,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   fileClipboardSupported,
   onRename,
   onBatchRename,
+  onEditAttributes,
   onDelete,
   onRestore,
   isRecentLocation = false,
@@ -895,6 +898,14 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
                 shortcut="Ctrl+R"
                 onClick={() => { onBatchRename(); onClose(); }}
               />
+              {onEditAttributes && (
+                <MenuButton
+                  icon={<SlidersHorizontal className="h-4 w-4 text-cyan-300" />}
+                  label={t.contextMenu.editAttributes}
+                  shortcut="Ctrl+Enter"
+                  onClick={() => { onEditAttributes(); onClose(); }}
+                />
+              )}
             </div>
 
             {/* Properties (Win 11 Alt+Enter) */}

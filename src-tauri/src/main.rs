@@ -9553,6 +9553,506 @@ async fn open_windows_file_properties(path: String) -> Result<(), String> {
         .map_err(|error| format!("Windows Properties worker failed: {error}"))?
 }
 
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct NativeFileMetadataSnapshot {
+    path: String,
+    is_folder: bool,
+    created_ms: Option<u64>,
+    modified_ms: Option<u64>,
+    accessed_ms: Option<u64>,
+    read_only: bool,
+    hidden: bool,
+    system: bool,
+    raw_attributes: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FileMetadataCopyTimeSpec {
+    from: String,
+    to_created: bool,
+    to_modified: bool,
+    to_accessed: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FileMetadataUpdateRequest {
+    paths: Vec<String>,
+    subfolder_depth: Option<u32>,
+    include_files: bool,
+    include_folders: bool,
+    created_ms: Option<u64>,
+    modified_ms: Option<u64>,
+    accessed_ms: Option<u64>,
+    copy_time: Option<FileMetadataCopyTimeSpec>,
+    read_only: String,
+    hidden: String,
+    system: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct NativeFileMetadataRestoreEntry {
+    path: String,
+    created_ms: Option<u64>,
+    modified_ms: Option<u64>,
+    accessed_ms: Option<u64>,
+    raw_attributes: u32,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FileMetadataUpdateResult {
+    updated_paths: Vec<String>,
+    failures: Vec<NativeOperationFailure>,
+    previous_snapshots: Vec<NativeFileMetadataRestoreEntry>,
+}
+
+const FILETIME_UNIX_EPOCH_TICKS: u64 = 116_444_736_000_000_000;
+const ATTR_READ_ONLY: u32 = 0x1;
+const ATTR_HIDDEN: u32 = 0x2;
+const ATTR_SYSTEM: u32 = 0x4;
+const MAX_METADATA_BATCH_TARGETS: usize = 50_000;
+
+fn unix_millis_to_filetime_parts(ms: u64) -> (u32, u32) {
+    let ticks = FILETIME_UNIX_EPOCH_TICKS.saturating_add(ms.saturating_mul(10_000));
+    ((ticks & 0xFFFF_FFFF) as u32, (ticks >> 32) as u32)
+}
+
+fn filetime_parts_to_unix_millis(low: u32, high: u32) -> Option<u64> {
+    let ticks = (u64::from(high) << 32) | u64::from(low);
+    ticks
+        .checked_sub(FILETIME_UNIX_EPOCH_TICKS)
+        .map(|unix_ticks| unix_ticks / 10_000)
+}
+
+fn apply_attribute_action(current: u32, bit: u32, action: &str) -> u32 {
+    match action {
+        "on" => current | bit,
+        "off" => current & !bit,
+        "toggle" => current ^ bit,
+        _ => current,
+    }
+}
+
+fn compute_updated_file_attributes(current: u32, read_only: &str, hidden: &str, system: &str) -> u32 {
+    let mut next = current;
+    next = apply_attribute_action(next, ATTR_READ_ONLY, read_only);
+    next = apply_attribute_action(next, ATTR_HIDDEN, hidden);
+    next = apply_attribute_action(next, ATTR_SYSTEM, system);
+    next
+}
+
+fn collect_metadata_target_paths(
+    roots: &[String],
+    subfolder_depth: Option<u32>,
+    include_files: bool,
+    include_folders: bool,
+) -> Vec<PathBuf> {
+    use std::collections::HashSet;
+
+    fn push_unique_target(targets: &mut Vec<PathBuf>, seen: &mut HashSet<String>, path: PathBuf) {
+        if targets.len() >= MAX_METADATA_BATCH_TARGETS {
+            return;
+        }
+        let key = display_path(&path).to_ascii_lowercase();
+        if seen.insert(key) {
+            targets.push(path);
+        }
+    }
+
+    let mut targets = Vec::new();
+    let mut seen = HashSet::new();
+
+    let mut walk_dirs: Vec<(PathBuf, u32)> = Vec::new();
+    for raw in roots {
+        let expanded = expand_windows_environment_path(raw);
+        if expanded.is_empty()
+            || expanded.starts_with("::")
+            || windows_portable_devices::is_portable_path(&expanded)
+            || is_unc_server_root(&expanded).is_some()
+        {
+            continue;
+        }
+        let candidate = PathBuf::from(&expanded);
+        let Ok(metadata) = fs::symlink_metadata(&candidate) else {
+            continue;
+        };
+        let is_dir = metadata.is_dir();
+        if subfolder_depth.is_none() {
+            push_unique_target(&mut targets, &mut seen, candidate);
+            continue;
+        }
+        if is_dir {
+            if include_folders {
+                push_unique_target(&mut targets, &mut seen, candidate.clone());
+            }
+            walk_dirs.push((candidate, 1));
+        } else if include_files {
+            push_unique_target(&mut targets, &mut seen, candidate);
+        }
+    }
+
+    let Some(max_depth) = subfolder_depth else {
+        return targets;
+    };
+
+    while let Some((dir, depth)) = walk_dirs.pop() {
+        if targets.len() >= MAX_METADATA_BATCH_TARGETS {
+            break;
+        }
+        let Ok(children) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for child in children.flatten() {
+            if targets.len() >= MAX_METADATA_BATCH_TARGETS {
+                break;
+            }
+            let entry_path = child.path();
+            let Ok(metadata) = fs::symlink_metadata(&entry_path) else {
+                continue;
+            };
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::fs::MetadataExt;
+                if metadata.file_attributes() & 0x400 != 0 {
+                    continue;
+                }
+            }
+            if metadata.is_dir() {
+                if include_folders {
+                    push_unique_target(&mut targets, &mut seen, entry_path.clone());
+                }
+                if max_depth == 0 || depth < max_depth {
+                    walk_dirs.push((entry_path, depth + 1));
+                }
+            } else if include_files {
+                push_unique_target(&mut targets, &mut seen, entry_path);
+            }
+        }
+    }
+
+    targets
+}
+
+#[cfg(target_os = "windows")]
+fn read_native_file_metadata(path: &Path) -> Result<NativeFileMetadataSnapshot, String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Storage::FileSystem::{
+        CreateFileW, GetFileAttributesW, GetFileTime, FILE_FLAG_BACKUP_SEMANTICS,
+        FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, INVALID_FILE_ATTRIBUTES,
+        OPEN_EXISTING,
+    };
+
+    const FILE_READ_ATTRIBUTES_ACCESS: u32 = 0x0080;
+    const ATTR_DIRECTORY: u32 = 0x10;
+
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let raw_attributes = unsafe { GetFileAttributesW(wide.as_ptr()) };
+    if raw_attributes == INVALID_FILE_ATTRIBUTES {
+        return Err(format!("Cannot read attributes: {}", io::Error::last_os_error()));
+    }
+
+    let handle = unsafe {
+        CreateFileW(
+            wide.as_ptr(),
+            FILE_READ_ATTRIBUTES_ACCESS,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            std::ptr::null(),
+            OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS,
+            std::ptr::null_mut(),
+        )
+    };
+    if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+        return Err(format!("Cannot open handle: {}", io::Error::last_os_error()));
+    }
+
+    let mut created = FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 };
+    let mut accessed = FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 };
+    let mut modified = FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 };
+    let time_ok = unsafe { GetFileTime(handle, &mut created, &mut accessed, &mut modified) != 0 };
+    unsafe {
+        CloseHandle(handle);
+    }
+    if !time_ok {
+        return Err(format!("Cannot read file times: {}", io::Error::last_os_error()));
+    }
+
+    Ok(NativeFileMetadataSnapshot {
+        path: display_path(path),
+        is_folder: raw_attributes & ATTR_DIRECTORY != 0,
+        created_ms: filetime_parts_to_unix_millis(created.dwLowDateTime, created.dwHighDateTime),
+        modified_ms: filetime_parts_to_unix_millis(modified.dwLowDateTime, modified.dwHighDateTime),
+        accessed_ms: filetime_parts_to_unix_millis(accessed.dwLowDateTime, accessed.dwHighDateTime),
+        read_only: raw_attributes & ATTR_READ_ONLY != 0,
+        hidden: raw_attributes & ATTR_HIDDEN != 0,
+        system: raw_attributes & ATTR_SYSTEM != 0,
+        raw_attributes,
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn read_native_file_metadata(_path: &Path) -> Result<NativeFileMetadataSnapshot, String> {
+    Err("File metadata editing is available only in the Windows desktop app.".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn write_native_file_metadata(
+    path: &Path,
+    created_ms: Option<u64>,
+    modified_ms: Option<u64>,
+    accessed_ms: Option<u64>,
+    target_attrs: u32,
+    current_attrs: u32,
+) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Foundation::{CloseHandle, FILETIME, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Storage::FileSystem::{
+        CreateFileW, SetFileAttributesW, SetFileTime, FILE_FLAG_BACKUP_SEMANTICS,
+        FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    };
+
+    const FILE_WRITE_ATTRIBUTES_ACCESS: u32 = 0x0100;
+
+    let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let has_time_update = created_ms.is_some() || modified_ms.is_some() || accessed_ms.is_some();
+    let mut temporarily_cleared_readonly = false;
+
+    if has_time_update && (current_attrs & ATTR_READ_ONLY != 0) {
+        let cleared = current_attrs & !ATTR_READ_ONLY;
+        if unsafe { SetFileAttributesW(wide.as_ptr(), cleared) == 0 } {
+            return Err(format!("Cannot clear Read-Only attribute: {}", io::Error::last_os_error()));
+        }
+        temporarily_cleared_readonly = true;
+    }
+
+    if has_time_update {
+        let handle = unsafe {
+            CreateFileW(
+                wide.as_ptr(),
+                FILE_WRITE_ATTRIBUTES_ACCESS,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                std::ptr::null(),
+                OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS,
+                std::ptr::null_mut(),
+            )
+        };
+        if handle.is_null() || handle == INVALID_HANDLE_VALUE {
+            let err = io::Error::last_os_error();
+            if temporarily_cleared_readonly {
+                unsafe {
+                    SetFileAttributesW(wide.as_ptr(), current_attrs);
+                }
+            }
+            return Err(format!("Cannot open handle for time update: {err}"));
+        }
+
+        let to_filetime = |ms: u64| {
+            let (low, high) = unix_millis_to_filetime_parts(ms);
+            FILETIME {
+                dwLowDateTime: low,
+                dwHighDateTime: high,
+            }
+        };
+        let created_ft = created_ms.map(to_filetime);
+        let accessed_ft = accessed_ms.map(to_filetime);
+        let modified_ft = modified_ms.map(to_filetime);
+        let created_ptr = created_ft.as_ref().map_or(std::ptr::null(), |ft| ft as *const FILETIME);
+        let accessed_ptr = accessed_ft.as_ref().map_or(std::ptr::null(), |ft| ft as *const FILETIME);
+        let modified_ptr = modified_ft.as_ref().map_or(std::ptr::null(), |ft| ft as *const FILETIME);
+        let time_ok = unsafe { SetFileTime(handle, created_ptr, accessed_ptr, modified_ptr) != 0 };
+        let time_err = if time_ok { None } else { Some(io::Error::last_os_error()) };
+        unsafe {
+            CloseHandle(handle);
+        }
+        if let Some(err) = time_err {
+            if temporarily_cleared_readonly {
+                unsafe {
+                    SetFileAttributesW(wide.as_ptr(), current_attrs);
+                }
+            }
+            return Err(format!("Cannot update file timestamps: {err}"));
+        }
+    }
+
+    if target_attrs != current_attrs || temporarily_cleared_readonly {
+        if unsafe { SetFileAttributesW(wide.as_ptr(), target_attrs) == 0 } {
+            return Err(format!("Cannot update file attributes: {}", io::Error::last_os_error()));
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn write_native_file_metadata(
+    _path: &Path,
+    _created_ms: Option<u64>,
+    _modified_ms: Option<u64>,
+    _accessed_ms: Option<u64>,
+    _target_attrs: u32,
+    _current_attrs: u32,
+) -> Result<(), String> {
+    Err("File metadata editing is available only in the Windows desktop app.".to_string())
+}
+
+#[tauri::command]
+async fn inspect_file_metadata_batch(paths: Vec<String>) -> Result<Vec<NativeFileMetadataSnapshot>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let targets = collect_metadata_target_paths(&paths, None, true, true);
+        let mut snapshots = Vec::with_capacity(targets.len());
+        for target in targets {
+            if let Ok(snapshot) = read_native_file_metadata(&target) {
+                snapshots.push(snapshot);
+            }
+        }
+        snapshots
+    })
+    .await
+    .map_err(|error| format!("Metadata inspection worker failed: {error}"))
+}
+
+#[tauri::command]
+async fn update_file_metadata_batch(request: FileMetadataUpdateRequest) -> Result<FileMetadataUpdateResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let targets = collect_metadata_target_paths(
+            &request.paths,
+            request.subfolder_depth,
+            request.include_files,
+            request.include_folders,
+        );
+        let mut updated_paths = Vec::new();
+        let mut failures = Vec::new();
+        let mut previous_snapshots = Vec::new();
+
+        for target in targets {
+            let shown_path = display_path(&target);
+            let snapshot = match read_native_file_metadata(&target) {
+                Ok(snapshot) => snapshot,
+                Err(error) => {
+                    failures.push(NativeOperationFailure { path: shown_path, error });
+                    continue;
+                }
+            };
+
+            let (desired_created, desired_modified, desired_accessed) = if let Some(copy_spec) = &request.copy_time {
+                let source_ms = match copy_spec.from.as_str() {
+                    "created" => snapshot.created_ms,
+                    "modified" => snapshot.modified_ms,
+                    "accessed" => snapshot.accessed_ms,
+                    _ => None,
+                };
+                (
+                    if copy_spec.to_created { source_ms } else { request.created_ms },
+                    if copy_spec.to_modified { source_ms } else { request.modified_ms },
+                    if copy_spec.to_accessed { source_ms } else { request.accessed_ms },
+                )
+            } else {
+                (request.created_ms, request.modified_ms, request.accessed_ms)
+            };
+
+            let write_created = desired_created.filter(|ms| Some(*ms) != snapshot.created_ms);
+            let write_modified = desired_modified.filter(|ms| Some(*ms) != snapshot.modified_ms);
+            let write_accessed = desired_accessed.filter(|ms| Some(*ms) != snapshot.accessed_ms);
+            let next_attrs = compute_updated_file_attributes(
+                snapshot.raw_attributes,
+                &request.read_only,
+                &request.hidden,
+                &request.system,
+            );
+
+            if write_created.is_none()
+                && write_modified.is_none()
+                && write_accessed.is_none()
+                && next_attrs == snapshot.raw_attributes
+            {
+                updated_paths.push(snapshot.path);
+                continue;
+            }
+
+            match write_native_file_metadata(
+                &target,
+                write_created,
+                write_modified,
+                write_accessed,
+                next_attrs,
+                snapshot.raw_attributes,
+            ) {
+                Ok(()) => {
+                    updated_paths.push(snapshot.path.clone());
+                    previous_snapshots.push(NativeFileMetadataRestoreEntry {
+                        path: snapshot.path,
+                        created_ms: snapshot.created_ms,
+                        modified_ms: snapshot.modified_ms,
+                        accessed_ms: snapshot.accessed_ms,
+                        raw_attributes: snapshot.raw_attributes,
+                    });
+                }
+                Err(error) => failures.push(NativeOperationFailure { path: shown_path, error }),
+            }
+        }
+
+        FileMetadataUpdateResult {
+            updated_paths,
+            failures,
+            previous_snapshots,
+        }
+    })
+    .await
+    .map_err(|error| format!("Metadata update worker failed: {error}"))
+}
+
+#[tauri::command]
+async fn restore_file_metadata_batch(
+    entries: Vec<NativeFileMetadataRestoreEntry>,
+) -> Result<FileMetadataUpdateResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut updated_paths = Vec::new();
+        let mut failures = Vec::new();
+        let previous_snapshots = Vec::new();
+
+        for entry in entries {
+            let expanded = expand_windows_environment_path(&entry.path);
+            let target = PathBuf::from(&expanded);
+            let shown_path = display_path(&target);
+            let current = match read_native_file_metadata(&target) {
+                Ok(snapshot) => snapshot,
+                Err(error) => {
+                    failures.push(NativeOperationFailure { path: shown_path, error });
+                    continue;
+                }
+            };
+            match write_native_file_metadata(
+                &target,
+                entry.created_ms,
+                entry.modified_ms,
+                entry.accessed_ms,
+                entry.raw_attributes,
+                current.raw_attributes,
+            ) {
+                Ok(()) => updated_paths.push(shown_path),
+                Err(error) => failures.push(NativeOperationFailure { path: shown_path, error }),
+            }
+        }
+
+        FileMetadataUpdateResult {
+            updated_paths,
+            failures,
+            previous_snapshots,
+        }
+    })
+    .await
+    .map_err(|error| format!("Metadata restore worker failed: {error}"))
+}
+
 #[cfg(target_os = "windows")]
 fn open_file_using_windows_default_app(path: &str) -> Result<(), String> {
     use std::os::windows::ffi::OsStrExt;
@@ -10746,6 +11246,9 @@ fn main() {
             permanently_delete_items,
             empty_recycle_bin,
             open_windows_file_properties,
+            inspect_file_metadata_batch,
+            update_file_metadata_batch,
+            restore_file_metadata_batch,
             open_file_with_default_app,
             open_recycle_bin_in_explorer,
             open_folder_in_windows_explorer,
@@ -11195,5 +11698,46 @@ mod folder_scan_cancellation_tests {
                 "F:\\Backups".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn metadata_filetime_and_attribute_helpers_round_trip() {
+        let sample_ms = 1_732_540_000_123_u64;
+        let (low, high) = unix_millis_to_filetime_parts(sample_ms);
+        assert_eq!(filetime_parts_to_unix_millis(low, high), Some(sample_ms));
+
+        let initial = 0x20 | ATTR_READ_ONLY; // Archive + Read-Only
+        assert_eq!(
+            compute_updated_file_attributes(initial, "off", "on", "unchanged"),
+            0x20 | ATTR_HIDDEN
+        );
+        assert_eq!(
+            compute_updated_file_attributes(initial, "toggle", "toggle", "on"),
+            0x20 | ATTR_HIDDEN | ATTR_SYSTEM
+        );
+    }
+
+    #[test]
+    fn metadata_target_collection_respects_subfolder_depth_and_filters() {
+        let root = std::env::temp_dir().join(format!("cyberfiles-meta-walk-{}", std::process::id()));
+        let sub = root.join("sub");
+        let deep = sub.join("deep");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&deep).expect("create nested dirs");
+        fs::write(root.join("root.txt"), b"r").expect("write root file");
+        fs::write(sub.join("sub.txt"), b"s").expect("write sub file");
+        fs::write(deep.join("deep.txt"), b"d").expect("write deep file");
+
+        let inputs = vec![root.to_string_lossy().to_string()];
+        let no_scan = collect_metadata_target_paths(&inputs, None, true, true);
+        assert_eq!(no_scan.len(), 1);
+
+        let depth_one_files_only = collect_metadata_target_paths(&inputs, Some(1), true, false);
+        assert_eq!(depth_one_files_only, vec![root.join("root.txt")]);
+
+        let infinite_all = collect_metadata_target_paths(&inputs, Some(0), true, true);
+        assert_eq!(infinite_all.len(), 6);
+
+        let _ = fs::remove_dir_all(&root);
     }
 }

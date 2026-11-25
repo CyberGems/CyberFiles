@@ -40,6 +40,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
     { key: 'F2', desc: isSpanish ? 'Renombrar el elemento seleccionado' : 'Rename the selected item' },
     { key: 'Ctrl + Shift + C', desc: isSpanish ? 'Copiar la ruta de la selección, o la de la carpeta si no hay selección' : 'Copy the path of the selection, or of the folder when nothing is selected' },
     { key: 'Ctrl + R', desc: isSpanish ? 'Abrir el renombrado múltiple' : 'Open batch rename' },
+    { key: 'Ctrl + Enter', desc: isSpanish ? 'Cambiar fechas y atributos de la selección' : 'Change timestamps and attributes for the selection' },
     { key: 'Alt + Enter', desc: isSpanish ? 'Abrir las propiedades de Windows del elemento seleccionado' : 'Open Windows properties for the selected item' },
     { key: 'F3', desc: isSpanish ? 'Mostrar u ocultar el panel de propiedades' : 'Show or hide the properties panel' },
     { key: 'Ctrl + L', desc: isSpanish ? 'Mostrar u ocultar el panel de ubicaciones' : 'Show or hide the locations panel' },
