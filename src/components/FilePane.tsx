@@ -4538,13 +4538,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 {breadcrumbSegments.map(segment => <span key={segment.fullPath} className="shrink-0 whitespace-nowrap px-1.5 py-1">{segment.label}</span>)}
               </div>
               {visibleBreadcrumbStart > 0 && (
-                <Tooltip label={t.pane.earlierFolders} placement="bottom">
+                <Tooltip label={t.pane.earlierFolders} placement="bottom" disabled={Boolean(breadcrumbMenuPosition)}>
                   <button
                     ref={breadcrumbMenuButtonRef}
                     type="button"
                     aria-label={t.pane.earlierFolders}
                     aria-haspopup="menu"
                     aria-expanded={Boolean(breadcrumbMenuPosition)}
+                    onMouseDown={event => event.preventDefault()}
                     onClick={event => {
                       event.stopPropagation();
                       if (breadcrumbMenuPosition) { setBreadcrumbMenuPosition(null); return; }
@@ -4594,7 +4595,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           )}
           {/* Permanent, discreet recent-folders dropdown, the same affordance the Windows address
               bar has at its right edge. It costs 20px and stays put whatever the path length. */}
-          <Tooltip label={t.pane.recentFolders} placement="bottom">
+          <Tooltip label={t.pane.recentFolders} placement="bottom" disabled={Boolean(recentFoldersMenuPosition)}>
             <button
               ref={recentFoldersButtonRef}
               type="button"
@@ -4604,10 +4605,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
               aria-hidden={isEditingPath}
               tabIndex={isEditingPath ? -1 : undefined}
               disabled={isEditingPath}
+              onMouseDown={event => event.preventDefault()}
               onClick={toggleRecentFoldersMenu}
               className={`ml-auto flex h-5 w-5 flex-shrink-0 items-center justify-center rounded transition-colors disabled:pointer-events-none disabled:opacity-0 ${recentFoldersMenuPosition ? 'bg-neutral-800 text-cyan-200' : 'text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200'}`}
             >
-              <ChevronDown className="h-3 w-3" />
+              <ChevronDown className={`h-3 w-3 transition-transform duration-150 ${recentFoldersMenuPosition ? 'rotate-180' : ''}`} />
             </button>
           </Tooltip>
         </div>
@@ -5896,7 +5898,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       {/* 6. Footer Status Bar with Mini Storage Distribution Strip */}
       <div className="cyberfiles-pane-status grid h-8 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-t border-neutral-800 bg-neutral-950 px-2.5 font-sans text-[10px] whitespace-nowrap text-neutral-400 select-none">
         <div className="cyberfiles-pane-status-summary flex min-w-0 items-center gap-2.5 overflow-hidden">
-          <Tooltip label={t.pane.statusCountHint} placement="top">
+          <Tooltip label={t.pane.statusCountHint} placement="top" disabled={statusCountMenuPosition !== null}>
             <button
               ref={statusCountButtonRef}
               type="button"
