@@ -8601,7 +8601,7 @@ export default function App() {
           <div className="min-w-0 max-w-[42rem]">
             <span className="block break-words">{toastMessage}</span>
             {toastDetail && (
-              <span className="truncate-start mt-0.5 font-mono text-[10.5px] font-normal text-cyan-300/70">{toastDetail}</span>
+              <span className="truncate-start mt-0.5 font-mono text-[10.5px] font-normal text-cyan-300/70"><bdi dir="ltr">{toastDetail}</bdi></span>
             )}
             {toastAction && (
               <button
