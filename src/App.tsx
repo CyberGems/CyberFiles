@@ -7486,6 +7486,32 @@ export default function App() {
         return;
       }
 
+      // Alt + Enter: Open Windows Properties for the focused/selected item (or current folder)
+      if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.key === 'Enter') {
+        e.preventDefault();
+        const targetItem =
+          (currentTab.focusedId ? filesById.get(currentTab.focusedId) : undefined) ??
+          selectedItemsForDelete[0] ??
+          null;
+        if (targetItem) {
+          if (isTauriDesktop()) {
+            void handleOpenWindowsProperties(targetItem);
+          } else {
+            touchFileAccessed(targetItem.id);
+            recordRecentFile(targetItem);
+            setPreviewOpen(true);
+          }
+        } else if (
+          isTauriDesktop() &&
+          currentTab.currentPath &&
+          !currentTab.currentPath.startsWith('::') &&
+          !isPortablePath(currentTab.currentPath)
+        ) {
+          void showNativeFileProperties(currentTab.currentPath).catch(() => showToast(t.preview.windowsPropertiesFailed));
+        }
+        return;
+      }
+
       // Ctrl + R: Batch Rename
       if ((e.ctrlKey || e.metaKey) && (e.key === 'r' || e.key === 'R')) {
         e.preventDefault();
@@ -7678,8 +7704,15 @@ export default function App() {
     handleDeleteSelected,
     handleNewFolder,
     handleRenameSelected,
+    handleOpenWindowsProperties,
     handleCopyPath,
     handleNavigateUp,
+    filesById,
+    selectedItemsForDelete,
+    touchFileAccessed,
+    recordRecentFile,
+    showToast,
+    t.preview.windowsPropertiesFailed,
     activeDisplayFiles,
     nativeDirectories,
     updateActiveTab,

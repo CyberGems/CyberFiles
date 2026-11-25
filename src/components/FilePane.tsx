@@ -3712,7 +3712,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
         onDoubleClick={() => handleConfiguredDoubleClick(item)}
         onContextMenu={event => handleFileItemContextMenu(event, item)}
         onKeyDown={event => {
-          if (event.key === 'Enter') {
+          if (event.key === 'Enter' && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
             event.preventDefault();
             onItemDoubleClick(item);
           }
@@ -5325,7 +5325,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                           onClick={event => handleSystemHomeShortcutClick(event as unknown as React.MouseEvent<HTMLButtonElement>, shortcutId, () => onNavigate(host.path))}
                           onDoubleClick={() => handleSystemHomeShortcutDoubleClick(() => onNavigate(host.path))}
                           onKeyDown={event => {
-                            if (event.key === 'Enter') {
+                            if (event.key === 'Enter' && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
                               event.preventDefault();
                               onNavigate(host.path);
                             }
@@ -5503,7 +5503,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                           onClick={event => handleSystemHomeShortcutClick(event as unknown as React.MouseEvent<HTMLButtonElement>, shortcutId, () => onNavigate(resource.path))}
                           onDoubleClick={() => handleSystemHomeShortcutDoubleClick(() => onNavigate(resource.path))}
                           onKeyDown={event => {
-                            if (event.key === 'Enter') {
+                            if (event.key === 'Enter' && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
                               event.preventDefault();
                               onNavigate(resource.path);
                             }
