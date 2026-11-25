@@ -7617,10 +7617,11 @@ export default function App() {
         onContextMenuCapture={handleApplicationContextMenuCapture}
       >
       {isTauriDesktop() && !isWindowMaximized && (
+        // Inset by 1px so WebView2 fractional-DPI rounding does not clip the right/bottom edge pixel.
         <div
           aria-hidden="true"
           data-window-focused={isWindowFocused ? 'true' : 'false'}
-          className="cyberfiles-window-border pointer-events-none fixed inset-0 z-[200]"
+          className="cyberfiles-window-border pointer-events-none fixed inset-px z-[200]"
         />
       )}
       <WindowTitleBar
