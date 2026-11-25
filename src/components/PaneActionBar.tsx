@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Archive,
@@ -10,6 +10,7 @@ import {
   BoxSelect,
   Check,
   ClipboardCopy,
+  Clock,
   Copy,
   Eye,
   FolderOpen,
@@ -35,6 +36,13 @@ import { KeyboardShortcutContent } from './KeyboardShortcut';
 import { useLanguage } from '../locales/LanguageContext';
 import { Tooltip } from './Tooltip';
 import { usePortalMenuPlacement } from '../hooks/usePortalMenuPlacement';
+import {
+  addFilterHistoryEntry,
+  clearFilterHistory,
+  readFilterHistory,
+  removeFilterHistoryEntry,
+  subscribeFilterHistory,
+} from '../utils/filterHistory';
 
 /* Pane-scoped callbacks. Everything here must act on the pane that renders the bar, never on
    whichever pane happens to be active, so each one receives the pane from the caller. */
@@ -144,6 +152,74 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
   const menuRootRef = useRef<HTMLDivElement>(null);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const localFilterInputRef = useRef<HTMLInputElement | null>(null);
+  const filterContainerRef = useRef<HTMLDivElement>(null);
+  const filterHistoryRef = useRef<HTMLDivElement>(null);
+  const [filterHistory, setFilterHistory] = useState<string[]>(readFilterHistory);
+  const [isFilterHistoryOpen, setIsFilterHistoryOpen] = useState(false);
+  const [filterHistoryRect, setFilterHistoryRect] = useState<{ left: number; top: number; width: number; maxHeight: number } | null>(null);
+  const [highlightedHistoryIndex, setHighlightedHistoryIndex] = useState(-1);
+
+  const setFilterInputNode = useCallback((node: HTMLInputElement | null) => {
+    localFilterInputRef.current = node;
+    if (filterInputRef) {
+      (filterInputRef as React.MutableRefObject<HTMLInputElement | null>).current = node;
+    }
+  }, [filterInputRef]);
+
+  const measureFilterHistoryRect = useCallback(() => {
+    const rect = filterContainerRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    const nextRect = {
+      left: Math.max(8, rect.left),
+      top: rect.bottom + 4,
+      width: Math.max(180, Math.min(rect.width, window.innerWidth - 16)),
+      maxHeight: Math.max(140, Math.min(240, window.innerHeight - rect.bottom - 16)),
+    };
+    setFilterHistoryRect(nextRect);
+    return nextRect;
+  }, []);
+
+  useEffect(() => subscribeFilterHistory(setFilterHistory), []);
+
+  const visibleFilterHistory = useMemo(() => {
+    const q = filterQuery.trim().toLowerCase();
+    if (!q) return filterHistory;
+    return filterHistory.filter(entry => entry.toLowerCase().includes(q));
+  }, [filterHistory, filterQuery]);
+
+  useEffect(() => {
+    setHighlightedHistoryIndex(-1);
+  }, [filterQuery]);
+
+  useEffect(() => {
+    const trimmed = filterQuery.trim();
+    if (!trimmed) return;
+    const timer = window.setTimeout(() => {
+      addFilterHistoryEntry(trimmed);
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [filterQuery]);
+
+  useEffect(() => {
+    if (!isFilterHistoryOpen) return;
+    measureFilterHistoryRect();
+    const handleOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (filterContainerRef.current?.contains(target) || filterHistoryRef.current?.contains(target)) return;
+      setIsFilterHistoryOpen(false);
+      setHighlightedHistoryIndex(-1);
+    };
+    const handleReposition = () => measureFilterHistoryRect();
+    document.addEventListener('pointerdown', handleOutsidePointer, true);
+    window.addEventListener('resize', handleReposition);
+    window.addEventListener('scroll', handleReposition, true);
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsidePointer, true);
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, true);
+    };
+  }, [isFilterHistoryOpen, measureFilterHistoryRect]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -558,20 +634,78 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
         </>
       ) : (
         <>
-          <div className="relative min-w-0 flex-1">
+          <div ref={filterContainerRef} className="relative min-w-0 flex-1">
             <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-500" />
             <input
-              ref={filterInputRef}
+              ref={setFilterInputNode}
               type="text"
               value={filterQuery}
               placeholder={filterPlaceholder}
-              onChange={event => onFilterChange(event.target.value)}
+              aria-autocomplete="list"
+              aria-expanded={Boolean(isFilterHistoryOpen && visibleFilterHistory.length > 0)}
+              onFocus={() => {
+                if (filterHistory.length > 0) {
+                  measureFilterHistoryRect();
+                  setHighlightedHistoryIndex(-1);
+                  setIsFilterHistoryOpen(true);
+                }
+              }}
+              onClick={() => {
+                if (!isFilterHistoryOpen && visibleFilterHistory.length > 0) {
+                  measureFilterHistoryRect();
+                  setIsFilterHistoryOpen(true);
+                }
+              }}
+              onBlur={() => {
+                if (filterQuery.trim()) addFilterHistoryEntry(filterQuery);
+                setIsFilterHistoryOpen(false);
+                setHighlightedHistoryIndex(-1);
+              }}
+              onChange={event => {
+                onFilterChange(event.target.value);
+                if (!isFilterHistoryOpen && filterHistory.length > 0) {
+                  measureFilterHistoryRect();
+                  setIsFilterHistoryOpen(true);
+                }
+              }}
               onKeyDown={event => {
+                if (event.key === 'ArrowDown') {
+                  if (visibleFilterHistory.length === 0) return;
+                  event.preventDefault();
+                  if (!isFilterHistoryOpen) measureFilterHistoryRect();
+                  setIsFilterHistoryOpen(true);
+                  setHighlightedHistoryIndex(prev => (prev < visibleFilterHistory.length - 1 ? prev + 1 : 0));
+                  return;
+                }
+                if (event.key === 'ArrowUp') {
+                  if (!isFilterHistoryOpen || visibleFilterHistory.length === 0) return;
+                  event.preventDefault();
+                  setHighlightedHistoryIndex(prev => (prev > 0 ? prev - 1 : visibleFilterHistory.length - 1));
+                  return;
+                }
+                if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                  if (isFilterHistoryOpen && highlightedHistoryIndex >= 0 && visibleFilterHistory[highlightedHistoryIndex]) {
+                    event.preventDefault();
+                    const chosen = visibleFilterHistory[highlightedHistoryIndex];
+                    addFilterHistoryEntry(chosen);
+                    onFilterChange(chosen);
+                    setIsFilterHistoryOpen(false);
+                    setHighlightedHistoryIndex(-1);
+                    return;
+                  }
+                  if (filterQuery.trim()) addFilterHistoryEntry(filterQuery);
+                  setIsFilterHistoryOpen(false);
+                  setHighlightedHistoryIndex(-1);
+                  onFocusList?.();
+                  return;
+                }
                 /* Escape always leaves the field, even when it is already empty: being in the
                    filter is itself the mode the user wants out of. */
                 if (event.key !== 'Escape') return;
                 event.preventDefault();
                 event.stopPropagation();
+                setIsFilterHistoryOpen(false);
+                setHighlightedHistoryIndex(-1);
                 onFilterChange('');
                 onFocusList?.();
               }}
@@ -587,6 +721,85 @@ export const PaneActionBar: React.FC<PaneActionBarProps> = ({
               >
                 <X className="h-3 w-3" />
               </button>
+            )}
+            {isFilterHistoryOpen && filterHistoryRect && visibleFilterHistory.length > 0 && createPortal(
+              <div
+                ref={filterHistoryRef}
+                role="listbox"
+                aria-label={t.pane.filterHistory}
+                style={{
+                  left: filterHistoryRect.left,
+                  top: filterHistoryRect.top,
+                  width: filterHistoryRect.width,
+                }}
+                className="fixed z-[110] overflow-hidden rounded-lg border border-neutral-700 bg-neutral-950/95 text-xs shadow-2xl backdrop-blur-md"
+              >
+                <div className="flex items-center justify-between border-b border-neutral-800 px-2.5 py-1.5">
+                  <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                    <Clock className="h-3 w-3 text-cyan-400" />
+                    <span>{t.pane.filterHistory}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onMouseDown={event => event.preventDefault()}
+                    onClick={() => {
+                      clearFilterHistory();
+                      setIsFilterHistoryOpen(false);
+                      setHighlightedHistoryIndex(-1);
+                    }}
+                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-neutral-400 transition-colors hover:bg-rose-950/40 hover:text-rose-300"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    <span>{t.pane.clearFilterHistory}</span>
+                  </button>
+                </div>
+                <div style={{ maxHeight: filterHistoryRect.maxHeight }} className="overflow-y-auto p-1">
+                  {visibleFilterHistory.map((entry, index) => (
+                    <div
+                      key={entry}
+                      onMouseEnter={() => setHighlightedHistoryIndex(index)}
+                      className={`flex items-center gap-1 rounded transition-colors ${
+                        index === highlightedHistoryIndex
+                          ? 'bg-neutral-800 text-cyan-200'
+                          : 'text-neutral-200 hover:bg-neutral-800 hover:text-cyan-200'
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={index === highlightedHistoryIndex}
+                        onMouseDown={event => event.preventDefault()}
+                        onClick={() => {
+                          addFilterHistoryEntry(entry);
+                          onFilterChange(entry);
+                          setIsFilterHistoryOpen(false);
+                          setHighlightedHistoryIndex(-1);
+                        }}
+                        className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
+                      >
+                        <Clock className="h-3 w-3 shrink-0 text-neutral-500" />
+                        <span className="min-w-0 flex-1 truncate">{entry}</span>
+                      </button>
+                      <Tooltip label={t.pane.removeFilterHistoryEntry} placement="left">
+                        <button
+                          type="button"
+                          aria-label={t.pane.removeFilterHistoryEntry}
+                          onMouseDown={event => event.preventDefault()}
+                          onClick={event => {
+                            event.stopPropagation();
+                            const next = removeFilterHistoryEntry(entry);
+                            if (next.length === 0) setIsFilterHistoryOpen(false);
+                          }}
+                          className="mr-1 rounded p-1 text-neutral-500 transition-colors hover:bg-neutral-700 hover:text-neutral-200"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Tooltip>
+                    </div>
+                  ))}
+                </div>
+              </div>,
+              document.body,
             )}
           </div>
         </>
