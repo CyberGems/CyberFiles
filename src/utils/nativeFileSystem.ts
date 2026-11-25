@@ -401,10 +401,21 @@ export async function loadNativeFolder(path: string): Promise<{ rootPath: string
   return { rootPath: result.rootPath, rootName: result.rootName, files: [root, ...result.entries], counts: result.counts, hasMore: result.hasMore, nextOffset: result.nextOffset };
 }
 
+export interface NativeDriveCapacity {
+  letter: string;
+  totalBytes: number;
+  usedBytes: number;
+}
+
 export async function listNativeDrives(): Promise<DriveInfo[]> {
   if (!isTauriDesktop()) return [];
   const drives = await invoke<NativeDrive[]>('list_drives');
   return drives.map(({ kind, ...drive }) => ({ ...drive, type: kind }));
+}
+
+export async function getNativeDriveCapacities(letters: string[]): Promise<NativeDriveCapacity[]> {
+  if (!isTauriDesktop() || letters.length === 0) return [];
+  return invoke<NativeDriveCapacity[]>('get_drive_capacities', { letters });
 }
 
 export async function listNativeSystemLocations(): Promise<NativeLocation[]> {

@@ -6990,6 +6990,30 @@ struct NativeDrive {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct NativeDriveCapacity {
+    letter: String,
+    total_bytes: u64,
+    used_bytes: u64,
+}
+
+fn normalize_drive_letter_root(letter: &str) -> Option<(String, String)> {
+    let trimmed = letter.trim();
+    let trimmed = trimmed
+        .strip_suffix(":\\")
+        .or_else(|| trimmed.strip_suffix(":/"))
+        .or_else(|| trimmed.strip_suffix(':'))
+        .unwrap_or(trimmed);
+    let mut chars = trimmed.chars();
+    let first = chars.next()?;
+    if chars.next().is_some() || !first.is_ascii_alphabetic() {
+        return None;
+    }
+    let upper = first.to_ascii_uppercase();
+    Some((format!("{upper}:"), format!("{upper}:\\")))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct NativeLocation {
     id: String,
     path: String,
@@ -7095,11 +7119,60 @@ fn system_drives() -> Vec<NativeDrive> {
     Vec::new()
 }
 
+#[cfg(target_os = "windows")]
+fn logical_drive_capacities(letters: Vec<String>) -> Vec<NativeDriveCapacity> {
+    use std::collections::HashSet;
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+
+    let mut seen = HashSet::new();
+    let mut capacities = Vec::new();
+    for raw in letters {
+        let Some((letter, root)) = normalize_drive_letter_root(&raw) else {
+            continue;
+        };
+        if !seen.insert(letter.clone()) {
+            continue;
+        }
+        let root_wide: Vec<u16> = root.encode_utf16().chain(Some(0)).collect();
+        let mut total_bytes = 0_u64;
+        let mut free_bytes = 0_u64;
+        let has_space = unsafe {
+            GetDiskFreeSpaceExW(
+                root_wide.as_ptr(),
+                std::ptr::null_mut(),
+                &mut total_bytes,
+                &mut free_bytes,
+            ) != 0
+        };
+        if has_space {
+            capacities.push(NativeDriveCapacity {
+                letter,
+                total_bytes,
+                used_bytes: total_bytes.saturating_sub(free_bytes),
+            });
+        }
+    }
+    capacities
+}
+
+#[cfg(not(target_os = "windows"))]
+fn logical_drive_capacities(letters: Vec<String>) -> Vec<NativeDriveCapacity> {
+    let _ = letters;
+    Vec::new()
+}
+
 #[tauri::command]
 async fn list_drives() -> Result<Vec<NativeDrive>, String> {
     tauri::async_runtime::spawn_blocking(system_drives)
         .await
         .map_err(|error| format!("Drive listing worker failed: {error}"))
+}
+
+#[tauri::command]
+async fn get_drive_capacities(letters: Vec<String>) -> Result<Vec<NativeDriveCapacity>, String> {
+    tauri::async_runtime::spawn_blocking(move || logical_drive_capacities(letters))
+        .await
+        .map_err(|error| format!("Drive capacity worker failed: {error}"))
 }
 
 /// Computes a bitmask of logical drives that currently have a mounted, ready
@@ -10453,6 +10526,7 @@ fn main() {
             paste_clipboard_image,
             image_thumbnail,
             list_drives,
+            get_drive_capacities,
             list_system_locations,
             list_network_resources,
             authenticate_network_resource,
@@ -10863,5 +10937,30 @@ mod folder_scan_cancellation_tests {
         assert_eq!(members[0].name, "hello.txt");
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn normalize_drive_letter_root_accepts_letters_and_rejects_other_paths() {
+        assert_eq!(
+            normalize_drive_letter_root("c"),
+            Some(("C:".to_string(), "C:\\".to_string()))
+        );
+        assert_eq!(
+            normalize_drive_letter_root("D:"),
+            Some(("D:".to_string(), "D:\\".to_string()))
+        );
+        assert_eq!(
+            normalize_drive_letter_root("e:\\"),
+            Some(("E:".to_string(), "E:\\".to_string()))
+        );
+        assert_eq!(
+            normalize_drive_letter_root(" f:/ "),
+            Some(("F:".to_string(), "F:\\".to_string()))
+        );
+        assert_eq!(normalize_drive_letter_root(""), None);
+        assert_eq!(normalize_drive_letter_root("\\\\server\\share"), None);
+        assert_eq!(normalize_drive_letter_root("portable:abc"), None);
+        assert_eq!(normalize_drive_letter_root("CD:"), None);
+        assert_eq!(normalize_drive_letter_root("1:"), None);
     }
 }
