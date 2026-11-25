@@ -26,7 +26,7 @@
 
 <div align="center">
 
-### Two panes, tabs and keyboard shortcuts — the file manager for people who move files all day
+### A dual-pane file manager for Windows built for keyboard-first work.
 
 </div>
 

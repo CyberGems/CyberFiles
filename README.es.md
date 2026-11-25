@@ -26,7 +26,7 @@
 
 <div align="center">
 
-### Dos paneles, pestañas y atajos de teclado: el gestor para quien mueve archivos todo el día
+### Un gestor de archivos de doble panel para Windows pensado para trabajar con el teclado.
 
 </div>
 
