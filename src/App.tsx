@@ -3128,6 +3128,93 @@ export default function App() {
     }
   }, [invalidateFlatDirectories, updateFlatDirectoriesForAddedItems]);
 
+  const removePathsFromFlatDirectories = useCallback((removedPaths: string[]) => {
+    if (removedPaths.length === 0) return;
+    const flatKeysToInvalidate: string[] = [];
+    const flatUpdates = new Map<string, FlatDirectoryState>();
+
+    for (const [rootKey, entry] of Object.entries(flatDirectoriesRef.current)) {
+      const touchesFlatRoot = removedPaths.some(
+        rootPath => isSameOrDescendantPath(rootPath, rootKey) || isSameOrDescendantPath(rootKey, rootPath),
+      );
+      if (!touchesFlatRoot) continue;
+      const deletedFlatRootItself = removedPaths.some(rootPath => isSameOrDescendantPath(rootKey, rootPath));
+      if (deletedFlatRootItself || entry.loading || entry.truncated || !entry.entries) {
+        flatKeysToInvalidate.push(rootKey);
+        continue;
+      }
+      const keptEntries: FileItem[] = [];
+      const removedFlatItems: FileItem[] = [];
+      for (const item of entry.entries) {
+        if (removedPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath))) {
+          removedFlatItems.push(item);
+        } else {
+          keptEntries.push(item);
+        }
+      }
+      if (removedFlatItems.length === 0) {
+        flatKeysToInvalidate.push(rootKey);
+        continue;
+      }
+      flatUpdates.set(rootKey, {
+        ...entry,
+        entries: keptEntries,
+        nextOffset: keptEntries.length,
+        counts: entry.counts
+          ? adjustDirectoryCountsForRemovedItems(entry.counts, removedFlatItems)
+          : entry.counts,
+      });
+    }
+
+    if (flatUpdates.size > 0) {
+      setFlatDirectories(previous => {
+        let next: Record<string, FlatDirectoryState> | null = null;
+        for (const [rootKey, updated] of flatUpdates) {
+          const current = previous[rootKey];
+          if (!current || current.loading || current.truncated) continue;
+          next ??= { ...previous };
+          next[rootKey] = updated;
+        }
+        return next ?? previous;
+      });
+    }
+    if (flatKeysToInvalidate.length > 0) {
+      invalidateFlatDirectories(flatKeysToInvalidate);
+    }
+  }, [invalidateFlatDirectories]);
+
+  const updateFlatDirectoriesForTransferCompletion = useCallback(async (
+    operation: TransferOperationView,
+    result: { completedPaths: string[]; failures: Array<{ path: string; error: string }> },
+  ): Promise<boolean> => {
+    const changedDirectories = [
+      operation.targetPath,
+      ...(operation.kind === 'move' ? operation.sourcePaths.map(getParentPath) : []),
+    ].filter(Boolean);
+    const hasCachedFlatRoot = Object.keys(flatDirectoriesRef.current).some(rootKey =>
+      changedDirectories.some(dir => isSameOrDescendantPath(dir, rootKey) || isSameOrDescendantPath(rootKey, dir)),
+    );
+    if (!hasCachedFlatRoot) return true;
+    if (result.completedPaths.length === 0) return result.failures.length === 0;
+
+    if (operation.kind === 'move') {
+      if (result.failures.length > 0 || result.completedPaths.length !== operation.sourcePaths.length) {
+        return false;
+      }
+      removePathsFromFlatDirectories(operation.sourcePaths);
+      setAllFiles(previous => previous.filter(item => !operation.sourcePaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath))));
+      await updateFlatDirectoriesForRestoredPaths(result.completedPaths);
+      return true;
+    }
+
+    if (operation.kind === 'copy' || operation.kind === 'compress' || operation.kind === 'extract') {
+      await updateFlatDirectoriesForRestoredPaths(result.completedPaths);
+      return true;
+    }
+
+    return false;
+  }, [removePathsFromFlatDirectories, updateFlatDirectoriesForRestoredPaths]);
+
   /* Latest-value refs for drive-change handling, which runs outside the render
      cycle and must always see the current drives, language, styles and tabs. */
   const drivesRef = useRef(drives);
@@ -5119,8 +5206,8 @@ export default function App() {
     setUnreviewedFailedCount(0);
   }, []);
 
-  const transferCompletionActionsRef = useRef({ refreshChangedDirectories, updatePaneTab, showToast, t, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, pushUndoAction, updateUndoAction, removeUndoAction });
-  transferCompletionActionsRef.current = { refreshChangedDirectories, updatePaneTab, showToast, t, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, pushUndoAction, updateUndoAction, removeUndoAction };
+  const transferCompletionActionsRef = useRef({ refreshChangedDirectories, updateFlatDirectoriesForTransferCompletion, updatePaneTab, showToast, t, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, pushUndoAction, updateUndoAction, removeUndoAction });
+  transferCompletionActionsRef.current = { refreshChangedDirectories, updateFlatDirectoriesForTransferCompletion, updatePaneTab, showToast, t, leftTabs, rightTabs, activeLeftTabIndex, activeRightTabIndex, pushUndoAction, updateUndoAction, removeUndoAction };
 
   useEffect(() => {
     if (!isTauriDesktop()) {
@@ -5157,7 +5244,8 @@ export default function App() {
             const changedDirectories = [operation.targetPath];
             if (operation.kind === 'move') changedDirectories.push(...operation.sourcePaths.map(getParentPath));
             try {
-              await actions.refreshChangedDirectories(changedDirectories);
+              const skipFlatInvalidation = await actions.updateFlatDirectoriesForTransferCompletion(operation, result);
+              await actions.refreshChangedDirectories(changedDirectories, { skipFlatInvalidation });
             } catch (error) {
               actions.showToast(actions.t.core.operationFailedWithReason.replace('{reason}', String(error)));
             }
@@ -6799,55 +6887,7 @@ export default function App() {
             nativeLoadedDirectories.current.delete(loadedKey);
           }
         }
-        const flatKeysToInvalidate: string[] = [];
-        const flatUpdates = new Map<string, FlatDirectoryState>();
-        for (const [rootKey, entry] of Object.entries(flatDirectoriesRef.current)) {
-          const touchesFlatRoot = removedPaths.some(
-            rootPath => isSameOrDescendantPath(rootPath, rootKey) || isSameOrDescendantPath(rootKey, rootPath),
-          );
-          if (!touchesFlatRoot) continue;
-          const deletedFlatRootItself = removedPaths.some(rootPath => isSameOrDescendantPath(rootKey, rootPath));
-          if (deletedFlatRootItself || entry.loading || entry.truncated || !entry.entries) {
-            flatKeysToInvalidate.push(rootKey);
-            continue;
-          }
-          const keptEntries: FileItem[] = [];
-          const removedFlatItems: FileItem[] = [];
-          for (const item of entry.entries) {
-            if (removedPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath))) {
-              removedFlatItems.push(item);
-            } else {
-              keptEntries.push(item);
-            }
-          }
-          if (removedFlatItems.length === 0) {
-            flatKeysToInvalidate.push(rootKey);
-            continue;
-          }
-          flatUpdates.set(rootKey, {
-            ...entry,
-            entries: keptEntries,
-            nextOffset: keptEntries.length,
-            counts: entry.counts
-              ? adjustDirectoryCountsForRemovedItems(entry.counts, removedFlatItems)
-              : entry.counts,
-          });
-        }
-        if (flatUpdates.size > 0) {
-          setFlatDirectories(previous => {
-            let next: Record<string, FlatDirectoryState> | null = null;
-            for (const [rootKey, updated] of flatUpdates) {
-              const current = previous[rootKey];
-              if (!current || current.loading || current.truncated) continue;
-              next ??= { ...previous };
-              next[rootKey] = updated;
-            }
-            return next ?? previous;
-          });
-        }
-        if (flatKeysToInvalidate.length > 0) {
-          invalidateFlatDirectories(flatKeysToInvalidate);
-        }
+        removePathsFromFlatDirectories(removedPaths);
         suppressWatchedDirectoryPaths(removedPaths.map(getParentPath));
         removeRecentPaths(removedPaths);
         setAllFiles(previous => previous.filter(item => !removedPaths.some(rootPath => isSameOrDescendantPath(item.path, rootPath))));
@@ -6952,7 +6992,7 @@ export default function App() {
     } finally {
       setIsFileOperationBusy(false);
     }
-  }, [allFiles, invalidateFlatDirectories, isFileOperationBusy, leftTabs, pushUndoAction, recordTransferOperation, refreshChangedDirectories, refreshDriveCapacities, refreshRecycleBinContents, refreshRecycleBinStatus, removeRecentPaths, rightTabs, showToast, suppressWatchedDirectoryPaths, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecycleUnavailable, t.toolbar.undoUnavailable, updateTransferOperation]);
+  }, [allFiles, isFileOperationBusy, leftTabs, pushUndoAction, recordTransferOperation, refreshChangedDirectories, refreshDriveCapacities, refreshRecycleBinContents, refreshRecycleBinStatus, removePathsFromFlatDirectories, removeRecentPaths, rightTabs, showToast, suppressWatchedDirectoryPaths, t.core.deleteFailed, t.core.deletePartial, t.core.deletedCount, t.core.permanentDeleteFailed, t.core.permanentDeletePartial, t.core.permanentlyDeletedCount, t.toolbar.undoRecycleUnavailable, t.toolbar.undoUnavailable, updateTransferOperation]);
   performDeleteRef.current = performDelete;
 
   const handleDeleteSelected = useCallback((itemsToDelete?: FileItem[], options: { permanently?: boolean } = {}) => {
