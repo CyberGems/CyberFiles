@@ -2,6 +2,32 @@
 
 All notable changes to CyberFiles are documented here.
 
+## [0.12.0] - 2026-11-26
+
+### 🇺🇸 English
+
+- Add Windows portable device (MTP/PTP) browsing under `mtp:\` paths in This PC and the sidebar, with thumbnails, file previews, queued transfers, live connect/disconnect notices, and explicit permanent delete confirmations.
+- Add full system drag-and-drop between Windows Desktop/File Explorer/external apps and CyberFiles panes, tabs, breadcrumbs, folder rows, sidebar locations, and This PC cards via native Windows OLE.
+- Add a bulk Timestamps & Attributes editor (`Ctrl+Enter`, context menu, action bar, Command Palette) supporting Created/Modified/Accessed writes, current time, copy time between fields, relative `+/−` offsets, Read-Only/Hidden/System attribute changes, subfolder depth scope, and `Ctrl+Z` undo.
+- Display `R`, `H`, and `S` flags as sortable badges in the optional Attributes lister column and Properties panel, and fix `Alt+Enter` to open native Windows Properties reliably.
+- Render Explorer's "Show more options" Shell context menu with extracted icons as an app-styled flyout across files, folders, background, virtual locations, and sidebar items, plus sidebar context menus, inline This PC tree expansion, and drag-to-Recycle-Bin.
+- Add a persistent filter history dropdown beneath the pane filter bar with pinned filters and quick clear controls.
+- Enable automatic default views (`Large Icons` for Pictures/Music/Videos, Explorer desktop.ini icon folders, or media-heavy folders; `Details` otherwise), expose the Style Lock in the lister footer and Workspace Auto-Save in the header, and refine unsaved-changes close prompts.
+- Watch active folders for external filesystem changes, keep status bar drive capacities, folder counts, and flat-view caches updated immediately, and cancel hover-tooltip scans, manual Size-column calculations, Properties scans, and archive reads immediately when focus moves.
+- Enlarge address bar navigation buttons into Firefox-style circular targets, add shortcut hints and keyboard handlers to modal buttons, sync the native window outline and chrome with the active theme, fix GPU tab marquee animations and startup tab centering, toggle the footer selection menu on second click, and expose update notification toggles in Settings and About.
+
+### 🇪🇸 Español
+
+- Añade navegación por dispositivos portátiles de Windows (MTP/PTP) bajo rutas `mtp:\` en Este equipo y en la barra lateral, con miniaturas, vistas previas, transferencias en cola, avisos de conexión en vivo y confirmación explícita para borrado permanente.
+- Añade arrastrar y soltar completo con el sistema entre el Escritorio, Explorador o apps externas y los paneles, pestañas, migas de pan, carpetas, barra lateral y Este equipo mediante OLE nativo de Windows.
+- Añade un editor múltiple de Fechas y Atributos (`Ctrl+Enter`, menú contextual, barra de acciones y paleta de comandos) para modificar Creado/Modificado/Último acceso, usar la hora actual, copiar una fecha a otra, aplicar desplazamientos relativos `+/−`, cambiar Solo lectura/Oculto/Sistema, elegir profundidad en subcarpetas y deshacer con `Ctrl+Z`.
+- Muestra las insignias ordenables `R`, `H` y `S` en la columna Atributos del listador y en el panel de Propiedades, y corrige `Alt+Enter` para abrir Propiedades nativas de Windows.
+- Muestra el menú contextual de Windows ("Mostrar más opciones") con iconos extraídos como flyout integrado en archivos, carpetas, fondo, ubicaciones virtuales y barra lateral, junto a menús contextuales propios en la barra lateral, árbol en Este equipo y arrastre directo a la Papelera.
+- Añade un historial desplegable persistente bajo la barra de filtrado del panel con filtros fijados y limpieza rápida.
+- Activa vistas predeterminadas automáticas (`Iconos grandes` en Imágenes/Música/Vídeos, carpetas con vista guardada en desktop.ini o carpetas multimedia; `Detalles` en el resto), ubica el bloqueo de estilo en el pie y el autoguardado de espacios de trabajo en la cabecera, y mejora los avisos de cambios sin guardar.
+- Vigila las carpetas activas ante cambios externos del sistema de archivos, mantiene al instante capacidades de unidad, conteos y vista plana en la barra de estado, y cancela de inmediato los escaneos al retirar el cursor, al cambiar de selección o en la columna Tamaño.
+- Amplía los botones de la barra de dirección a objetivos circulares estilo Firefox, añade badges de atajo a los botones de modales, sincroniza el borde nativo con el tema activo, corrige el marquee GPU de pestañas, cierra el menú de selección del pie al volver a pulsar y expone avisos de actualización en Ajustes y Acerca de.
+
 ## [0.11.1] - 2026-11-19
 
 ### 🇺🇸 English
