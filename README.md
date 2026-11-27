@@ -117,14 +117,14 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Collapsible locations panel**: hide the sidebar with Ctrl+L, the button beside the properties toggle or the command palette, and both panes take the full width; the choice is part of saved layouts
 - **Recents**: a virtual location listing the files you opened or previewed in CyberFiles, sorted by last opened, with a last-opened column, per-item removal and a clear action
 - **Quick Access**: pin up to 100 folders, rename or remove shortcuts, and sort them A–Z, Z–A or manually by dragging (Alt+Up and Alt+Down also work)
-- **Views**: Details, List, Large Icons and Tiles, each with resizable columns, add or hide columns, sortable headers, and grouping by date or size; every folder remembers its own view, sorting and grouping, and Ctrl+1 to Ctrl+4 switch between the four views; folders without a saved style open with an automatic default view
+- **Views**: Details, List, Large Icons and Tiles, each with resizable columns, add or hide columns (including the optional `Attributes` column for `R`, `H`, and `S` flags), sortable headers, and grouping by date or size; every folder remembers its own view, sorting and grouping, and Ctrl+1 to Ctrl+4 switch between the four views; folders without a saved style open with an automatic default view
 - **Automatic default views**: a folder without a saved style opens in Large Icons when it is a Pictures, Music or Videos folder, when Windows Explorer saved that view for it (desktop.ini), or when most of its content is media; everything else opens in Details, and changing the view or zoom yourself saves it for that folder automatically
 - **Explorer-style thumbnails**: the Large Icons and Tiles views draw the same previews Windows File Explorer shows, through the Shell's own thumbnail pipeline: video frames, PDF and Office first pages, audio album art, photo stacks for folders that contain images, and HEIC or AVIF when Windows has a codec for them; formats without a preview provider fall back to the file icon, and a Settings toggle turns item thumbnails off
 - **Preview zoom**: Ctrl+mouse wheel, or Ctrl+= / Ctrl+- , steps the Large Icons and Tiles preview cells through four sizes from small to extra large, remembered per folder; the view menus in the pane, the context menu and the header offer the same sizes
 - **Relative graphs**: optional bars behind sizes and dates that make the shape of a folder visible at a glance
 - **Progressive loading**: large folders load as you scroll while the status bar keeps accurate file, folder and item totals
 - **Flat view**: recursively list every subfolder in one list, with a confirmation when the tree is large
-- **Filter**: narrow the current list as you type, without running a full search; typing fills the filter instead of jumping to a matching name, the query becomes a chip above the list while a selection is active, and Esc always leaves it
+- **Filter**: narrow the current list as you type, without running a full search; typing fills the filter instead of jumping to a matching name, the query becomes a chip above the list while a selection is active, a dropdown below the bar stores filter history with pinned queries and quick clear, and Esc always leaves it
 - **Mouse gestures**: hold the right button and drag left or right to go back or forward, or up or down to jump to the start or end of the list; a normal right-click still opens the context menu
 - **Folder style Lock** (off by default): keep view, sorting and column widths while navigating, or let each folder use its own saved style
 - **Custom folder icons**: pick an icon, color and status badge for a folder, stored by CyberFiles and never written to Windows
@@ -136,6 +136,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Operations center**: copy, move, extraction and ZIP creation run through a queue with progress, pause, resume, cancel and per-item errors; the status bar button counts completed and failed operations since your last review, so nothing is missed between checks
 - **Undo history**: the last ten supported actions can be reversed from the toolbar or from the pane context menu, with clear reasons when an action cannot be undone
 - **Create and rename**: new folder, new text document, new shortcut, single rename and a batch rename studio with search and replace, prefix, suffix, sequential numbering and case changes; rename and copy path sit in the pane action bar, the name field fills the row, and clicking the name of a selected item starts an inline rename
+- **Timestamps & attributes (Ctrl+Enter)**: edit Created, Modified and Accessed timestamps, fill current time, copy dates between fields, shift timestamps with relative `+/−` offsets, change Read-Only, Hidden and System flags across subfolder depths, and undo with Ctrl+Z
 - **Copy path**: Ctrl+Shift+C copies the path of the selection, or of the current folder when nothing is selected, from the action bar, the context menu or the command palette
 - **Show more options**: the pane and sidebar context menus include an entry that opens Explorer's own full context menu for the selection, with Windows and third-party extensions intact
 - **Delete with your rules**: deletions go to the Windows Recycle Bin through the Shell, and Shift+Del opens the dialog with permanent deletion already ticked; the dialog can remember the chosen mode so later deletions skip it, and Settings › Deletion restores the confirmation or makes permanent deletion the default. The sidebar shows Recycle Bin contents with restore and empty actions, and accepts files dropped on its Recycle Bin row by sending them to the bin
@@ -145,7 +146,7 @@ Most Windows file managers either hide the second pane behind a paid tier or wra
 - **Archive preview**: list the contents of ZIP and RAR files, with a password prompt for protected archives
 - **Extract**: extract here or into a folder named after the archive, with unsafe paths rejected
 - **Create ZIP**: compress the selection or the current folder into a new archive
-- **Properties panel**: text, code, Markdown, HTML, image and PDF previews, plus encoding, line count and full metadata; audio and video files play right in the panel with player controls, streaming from disk without copying the file, and formats the player cannot handle offer to open the file with its application; selecting a folder adds a contents block with its files, folders, content type and total size
+- **Properties panel**: text, code, Markdown, HTML, image and PDF previews, plus encoding, line count and full metadata (including `R`, `H` and `S` attribute flags); audio and video files play right in the panel with player controls, streaming from disk without copying the file, and formats the player cannot handle offer to open the file with its application; selecting a folder adds a contents block with its files, folders, content type and total size
 - **Image previews**: PNG, JPEG, GIF, WebP, BMP, TIFF, ICO and SVG in the panel, with the same thumbnail in the file tooltip and in the item views
 - **Quick actions**: copy file content, copy the full path, or open the original Windows properties dialog
 
@@ -371,6 +372,8 @@ The RAR support includes UnRAR source code. Its license terms are reproduced in 
 | `F6` | Move the selection to the opposite pane |
 | `F7` | Create a folder in the current location |
 | `Ctrl+R` | Open batch rename |
+| `Ctrl+Enter` | Edit timestamps and attributes for the selection |
+| `Alt+Enter` | Open Windows Properties for the selected item |
 | `Ctrl+F` | Search by name, path or available content |
 | `Ctrl+K` | Open the command palette for commands and locations |
 | `Ctrl+T` / `Ctrl+W` | Open a tab / close the active tab |
