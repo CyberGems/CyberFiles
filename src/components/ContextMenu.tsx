@@ -613,6 +613,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
             <ViewMenuButton icon={<span />} label={t.pane.columns.created} selected={sortField === 'createdDate'} onClick={() => { onSortFieldChange('createdDate'); onClose(); }} />
             <ViewMenuButton icon={<span />} label={t.pane.columns.type} selected={sortField === 'type'} onClick={() => { onSortFieldChange('type'); onClose(); }} />
             <ViewMenuButton icon={<span />} label={t.pane.columns.size} selected={sortField === 'size'} onClick={() => { onSortFieldChange('size'); onClose(); }} />
+            <ViewMenuButton icon={<span />} label={t.pane.columns.attributes} selected={sortField === 'attributes'} onClick={() => { onSortFieldChange('attributes'); onClose(); }} />
             <MenuDivider />
             <ViewMenuButton icon={<ArrowUp className="h-3.5 w-3.5" />} label={t.contextMenu.ascending} selected={sortOrder === 'asc'} onClick={() => { onSortOrderChange('asc'); onClose(); }} />
             <ViewMenuButton icon={<ArrowDown className="h-3.5 w-3.5" />} label={t.contextMenu.descending} selected={sortOrder === 'desc'} onClick={() => { onSortOrderChange('desc'); onClose(); }} />

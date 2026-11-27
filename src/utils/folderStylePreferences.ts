@@ -13,7 +13,7 @@ export interface FolderStylePreference {
 export type SavedFolderStyles = Record<string, FolderStylePreference & { displayPath?: string }>;
 
 const STORAGE_KEY = 'cyberfiles_saved_folder_styles_v1';
-const SORT_FIELDS: SortField[] = ['name', 'size', 'type', 'createdDate', 'modifiedDate', 'extension'];
+const SORT_FIELDS: SortField[] = ['name', 'size', 'type', 'createdDate', 'modifiedDate', 'extension', 'attributes'];
 const GROUP_FIELDS: GroupByField[] = ['none', 'name', 'modifiedDate', 'type', 'size'];
 
 export function folderStylePathKey(path: string): string {

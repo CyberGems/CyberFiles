@@ -479,6 +479,10 @@ export function sortFiles(items: FileItem[], field: SortField, order: SortOrder)
       case 'extension':
         compare = a.extension.localeCompare(b.extension);
         break;
+      case 'attributes':
+        compare = (a.attributes ?? '').localeCompare(b.attributes ?? '')
+          || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        break;
       case 'lastOpened':
         compare = (a.lastOpenedAtMs ?? 0) - (b.lastOpenedAtMs ?? 0);
         break;

@@ -87,7 +87,7 @@ export interface NewTabActionPreference {
   path: string;
 }
 
-export type SortField = 'name' | 'size' | 'type' | 'createdDate' | 'modifiedDate' | 'extension' | 'lastOpened';
+export type SortField = 'name' | 'size' | 'type' | 'createdDate' | 'modifiedDate' | 'extension' | 'attributes' | 'lastOpened';
 export type GroupByField = 'none' | 'name' | 'modifiedDate' | 'type' | 'size';
 export type SortOrder = 'asc' | 'desc';
 export type QuickAccessSortMode = 'manual' | 'name' | 'name-desc';

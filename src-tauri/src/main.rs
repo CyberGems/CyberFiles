@@ -976,9 +976,24 @@ struct NativeFolderEntry {
     path: String,
     is_folder: bool,
     is_hidden: bool,
+    is_read_only: bool,
+    is_system: bool,
     size: u64,
     modified_ms: Option<u64>,
     created_ms: Option<u64>,
+}
+
+fn read_basic_file_flags(metadata: &fs::Metadata) -> (bool, bool) {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::MetadataExt;
+        let attrs = metadata.file_attributes();
+        ((attrs & ATTR_READ_ONLY) != 0, (attrs & ATTR_SYSTEM) != 0)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        (metadata.permissions().readonly(), false)
+    }
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -3668,6 +3683,8 @@ fn list_unc_server_shares(server_root: &str) -> Result<DirectoryListing, String>
                     name,
                     is_folder: true,
                     is_hidden,
+                    is_read_only: false,
+                    is_system: false,
                     size: 0,
                     modified_ms: None,
                     created_ms: None,
@@ -3749,6 +3766,8 @@ fn list_unc_server_shares(server_root: &str) -> Result<DirectoryListing, String>
                     name: share_name,
                     is_folder: true,
                     is_hidden,
+                    is_read_only: false,
+                    is_system: false,
                     size: 0,
                     modified_ms: None,
                     created_ms: None,
@@ -3869,6 +3888,8 @@ async fn list_directory(path: String) -> Result<DirectoryListing, String> {
                     path: entry.path,
                     is_folder: entry.is_folder,
                     is_hidden: entry.is_hidden,
+                    is_read_only: false,
+                    is_system: false,
                     size: entry.size,
                     modified_ms: entry.modified_ms,
                     created_ms: entry.created_ms,
@@ -3960,11 +3981,14 @@ async fn list_directory(path: String) -> Result<DirectoryListing, String> {
                 .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
                 .and_then(|duration| duration.as_millis().try_into().ok());
 
+            let (is_read_only, is_system) = read_basic_file_flags(&metadata);
             entries.push(NativeFolderEntry {
                 name: entry.file_name().to_string_lossy().to_string(),
                 path: display_path(&entry_path),
                 is_folder,
                 is_hidden,
+                is_read_only,
+                is_system,
                 size: if is_folder { 0 } else { metadata.len() },
                 modified_ms,
                 created_ms,
@@ -4098,11 +4122,14 @@ async fn list_flat_directory(path: String) -> Result<FlatDirectoryListing, Strin
                     .ok()
                     .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
                     .and_then(|duration| duration.as_millis().try_into().ok());
+                let (is_read_only, is_system) = read_basic_file_flags(&metadata);
                 entries.push(NativeFolderEntry {
                     name: child.file_name().to_string_lossy().to_string(),
                     path: display_path(&entry_path),
                     is_folder,
                     is_hidden,
+                    is_read_only,
+                    is_system,
                     size: if is_folder { 0 } else { metadata.len() },
                     modified_ms,
                     created_ms,
@@ -11738,6 +11765,29 @@ mod folder_scan_cancellation_tests {
         let infinite_all = collect_metadata_target_paths(&inputs, Some(0), true, true);
         assert_eq!(infinite_all.len(), 6);
 
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn metadata_read_basic_file_flags_detects_readonly() {
+        let root = std::env::temp_dir().join(format!("cyberfiles-flags-{}", std::process::id()));
+        let file = root.join("sample.txt");
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("create temp dir");
+        fs::write(&file, b"ok").expect("write temp file");
+
+        let meta_rw = fs::symlink_metadata(&file).expect("stat rw");
+        assert_eq!(read_basic_file_flags(&meta_rw).0, false);
+
+        let mut perms = meta_rw.permissions();
+        perms.set_readonly(true);
+        fs::set_permissions(&file, perms).expect("set readonly");
+        let meta_ro = fs::symlink_metadata(&file).expect("stat ro");
+        assert_eq!(read_basic_file_flags(&meta_ro).0, true);
+
+        let mut perms = meta_ro.permissions();
+        perms.set_readonly(false);
+        let _ = fs::set_permissions(&file, perms);
         let _ = fs::remove_dir_all(&root);
     }
 }

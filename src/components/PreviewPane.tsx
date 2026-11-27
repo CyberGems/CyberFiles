@@ -610,7 +610,30 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({ item, dateFormat, onCl
                   </div>
                 )}
                 <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.modified}:</span><span className="text-right text-neutral-200">{formatDateTimeForDisplay(item.modifiedAtMs, item.modifiedDate, dateFormat, language) || '----'}</span></div>
-                <div className="flex items-center justify-between gap-3 text-neutral-400"><span>{t.preview.attributes}:</span><span className="text-right text-neutral-200">{item.attributes || '----'}</span></div>
+                <div className="flex items-start justify-between gap-3 text-neutral-400">
+                  <span>{t.preview.attributes}:</span>
+                  <div className="flex flex-wrap justify-end gap-1 text-right">
+                    {(() => {
+                      const flags = item.attributes ?? '';
+                      const badges: Array<{ code: string; label: string; tone: string }> = [];
+                      if (flags.includes('R')) badges.push({ code: 'R', label: t.preview.attributeReadOnly, tone: 'border-amber-500/40 bg-amber-500/15 text-amber-300' });
+                      if (flags.includes('H')) badges.push({ code: 'H', label: t.preview.attributeHidden, tone: 'border-rose-500/40 bg-rose-500/15 text-rose-300' });
+                      if (flags.includes('S')) badges.push({ code: 'S', label: t.preview.attributeSystem, tone: 'border-cyan-500/40 bg-cyan-500/15 text-cyan-300' });
+                      if (badges.length === 0) {
+                        return <span className="text-neutral-500">{t.preview.attributeNone}</span>;
+                      }
+                      return badges.map(badge => (
+                        <span
+                          key={badge.code}
+                          className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium ${badge.tone}`}
+                        >
+                          <span className="font-mono font-semibold">{badge.code}</span>
+                          <span>· {badge.label}</span>
+                        </span>
+                      ));
+                    })()}
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-1">

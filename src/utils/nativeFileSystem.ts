@@ -20,6 +20,8 @@ interface NativeFolderEntry {
   path: string;
   isFolder: boolean;
   isHidden: boolean;
+  isReadOnly?: boolean;
+  isSystem?: boolean;
   size: number;
   modifiedMs: number | null;
   createdMs: number | null;
@@ -192,7 +194,7 @@ function mapNativeEntries(entries: NativeFolderEntry[]): FileItem[] {
     name: entry.name,
     path: entry.path,
     isFolder: entry.isFolder,
-    attributes: entry.isHidden ? 'H' : '',
+    attributes: `${entry.isReadOnly ? 'R' : ''}${entry.isHidden ? 'H' : ''}${entry.isSystem ? 'S' : ''}`,
     type: detectFileType(entry.name, entry.isFolder),
     size: entry.size,
     modifiedDate: formatLocalDateTime(entry.modifiedMs),

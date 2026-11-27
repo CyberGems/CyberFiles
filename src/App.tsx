@@ -396,7 +396,7 @@ function isViewMode(value: unknown): value is ViewMode {
 }
 
 function isSortField(value: unknown): value is SortField {
-  return value === 'name' || value === 'size' || value === 'type' || value === 'createdDate' || value === 'modifiedDate' || value === 'extension';
+  return value === 'name' || value === 'size' || value === 'type' || value === 'createdDate' || value === 'modifiedDate' || value === 'extension' || value === 'attributes';
 }
 
 function readPaneSplitPercent(value: unknown, defaultValue = 50, minPercent = 20, maxPercent = 80) {

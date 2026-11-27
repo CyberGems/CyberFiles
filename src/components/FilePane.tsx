@@ -171,7 +171,7 @@ interface FilePaneProps {
 
 type SystemHomeSection = 'folders' | 'devices' | 'network' | 'advancedWindowsFolders';
 type CollapsedSystemHomeSections = Record<SystemHomeSection, boolean>;
-type FileColumn = 'extension' | 'name' | 'type' | 'size' | 'created' | 'modified';
+type FileColumn = 'extension' | 'name' | 'type' | 'size' | 'created' | 'modified' | 'attributes';
 type RelativeGraphColumn = 'size' | 'created' | 'modified';
 type RelativeGraphWidths = Partial<Record<RelativeGraphColumn, number>>;
 type ResizableColumn = FileColumn;
@@ -235,6 +235,7 @@ interface FileColumnWidths {
   size: number;
   created: number;
   modified: number;
+  attributes: number;
 }
 
 interface ColumnResizeDrag {
@@ -275,7 +276,7 @@ const MOUSE_GESTURE_MENU_TOLERANCE = 12;
 const MOUSE_GESTURE_HOLD_TIMEOUT = 2000;
 
 const COLLAPSED_SYSTEM_HOME_SECTIONS_KEY = 'cyberfiles_system_home_collapsed_sections_v1';
-const FILE_COLUMNS: FileColumn[] = ['extension', 'name', 'type', 'size', 'created', 'modified'];
+const FILE_COLUMNS: FileColumn[] = ['extension', 'name', 'type', 'size', 'created', 'modified', 'attributes'];
 const MIN_NAME_COLUMN_WIDTH = 100;
 const RECENT_ITEM_WINDOW_MS = 24 * 60 * 60 * 1000;
 /* Rendered widths of the breadcrumb's fixed pieces, used by the fit calculation so it never
@@ -304,6 +305,8 @@ function resizeFileColumns(widths: FileColumnWidths, column: ResizableColumn, de
       return { ...widths, created: clampWidth(widths.created + delta, 80, 480) };
     case 'modified':
       return { ...widths, modified: clampWidth(widths.modified + delta, 80, 480) };
+    case 'attributes':
+      return { ...widths, attributes: clampWidth(widths.attributes + delta, 48, 180) };
   }
 }
 
@@ -917,6 +920,28 @@ const DetailsFileRow = React.memo(function DetailsFileRow({
           const createdDate = formatDateTimeForDisplay(item.createdAtMs, item.createdDate, dateFormat, language);
           return <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-end overflow-hidden text-right font-sans text-[calc(10.5px*var(--lister-text-scale,1))] tabular-nums text-neutral-400" style={relativeGraphStyle(createdGraphWidth, 'date')}><span data-file-column-content={column} className="inline-block max-w-full truncate tabular-nums font-sans">{createdDate || '--'}</span></div>;
         }
+        if (column === 'attributes') {
+          const flags = item.attributes ?? '';
+          const badges: Array<{ code: string; title: string; tone: string }> = [];
+          if (flags.includes('R')) badges.push({ code: 'R', title: t.preview.attributeReadOnly, tone: 'border-amber-500/40 bg-amber-500/15 text-amber-300' });
+          if (flags.includes('H')) badges.push({ code: 'H', title: t.preview.attributeHidden, tone: 'border-rose-500/40 bg-rose-500/15 text-rose-300' });
+          if (flags.includes('S')) badges.push({ code: 'S', title: t.preview.attributeSystem, tone: 'border-cyan-500/40 bg-cyan-500/15 text-cyan-300' });
+          return (
+            <div key={column} className="cyberfiles-file-cell flex min-w-0 items-center justify-start overflow-hidden">
+              <span data-file-column-content={column} className="inline-flex max-w-full items-center gap-0.5 truncate font-mono text-[calc(9.5px*var(--lister-text-scale,1))]">
+                {badges.length > 0 ? badges.map(badge => (
+                  <span
+                    key={badge.code}
+                    aria-label={badge.title}
+                    className={`inline-flex h-4 min-w-[16px] items-center justify-center rounded border px-1 font-semibold leading-none ${badge.tone}`}
+                  >
+                    {badge.code}
+                  </span>
+                )) : <span className="text-neutral-500">--</span>}
+              </span>
+            </div>
+          );
+        }
         // In Recents the "modified" column is relabelled to "Last opened", so it shows the
         // access-log timestamp instead of the file's modification date.
         const modifiedDate = isRecentLocation
@@ -1500,6 +1525,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
     size: 'size',
     created: 'createdDate',
     modified: 'modifiedDate',
+    attributes: 'attributes',
   };
   const columnLabel = (column: FileColumn) => {
     switch (column) {
@@ -1509,6 +1535,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       case 'size': return t.pane.columns.size;
       case 'created': return t.pane.columns.created;
       case 'modified': return isRecentLocation ? t.pane.columns.opened : isRecycleBin ? t.pane.columns.deleted : t.pane.columns.modified;
+      case 'attributes': return t.pane.columns.attributes;
     }
   };
   const columnWidth = (column: FileColumn) => {
@@ -4805,7 +4832,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
             const isLast = colIdx === visibleFileColumns.length - 1;
             const isRightAligned = column === 'size' || column === 'created' || column === 'modified';
             return (
-              <Tooltip key={column} label={column === 'extension' ? `${t.pane.columns.extensionTooltip}. ${t.pane.columns.columnHeaderTooltip}` : t.pane.columns.columnHeaderTooltip} placement="bottom">
+              <Tooltip
+                key={column}
+                label={
+                  column === 'extension'
+                    ? `${t.pane.columns.extensionTooltip}. ${t.pane.columns.columnHeaderTooltip}`
+                    : column === 'attributes'
+                      ? `${t.pane.columns.attributesTooltip}. ${t.pane.columns.columnHeaderTooltip}`
+                      : t.pane.columns.columnHeaderTooltip
+                }
+                placement="bottom"
+              >
                 <div
                   data-file-column-id={column}
                   onPointerDown={event => beginColumnPointerDrag(column, event)}

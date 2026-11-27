@@ -16,9 +16,10 @@ export const DEFAULT_FILE_COLUMN_WIDTHS: FileColumnWidthsSnapshot = {
   size: 84,
   created: 140,
   modified: 140,
+  attributes: 68,
 };
 
-const COLUMNS: FileColumnId[] = ['extension', 'name', 'type', 'size', 'created', 'modified'];
+const COLUMNS: FileColumnId[] = ['extension', 'name', 'type', 'size', 'created', 'modified', 'attributes'];
 export const DEFAULT_FILE_COLUMN_LAYOUT: FileColumnLayoutSnapshot = {
   order: COLUMNS,
   visible: ['name', 'type', 'size', 'created', 'modified'],
@@ -55,6 +56,7 @@ function readWidths(paneId: WorkspacePaneId): FileColumnWidthsSnapshot {
       size: typeof saved.size === 'number' ? Math.min(320, Math.max(56, saved.size)) : DEFAULT_FILE_COLUMN_WIDTHS.size,
       created: typeof saved.created === 'number' ? Math.min(480, Math.max(80, saved.created)) : DEFAULT_FILE_COLUMN_WIDTHS.created,
       modified: typeof saved.modified === 'number' ? Math.min(480, Math.max(80, saved.modified)) : DEFAULT_FILE_COLUMN_WIDTHS.modified,
+      attributes: typeof saved.attributes === 'number' ? Math.min(180, Math.max(48, saved.attributes)) : DEFAULT_FILE_COLUMN_WIDTHS.attributes,
     };
   } catch {
     return DEFAULT_FILE_COLUMN_WIDTHS;

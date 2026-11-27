@@ -7,7 +7,7 @@ export const DEFAULT_SESSION_PROFILE_ID = 'builtin-default-session';
 export type WorkspacePaneId = 'left' | 'right';
 export type TabStripPosition = 'top' | 'bottom' | 'left' | 'right';
 export type StartupBehavior = 'continue' | 'home' | 'session';
-export type FileColumnId = 'extension' | 'name' | 'type' | 'size' | 'created' | 'modified';
+export type FileColumnId = 'extension' | 'name' | 'type' | 'size' | 'created' | 'modified' | 'attributes';
 
 export interface FileColumnLayoutSnapshot {
   order: FileColumnId[];
@@ -21,6 +21,7 @@ export interface FileColumnWidthsSnapshot {
   size: number;
   created: number;
   modified: number;
+  attributes: number;
 }
 
 export interface PaneColumnsSnapshot {
@@ -95,17 +96,17 @@ export const DEFAULT_LAYOUT_SNAPSHOT: LayoutSnapshot = {
   sidebarSplitPercent: 22,
   columns: {
     left: {
-      layout: { order: ['extension', 'name', 'type', 'size', 'created', 'modified'], visible: ['name', 'type', 'size', 'created', 'modified'] },
-      widths: { extension: 58, name: null, type: 148, size: 84, created: 116, modified: 116 },
+      layout: { order: ['extension', 'name', 'type', 'size', 'created', 'modified', 'attributes'], visible: ['name', 'type', 'size', 'created', 'modified'] },
+      widths: { extension: 58, name: null, type: 148, size: 84, created: 116, modified: 116, attributes: 68 },
     },
     right: {
-      layout: { order: ['extension', 'name', 'type', 'size', 'created', 'modified'], visible: ['name', 'type', 'size', 'created', 'modified'] },
-      widths: { extension: 58, name: null, type: 148, size: 84, created: 116, modified: 116 },
+      layout: { order: ['extension', 'name', 'type', 'size', 'created', 'modified', 'attributes'], visible: ['name', 'type', 'size', 'created', 'modified'] },
+      widths: { extension: 58, name: null, type: 148, size: 84, created: 116, modified: 116, attributes: 68 },
     },
   },
 };
 
-const VALID_COLUMNS: FileColumnId[] = ['extension', 'name', 'type', 'size', 'created', 'modified'];
+const VALID_COLUMNS: FileColumnId[] = ['extension', 'name', 'type', 'size', 'created', 'modified', 'attributes'];
 
 function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : fallback;
@@ -131,6 +132,7 @@ function normalizeColumnWidths(value: unknown): FileColumnWidthsSnapshot {
     size: clampNumber(raw.size, 84, 56, 320),
     created: clampNumber(raw.created, 116, 80, 480),
     modified: clampNumber(raw.modified, 116, 80, 480),
+    attributes: clampNumber(raw.attributes, 68, 48, 180),
   };
 }
 
@@ -158,7 +160,7 @@ export function normalizeLayoutSnapshot(value: unknown): LayoutSnapshot {
 }
 
 function normalizeSortField(value: unknown): SortField {
-  return value === 'size' || value === 'type' || value === 'createdDate' || value === 'modifiedDate' || value === 'extension'
+  return value === 'size' || value === 'type' || value === 'createdDate' || value === 'modifiedDate' || value === 'extension' || value === 'attributes'
     ? value
     : 'name';
 }
