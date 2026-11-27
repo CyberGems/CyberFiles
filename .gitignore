@@ -15,3 +15,7 @@ coverage/
 
 # Native build output
 src-tauri/target/
+
+# Local environment
+.env*
+!.env.example
