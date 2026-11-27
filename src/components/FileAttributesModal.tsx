@@ -17,8 +17,10 @@ import { Tooltip } from './Tooltip';
 import {
   AttributeChangeAction,
   FileMetadataCopyTimeSpec,
+  FileMetadataTimeOffsetSpec,
   FileMetadataUpdateRequest,
   NativeFileMetadataSnapshot,
+  TimeOffsetUnit,
   inspectNativeFileMetadataBatch,
 } from '../utils/nativeFileSystem';
 
@@ -133,6 +135,14 @@ export const FileAttributesModal: React.FC<FileAttributesModalProps> = ({
   const [copyToModified, setCopyToModified] = useState(true);
   const [copyToAccessed, setCopyToAccessed] = useState(false);
 
+  const [offsetEnabled, setOffsetEnabled] = useState(false);
+  const [offsetDirection, setOffsetDirection] = useState<'+' | '-'>('+');
+  const [offsetAmount, setOffsetAmount] = useState('1');
+  const [offsetUnit, setOffsetUnit] = useState<TimeOffsetUnit>('hours');
+  const [offsetCreated, setOffsetCreated] = useState(false);
+  const [offsetModified, setOffsetModified] = useState(true);
+  const [offsetAccessed, setOffsetAccessed] = useState(false);
+
   const [readOnlyAction, setReadOnlyAction] = useState<AttributeChangeAction>('unchanged');
   const [hiddenAction, setHiddenAction] = useState<AttributeChangeAction>('unchanged');
   const [systemAction, setSystemAction] = useState<AttributeChangeAction>('unchanged');
@@ -164,6 +174,13 @@ export const FileAttributesModal: React.FC<FileAttributesModalProps> = ({
     setCopyToCreated(false);
     setCopyToModified(true);
     setCopyToAccessed(false);
+    setOffsetEnabled(false);
+    setOffsetDirection('+');
+    setOffsetAmount('1');
+    setOffsetUnit('hours');
+    setOffsetCreated(false);
+    setOffsetModified(true);
+    setOffsetAccessed(false);
     setReadOnlyAction('unchanged');
     setHiddenAction('unchanged');
     setSystemAction('unchanged');
@@ -233,7 +250,15 @@ export const FileAttributesModal: React.FC<FileAttributesModalProps> = ({
     applyModified ||
     applyAccessed ||
     copyEnabled ||
+    offsetEnabled ||
     hasAttributeChange;
+
+  const parsedOffsetAmount = useMemo(() => {
+    const trimmed = offsetAmount.trim();
+    if (!/^\d+$/.test(trimmed)) return null;
+    const value = Number(trimmed);
+    return Number.isSafeInteger(value) && value >= 1 ? value : null;
+  }, [offsetAmount]);
 
   const validation = useMemo(() => {
     if (applyCreated && parsedCreatedMs === null) {
@@ -260,6 +285,18 @@ export const FileAttributesModal: React.FC<FileAttributesModalProps> = ({
         message: t.fileAttributes.copyNoTarget,
       };
     }
+    if (offsetEnabled && parsedOffsetAmount === null) {
+      return {
+        valid: false,
+        message: t.fileAttributes.offsetInvalidAmount,
+      };
+    }
+    if (offsetEnabled && !offsetCreated && !offsetModified && !offsetAccessed) {
+      return {
+        valid: false,
+        message: t.fileAttributes.offsetNoTarget,
+      };
+    }
     if (hasAnyFolder && subfolderDepthOption !== 'none' && !includeFiles && !includeFolders) {
       return {
         valid: false,
@@ -278,9 +315,14 @@ export const FileAttributesModal: React.FC<FileAttributesModalProps> = ({
     hasAnyFolder,
     includeFiles,
     includeFolders,
+    offsetAccessed,
+    offsetCreated,
+    offsetEnabled,
+    offsetModified,
     parsedAccessedMs,
     parsedCreatedMs,
     parsedModifiedMs,
+    parsedOffsetAmount,
     subfolderDepthOption,
     t.fileAttributes.accessed,
     t.fileAttributes.copyNoTarget,
@@ -288,6 +330,8 @@ export const FileAttributesModal: React.FC<FileAttributesModalProps> = ({
     t.fileAttributes.invalidTimestamp,
     t.fileAttributes.modified,
     t.fileAttributes.nothingMatched,
+    t.fileAttributes.offsetInvalidAmount,
+    t.fileAttributes.offsetNoTarget,
   ]);
 
   const canApply = validation.valid && hasAnyChange && !isLoading && !isSubmitting && items.length > 0;
@@ -332,6 +376,17 @@ export const FileAttributesModal: React.FC<FileAttributesModalProps> = ({
         }
       : null;
 
+    const timeOffset: FileMetadataTimeOffsetSpec | null =
+      offsetEnabled && parsedOffsetAmount !== null
+        ? {
+            amount: offsetDirection === '-' ? -parsedOffsetAmount : parsedOffsetAmount,
+            unit: offsetUnit,
+            applyCreated: offsetCreated,
+            applyModified: offsetModified,
+            applyAccessed: offsetAccessed,
+          }
+        : null;
+
     try {
       const outcome = await onApply({
         paths: items.map(item => item.path),
@@ -342,6 +397,7 @@ export const FileAttributesModal: React.FC<FileAttributesModalProps> = ({
         modifiedMs: applyModified ? parsedModifiedMs : null,
         accessedMs: applyAccessed ? parsedAccessedMs : null,
         copyTime,
+        timeOffset,
         readOnly: readOnlyAction,
         hidden: hiddenAction,
         system: systemAction,
@@ -371,11 +427,18 @@ export const FileAttributesModal: React.FC<FileAttributesModalProps> = ({
     includeFiles,
     includeFolders,
     items,
+    offsetAccessed,
+    offsetCreated,
+    offsetDirection,
+    offsetEnabled,
+    offsetModified,
+    offsetUnit,
     onApply,
     onClose,
     parsedAccessedMs,
     parsedCreatedMs,
     parsedModifiedMs,
+    parsedOffsetAmount,
     readOnlyAction,
     subfolderDepthOption,
     systemAction,
@@ -730,6 +793,117 @@ export const FileAttributesModal: React.FC<FileAttributesModalProps> = ({
                     onChange={e => {
                       setCopyToAccessed(e.target.checked);
                       setCopyEnabled(true);
+                      setApplyError('');
+                    }}
+                    className="h-3.5 w-3.5 rounded border-neutral-600 bg-neutral-950 text-cyan-400"
+                  />
+                  <span>{t.fileAttributes.accessed}</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Relative Timestamp Offset (+ / -) */}
+            <div className="pt-2.5 border-t border-neutral-800/80 flex flex-wrap items-center gap-x-2.5 gap-y-2">
+              <label
+                htmlFor="attr-offset-toggle"
+                className="flex items-center gap-2 text-xs font-medium text-neutral-200 cursor-pointer select-none"
+              >
+                <input
+                  id="attr-offset-toggle"
+                  type="checkbox"
+                  checked={offsetEnabled}
+                  onChange={e => {
+                    setOffsetEnabled(e.target.checked);
+                    setApplyError('');
+                  }}
+                  className="h-3.5 w-3.5 rounded border-neutral-600 bg-neutral-950 text-cyan-400 focus:ring-cyan-500/40"
+                />
+                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                <span>{t.fileAttributes.offsetToggle}</span>
+              </label>
+
+              <select
+                aria-label={t.fileAttributes.offsetToggle}
+                value={offsetDirection}
+                onChange={e => {
+                  setOffsetDirection(e.target.value as '+' | '-');
+                  setOffsetEnabled(true);
+                  setApplyError('');
+                }}
+                className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 focus:outline-none focus:border-cyan-500/60"
+              >
+                <option value="+">{t.fileAttributes.offsetDirectionAdd}</option>
+                <option value="-">{t.fileAttributes.offsetDirectionSubtract}</option>
+              </select>
+
+              <input
+                type="number"
+                min={1}
+                step={1}
+                aria-label={`${t.fileAttributes.offsetToggle} amount`}
+                value={offsetAmount}
+                onChange={e => {
+                  setOffsetAmount(e.target.value);
+                  setOffsetEnabled(true);
+                  setApplyError('');
+                }}
+                className={`w-16 rounded-md border bg-neutral-950 px-2 py-1 font-mono text-xs transition focus:outline-none focus:border-cyan-500/60 ${
+                  offsetEnabled ? 'border-cyan-500/50 text-neutral-100' : 'border-neutral-800 text-neutral-400'
+                }`}
+              />
+
+              <select
+                aria-label={`${t.fileAttributes.offsetToggle} unit`}
+                value={offsetUnit}
+                onChange={e => {
+                  setOffsetUnit(e.target.value as TimeOffsetUnit);
+                  setOffsetEnabled(true);
+                  setApplyError('');
+                }}
+                className="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-200 focus:outline-none focus:border-cyan-500/60"
+              >
+                <option value="seconds">{t.fileAttributes.offsetUnitSeconds}</option>
+                <option value="minutes">{t.fileAttributes.offsetUnitMinutes}</option>
+                <option value="hours">{t.fileAttributes.offsetUnitHours}</option>
+                <option value="days">{t.fileAttributes.offsetUnitDays}</option>
+              </select>
+
+              <span className="text-[11px] font-medium text-neutral-400">{t.fileAttributes.offsetApplyTo}</span>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-1.5 text-xs text-neutral-300 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={offsetCreated}
+                    onChange={e => {
+                      setOffsetCreated(e.target.checked);
+                      setOffsetEnabled(true);
+                      setApplyError('');
+                    }}
+                    className="h-3.5 w-3.5 rounded border-neutral-600 bg-neutral-950 text-cyan-400"
+                  />
+                  <span>{t.fileAttributes.created}</span>
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-neutral-300 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={offsetModified}
+                    onChange={e => {
+                      setOffsetModified(e.target.checked);
+                      setOffsetEnabled(true);
+                      setApplyError('');
+                    }}
+                    className="h-3.5 w-3.5 rounded border-neutral-600 bg-neutral-950 text-cyan-400"
+                  />
+                  <span>{t.fileAttributes.modified}</span>
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-neutral-300 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={offsetAccessed}
+                    onChange={e => {
+                      setOffsetAccessed(e.target.checked);
+                      setOffsetEnabled(true);
                       setApplyError('');
                     }}
                     className="h-3.5 w-3.5 rounded border-neutral-600 bg-neutral-950 text-cyan-400"

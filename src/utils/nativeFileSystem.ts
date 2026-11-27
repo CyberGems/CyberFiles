@@ -672,6 +672,16 @@ export interface NativeFileMetadataSnapshot {
   rawAttributes: number;
 }
 
+export type TimeOffsetUnit = 'seconds' | 'minutes' | 'hours' | 'days';
+
+export interface FileMetadataTimeOffsetSpec {
+  amount: number;
+  unit: TimeOffsetUnit;
+  applyCreated: boolean;
+  applyModified: boolean;
+  applyAccessed: boolean;
+}
+
 export interface FileMetadataCopyTimeSpec {
   from: 'created' | 'modified' | 'accessed';
   toCreated: boolean;
@@ -688,6 +698,7 @@ export interface FileMetadataUpdateRequest {
   modifiedMs: number | null;
   accessedMs: number | null;
   copyTime: FileMetadataCopyTimeSpec | null;
+  timeOffset?: FileMetadataTimeOffsetSpec | null;
   readOnly: AttributeChangeAction;
   hidden: AttributeChangeAction;
   system: AttributeChangeAction;

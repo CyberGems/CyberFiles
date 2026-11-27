@@ -9605,6 +9605,16 @@ struct FileMetadataCopyTimeSpec {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct FileMetadataTimeOffsetSpec {
+    amount: i64,
+    unit: String,
+    apply_created: bool,
+    apply_modified: bool,
+    apply_accessed: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct FileMetadataUpdateRequest {
     paths: Vec<String>,
     subfolder_depth: Option<u32>,
@@ -9614,6 +9624,8 @@ struct FileMetadataUpdateRequest {
     modified_ms: Option<u64>,
     accessed_ms: Option<u64>,
     copy_time: Option<FileMetadataCopyTimeSpec>,
+    #[serde(default)]
+    time_offset: Option<FileMetadataTimeOffsetSpec>,
     read_only: String,
     hidden: String,
     system: String,
@@ -9670,6 +9682,23 @@ fn compute_updated_file_attributes(current: u32, read_only: &str, hidden: &str, 
     next = apply_attribute_action(next, ATTR_HIDDEN, hidden);
     next = apply_attribute_action(next, ATTR_SYSTEM, system);
     next
+}
+
+fn apply_time_offset_ms(base_ms: Option<u64>, amount: i64, unit: &str) -> Option<u64> {
+    if amount == 0 {
+        return base_ms;
+    }
+    let unit_ms: i128 = match unit {
+        "seconds" => 1_000,
+        "minutes" => 60_000,
+        "hours" => 3_600_000,
+        "days" => 86_400_000,
+        _ => return base_ms,
+    };
+    let ms = base_ms?;
+    let delta = i128::from(amount).saturating_mul(unit_ms);
+    let shifted = i128::from(ms).saturating_add(delta).clamp(0, i128::from(u64::MAX));
+    Some(shifted as u64)
 }
 
 fn collect_metadata_target_paths(
@@ -9970,7 +9999,7 @@ async fn update_file_metadata_batch(request: FileMetadataUpdateRequest) -> Resul
                 }
             };
 
-            let (desired_created, desired_modified, desired_accessed) = if let Some(copy_spec) = &request.copy_time {
+            let (mut desired_created, mut desired_modified, mut desired_accessed) = if let Some(copy_spec) = &request.copy_time {
                 let source_ms = match copy_spec.from.as_str() {
                     "created" => snapshot.created_ms,
                     "modified" => snapshot.modified_ms,
@@ -9985,6 +10014,20 @@ async fn update_file_metadata_batch(request: FileMetadataUpdateRequest) -> Resul
             } else {
                 (request.created_ms, request.modified_ms, request.accessed_ms)
             };
+
+            if let Some(offset) = &request.time_offset {
+                if offset.amount != 0 {
+                    if offset.apply_created {
+                        desired_created = apply_time_offset_ms(desired_created.or(snapshot.created_ms), offset.amount, &offset.unit);
+                    }
+                    if offset.apply_modified {
+                        desired_modified = apply_time_offset_ms(desired_modified.or(snapshot.modified_ms), offset.amount, &offset.unit);
+                    }
+                    if offset.apply_accessed {
+                        desired_accessed = apply_time_offset_ms(desired_accessed.or(snapshot.accessed_ms), offset.amount, &offset.unit);
+                    }
+                }
+            }
 
             let write_created = desired_created.filter(|ms| Some(*ms) != snapshot.created_ms);
             let write_modified = desired_modified.filter(|ms| Some(*ms) != snapshot.modified_ms);
@@ -11789,5 +11832,17 @@ mod folder_scan_cancellation_tests {
         perms.set_readonly(false);
         let _ = fs::set_permissions(&file, perms);
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn metadata_time_offset_handles_units_signs_and_clamping() {
+        let base = Some(1_700_000_000_000_u64);
+        assert_eq!(apply_time_offset_ms(base, 5, "seconds"), Some(1_700_000_005_000));
+        assert_eq!(apply_time_offset_ms(base, -2, "minutes"), Some(1_699_999_880_000));
+        assert_eq!(apply_time_offset_ms(base, 3, "hours"), Some(1_700_010_800_000));
+        assert_eq!(apply_time_offset_ms(base, -1, "days"), Some(1_699_913_600_000));
+        assert_eq!(apply_time_offset_ms(base, 0, "hours"), base);
+        assert_eq!(apply_time_offset_ms(Some(1_000), -5, "seconds"), Some(0));
+        assert_eq!(apply_time_offset_ms(None, 5, "hours"), None);
     }
 }
