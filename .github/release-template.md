@@ -95,7 +95,8 @@ Añade navegación por dispositivos portátiles Windows, arrastrar y soltar nati
 {{PORTABLE_HASH}}
 ```
 
-The SHA-256 checksums are also included in the downloadable SHA256SUMS.txt file.
+
+The checksums are also available as a downloadable [SHA256SUMS.txt](https://github.com/CyberGems/CyberFiles/releases/download/{{VERSION}}/SHA256SUMS.txt).
 
 ---
 
