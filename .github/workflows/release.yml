@@ -140,6 +140,7 @@ jobs:
             Replace('{{PORTABLE_SHA256}}', $portableHash).
             Replace('{{INSTALLER_HASH}}', $installerHash).
             Replace('{{PORTABLE_HASH}}', $portableHash)
+          $notes = [regex]::Replace($notes, '(?s)<!--.*?-->', '').Trim()
           [System.IO.File]::WriteAllText('release_notes.md', $notes, [System.Text.UTF8Encoding]::new($false))
           Write-Host "Installer: $($installer.Name)"
           Write-Host "Installer SHA-256: $installerHash"
@@ -189,6 +190,7 @@ jobs:
           "report_url=$($result.reportUrl)" >> $env:GITHUB_OUTPUT
           $notes = [System.IO.File]::ReadAllText('release_notes.md', [System.Text.Encoding]::UTF8)
           $notes = $notes.Replace('{{VT_SCAN_STATUS}}', $result.status)
+          $notes = [regex]::Replace($notes, '(?s)<!--.*?-->', '').Trim()
           [System.IO.File]::WriteAllText('release_notes.md', $notes, [System.Text.UTF8Encoding]::new($false))
           Write-Host "VirusTotal: $($result.status)"
 
