@@ -14,7 +14,10 @@ All notable changes to CyberFiles are documented here.
 - Add a persistent filter history dropdown beneath the pane filter bar with pinned filters and quick clear controls.
 - Enable automatic default views (`Large Icons` for Pictures/Music/Videos, Explorer desktop.ini icon folders, or media-heavy folders; `Details` otherwise), expose the Style Lock in the lister footer and Workspace Auto-Save in the header, and refine unsaved-changes close prompts.
 - Watch active folders for external filesystem changes, keep status bar drive capacities, folder counts, and flat-view caches updated immediately, and cancel hover-tooltip scans, manual Size-column calculations, Properties scans, and archive reads immediately when focus moves.
-- Enlarge address bar navigation buttons into Firefox-style circular targets, add shortcut hints and keyboard handlers to modal buttons, sync the native window outline and chrome with the active theme, fix GPU tab marquee animations and startup tab centering, toggle the footer selection menu on second click, and expose update notification toggles in Settings and About.
+- Enlarge address bar navigation buttons into Firefox-style circular targets, add shortcut hints and keyboard handlers to modal buttons, sync the native window outline and chrome with the active theme, fix GPU tab marquee animations, keep the restored tab centered at startup, and toggle the footer selection menu on second click.
+- Expose update notification controls in Settings and About, separate download from installation in the update notice, and improve the contrast of the toggle so automatic updates are easier to understand and control.
+- Bring the window forward when a tray quit opens the unsaved-changes dialog, use the app name first in the tray window title, and standardize title bar hotkeys and `Alt+F4` so closing and quitting behave consistently.
+- Group Recents and Recycle Bin under Quick Access, move Network to the end, keep the lister More-actions menu visible on short windows, and unify pane dropdown feedback and sidebar menu order, tooltips and target highlight.
 
 ### 🇪🇸 Español
 
@@ -26,7 +29,10 @@ All notable changes to CyberFiles are documented here.
 - Añade un historial desplegable persistente bajo la barra de filtrado del panel con filtros fijados y limpieza rápida.
 - Activa vistas predeterminadas automáticas (`Iconos grandes` en Imágenes/Música/Vídeos, carpetas con vista guardada en desktop.ini o carpetas multimedia; `Detalles` en el resto), ubica el bloqueo de estilo en el pie y el autoguardado de espacios de trabajo en la cabecera, y mejora los avisos de cambios sin guardar.
 - Vigila las carpetas activas ante cambios externos del sistema de archivos, mantiene al instante capacidades de unidad, conteos y vista plana en la barra de estado, y cancela de inmediato los escaneos al retirar el cursor, al cambiar de selección o en la columna Tamaño.
-- Amplía los botones de la barra de dirección a objetivos circulares estilo Firefox, añade badges de atajo a los botones de modales, sincroniza el borde nativo con el tema activo, corrige el marquee GPU de pestañas, cierra el menú de selección del pie al volver a pulsar y expone avisos de actualización en Ajustes y Acerca de.
+- Amplía los botones de la barra de dirección a objetivos circulares estilo Firefox, añade badges de atajo a los botones de modales, sincroniza el borde nativo con el tema activo, corrige el marquee GPU de pestañas, mantiene centrada la pestaña restaurada al iniciar y cierra el menú de selección del pie al volver a pulsar.
+- Añade controles de notificaciones de actualización en Ajustes y Acerca de, separa la descarga de la instalación en el aviso y mejora el contraste del interruptor para entender y controlar mejor las actualizaciones automáticas.
+- Trae la ventana al frente cuando la salida desde la bandeja abre el diálogo de cambios sin guardar, usa primero el nombre de la app en el título de la ventana de bandeja y unifica los atajos de la barra de título y `Alt+F4` para que cerrar y salir se comporten de forma coherente.
+- Agrupa Recientes y Papelera en Acceso rápido, mueve Red al final, mantiene visible el menú Más acciones del listador en ventanas bajas y unifica la respuesta de los desplegables de panel y el orden, tooltips y resaltado de destino de los menús de la barra lateral.
 
 ## [0.11.1] - 2026-11-19
 
