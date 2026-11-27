@@ -69,11 +69,11 @@ El Explorador de Windows te da un panel, una pestaña y un diálogo para cada co
 
 ---
 
-<!-- Capturas: pendiente de la galería bilingüe ES/EN del plan en https://github.com/CyberGems/CyberGems.github.io/blob/main/docs/screenshots.md — sustituir la cita, conservar este título y su entrada en el índice. -->
-
 ## 🖼️ Capturas
 
-> Próximamente...
+<img src="./docs/screenshots/main-es.png" alt="Ventana de doble panel de CyberFiles mostrando carpetas de Proyecto Orión, barra lateral y vista previa" />
+
+_Espacio de trabajo de doble panel en el tema oscuro de CyberFiles con Acceso rápido, barras de capacidad de unidades y vista previa Markdown en el panel de propiedades._
 
 ---
 

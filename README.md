@@ -69,11 +69,11 @@ Windows Explorer gives you one pane, one tab and a dialog for everything. CyberF
 
 ---
 
-<!-- Screenshots: pending the bilingual EN/ES gallery in the capture plan at https://github.com/CyberGems/CyberGems.github.io/blob/main/docs/screenshots.md — replace the blockquote, keep this heading and the TOC entry. -->
-
 ## 🖼️ Screenshots
 
-> Coming soon...
+<img src="./docs/screenshots/main-en.png" alt="CyberFiles dual-pane window showing Project Orion folders, sidebar locations and file preview" />
+
+_Dual-pane workspace in the CyberFiles dark theme with Quick Access, drive capacity bars and live Markdown preview in the Properties panel._
 
 ---
 
