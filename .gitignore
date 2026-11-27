@@ -7,3 +7,8 @@ artifacts/
 
 # Logs
 *.log
+
+# Frontend build output
+dist/
+build/
+coverage/
