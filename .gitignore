@@ -12,3 +12,6 @@ artifacts/
 dist/
 build/
 coverage/
+
+# Native build output
+src-tauri/target/
