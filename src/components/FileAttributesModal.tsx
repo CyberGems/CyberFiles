@@ -23,6 +23,14 @@ import {
   TimeOffsetUnit,
   inspectNativeFileMetadataBatch,
 } from '../utils/nativeFileSystem';
+import {
+  parseLocalDateTimeInputs,
+  parsePositiveIntegerOffset,
+  summarizeAttribute,
+  toLocalDateInputValue,
+  toLocalTimeInputValue,
+  type AttributeSummary,
+} from '../utils/fileAttributes';
 
 export interface FileAttributesApplyOutcome {
   applied: boolean;
@@ -37,70 +45,6 @@ interface FileAttributesModalProps {
 }
 
 type TimestampKind = 'created' | 'modified' | 'accessed';
-
-function padTwo(value: number): string {
-  return String(value).padStart(2, '0');
-}
-
-function toLocalDateInputValue(ms: number | null | undefined): string {
-  if (ms === null || ms === undefined || !Number.isFinite(ms)) return '';
-  const date = new Date(ms);
-  if (Number.isNaN(date.getTime())) return '';
-  return `${date.getFullYear()}-${padTwo(date.getMonth() + 1)}-${padTwo(date.getDate())}`;
-}
-
-function toLocalTimeInputValue(ms: number | null | undefined): string {
-  if (ms === null || ms === undefined || !Number.isFinite(ms)) return '';
-  const date = new Date(ms);
-  if (Number.isNaN(date.getTime())) return '';
-  return `${padTwo(date.getHours())}:${padTwo(date.getMinutes())}:${padTwo(date.getSeconds())}`;
-}
-
-function parseLocalDateTimeInputs(dateStr: string, timeStr: string): number | null {
-  const dateTrimmed = dateStr.trim();
-  const timeTrimmed = timeStr.trim();
-  if (!dateTrimmed || !timeTrimmed) return null;
-
-  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateTrimmed);
-  const timeMatch = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(timeTrimmed);
-  if (!dateMatch || !timeMatch) return null;
-
-  const year = Number(dateMatch[1]);
-  const month = Number(dateMatch[2]);
-  const day = Number(dateMatch[3]);
-  const hour = Number(timeMatch[1]);
-  const minute = Number(timeMatch[2]);
-  const second = Number(timeMatch[3] ?? '0');
-
-  const date = new Date(year, month - 1, day, hour, minute, second, 0);
-  if (
-    Number.isNaN(date.getTime()) ||
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day ||
-    date.getHours() !== hour ||
-    date.getMinutes() !== minute ||
-    date.getSeconds() !== second
-  ) {
-    return null;
-  }
-  return date.getTime();
-}
-
-function summarizeAttribute(
-  snapshots: NativeFileMetadataSnapshot[],
-  key: 'readOnly' | 'hidden' | 'system',
-): { kind: 'unknown' | 'on' | 'off' | 'mixed'; onCount: number; total: number } {
-  const total = snapshots.length;
-  if (total === 0) return { kind: 'unknown', onCount: 0, total: 0 };
-  let onCount = 0;
-  for (const snap of snapshots) {
-    if (snap[key]) onCount += 1;
-  }
-  if (onCount === 0) return { kind: 'off', onCount, total };
-  if (onCount === total) return { kind: 'on', onCount, total };
-  return { kind: 'mixed', onCount, total };
-}
 
 export const FileAttributesModal: React.FC<FileAttributesModalProps> = ({
   isOpen,
@@ -253,12 +197,10 @@ export const FileAttributesModal: React.FC<FileAttributesModalProps> = ({
     offsetEnabled ||
     hasAttributeChange;
 
-  const parsedOffsetAmount = useMemo(() => {
-    const trimmed = offsetAmount.trim();
-    if (!/^\d+$/.test(trimmed)) return null;
-    const value = Number(trimmed);
-    return Number.isSafeInteger(value) && value >= 1 ? value : null;
-  }, [offsetAmount]);
+  const parsedOffsetAmount = useMemo(
+    () => parsePositiveIntegerOffset(offsetAmount),
+    [offsetAmount],
+  );
 
   const validation = useMemo(() => {
     if (applyCreated && parsedCreatedMs === null) {
@@ -485,7 +427,7 @@ export const FileAttributesModal: React.FC<FileAttributesModalProps> = ({
 
   if (!isOpen) return null;
 
-  const renderStatePill = (summary: ReturnType<typeof summarizeAttribute>) => {
+  const renderStatePill = (summary: AttributeSummary) => {
     if (summary.kind === 'unknown') return null;
     if (summary.kind === 'on') {
       return (
@@ -570,7 +512,7 @@ export const FileAttributesModal: React.FC<FileAttributesModalProps> = ({
   const renderAttributeRow = (
     id: string,
     label: string,
-    summary: ReturnType<typeof summarizeAttribute>,
+    summary: AttributeSummary,
     value: AttributeChangeAction,
     onChange: (next: AttributeChangeAction) => void,
   ) => (
