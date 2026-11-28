@@ -1,6 +1,8 @@
+import { invoke } from '@tauri-apps/api/core';
+import { useGitHubStar } from '../useGitHubStar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { BookOpen, Bug, Check, ClipboardCopy, Gem, Github, Heart, RefreshCw, Tag, X } from 'lucide-react';
+import { BookOpen, Bug, Check, ClipboardCopy, Gem, Github, Star, Heart, RefreshCw, Tag, X } from 'lucide-react';
 import { getTauriVersion } from '@tauri-apps/api/app';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useLanguage } from '../locales/LanguageContext';
@@ -67,6 +69,7 @@ function collectDiagnostics(language: 'es' | 'en'): Promise<string> {
 
 export function AboutModal({ isOpen, updateNoticeOpen, onClose, onNotify, onUpdateAvailable }: AboutModalProps) {
   const { language, t } = useLanguage();
+  const { giveStar, starState, starLabel } = useGitHubStar(() => invoke<string>('star_repository'), language === 'es');
   const [status, setStatus] = useState<UpdateStatus>({ state: 'idle' });
   const [support, setSupport] = useState<UpdateSupport | null>(null);
   const [showDetails, setShowDetails] = useState(false);
@@ -271,6 +274,9 @@ export function AboutModal({ isOpen, updateNoticeOpen, onClose, onNotify, onUpda
               {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
             </FooterIcon>
             <FooterIcon label={t.about.releasesTooltip} onClick={() => openExternal(RELEASES_PAGE_URL)}><Tag className="h-3.5 w-3.5" /></FooterIcon>
+            <FooterIcon label={starLabel} onClick={() => void giveStar()} disabled={starState === 'busy' || starState === 'starred'}>
+              <Star className="h-3.5 w-3.5" fill={starState === 'starred' ? 'currentColor' : 'none'} />
+            </FooterIcon>
             <FooterIcon label={t.about.donateTooltip} onClick={() => openExternal(DONATE_URL)}>
               <Heart className="h-3.5 w-3.5" style={{ color: DONATE_HEART, fill: DONATE_HEART, stroke: 'none' }} />
             </FooterIcon>
@@ -291,13 +297,14 @@ function SectionTitle({ label }: { label: string }) {
   );
 }
 
-function FooterIcon({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+function FooterIcon({ label, onClick, children, disabled = false }: { label: string; onClick: () => void; children: ReactNode; disabled?: boolean }) {
   return (
     <Tooltip label={label} placement="top">
       <button
         type="button"
         aria-label={label}
         onClick={onClick}
+        disabled={disabled}
         className="grid h-7 w-7 place-items-center rounded-md text-neutral-500 transition hover:bg-neutral-800 hover:text-neutral-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-500/70"
       >
         {children}

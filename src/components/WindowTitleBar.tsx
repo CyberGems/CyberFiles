@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { Globe, Info, Keyboard, Minus, MoreHorizontal, Power, Search, Settings, X } from 'lucide-react';
+import { ChevronRight, HelpCircle, Star, Globe, Info, Keyboard, Minus, MoreHorizontal, Power, Search, Settings, X } from 'lucide-react';
 import { useLanguage } from '../locales/LanguageContext';
 import { dismissAllTooltips, Tooltip } from './Tooltip';
 import { TitleBarUpdateButton } from './TitleBarUpdateButton';
@@ -25,6 +25,8 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
   const [appWindow, setAppWindow] = useState<ReturnType<typeof getCurrentWindow> | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [helpMenuOpen, setHelpMenuOpen] = useState(false);
+  useEffect(() => { if (!moreMenuOpen) setHelpMenuOpen(false); }, [moreMenuOpen]);
   const moreRegionRef = useRef<HTMLDivElement>(null);
   const moreButtonRef = useRef<HTMLButtonElement>(null);
   const shortcutsItemRef = useRef<HTMLButtonElement>(null);
@@ -329,6 +331,18 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
                     <span className="font-sans text-[10px] text-neutral-500">{language === 'es' ? 'EN' : 'ES'}</span>
                   </button>
                 </Tooltip>
+                <button type="button" role="menuitem" className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-neutral-300 transition-colors hover:bg-neutral-800 focus:bg-neutral-800 focus:outline-none" aria-haspopup="menu" aria-expanded={helpMenuOpen}
+                  onClick={() => setHelpMenuOpen(!helpMenuOpen)}>
+                  <HelpCircle className="h-4 w-4" /><span>{tTitlebar('Ayuda', 'Help')}</span><ChevronRight className="ml-auto h-4 w-4" />
+                </button>
+                {helpMenuOpen && <div role="menu" aria-label={tTitlebar('Ayuda', 'Help')}
+                  onKeyDown={event => { if (event.key === 'ArrowLeft') { setHelpMenuOpen(false); (event.currentTarget.previousElementSibling as HTMLButtonElement)?.focus(); } }}>
+                  <button type="button" role="menuitem" className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-neutral-300 transition-colors hover:bg-neutral-800 focus:bg-neutral-800 focus:outline-none"
+                    onClick={() => closeMenuAnd(() => { void invoke('star_repository').catch(console.error); })}>
+                    <Star className="h-4 w-4" /><span>{tTitlebar('Dar una estrella en GitHub', 'Star on GitHub')}</span>
+                  </button>
+                  <div role="separator" className="mx-2 my-1 border-t border-neutral-800" />
+
                 <Tooltip label={tTitlebar('Acerca de CyberFiles', 'About CyberFiles')} placement="left">
                   <button
                     type="button"
@@ -340,6 +354,7 @@ export function WindowTitleBar({ showWindowControls, onOpenSettings, onOpenSearc
                     <span className="flex-1">{tTitlebar('Acerca de CyberFiles', 'About CyberFiles')}</span>
                   </button>
                 </Tooltip>
+                </div>}
                 <div className="mx-2 my-1 border-t border-neutral-800" />
                 <Tooltip label={t.closeWindow.exit} placement="left">
                   <button

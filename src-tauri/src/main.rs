@@ -1,5 +1,8 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
+mod github_star;
+mod github_star_cli;
+
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -11251,6 +11254,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            github_star::star_repository,
             runtime_info,
             is_portable_build,
             update_download::download_update_package,

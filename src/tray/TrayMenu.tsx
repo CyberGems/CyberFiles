@@ -1,3 +1,4 @@
+import { githubStarLabels } from '../useGitHubStar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -722,6 +723,11 @@ export function TrayMenu() {
             <div className="tray-divider" />
 
             <div className="tray-group">
+              <button type="button" role="menuitem" className="tray-item tray-sub-item" onClick={() => void invoke('hide_tray_menu').then(() => invoke('star_repository')).catch(console.error)}>
+                <span className="tray-item-icon"><Star size={14} /></span>
+                <span className="tray-item-label">{githubStarLabels[language === 'es' ? 'es' : 'en'].idle}</span>
+              </button>
+              <div role="separator" className="tray-sub-sep" />
               <button type="button" role="menuitem" className="tray-item tray-sub-item" onClick={() => openExternal(HELP_URLS.docs)}>
                 <span className="tray-item-icon"><BookOpen size={14} /></span>
                 <span className="tray-item-label">{t.docs}</span>
